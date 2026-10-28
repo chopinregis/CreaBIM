@@ -1,5 +1,5 @@
 use crate::{triangulate::triangulate, wall::wall_mesh, TriMesh};
-use creabim_core::{assembly, csg, BoolOp, Element, ElementId, ElementKind, Model, Opening};
+use creabim_core::{assembly, csg, BoolOp, Element, ElementId, ElementKind, Model, Opening, Wall};
 use glam::{DVec2, DVec3};
 
 /// Roughness, metallic and opacity of an element without a material.
@@ -91,7 +91,7 @@ fn layer_items(
         ElementKind::Slab(s) => {
             let level = model.level(s.level)?;
             let top = s.top(level.elevation);
-            let outline = s.outline();
+            let outline = slab_outline_in_walls(model, &s.outline(), top - s.thickness, top);
             let holes = creabim_core::slab::holes_of(model, e);
             assembly::depth_bands(a, s.thickness)
                 .into_iter()
@@ -202,8 +202,10 @@ pub fn build_scene(model: &Model) -> Vec<SceneItem> {
                     continue;
                 };
                 let holes = creabim_core::slab::holes_of(model, e);
+                let top = s.top(level.elevation);
+                let outline = slab_outline_in_walls(model, &s.outline(), top - s.thickness, top);
                 (
-                    slab_mesh_with_holes(&s.outline(), &holes, s.top(level.elevation), s.thickness),
+                    slab_mesh_with_holes(&outline, &holes, top, s.thickness),
                     [0.70, 0.70, 0.72],
                 )
             }
@@ -591,6 +593,77 @@ pub fn slab_mesh_with_holes(
         }
     }
     m
+}
+
+/// A slab's outline drawn back to the inner face of every wall it sits in
+/// (one standing along an edge of it, through its depth `z0..z1`): the
+/// wall runs on past the slab, as sections draw it, so the slab's edge
+/// never shows on the wall's outer face or across its windows.
+pub fn slab_outline_in_walls(model: &Model, outline: &[DVec2], z0: f64, z1: f64) -> Vec<DVec2> {
+    let n = outline.len();
+    if n < 3 {
+        return outline.to_vec();
+    }
+    let ccw = crate::triangulate::signed_area2(outline) > 0.0;
+    let walls: Vec<&Wall> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) if w.curtain.is_none() => {
+                let base = creabim_core::walls::base_z(model, w);
+                (base < z1 - 1e-3 && base + w.height > z0 + 1e-3).then_some(w)
+            }
+            _ => None,
+        })
+        .collect();
+    // how far each edge moves in: the thickness of the wall along it
+    let inset: Vec<f64> = (0..n)
+        .map(|i| {
+            let (a, b) = (outline[i], outline[(i + 1) % n]);
+            let len = a.distance(b);
+            if len < 1e-6 {
+                return 0.0;
+            }
+            let d = (b - a) / len;
+            let inward = if ccw { d.perp() } else { -d.perp() };
+            walls
+                .iter()
+                .filter(|w| w.direction().perp_dot(d).abs() < 1e-3)
+                .filter(|w| {
+                    // its outer face on the edge, the wall inside the slab
+                    let c = (w.start - a).dot(inward);
+                    (c - w.thickness / 2.0).abs() < 0.02
+                })
+                .filter(|w| {
+                    let (u0, u1) = ((w.start - a).dot(d), (w.end - a).dot(d));
+                    let covered = u0.max(u1).min(len) - u0.min(u1).max(0.0);
+                    covered > 0.9 * len
+                })
+                .map(|w| w.thickness)
+                .fold(0.0, f64::max)
+        })
+        .collect();
+    if inset.iter().all(|t| *t == 0.0) {
+        return outline.to_vec();
+    }
+    // each corner where its two edges, moved in, meet
+    let line = |i: usize| {
+        let (a, b) = (outline[i], outline[(i + 1) % n]);
+        let d = (b - a).normalize_or_zero();
+        let inward = if ccw { d.perp() } else { -d.perp() };
+        (a + inward * inset[i], d)
+    };
+    (0..n)
+        .map(|i| {
+            let (p0, d0) = line((i + n - 1) % n);
+            let (p1, d1) = line(i);
+            let den = d0.perp_dot(d1);
+            if den.abs() < 1e-9 {
+                p1
+            } else {
+                p0 + d0 * ((p1 - p0).perp_dot(d1) / den)
+            }
+        })
+        .collect()
 }
 
 /// Extruded slab: top face at `top_z`, `thickness` downwards.

@@ -445,16 +445,7 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
         ring(items, e, pen, outline);
     }
     // walking line with an arrow at its top end
-    let mut walk: Vec<DVec2> = Vec::new();
-    for (k, f) in lay.flights.iter().enumerate() {
-        if k == 1 {
-            let f1 = lay.flights[0];
-            walk.push(f1.end(s.tread) + f1.dir * s.width / 2.0);
-        }
-        walk.push(f.start);
-        walk.push(f.end(s.tread));
-    }
-    walk.dedup_by(|a, b| a.distance(*b) < 1e-9);
+    let walk = walking_line(s, &lay);
     for w in walk.windows(2) {
         line(items, Pen::Symbol, w[0], w[1]);
     }
@@ -471,6 +462,71 @@ fn stair_plan(items: &mut Vec<PlanItem>, e: &Element, s: &Stair, rise: f64, cut:
             text: "UP".into(),
         });
     }
+}
+
+/// The line up the middle of the flights, from the bottom to the top.
+fn walking_line(s: &Stair, lay: &members::StairLayout) -> Vec<DVec2> {
+    let mut walk: Vec<DVec2> = Vec::new();
+    for (k, f) in lay.flights.iter().enumerate() {
+        if k == 1 {
+            let f1 = lay.flights[0];
+            walk.push(f1.end(s.tread) + f1.dir * s.width / 2.0);
+        }
+        walk.push(f.start);
+        walk.push(f.end(s.tread));
+    }
+    walk.dedup_by(|a, b| a.distance(*b) < 1e-9);
+    walk
+}
+
+/// A stair from the level below, seen from the floor it arrives at: its
+/// treads and landing where the well in this floor shows them, and an
+/// arrow down the walking line from its top, marked DN.
+pub fn stair_from_above(e: &Element, s: &Stair, rise: f64, wells: &[Vec<DVec2>]) -> Vec<PlanItem> {
+    let lay = s.layout(rise);
+    let mut whole = Vec::new();
+    // everything in projection: a cut above the top leaves no break
+    stair_plan(&mut whole, e, s, rise, rise + 10.0);
+    let walk = walking_line(s, &lay);
+    let mut items = Vec::new();
+    let mut keep = |a: DVec2, b: DVec2, pen: Pen| {
+        for w in wells {
+            for (p, q) in crate::plan::clip_inside(a, b, w) {
+                items.push(PlanItem::Line {
+                    id: e.id,
+                    pen,
+                    a: p,
+                    b: q,
+                });
+            }
+        }
+    };
+    // the treads, the sides and the landing (the walking line and its
+    // arrow, the only symbols, are drawn again pointing down)
+    for i in &whole {
+        if let PlanItem::Line { pen, a, b, .. } = i {
+            if *pen != Pen::Symbol {
+                keep(*a, *b, *pen);
+            }
+        }
+    }
+    for w in walk.windows(2) {
+        keep(w[0], w[1], Pen::Symbol);
+    }
+    if let (Some(&start), Some(f)) = (walk.first(), lay.flights.first()) {
+        let back = f.dir * 0.25;
+        let wing = f.dir.perp() * 0.12;
+        keep(start, start + back + wing, Pen::Symbol);
+        keep(start, start + back - wing, Pen::Symbol);
+    }
+    if let (Some(&end), Some(f)) = (walk.last(), lay.flights.last()) {
+        items.push(PlanItem::Label {
+            id: e.id,
+            at: end - f.dir * 0.45 + f.dir.perp() * (s.width / 2.0 - 0.15),
+            text: "DN".into(),
+        });
+    }
+    items
 }
 
 /// The zigzag drawn across a flight where the plan cuts it.

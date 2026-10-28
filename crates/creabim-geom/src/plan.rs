@@ -402,6 +402,21 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
                 if i == j || (!same && other.id != piece.id) {
                     continue;
                 }
+                // and the parts running inside an overlapping cut of the
+                // same material: overlapping pieces read as one mass too
+                if same && boxes_overlap(&piece.points, &other.points) {
+                    for (p, q) in clip_inside(a, b, &other.points) {
+                        let (tp, tq) = ((p - a).dot(d), (q - a).dot(d));
+                        let mid = a + d * ((tp + tq) / 2.0);
+                        let on_edge = edges(&other.points).iter().any(|(e0, e1)| {
+                            let el = e0.distance(*e1);
+                            el > eps && ((mid - *e0).perp_dot((*e1 - *e0) / el)).abs() < eps
+                        });
+                        if !on_edge && tq - tp > eps {
+                            covered.push((tp.min(tq), tp.max(tq)));
+                        }
+                    }
+                }
                 for (p, q) in edges(&other.points) {
                     if on_line(p) && on_line(q) {
                         let (tp, tq) = ((p - a).dot(d), (q - a).dot(d));
@@ -775,6 +790,13 @@ pub fn plan_view(model: &Model, level: ElementId, cut_height: f64) -> PlanView {
     let mut sliced: Vec<ElementId> = Vec::new();
     // the layers of layered walls, cut
     let mut layers: Vec<CutPiece> = Vec::new();
+    // the holes in this level's floors, and the stairs coming up through them
+    let wells: Vec<Vec<DVec2>> = model
+        .iter()
+        .filter(|e| matches!(&e.kind, ElementKind::Slab(s) if s.level == level))
+        .flat_map(|e| creabim_core::slab::holes_of(model, e))
+        .collect();
+    let arriving = arriving_stairs(model, level);
     for e in model.iter() {
         if cutters.contains(&e.id) {
             continue;
@@ -946,9 +968,28 @@ pub fn plan_view(model: &Model, level: ElementId, cut_height: f64) -> PlanView {
                         },
                     );
                     for h in &holes {
-                        items.extend(hole_marks(e.id, h, Pen::Projection));
+                        // a stair well shows the stair, not a cross
+                        if arriving.iter().any(|(_, s, rise)| stair_in(s, *rise, h)) {
+                            items.push(PlanItem::Polygon {
+                                id: e.id,
+                                pen: Pen::Projection,
+                                points: h.clone(),
+                            });
+                        } else {
+                            items.extend(hole_marks(e.id, h, Pen::Projection));
+                        }
                     }
                 }
+            }
+            // a stair from the level below, seen through the well it
+            // arrives in
+            ElementKind::Stair(s) if arriving.iter().any(|(id, ..)| *id == e.id) => {
+                items.extend(crate::members::stair_from_above(
+                    e,
+                    s,
+                    s.rise(model),
+                    &wells,
+                ));
             }
             ElementKind::Object(o) if o.level == level => {
                 items.extend(crate::objects::object_plan(model, e, cut_height));
@@ -981,7 +1022,20 @@ pub fn plan_view(model: &Model, level: ElementId, cut_height: f64) -> PlanView {
                 let z = model.level(level).map_or(0.0, |l| l.elevation);
                 let (z0, z1) = sh.span(model);
                 if z0 - 1e-6 <= z && z <= z1 + 1e-6 {
-                    items.extend(hole_marks(e.id, &sh.boundary, Pen::Symbol));
+                    // a stair well shows its stair rather than a cross
+                    let stairs = model.iter().any(|s| match &s.kind {
+                        ElementKind::Stair(st) => stair_in(st, st.rise(model), &sh.boundary),
+                        _ => false,
+                    });
+                    if stairs {
+                        items.push(PlanItem::Polygon {
+                            id: e.id,
+                            pen: Pen::Symbol,
+                            points: sh.boundary.clone(),
+                        });
+                    } else {
+                        items.extend(hole_marks(e.id, &sh.boundary, Pen::Symbol));
+                    }
                 }
             }
             ElementKind::Sketch(sk) if sk.level == Some(level) => {
@@ -1080,6 +1134,33 @@ pub fn underlay_items(model: &Model, level: ElementId, cut_height: f64) -> Vec<P
     out
 }
 
+/// The stairs on another level that arrive at `level`'s floor.
+fn arriving_stairs(model: &Model, level: ElementId) -> Vec<(ElementId, creabim_core::Stair, f64)> {
+    let Some(l) = model.level(level) else {
+        return vec![];
+    };
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Stair(s)
+                if s.level != level
+                    && (s.base(model) + s.rise(model) - l.elevation).abs() < 0.05 =>
+            {
+                Some((e.id, s.clone(), s.rise(model)))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Does the stair rising `rise` climb through `hole` (its last tread
+/// inside it)?
+fn stair_in(s: &creabim_core::Stair, rise: f64, hole: &[DVec2]) -> bool {
+    s.layout(rise).flights.last().is_some_and(|f| {
+        creabim_core::polygon::contains(hole, f.end(s.tread) - f.dir * s.tread / 2.0)
+    })
+}
+
 /// A hole through a slab, roof or shaft as plans draw it: its outline
 /// and a cross corner to corner.
 pub fn hole_marks(id: ElementId, hole: &[DVec2], pen: Pen) -> Vec<PlanItem> {
@@ -1089,26 +1170,53 @@ pub fn hole_marks(id: ElementId, hole: &[DVec2], pen: Pen) -> Vec<PlanItem> {
         points: hole.to_vec(),
     }];
     let n = hole.len();
-    if n >= 4 {
-        // the two diagonals of its box, kept inside it
+    let line = |a, b| PlanItem::Line {
+        id,
+        pen: Pen::Symbol,
+        a,
+        b,
+    };
+    if n == 4 {
+        // corner to corner
+        out.push(line(hole[0], hole[2]));
+        out.push(line(hole[1], hole[3]));
+    } else if n > 4 {
+        // the diagonals of its box, only where they run inside the hole,
+        // so an L-shaped hole's cross stays in it
         let lo = hole.iter().copied().reduce(DVec2::min).unwrap_or_default();
         let hi = hole.iter().copied().reduce(DVec2::max).unwrap_or_default();
-        let far = |p: DVec2| {
-            hole.iter()
-                .copied()
-                .min_by(|a, b| a.distance(p).total_cmp(&b.distance(p)))
-                .unwrap_or(p)
-        };
         for (a, b) in [(lo, hi), (DVec2::new(lo.x, hi.y), DVec2::new(hi.x, lo.y))] {
-            out.push(PlanItem::Line {
-                id,
-                pen: Pen::Symbol,
-                a: far(a),
-                b: far(b),
-            });
+            for (p, q) in clip_inside(a, b, hole) {
+                out.push(line(p, q));
+            }
         }
     }
     out
+}
+
+/// The pieces of the segment `a`–`b` that lie inside `poly`.
+pub fn clip_inside(a: DVec2, b: DVec2, poly: &[DVec2]) -> Vec<(DVec2, DVec2)> {
+    let d = b - a;
+    let mut ts = vec![0.0, 1.0];
+    for i in 0..poly.len() {
+        let (p, q) = (poly[i], poly[(i + 1) % poly.len()]);
+        let e = q - p;
+        let den = d.perp_dot(e);
+        if den.abs() < 1e-12 {
+            continue;
+        }
+        let t = (p - a).perp_dot(e) / den;
+        let u = (p - a).perp_dot(d) / den;
+        if (0.0..=1.0).contains(&t) && (-1e-9..=1.0 + 1e-9).contains(&u) {
+            ts.push(t);
+        }
+    }
+    ts.sort_by(f64::total_cmp);
+    ts.windows(2)
+        .filter(|w| w[1] - w[0] > 1e-9)
+        .filter(|w| creabim_core::polygon::contains(poly, a + d * ((w[0] + w[1]) / 2.0)))
+        .map(|w| (a + d * w[0], a + d * w[1]))
+        .collect()
 }
 
 /// Is this the linework of an underlay (drawn faintly, never picked)?

@@ -1330,8 +1330,8 @@ fn furnish(b: &mut Builder) {
     // placed against the nearest wall)
     let plan: &[(&str, ElementId, DVec2, Option<f64>)] = &[
         // living, at the west end of the garden room
-        ("sofa-3", g, v(6.0, 5.6), None),
-        ("coffee-table", g, v(6.0, 7.0), Some(0.0)),
+        ("sofa-3", g, v(6.45, 5.6), None),
+        ("coffee-table", g, v(6.45, 7.0), Some(0.0)),
         ("armchair", g, v(4.75, 7.3), Some(90.0)),
         // dining, by the garden screen
         ("dining-table", g, v(8.85, 7.6), Some(0.0)),
@@ -1362,12 +1362,11 @@ fn furnish(b: &mut Builder) {
         // WC and utility
         ("wc", g, v(8.2, 2.25), None),
         ("washbasin", g, v(8.85, 1.2), None),
-        ("sink-unit-1000", g, v(10.75, 4.3), None),
-        ("base-cabinet-600", g, v(10.75, 5.1), None),
+        ("sink-unit-1000", g, v(10.75, 4.05), None),
         // bedroom 1 (north) and its en-suite
-        ("double-bed", f, v(6.0, 5.6), None),
-        ("bedside-table", f, v(4.9, 5.6), None),
-        ("bedside-table", f, v(7.1, 5.6), None),
+        ("double-bed", f, v(6.5, 5.6), None),
+        ("bedside-table", f, v(5.4, 5.6), None),
+        ("bedside-table", f, v(7.6, 5.6), None),
         ("wardrobe", f, v(7.85, 8.0), None),
         ("shower", f, v(10.3, 6.1), None),
         ("wc", f, v(8.2, 8.5), None),
@@ -1389,19 +1388,19 @@ fn furnish(b: &mut Builder) {
         // services: the board and boiler in the utility, switches by the
         // doors, sockets round the rooms, lights centred in them
         ("consumer-unit", g, v(9.2, 3.0), None),
-        ("boiler", g, v(10.0, 2.5), None),
+        ("boiler", g, v(8.3, 2.5), None),
         ("switch-2-gang", g, v(5.0, 0.25), None),
         ("switch-1-gang", g, v(4.25, 1.75), None),
-        ("switch-1-gang", g, v(4.4, 5.6), None),
+        ("switch-1-gang", g, v(5.35, 5.3), None),
         ("switch-2-gang", g, v(5.4, 5.6), None),
         ("switch-1-gang", g, v(7.3, 1.75), None),
         ("switch-1-gang", g, v(10.4, 5.4), None),
         ("socket-double", g, v(0.25, 1.0), None),
         ("socket-double", g, v(3.0, 0.25), None),
-        ("socket-double", g, v(2.5, 5.35), None),
+        ("socket-double", g, v(3.2, 5.35), None),
         ("socket-double", g, v(7.0, 5.6), None),
-        ("socket-double", g, v(4.25, 8.8), None),
-        ("socket-double", g, v(10.8, 7.0), None),
+        ("socket-double", g, v(4.6, 9.35), None),
+        ("socket-double", g, v(7.3, 9.35), None),
         ("socket-double", g, v(15.3, 7.3), None),
         ("socket-double", g, v(15.3, 9.0), None),
         ("socket-double", g, v(12.0, 4.8), None),
@@ -1422,10 +1421,10 @@ fn furnish(b: &mut Builder) {
         ("radiator", g, v(0.25, 2.8), None),
         ("radiator", g, v(4.25, 6.7), None),
         ("radiator", g, v(12.3, 4.8), None),
-        ("radiator", g, v(5.0, 0.25), None),
+        ("radiator", g, v(4.75, 0.25), None),
         ("extract-fan", g, v(8.7, 0.25), None),
         ("extract-fan", g, v(15.3, 8.0), None),
-        ("extract-fan", g, v(10.75, 2.6), None),
+        ("extract-fan", g, v(10.75, 5.0), None),
         ("outside-tap", g, v(15.85, 9.0), None),
         ("outside-tap", g, v(11.25, 3.8), None),
         ("switch-1-gang", f, v(4.25, 2.15), None),
@@ -1433,16 +1432,16 @@ fn furnish(b: &mut Builder) {
         ("switch-1-gang", f, v(4.15, 5.6), None),
         ("switch-1-gang", f, v(7.5, 1.6), None),
         ("switch-1-gang", f, v(5.3, 5.4), None),
-        ("socket-double", f, v(4.8, 5.6), None),
-        ("socket-double", f, v(7.4, 5.6), None),
+        ("socket-double", f, v(5.45, 5.6), None),
+        ("socket-double", f, v(7.65, 5.6), None),
         ("socket-double", f, v(0.6, 3.25), None),
         ("socket-double", f, v(3.4, 3.25), None),
         ("socket-double", f, v(10.8, 3.2), None),
         ("socket-double", f, v(9.2, 5.35), None),
         ("socket-double", f, v(6.0, 0.25), None),
-        ("wall-light", f, v(4.9, 5.6), None),
-        ("wall-light", f, v(7.1, 5.6), None),
-        ("ceiling-light", f, v(6.0, 7.4), Some(0.0)),
+        ("wall-light", f, v(5.4, 5.6), None),
+        ("wall-light", f, v(7.6, 5.6), None),
+        ("ceiling-light", f, v(6.5, 7.4), Some(0.0)),
         ("ceiling-light", f, v(2.0, 1.0), Some(0.0)),
         ("ceiling-light", f, v(9.2, 2.7), Some(0.0)),
         ("ceiling-light", f, v(5.4, 1.0), Some(0.0)),
@@ -1704,7 +1703,7 @@ fn annotate(b: &mut Builder, views: &Views) {
         (
             "LOGGIA",
             rect(v(-H, 5.6 + H), v(4.0 - H, 9.6 + H)),
-            v(1.9, 7.6),
+            v(1.9, 8.6),
         ),
         ("TERRACE", 4.8 * 1.4, v(12.1, 10.75)),
     ];
@@ -1732,17 +1731,17 @@ fn annotate(b: &mut Builder, views: &Views) {
         (
             "BEDROOM 1",
             rect(v(hw, spn), v(8.0 - 0.05, 9.6 - H)),
-            v(6.5, 8.7),
+            v(5.6, 8.7),
         ),
         (
             "EN-SUITE",
             rect(v(8.05, spn), v(11.0 - H, 9.6 - H)),
-            v(9.4, 7.5),
+            v(9.4, 8.3),
         ),
         (
             "BALCONY",
             rect(v(-H, 5.6 + H), v(4.0 - H, 9.6 + H)),
-            v(1.9, 7.6),
+            v(1.9, 8.6),
         ),
     ];
     let mut tx = Transaction::new("Starter house: rooms");
@@ -2284,6 +2283,132 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Do two convex outlines overlap by more than a sliver?
+    fn overlap(a: &[DVec2], b: &[DVec2]) -> bool {
+        for poly in [a, b] {
+            for i in 0..poly.len() {
+                let e = poly[(i + 1) % poly.len()] - poly[i];
+                let n = e.perp().normalize_or_zero();
+                let span = |p: &[DVec2]| {
+                    p.iter()
+                        .map(|q| q.dot(n))
+                        .fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(v), hi.max(v)))
+                };
+                let ((a0, a1), (b0, b1)) = (span(a), span(b));
+                if a1 < b0 + 0.02 || b1 < a0 + 0.02 {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// The plan footprint of every piece of furniture or fixture standing
+    /// on the floor or against a wall (not those hung from the ceiling).
+    fn footprints(m: &Model) -> Vec<(String, ElementId, Vec<DVec2>)> {
+        m.iter()
+            .filter_map(|e| {
+                let ElementKind::Object(o) = &e.kind else {
+                    return None;
+                };
+                let t = crate::objects::type_of(m, e)?;
+                if t.mount == Mount::Ceiling {
+                    return None;
+                }
+                let (lo, hi) = t.bounds();
+                let pts = [
+                    DVec2::new(lo.x, lo.y),
+                    DVec2::new(hi.x, lo.y),
+                    DVec2::new(hi.x, hi.y),
+                    DVec2::new(lo.x, hi.y),
+                ];
+                Some((e.name.clone(), o.level, pts.map(|p| o.to_plan(p)).to_vec()))
+            })
+            .collect()
+    }
+
+    /// Where nothing may stand by a door or a passage: its opening through
+    /// the wall, a step clear on both sides, and as far as the leaf swings
+    /// on the side it opens to.
+    fn clear_zones(m: &Model) -> Vec<(String, ElementId, Vec<DVec2>)> {
+        m.iter()
+            .filter_map(|e| {
+                let ElementKind::Opening(o) = &e.kind else {
+                    return None;
+                };
+                if o.kind == OpeningKind::Window {
+                    return None;
+                }
+                let ElementKind::Wall(w) = &m.get(o.host)?.kind else {
+                    return None;
+                };
+                let (d, n) = (w.direction(), w.direction().perp());
+                let step = w.thickness / 2.0 + 0.3;
+                let swing = w.thickness / 2.0 + o.width.min(1.0);
+                let (left, right) = match o.kind {
+                    OpeningKind::Door if o.faces_left(w) => (swing, step),
+                    OpeningKind::Door => (step, swing),
+                    _ => (w.thickness / 2.0 + 0.6, w.thickness / 2.0 + 0.6),
+                };
+                let a = w.start + d * o.offset;
+                let b = a + d * o.width;
+                Some((
+                    e.name.clone(),
+                    w.level,
+                    vec![a - n * right, b - n * right, b + n * left, a + n * left],
+                ))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn no_furniture_or_fixture_stands_in_a_doorway_or_a_door_swing() {
+        let m = starter_house();
+        let zones = clear_zones(&m);
+        let mut bad = Vec::new();
+        for (name, level, pts) in footprints(&m) {
+            for (door, l, z) in &zones {
+                if *l == level && overlap(&pts, z) {
+                    let c = pts.iter().copied().sum::<DVec2>() / pts.len() as f64;
+                    bad.push(format!("{name} at {c:.2} is in the way of {door}"));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn room_names_keep_clear_of_the_section_lines() {
+        let m = starter_house();
+        let lines: Vec<(DVec2, DVec2)> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::View(View {
+                    kind: ViewKind::Section { start, end, .. },
+                    ..
+                }) => Some((*start, *end)),
+                _ => None,
+            })
+            .collect();
+        let mut bad = Vec::new();
+        for e in m.iter().filter(|e| e.name.starts_with("Room ")) {
+            let ElementKind::Note(n) = &e.kind else {
+                continue;
+            };
+            // the name and the area under it, as the plans write them
+            let wide = n.text.lines().map(str::len).max().unwrap_or(0) as f64 * 0.09;
+            let (lo, hi) = (n.at - DVec2::new(0.1, 0.55), n.at + DVec2::new(wide, 0.25));
+            let box_ = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
+            for (a, b) in &lines {
+                let d = (*b - *a).normalize_or_zero().perp() * 0.01;
+                if overlap(&box_, &[*a - d, *b - d, *b + d, *a + d]) {
+                    bad.push(format!("{} crosses a section line", e.name));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
     }
 
     #[test]

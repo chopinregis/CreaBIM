@@ -207,6 +207,10 @@ impl CreaBimApp {
         app.shell.settings = settings;
         app.load_model(creabim_core::starter::starter_house());
         app.status = STARTER_LOADED.into();
+        // a file given on the command line (Open with…) opens in its place
+        if let Some(path) = std::env::args().nth(1) {
+            app.open_path(&path);
+        }
         app
     }
 
