@@ -27,6 +27,8 @@ use std::collections::HashMap;
 mod assemblies;
 #[path = "cropui.rs"]
 mod cropui;
+#[path = "demo.rs"]
+mod demo;
 #[path = "drafting.rs"]
 mod drafting;
 #[path = "editui.rs"]
@@ -203,6 +205,8 @@ pub struct CreaBimApp {
     last_in_2d: bool,
     /// The crop box whose elements clicks in the 3D view are picking.
     crop_pick: Option<ElementId>,
+    /// A demo script playing, for tutorials and films.
+    demo: Option<demo::Demo>,
 }
 
 impl CreaBimApp {
@@ -276,6 +280,7 @@ impl CreaBimApp {
             orbit_selection: false,
             rect_3d: None,
             rect_2d: None,
+            demo: demo::Demo::from_env(),
             last_in_2d: false,
             crop_pick: None,
             status: "Loaded the sample house. Orbit with left drag, pan with right drag, zoom with the wheel.".into(),
@@ -5141,10 +5146,16 @@ impl eframe::App for CreaBimApp {
             egui::epaint::MarginF32::default()
         };
         raw_input.safe_area_insets = Some(egui::SafeAreaInsets(bands));
+        if let Some(d) = &mut self.demo {
+            d.input(raw_input);
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if self.demo.is_some() {
+            self.demo_frame(&ctx, frame);
+        }
         crate::units::set(self.doc.model().units());
         self.shortcuts(&ctx);
         self.keep_edit_mode();

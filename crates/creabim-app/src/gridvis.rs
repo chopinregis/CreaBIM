@@ -1041,6 +1041,10 @@ impl CreaBimApp {
                 egui::Grid::new(("vis-cats", format!("{t:?}")))
                     .num_columns(cols)
                     .show(ui, |ui| {
+                        // the panel wraps its text, which a grid column
+                        // sized on an earlier, narrower frame would break
+                        // mid-word ("Wal ls")
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                         for (i, c) in Category::ALL.iter().enumerate() {
                             let mut shown = !h.hides_category(*c);
                             if ui.checkbox(&mut shown, c.label()).changed() {

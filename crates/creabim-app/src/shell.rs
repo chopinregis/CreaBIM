@@ -2357,6 +2357,12 @@ impl CreaBimApp {
                 }
             }
             "close" => self.close_popup(),
+            "demo_rect" => {
+                let pane = self.shell.web.as_ref().map(|w| w.rects[msg.pane as usize]);
+                if let (Some(d), Some(r)) = (&mut self.demo, pane) {
+                    d.found(r, b);
+                }
+            }
             "bar" => self.shell.bar = Some(crate::optionbar::Measure::from_json(b)),
             // a double-click in the project browser: a type opens on its
             // own, anything else in the model is framed in 3D
