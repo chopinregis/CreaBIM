@@ -473,7 +473,21 @@ impl CreaBimApp {
                 demo.write(hwnd);
             }
         }
+        let lock = demo.frame % 15 == 0;
         self.demo = Some(demo);
+        // the pages would still follow the real mouse (hover, a menu bar
+        // switching menus): while a script plays they take no pointer at
+        // all, and the script's clicks reach them from inside the page
+        if lock {
+            if let Some(web) = &self.shell.web {
+                for pane in PANES {
+                    web.run(
+                        pane,
+                        "if(!document.getElementById('demo-lock')){const s=document.createElement('style');                         s.id='demo-lock';s.textContent='*{pointer-events:none!important}';document.head.appendChild(s)}",
+                    );
+                }
+            }
+        }
         self.demo_step(ctx);
         if let Some(d) = &mut self.demo {
             if !matches!(d.phase, Phase::Asking { .. }) {
