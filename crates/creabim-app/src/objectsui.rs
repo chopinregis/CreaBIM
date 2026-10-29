@@ -612,7 +612,7 @@ impl CreaBimApp {
         let current = self.plan.objects.current.as_ref().map(|c| c.key.clone());
         // as wide as five pictures, or what the views leave
         let width = (area.width() - 120.0).clamp(420.0, 5.0 * (THUMB as f32 + 26.0));
-        egui::Window::new("Catalogue")
+        let shown_at = egui::Window::new("Catalogue")
             .resizable(true)
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
@@ -622,9 +622,11 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 let cat = &mut self.catalogue;
                 ui.horizontal_wrapped(|ui| {
-                    ui.selectable_value(&mut cat.category, None, "All");
+                    let r = ui.selectable_value(&mut cat.category, None, "All");
+                    super::demo::seen("All", r.rect);
                     for c in ObjectCategory::ALL {
-                        ui.selectable_value(&mut cat.category, Some(c), c.label());
+                        let r = ui.selectable_value(&mut cat.category, Some(c), c.label());
+                        super::demo::seen(c.label(), r.rect);
                     }
                 });
                 ui.add(
@@ -678,6 +680,7 @@ impl CreaBimApp {
                                 &c.description
                             }
                         ));
+                        super::demo::seen(&c.name, r.rect);
                         if r.clicked() {
                             asks.push(CatAsk::Place(Box::new(c.clone()), own));
                         }
@@ -776,6 +779,14 @@ impl CreaBimApp {
                     .weak(),
                 );
             });
+        if let Some(r) = shown_at {
+            // its close button, in the title bar's right corner
+            let x = r.response.rect.right_top() + Vec2::new(-15.0, 14.0);
+            super::demo::seen(
+                "Close Catalogue",
+                egui::Rect::from_center_size(x, Vec2::splat(12.0)),
+            );
+        }
         self.catalogue.open = open;
         for a in asks {
             self.run_catalogue(a);

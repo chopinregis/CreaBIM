@@ -35,6 +35,29 @@ pub struct Target {
     pub act: Option<String>,
     /// A web pane element by CSS selector.
     pub sel: Option<String>,
+    /// A web pane button, row or menu item by its text (within `sel`).
+    pub text: Option<String>,
+    /// A native widget that told the player its place with [`seen`].
+    pub ui: Option<String>,
+}
+
+thread_local! {
+    /// Native widgets drawn this frame, and last frame, by label.
+    static WIDGETS: std::cell::RefCell<[std::collections::HashMap<String, egui::Rect>; 2]> =
+        Default::default();
+}
+
+/// A native widget a script can click by its label: the panes' egui
+/// widgets have no page to ask, so the ones a script needs say where they
+/// are drawn.
+pub fn seen(label: &str, rect: egui::Rect) {
+    WIDGETS.with(|w| {
+        w.borrow_mut()[0].insert(label.to_string(), rect);
+    });
+}
+
+fn widget(label: &str) -> Option<egui::Rect> {
+    WIDGETS.with(|w| w.borrow()[1].get(label).copied())
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -63,6 +86,9 @@ pub enum Step {
         s: f64,
         #[serde(default)]
         double: bool,
+        /// With the right button, for context menus.
+        #[serde(default)]
+        right: bool,
     },
     Drag {
         from: Target,
@@ -81,6 +107,12 @@ pub enum Step {
     Type {
         text: String,
     },
+    /// Typed into a web pane field a character at a time, then entered.
+    WebType {
+        #[serde(flatten)]
+        to: Target,
+        value: String,
+    },
     /// Press a web button straight away, without the cursor.
     Act {
         id: String,
@@ -94,6 +126,10 @@ pub enum Step {
         y: f32,
         #[serde(default = "glide")]
         s: f64,
+    },
+    /// Write the model as JSON, to check what a script built.
+    Dump {
+        path: String,
     },
     /// Frame the 2D view on a point of the model, at points per metre.
     Camera {
@@ -151,6 +187,8 @@ pub struct Demo {
     log: Option<std::fs::File>,
     caption: String,
     clicked: bool,
+    /// The click under way is with the right button.
+    right: bool,
     pub done: bool,
 }
 
@@ -186,6 +224,7 @@ impl Demo {
             log: None,
             caption: String::new(),
             clicked: false,
+            right: false,
             done: false,
         })
     }
@@ -236,7 +275,11 @@ impl Demo {
         }
         self.events.push(Event::PointerButton {
             pos: self.cursor,
-            button: PointerButton::Primary,
+            button: if self.right {
+                PointerButton::Secondary
+            } else {
+                PointerButton::Primary
+            },
             pressed,
             modifiers: Modifiers::NONE,
         });
@@ -313,11 +356,31 @@ impl Demo {
     }
 }
 
+/// A JavaScript expression for the element a target names, or null.
+fn find(t: &Target) -> Option<String> {
+    let js = |v: &str| serde_json::to_string(v).unwrap();
+    if let Some(text) = &t.text {
+        let sel = t
+            .sel
+            .as_deref()
+            .unwrap_or("button,.row,.mi,.tool,.group,.menubtn,label,.field");
+        return Some(format!(
+            "([...document.querySelectorAll({})].find(e=>{{const t=e.textContent.trim();return (t==={t}||(e.matches('.field')&&t.startsWith({t})))&&e.getClientRects().length}})||null)",
+            js(sel),
+            t = js(text)
+        ));
+    }
+    let sel = t
+        .sel
+        .clone()
+        .or_else(|| t.act.as_ref().map(|a| format!("[data-act=\"{a}\"]")))?;
+    Some(format!("document.querySelector({})", js(&sel)))
+}
+
 /// The JavaScript that finds an element in a pane and reports its place.
-fn ask_script(sel: &str) -> String {
-    let sel = serde_json::to_string(sel).unwrap();
+fn ask_script(e: &str) -> String {
     format!(
-        "(()=>{{const e=document.querySelector({sel});if(!e)return;\
+        "(()=>{{const e={e};if(!e)return;\
          e.scrollIntoView({{block:'nearest'}});const r=e.getBoundingClientRect();\
          window.ipc.postMessage(JSON.stringify({{t:'demo_rect',x:r.left,y:r.top,w:r.width,h:r.height}}))}})()"
     )
@@ -325,22 +388,19 @@ fn ask_script(sel: &str) -> String {
 
 /// Hover and press looks for the element the cursor is on, since the real
 /// pointer never reaches the pages.
-fn mark_script(sel: &str, class: &str) -> String {
-    let sel = serde_json::to_string(sel).unwrap();
+fn mark_script(e: &str, class: &str) -> String {
     format!(
         "(()=>{{if(!document.getElementById('demo-css')){{const s=document.createElement('style');\
          s.id='demo-css';s.textContent='.demo-hover{{background:var(--raise)!important;color:var(--text)!important}}';\
          document.head.appendChild(s)}}document.querySelectorAll('.demo-hover').forEach(x=>x.classList.remove('demo-hover'));\
-         const e=document.querySelector({sel});if(e){{{class}}}}})()"
+         const e={e};if(e){{{class}}}}})()"
     )
 }
 
 const PANES: [Pane; 5] = [Pane::Top, Pane::Left, Pane::Status, Pane::Nav, Pane::Popup];
 
 fn selector(t: &Target) -> Option<String> {
-    t.sel
-        .clone()
-        .or_else(|| t.act.as_ref().map(|a| format!("[data-act=\"{a}\"]")))
+    find(t)
 }
 
 impl CreaBimApp {
@@ -359,6 +419,9 @@ impl CreaBimApp {
                 scale,
             };
             return Some(xf.to_screen(DVec2::new(x, y)));
+        }
+        if let Some(label) = &t.ui {
+            return widget(label).map(|r| r.center());
         }
         if let Some([fx, fy]) = t.view3d {
             let r = self.rect_3d?;
@@ -398,6 +461,10 @@ impl CreaBimApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
+        WIDGETS.with(|w| {
+            let mut w = w.borrow_mut();
+            w[1] = std::mem::take(&mut w[0]);
+        });
         // let the web panes catch up before the window is taken
         std::thread::sleep(std::time::Duration::from_millis(25));
         let asking = matches!(demo.phase, Phase::Asking { .. });
@@ -507,6 +574,45 @@ impl CreaBimApp {
                     _ => d.next(),
                 }
             }
+            Step::WebType { to, value } => {
+                let chars: Vec<char> = value.chars().collect();
+                let d = self.demo.as_mut().unwrap();
+                let i = match &mut d.phase {
+                    Phase::Start => {
+                        d.phase = Phase::Typing {
+                            chars: chars.clone(),
+                            i: 0,
+                        };
+                        0
+                    }
+                    Phase::Typing { i, .. } => {
+                        if d.frame % 4 == 0 {
+                            *i += 1;
+                        }
+                        *i
+                    }
+                    _ => chars.len() + 1,
+                };
+                let typed: String = chars.iter().take(i).collect();
+                let done = i > chars.len();
+                if let (Some(e), Some(web)) = (find(&to), &self.shell.web) {
+                    let v = serde_json::to_string(&typed).unwrap();
+                    let end = if done {
+                        "e.dispatchEvent(new Event('change',{bubbles:true}));e.blur();"
+                    } else {
+                        ""
+                    };
+                    for pane in PANES {
+                        web.run(
+                            pane,
+                            &format!("(()=>{{let e={e};if(e&&!e.matches('input,textarea'))e=e.querySelector('input,textarea');if(!e)return;e.focus();e.value={v};e.dispatchEvent(new Event('input',{{bubbles:true}}));{end}}})()"),
+                        );
+                    }
+                }
+                if done {
+                    self.demo.as_mut().unwrap().next();
+                }
+            }
             Step::Wheel { y, s } => {
                 let d = self.demo.as_mut().unwrap();
                 match &mut d.phase {
@@ -525,12 +631,29 @@ impl CreaBimApp {
                 }
             }
             Step::Move { to, s } => self.demo_glide(&to, s, None),
-            Step::Click { to, s, double } => self.demo_glide(&to, s, Some(double)),
-            Step::Drag { from, to, s } => self.demo_drag(&from, &to, s),
+            Step::Click {
+                to,
+                s,
+                double,
+                right,
+            } => {
+                self.demo.as_mut().unwrap().right = right;
+                self.demo_glide(&to, s, Some(double))
+            }
+            Step::Drag { from, to, s } => {
+                self.demo.as_mut().unwrap().right = false;
+                self.demo_drag(&from, &to, s)
+            }
             Step::Camera { center, scale } => {
                 if let Some(view) = self.active_view {
                     let c = DVec2::new(center[0], center[1]);
                     self.plan.cameras.insert(view, (c, scale));
+                }
+                self.demo.as_mut().unwrap().next();
+            }
+            Step::Dump { path } => {
+                if let Ok(text) = serde_json::to_string_pretty(self.doc.model()) {
+                    let _ = std::fs::write(path, text);
                 }
                 self.demo.as_mut().unwrap().next();
             }
@@ -615,10 +738,14 @@ impl CreaBimApp {
                 }
                 let last = if double { 3 } else { 1 };
                 if n == 0 && web {
-                    if let (Some(sel), Some(w)) = (selector(to), &self.shell.web) {
-                        let sel = serde_json::to_string(&sel).unwrap();
+                    if let (Some(e), Some(w)) = (selector(to), &self.shell.web) {
+                        let act = if double {
+                            "e.click();e.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))"
+                        } else {
+                            "e.click()"
+                        };
                         for pane in PANES {
-                            w.run(pane, &format!("document.querySelector({sel})?.click()"));
+                            w.run(pane, &format!("(()=>{{const e={e};if(e){{{act}}}}})()"));
                         }
                     }
                 }

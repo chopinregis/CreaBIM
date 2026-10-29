@@ -435,11 +435,11 @@ pub(super) fn holes_fields(
     ui.separator();
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Holes").strong());
-        if ui
+        let r = ui
             .button("Draw a hole")
-            .on_hover_text("Click the hole's corners in a plan, then the first again or Enter")
-            .clicked()
-        {
+            .on_hover_text("Click the hole's corners in a plan, then the first again or Enter");
+        super::demo::seen("Draw a hole", r.rect);
+        if r.clicked() {
             draw = true;
         }
     });
