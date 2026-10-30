@@ -29,6 +29,8 @@ pub struct Target {
     pub plan: Option<[f64; 2]>,
     /// A point of the 3D view, as fractions of its width and height.
     pub view3d: Option<[f32; 2]>,
+    /// A point of the model (metres, z up) where the 3D view shows it.
+    pub world: Option<[f32; 3]>,
     /// A point of the window, in points.
     pub at: Option<[f32; 2]>,
     /// A button or row of the web panes, by its action id.
@@ -54,6 +56,39 @@ pub fn seen(label: &str, rect: egui::Rect) {
     WIDGETS.with(|w| {
         w.borrow_mut()[0].insert(label.to_string(), rect);
     });
+}
+
+/// Every native widget's label and place, from the accessibility tree egui
+/// builds at the end of each frame: what lets a script click a button, a
+/// checkbox or a menu item of the panes by its text. Widgets that called
+/// [`seen`] keep the place they gave.
+struct Kit;
+
+impl egui::plugin::Plugin for Kit {
+    fn debug_name(&self) -> &'static str {
+        "demo player"
+    }
+
+    fn output_hook(&mut self, _ctx: &egui::Context, out: &mut egui::FullOutput) {
+        let Some(update) = &out.platform_output.accesskit_update else {
+            return;
+        };
+        WIDGETS.with(|w| {
+            let mut w = w.borrow_mut();
+            for (_, node) in &update.nodes {
+                let (Some(label), Some(b)) = (node.label(), node.bounds()) else {
+                    continue;
+                };
+                let r = egui::Rect::from_min_max(
+                    Pos2::new(b.x0 as f32, b.y0 as f32),
+                    Pos2::new(b.x1 as f32, b.y1 as f32),
+                );
+                if r.is_positive() {
+                    w[0].entry(label.to_string()).or_insert(r);
+                }
+            }
+        });
+    }
 }
 
 fn widget(label: &str) -> Option<egui::Rect> {
@@ -107,6 +142,9 @@ pub enum Step {
     Type {
         text: String,
     },
+    /// Select all the text of the field with the keyboard focus, so what is
+    /// typed next replaces it (Ctrl+A would select every element).
+    SelectAll,
     /// Typed into a web pane field a character at a time, then entered.
     WebType {
         #[serde(flatten)]
@@ -117,6 +155,18 @@ pub enum Step {
     Act {
         id: String,
     },
+    /// Have the film close in on a region round a target (w × h points),
+    /// from here on; `off` goes back to the whole window.
+    Focus {
+        #[serde(flatten)]
+        to: Target,
+        #[serde(default)]
+        w: f32,
+        #[serde(default)]
+        h: f32,
+        #[serde(default)]
+        off: bool,
+    },
     /// The caption from here on.
     Caption {
         text: String,
@@ -126,6 +176,19 @@ pub enum Step {
         y: f32,
         #[serde(default = "glide")]
         s: f64,
+    },
+    /// Write every clickable thing on screen to a file, to learn the UI:
+    /// native widgets by label, and the web panes' actions and texts.
+    Survey {
+        path: String,
+    },
+    /// Save the project (.creabim), for the next script to open.
+    Save {
+        path: String,
+    },
+    /// Open a project, as File › Open would.
+    Open {
+        path: String,
     },
     /// Write the model as JSON, to check what a script built.
     Dump {
@@ -189,6 +252,12 @@ pub struct Demo {
     clicked: bool,
     /// The click under way is with the right button.
     right: bool,
+    /// The accessibility tree is on, for finding native widgets.
+    kit: bool,
+    /// The region the film closes in on, in points.
+    focus: Option<[f32; 4]>,
+    /// Frames held while the window wasn't drawing.
+    held: u64,
     pub done: bool,
 }
 
@@ -225,6 +294,9 @@ impl Demo {
             caption: String::new(),
             clicked: false,
             right: false,
+            kit: false,
+            focus: None,
+            held: 0,
             done: false,
         })
     }
@@ -242,8 +314,12 @@ impl Demo {
                     | Event::Text(_)
                     | Event::Zoom(_)
                     | Event::MouseMoved(_)
+                    | Event::WindowFocused(_)
             )
         });
+        // the window keeps the keyboard while a script types, even when
+        // another app is in front: egui drops focus from an unfocused window
+        raw.focused = true;
         raw.events.append(&mut self.events);
         raw.time = Some(self.frame as f64 / FPS);
         raw.predicted_dt = (1.0 / FPS) as f32;
@@ -292,10 +368,27 @@ impl Demo {
     }
 
     /// Write the frame just shown, with what the cursor was doing in it.
-    fn write(&mut self, hwnd: isize) {
+    /// Write the frame just shown; false when the window wasn't drawn
+    /// (minimised, or its surface not yet the window's size).
+    fn write(&mut self, hwnd: isize, force: bool) -> bool {
         let Some((w, h, px)) = grab::window(hwnd) else {
-            return;
+            return false;
         };
+        // the right edge is the properties panel: black there means the
+        // views weren't drawn into this capture
+        let mut black = 0;
+        let mut n = 0;
+        for y in (h / 4..h * 3 / 4).step_by(8) {
+            let i = ((y * w + w - 12) * 4) as usize;
+            n += 1;
+            if px[i] < 10 && px[i + 1] < 10 && px[i + 2] < 10 {
+                black += 1;
+            }
+        }
+        // a dark theme's panel is not black: past a few seconds, take it
+        if black * 10 > n * 8 && !force {
+            return false;
+        }
         let (w0, h0) = *self.size.get_or_insert((w, h));
         if self.ffmpeg.is_none() {
             let child = Command::new("ffmpeg")
@@ -318,7 +411,7 @@ impl Demo {
                 Err(e) => {
                     eprintln!("demo: ffmpeg: {e}");
                     self.done = true;
-                    return;
+                    return false;
                 }
             }
             self.log = std::fs::File::create(self.out.join("frames.jsonl")).ok();
@@ -340,11 +433,13 @@ impl Demo {
                 "x": self.cursor.x, "y": self.cursor.y,
                 "down": self.down, "click": self.clicked,
                 "caption": self.caption,
+                "focus": self.focus,
             });
             let _ = writeln!(log, "{line}");
         }
         self.clicked = false;
         self.written += 1;
+        true
     }
 
     fn finish(&mut self) {
@@ -420,8 +515,24 @@ impl CreaBimApp {
             };
             return Some(xf.to_screen(DVec2::new(x, y)));
         }
+        if let Some([x, y, z]) = t.world {
+            let r = self.rect_3d?;
+            let ndc = self
+                .camera
+                .view_proj(r.width() / r.height())
+                .project_point3(glam::Vec3::new(x, y, z));
+            return Some(
+                r.center() + egui::vec2(ndc.x * r.width() / 2.0, -ndc.y * r.height() / 2.0),
+            );
+        }
         if let Some(label) = &t.ui {
-            return widget(label).map(|r| r.center());
+            if let Some(r) = widget(label) {
+                return Some(r.center());
+            }
+            // "Width field": the value a Properties row draws right of its
+            // label "Width"
+            let base = label.strip_suffix(" field")?;
+            return widget(base).map(|r| Pos2::new(r.max.x + 30.0, r.center().y));
         }
         if let Some([fx, fy]) = t.view3d {
             let r = self.rect_3d?;
@@ -456,6 +567,11 @@ impl CreaBimApp {
         let Some(mut demo) = self.demo.take() else {
             return;
         };
+        if !demo.kit {
+            demo.kit = true;
+            ctx.enable_accesskit();
+            ctx.add_plugin(Kit);
+        }
         if demo.done {
             self.demo = Some(demo);
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -470,7 +586,19 @@ impl CreaBimApp {
         let asking = matches!(demo.phase, Phase::Asking { .. });
         if demo.recording && !asking {
             if let Some(hwnd) = hwnd(frame) {
-                demo.write(hwnd);
+                let force = demo.held > 150;
+                if demo.write(hwnd, force) {
+                    demo.held = 0;
+                } else {
+                    // hold the script until the window draws again
+                    demo.held += 1;
+                    if demo.held % 150 == 1 {
+                        eprintln!("demo: the window isn't drawing; holding the script");
+                    }
+                    self.demo = Some(demo);
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                    return;
+                }
             }
         }
         let lock = demo.frame % 15 == 0;
@@ -518,6 +646,12 @@ impl CreaBimApp {
             Step::Record => {
                 let d = self.demo.as_mut().unwrap();
                 d.recording = true;
+                d.next();
+            }
+            Step::Focus { to, w, h, off } => {
+                let at = if off { None } else { self.demo_point(&to) };
+                let d = self.demo.as_mut().unwrap();
+                d.focus = at.map(|c| [c.x - w / 2.0, c.y - h / 2.0, c.x + w / 2.0, c.y + h / 2.0]);
                 d.next();
             }
             Step::Caption { text } => {
@@ -663,6 +797,51 @@ impl CreaBimApp {
                     let c = DVec2::new(center[0], center[1]);
                     self.plan.cameras.insert(view, (c, scale));
                 }
+                self.demo.as_mut().unwrap().next();
+            }
+            Step::SelectAll => {
+                if let Some(id) = ctx.memory(|m| m.focused()) {
+                    if let Some(mut st) = egui::text_edit::TextEditState::load(ctx, id) {
+                        st.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(0),
+                            egui::text::CCursor::new(100_000),
+                        )));
+                        st.store(ctx, id);
+                    }
+                }
+                self.demo.as_mut().unwrap().next();
+            }
+            Step::Survey { path } => {
+                let native: Vec<Value> = WIDGETS.with(|w| {
+                    w.borrow()[1]
+                        .iter()
+                        .map(|(l, r)| serde_json::json!({"label": l, "x": r.center().x, "y": r.center().y}))
+                        .collect()
+                });
+                let _ = std::fs::write(
+                    &path,
+                    serde_json::to_string_pretty(&serde_json::json!({"native": native}))
+                        .unwrap_or_default(),
+                );
+                if let Some(web) = &self.shell.web {
+                    let file = serde_json::to_string(&format!("{path}.web")).unwrap();
+                    for pane in PANES {
+                        web.run(
+                            pane,
+                            &format!("(()=>{{const out=[...document.querySelectorAll('[data-act],[data-popup],.row,.mi,label.field,button')]                             .filter(e=>e.getClientRects().length).map(e=>({{act:e.dataset.act||e.dataset.popup||'',text:e.textContent.trim().slice(0,60),title:(e.title||'').slice(0,80)}}));                             window.ipc.postMessage(JSON.stringify({{t:'demo_survey',file:{file},items:out}}))}})()"),
+                        );
+                    }
+                }
+                self.demo.as_mut().unwrap().next();
+            }
+            Step::Save { path } => {
+                if let Err(e) = creabim_store::save(&path, &self.doc) {
+                    eprintln!("demo: save {path}: {e}");
+                }
+                self.demo.as_mut().unwrap().next();
+            }
+            Step::Open { path } => {
+                self.open_path(&path);
                 self.demo.as_mut().unwrap().next();
             }
             Step::Dump { path } => {

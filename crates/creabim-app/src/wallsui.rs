@@ -11,7 +11,9 @@ use creabim_core::{walls, LocationLine, Opening, OpeningKind, Wall, WallTop};
 fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
     ui.horizontal(|ui| {
         ui.label(text);
-        ui.add(crate::units::drag(v).range(lo..=hi)).changed()
+        let r = ui.add(crate::units::drag(v).range(lo..=hi));
+        super::demo::seen(&format!("{text} field"), r.rect);
+        r.changed()
     })
     .inner
 }

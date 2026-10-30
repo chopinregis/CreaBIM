@@ -2357,6 +2357,23 @@ impl CreaBimApp {
                 }
             }
             "close" => self.close_popup(),
+            "demo_survey" => {
+                // the demo player's survey of a pane, appended to its file
+                if let Some(file) = b["file"].as_str() {
+                    use std::io::Write;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(file)
+                    {
+                        let _ = writeln!(
+                            f,
+                            "{}",
+                            serde_json::json!({"pane": format!("{:?}", msg.pane), "items": b["items"]})
+                        );
+                    }
+                }
+            }
             "demo_rect" => {
                 let pane = self.shell.web.as_ref().map(|w| w.rects[msg.pane as usize]);
                 if let (Some(d), Some(r)) = (&mut self.demo, pane) {

@@ -116,6 +116,7 @@ impl CreaBimApp {
             .entry(id)
             .or_insert_with(|| name.to_string());
         let r = ui.add(egui::TextEdit::singleline(draft).id_salt(("level-name", id)));
+        super::demo::seen("Name field", r.rect);
         if r.lost_focus() && draft.trim() != name && !draft.trim().is_empty() {
             let new = draft.trim().to_string();
             self.run_level_ask(Ask::Rename(id, new));

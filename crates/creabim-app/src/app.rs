@@ -28,7 +28,7 @@ mod assemblies;
 #[path = "cropui.rs"]
 mod cropui;
 #[path = "demo.rs"]
-mod demo;
+pub(crate) mod demo;
 #[path = "drafting.rs"]
 mod drafting;
 #[path = "editui.rs"]
@@ -3877,7 +3877,11 @@ impl CreaBimApp {
         if matches!(e.kind, ElementKind::Level(_)) {
             // a level is renamed with the plans named after it, once typed
             self.level_name_field(ui, id, &e.name);
-        } else if ui.text_edit_singleline(&mut name).changed() {
+        } else if {
+            let r = ui.text_edit_singleline(&mut name);
+            demo::seen("Name field", r.rect);
+            r.changed()
+        } {
             let r = self
                 .doc
                 .edit_merged(id, "Rename", |e| e.name = name.clone());
@@ -3923,7 +3927,9 @@ impl CreaBimApp {
         let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
             ui.horizontal(|ui| {
                 ui.label(text);
-                ui.add(crate::units::drag(v).range(lo..=hi)).changed()
+                let r = ui.add(crate::units::drag(v).range(lo..=hi));
+                crate::app::demo::seen(&format!("{text} field"), r.rect);
+                r.changed()
             })
             .inner
         };

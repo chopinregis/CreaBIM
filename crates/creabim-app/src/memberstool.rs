@@ -485,7 +485,9 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
     let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
         ui.horizontal(|ui| {
             ui.label(text);
-            ui.add(crate::units::drag(v).range(lo..=hi)).changed()
+            let r = ui.add(crate::units::drag(v).range(lo..=hi));
+            crate::app::demo::seen(&format!("{text} field"), r.rect);
+            r.changed()
         })
         .inner
     };
@@ -802,7 +804,9 @@ fn column_levels(ui: &mut egui::Ui, model: &Model, c: &mut Column) -> &'static s
     let num = |ui: &mut egui::Ui, text: &str, v: &mut f64| -> bool {
         ui.horizontal(|ui| {
             ui.label(text);
-            ui.add(crate::units::drag(v).range(-50.0..=50.0)).changed()
+            let r = ui.add(crate::units::drag(v).range(-50.0..=50.0));
+            crate::app::demo::seen(&format!("{text} field"), r.rect);
+            r.changed()
         })
         .inner
     };
@@ -840,7 +844,9 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
     let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
         ui.horizontal(|ui| {
             ui.label(text);
-            ui.add(crate::units::drag(v).range(lo..=hi)).changed()
+            let r = ui.add(crate::units::drag(v).range(lo..=hi));
+            crate::app::demo::seen(&format!("{text} field"), r.rect);
+            r.changed()
         })
         .inner
     };
