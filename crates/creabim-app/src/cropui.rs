@@ -352,10 +352,12 @@ impl CreaBimApp {
             });
         }
         ui.add_space(4.0);
-        let num = |ui: &mut egui::Ui, text: &str, v: &mut f64| -> bool {
+        let num = |ui: &mut egui::Ui, text: &str, key: &str, v: &mut f64| -> bool {
             ui.horizontal(|ui| {
                 ui.label(text);
-                ui.add(crate::units::drag(v).range(-1e5..=1e5)).changed()
+                let r = ui.add(crate::units::drag(v).range(-1e5..=1e5));
+                crate::app::demo::seen(&format!("{key} field"), r.rect);
+                r.changed()
             })
             .inner
         };
@@ -364,11 +366,16 @@ impl CreaBimApp {
             .show(ui, |ui| {
                 for (axis, name) in ["X", "Y", "Z"].iter().enumerate() {
                     let (mut lo, mut hi) = (c.min[axis], c.max[axis]);
-                    if num(ui, &format!("{name} from"), &mut lo) {
+                    if num(
+                        ui,
+                        &format!("{name} from"),
+                        &format!("{name} from"),
+                        &mut lo,
+                    ) {
                         c.set_face(axis * 2, lo);
                         label = Some("Crop box extents");
                     }
-                    if num(ui, "to", &mut hi) {
+                    if num(ui, "to", &format!("{name} to"), &mut hi) {
                         c.set_face(axis * 2 + 1, hi);
                         label = Some("Crop box extents");
                     }

@@ -494,13 +494,14 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
     let deg = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
         ui.horizontal(|ui| {
             ui.label(text);
-            ui.add(
+            let r = ui.add(
                 egui::DragValue::new(v)
                     .speed(0.5)
                     .range(lo..=hi)
                     .suffix("°"),
-            )
-            .changed()
+            );
+            crate::app::demo::seen(&format!("{text} field"), r.rect);
+            r.changed()
         })
         .inner
     };
