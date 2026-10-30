@@ -5079,6 +5079,17 @@ impl CreaBimApp {
             }
             let r = self.doc.edit_merged(id, label, |e| *e = edited.clone());
             self.report(r, format!("{label}."));
+            // with several selected, the change goes to the others of the
+            // same kind too, as a multiple selection does in Revit or ArchiCAD
+            let ids = self.selection.all();
+            if ids.len() > 1 {
+                if let Some(tx) = same_change_to_others(self.doc.model(), &e, &edited, &ids, label)
+                {
+                    let n = tx.ops.len() + 1;
+                    let r = self.doc.commit(tx);
+                    self.report(r, format!("{label}, on all {n} selected."));
+                }
+            }
         }
         if object_type {
             self.object_type_section(ui, id);
@@ -5811,4 +5822,54 @@ pub(crate) fn test_app() -> CreaBimApp {
     let mut app = CreaBimApp::blank(None);
     app.load_model(sample_house());
     app
+}
+
+/// The fields a Properties edit changed from `before` to `after`, set the
+/// same on every other selected element of its kind. Where each one stands
+/// (its ends, outline, host, place along its wall) stays its own.
+fn same_change_to_others(
+    model: &Model,
+    before: &Element,
+    after: &Element,
+    ids: &[ElementId],
+    label: &str,
+) -> Option<Transaction> {
+    const OWN: [&str; 11] = [
+        "start", "end", "position", "host", "wall", "outline", "holes", "path", "points", "offset",
+        "level",
+    ];
+    let b = serde_json::to_value(&before.kind).ok()?;
+    let a = serde_json::to_value(&after.kind).ok()?;
+    let (variant, bo) = b.as_object()?.iter().next()?;
+    let ao = a.get(variant)?.as_object()?;
+    let bo = bo.as_object()?;
+    let changed: Vec<(&String, &serde_json::Value)> = ao
+        .iter()
+        .filter(|(k, v)| bo.get(*k) != Some(*v) && !OWN.contains(&k.as_str()))
+        .collect();
+    if changed.is_empty() {
+        return None;
+    }
+    let mut tx = Transaction::new(label);
+    let mut any = false;
+    for id in ids.iter().filter(|id| **id != before.id) {
+        let Some(e) = model.get(*id) else { continue };
+        let Ok(mut v) = serde_json::to_value(&e.kind) else {
+            continue;
+        };
+        let Some(inner) = v.get_mut(variant).and_then(|x| x.as_object_mut()) else {
+            continue;
+        };
+        for (k, val) in &changed {
+            inner.insert((*k).clone(), (*val).clone());
+        }
+        let Ok(kind) = serde_json::from_value(v) else {
+            continue;
+        };
+        let mut n = e.clone();
+        n.kind = kind;
+        tx = tx.replace(e.clone(), n);
+        any = true;
+    }
+    any.then_some(tx)
 }
