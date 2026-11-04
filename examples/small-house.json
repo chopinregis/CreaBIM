@@ -1,0 +1,226 @@
+{
+  "$schema": "../docs/creabim-model.schema.json",
+  "version": 1,
+  "units": "m",
+  "display_units": { "length": "mm" },
+
+  "materials": [
+    { "id": "render", "library": "Render, lime" },
+    { "id": "block", "library": "Block, concrete" },
+    { "id": "aircrete", "library": "Block, aerated concrete" },
+    { "id": "plaster", "library": "Plaster, gypsum" },
+    { "id": "concrete", "library": "Concrete, cast in place" },
+    { "id": "slate", "library": "Stone, slate" },
+    { "id": "oak", "library": "Timber, oak" },
+    { "id": "brick", "library": "Brick, common red" },
+    { "id": "lawn", "name": "Lawn", "hatch": "empty", "colour": "#7da35a", "category": "soil" },
+    { "id": "gravel", "name": "Gravel", "hatch": "empty", "colour": "#c9bea6" },
+    { "id": "foliage", "name": "Foliage", "hatch": "empty", "colour": "#4f7d3a" }
+  ],
+
+  "assemblies": [
+    {
+      "id": "Rendered block wall",
+      "usage": "wall",
+      "layers": [
+        { "function": "finish", "material": "render", "thickness": 0.02 },
+        { "function": "structure", "material": "block", "thickness": 0.215 },
+        { "function": "finish", "material": "plaster", "thickness": 0.015 }
+      ]
+    }
+  ],
+
+  "types": [
+    { "id": "Exterior wall", "category": "wall", "assembly": "Rendered block wall" },
+    { "id": "Partition", "category": "wall", "thickness": 0.1, "material": "aircrete" },
+    { "id": "Door 900", "category": "door", "width": 0.9, "height": 2.1, "material": "oak" },
+    { "id": "Window 1200", "category": "window", "width": 1.2, "height": 1.2, "sill": 0.9,
+      "frame": { "panes_across": 2 } },
+    { "id": "Ground slab", "category": "slab", "thickness": 0.25, "material": "concrete" }
+  ],
+
+  "levels": [
+    { "id": "Site", "elevation": -0.45, "height": 0.45 },
+    { "id": "Ground Floor", "elevation": 0, "height": 2.7 },
+    { "id": "Roof", "elevation": 2.7, "height": 2.5 }
+  ],
+
+  "grid_groups": [{ "id": "Main grid" }],
+  "grids": [
+    { "id": "A", "start": [0, -3], "end": [0, 9], "group": "Main grid" },
+    { "id": "B", "start": [6, -3], "end": [6, 9], "group": "Main grid" },
+    { "id": "C", "start": [10, -3], "end": [10, 9], "group": "Main grid" },
+    { "id": "1", "start": [-2, 0], "end": [12, 0], "group": "Main grid" },
+    { "id": "2", "start": [-2, 7], "end": [12, 7], "group": "Main grid" }
+  ],
+
+  "walls": [
+    { "id": "South wall", "level": "Ground Floor", "start": [0, 0], "end": [10, 0],
+      "type": "Exterior wall", "top_level": "Roof" },
+    { "id": "East wall", "level": "Ground Floor", "start": [10, 0], "end": [10, 7],
+      "type": "Exterior wall", "top_level": "Roof" },
+    { "id": "North wall", "level": "Ground Floor", "start": [10, 7], "end": [0, 7],
+      "type": "Exterior wall", "top_level": "Roof" },
+    { "id": "West wall", "level": "Ground Floor", "start": [0, 7], "end": [0, 0],
+      "type": "Exterior wall", "top_level": "Roof" },
+    { "id": "Spine wall", "level": "Ground Floor", "start": [6, 0], "end": [6, 7],
+      "type": "Partition" },
+    { "id": "Bathroom wall", "level": "Ground Floor", "start": [6, 3], "end": [10, 3],
+      "type": "Partition" },
+    { "id": "Garden wall", "level": "Site", "start": [-6, -6], "end": [1.6, -6],
+      "thickness": 0.2, "height": 0.9, "material": "brick" }
+  ],
+
+  "openings": [
+    { "id": "Front door", "kind": "door", "wall": "South wall", "centre": 3,
+      "width": 1.0, "height": 2.2, "mark": "D01" },
+    { "id": "Bedroom door", "kind": "door", "wall": "Spine wall", "offset": 4.4,
+      "type": "Door 900", "flip_hand": true },
+    { "id": "Bathroom door", "kind": "door", "wall": "Spine wall", "offset": 1.0,
+      "type": "Door 900", "width": 0.8 },
+    { "id": "Living window", "kind": "window", "wall": "South wall", "centre": 1.2,
+      "type": "Window 1200", "width": 1.5 },
+    { "id": "Bathroom window", "kind": "window", "wall": "South wall", "centre": 8,
+      "width": 0.8, "height": 0.6, "sill": 1.4 },
+    { "id": "Bedroom window", "kind": "window", "wall": "East wall", "centre": 6,
+      "type": "Window 1200", "width": 1.4 },
+    { "id": "Kitchen window", "kind": "window", "wall": "North wall", "centre": 6.5,
+      "type": "Window 1200", "width": 2.0, "frame": { "panes_across": 3 } },
+    { "id": "Bedroom north window", "kind": "window", "wall": "North wall", "centre": 2,
+      "type": "Window 1200" },
+    { "id": "West window", "kind": "window", "wall": "West wall", "centre": 3.5,
+      "type": "Window 1200", "width": 1.5 }
+  ],
+
+  "slabs": [
+    { "id": "Floor slab", "level": "Ground Floor", "type": "Ground slab",
+      "outline": [[-0.125, -0.125], [10.125, -0.125], [10.125, 7.125], [-0.125, 7.125]] },
+    { "id": "Porch floor", "level": "Ground Floor", "thickness": 0.45, "material": "concrete",
+      "outline": [[1.8, -1.8], [4.2, -1.8], [4.2, -0.125], [1.8, -0.125]] }
+  ],
+
+  "roofs": [
+    { "id": "Main roof", "level": "Roof", "shape": "hip", "pitch": 30, "overhang": 0.4,
+      "thickness": 0.2, "material": "slate",
+      "outline": [[-0.125, -0.125], [10.125, -0.125], [10.125, 7.125], [-0.125, 7.125]] },
+    { "id": "Porch canopy", "level": "Ground Floor", "shape": "flat", "base_offset": 2.5,
+      "thickness": 0.15, "material": "slate",
+      "outline": [[1.7, -1.9], [4.3, -1.9], [4.3, -0.125], [1.7, -0.125]] }
+  ],
+
+  "columns": [
+    { "id": "Porch post west", "level": "Ground Floor", "at": [2.0, -1.6], "diameter": 0.2,
+      "height": 2.5, "material": "oak" },
+    { "id": "Porch post east", "level": "Ground Floor", "at": [4.0, -1.6], "diameter": 0.2,
+      "height": 2.5, "material": "oak" }
+  ],
+
+  "beams": [
+    { "id": "Porch beam", "level": "Ground Floor", "start": [2.0, -1.6], "end": [4.0, -1.6],
+      "width": 0.15, "depth": 0.25, "top_offset": 0.2, "material": "oak" }
+  ],
+
+  "stairs": [
+    { "id": "Front steps", "level": "Site", "start": [3.0, -2.4], "direction": 90,
+      "width": 1.4, "height": 0.45, "max_riser": 0.16, "tread": 0.3, "material": "concrete" }
+  ],
+
+  "railings": [
+    { "id": "Steps rail", "level": "Site", "stair": "Front steps", "side": "left",
+      "height": 0.9 },
+    { "id": "Porch rail", "level": "Ground Floor", "height": 0.9,
+      "path": [[1.85, -1.75, 0], [1.85, -0.2, 0]] }
+  ],
+
+  "parts": [
+    { "id": "Chimney", "level": "Ground Floor", "material": "brick",
+      "outline": [[8.3, 5.3], [8.9, 5.3], [8.9, 5.9], [8.3, 5.9]], "height": 5.6 },
+    { "id": "Garden wall coping", "level": "Site", "wall": "Garden wall", "edge": "top",
+      "material": "concrete", "extend": [0.05, 0.05],
+      "profile": [[-0.15, 0], [0.15, 0], [0.15, 0.06], [-0.15, 0.06]] }
+  ],
+
+  "site": [
+    { "id": "Garden", "kind": "terrain", "level": "Site", "thickness": 0.5,
+      "material": "lawn",
+      "outline": [[-7, -8], [17, -8], [17, 12], [-7, 12]] },
+    { "id": "Front path", "kind": "area", "level": "Site", "thickness": 0.05, "top": 0.01,
+      "material": "gravel", "pattern": { "kind": "stipple", "spacing": 0.15 },
+      "outline": [[2.3, -8], [3.7, -8], [3.7, -2.4], [2.3, -2.4]] },
+    { "id": "Oak tree", "kind": "plant", "level": "Site", "at": [-3.5, -3.5],
+      "canopy": 5, "height": 7, "material": "foliage" },
+    { "id": "Birch", "kind": "plant", "level": "Site", "at": [13.5, -3], "plant": "conifer",
+      "canopy": 2.5, "height": 6, "material": "foliage" },
+    { "id": "Hedge shrub", "kind": "plant", "level": "Site", "at": [13, 9.5], "plant": "shrub",
+      "canopy": 2, "height": 1.2, "material": "foliage" }
+  ],
+
+  "objects": [
+    { "id": "Sofa", "level": "Ground Floor", "catalogue": "sofa-3", "at": [0.125, 1.5],
+      "rotation": 90 },
+    { "id": "Coffee table", "level": "Ground Floor", "catalogue": "coffee-table",
+      "at": [1.5, 1.5], "anchor": "centre", "rotation": 90 },
+    { "id": "Dining table", "level": "Ground Floor", "catalogue": "dining-table",
+      "at": [3.2, 4.6], "anchor": "centre" },
+    { "id": "Sink unit", "level": "Ground Floor", "catalogue": "sink-unit-1000",
+      "at": [5.2, 6.875] },
+    { "id": "Double bed", "level": "Ground Floor", "catalogue": "double-bed",
+      "at": [9.875, 4.3], "rotation": -90 },
+    { "id": "Wardrobe", "level": "Ground Floor", "catalogue": "wardrobe",
+      "at": [7.0, 3.05], "rotation": 180 },
+    { "id": "Washbasin", "level": "Ground Floor", "catalogue": "washbasin",
+      "at": [7.0, 0.125], "rotation": 180 },
+    { "id": "WC", "level": "Ground Floor", "catalogue": "wc", "at": [8.8, 0.125],
+      "rotation": 180 },
+    { "id": "Bath", "level": "Ground Floor", "catalogue": "bathtub", "at": [9.875, 1.85],
+      "rotation": -90 }
+  ],
+
+  "rooms": [
+    { "id": "Living", "name": "Living and kitchen", "number": "01", "level": "Ground Floor",
+      "at": [3, 3], "floor_finish": "Oak boards" },
+    { "id": "Bedroom", "number": "02", "level": "Ground Floor", "at": [8, 5] },
+    { "id": "Bathroom", "number": "03", "level": "Ground Floor", "at": [8, 1.5],
+      "floor_finish": "Ceramic tile" },
+    { "id": "Porch", "number": "04", "level": "Ground Floor", "at": [3, -1],
+      "outline": [[1.8, -1.8], [4.2, -1.8], [4.2, -0.125], [1.8, -0.125]] }
+  ],
+
+  "views": [
+    { "id": "Ground Floor Plan", "kind": "plan", "level": "Ground Floor", "scale": 50 },
+    { "id": "Site Plan", "kind": "plan", "level": "Site", "scale": 200 },
+    { "id": "Section A-A", "kind": "section", "start": [-3, 4.5], "end": [13, 4.5],
+      "depth": 8 },
+    { "id": "South Elevation", "kind": "elevation", "start": [-4, -9], "end": [14, -9],
+      "depth": 25 },
+    { "id": "East Elevation", "kind": "elevation", "start": [18, -4], "end": [18, 11],
+      "depth": 30 },
+    { "id": "3D View", "kind": "3d", "azimuth": 35, "altitude": 25 },
+    { "id": "Door Schedule", "kind": "schedule", "category": "doors" },
+    { "id": "Window Schedule", "kind": "schedule", "category": "windows" },
+    { "id": "Room Schedule", "kind": "schedule", "category": "rooms" }
+  ],
+
+  "sheets": [
+    { "id": "A101", "name": "Plans", "size": "A2",
+      "fields": { "Drawn": "Example script" },
+      "viewports": [
+        { "view": "Ground Floor Plan", "at": [200, 250],
+          "crop": { "min": [-3, -4], "max": [13, 10] } },
+        { "view": "Site Plan", "at": [460, 270] }
+      ] },
+    { "id": "A201", "name": "Section and Elevations", "size": "A2",
+      "viewports": [
+        { "view": "Section A-A", "at": [160, 300] },
+        { "view": "South Elevation", "at": [430, 300] },
+        { "view": "East Elevation", "at": [160, 120] }
+      ] },
+    { "id": "A301", "name": "3D View and Schedules", "size": "A2",
+      "viewports": [
+        { "view": "3D View", "at": [170, 240] },
+        { "view": "Door Schedule", "at": [450, 360] },
+        { "view": "Window Schedule", "at": [450, 270] },
+        { "view": "Room Schedule", "at": [450, 160] }
+      ] }
+  ]
+}

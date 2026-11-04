@@ -31,6 +31,13 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
   creabim catalogue-import <file> <dir>
                                        read a .blend, .FCStd, .gltf or .glb
                                        file as one catalogue object into dir
+  creabim build <spec.json> <out>      build a model from a JSON description
+                                       (docs/json-format.md)
+  creabim build --check <spec.json>    check a JSON description, reporting each
+                                       problem at its path, without saving
+  creabim export-json <model> <out.json>
+                                       describe a model in that JSON format
+  creabim json-schema [out.json]       print or save the format's JSON Schema
   creabim save-db <in.creabim.json> <out.creabim>
                                        convert a JSON model to a project file
   creabim ifc <model> <out.ifc>        export a model to IFC4
@@ -148,6 +155,25 @@ fn main() -> ExitCode {
             }),
         ["sample", out] => creabim_store::save(out, &Document::from_model(starter_house()))
             .map_err(|e| format!("{out}: {e}")),
+        ["build", "--check", spec] | ["build", spec, "--check"] => build_spec(spec, None),
+        ["build", spec, out] => build_spec(spec, Some(out)),
+        ["export-json", input, out] => load(input).and_then(|m| {
+            let x = creabim_spec::export(&m);
+            for s in &x.skipped {
+                eprintln!("left out: {s}");
+            }
+            std::fs::write(out, creabim_spec::to_text(&x.spec)).map_err(|e| format!("{out}: {e}"))
+        }),
+        ["json-schema", rest @ ..] if rest.len() <= 1 => {
+            let text = creabim_spec::schema().pretty();
+            match rest {
+                [out] => std::fs::write(out, text).map_err(|e| format!("{out}: {e}")),
+                _ => {
+                    print!("{text}");
+                    Ok(())
+                }
+            }
+        }
         ["save-db", input, out] => creabim_store::import_json(input)
             .map_err(|e| format!("{input}: {e}"))
             .and_then(|doc| creabim_store::save(out, &doc).map_err(|e| format!("{out}: {e}"))),
@@ -414,6 +440,44 @@ fn rooms_from_notes(doc: &mut Document, out: &str) -> Result<(), String> {
         std::fs::write(out, doc.model().to_json()).map_err(|e| e.to_string())
     } else {
         creabim_store::save(out, doc).map_err(|e| format!("{out}: {e}"))
+    }
+}
+
+/// Build a model from a JSON description (or only check it, with no
+/// `out`), reporting each problem at its path in the file.
+fn build_spec(spec: &str, out: Option<&str>) -> Result<(), String> {
+    let text = std::fs::read_to_string(spec).map_err(|e| format!("{spec}: {e}"))?;
+    let report = |problems: Vec<creabim_spec::Problem>| {
+        for p in &problems {
+            eprintln!("{spec}: {p}");
+        }
+        match problems.len() {
+            1 => "1 problem; nothing was built".to_string(),
+            n => format!("{n} problems; nothing was built"),
+        }
+    };
+    let parsed = creabim_spec::parse(&text).map_err(report)?;
+    let built = creabim_spec::build(&parsed).map_err(report)?;
+    for w in &built.warnings {
+        eprintln!("{spec}: warning: {w}");
+    }
+    let m = &built.model;
+    let mut counts = std::collections::BTreeMap::new();
+    for e in m.iter() {
+        *counts.entry(e.kind.name()).or_insert(0) += 1;
+    }
+    let summary: Vec<String> = counts.iter().map(|(k, n)| format!("{n} {k}")).collect();
+    println!("{} elements: {}", m.len(), summary.join(", "));
+    match out {
+        None => {
+            println!("{spec} is valid");
+            Ok(())
+        }
+        Some(out) if is_json(out) => {
+            std::fs::write(out, m.to_json()).map_err(|e| format!("{out}: {e}"))
+        }
+        Some(out) => creabim_store::save(out, &Document::from_model(built.model))
+            .map_err(|e| format!("{out}: {e}")),
     }
 }
 

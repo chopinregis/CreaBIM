@@ -1,0 +1,1251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kingbenoitbrice-fun/CreaBIM/blob/main/docs/creabim-model.schema.json",
+  "title": "CreaBIM model",
+  "description": "A CreaBIM model described in JSON, format version 1. Lengths are in metres unless `units` says otherwise. See docs/json-format.md.",
+  "$ref": "#/$defs/Model",
+  "$defs": {
+    "Model": {
+      "type": "object",
+      "description": "A whole model: the file's top level. Every list may be left out. Ids are chosen by you, are unique across the whole file, and are what elements use to refer to each other (a door names its wall's id, a plan names its level's id).",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "Where an editor finds this schema; ignored by CreaBIM."
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The format version the file is written to. This CreaBIM reads 1."
+        },
+        "units": {
+          "$ref": "#/$defs/LengthIn",
+          "description": "The unit every length in the file is in, except the sizes and positions on sheets, which are always paper millimetres. Angles are always degrees.",
+          "default": "m"
+        },
+        "display_units": {
+          "$ref": "#/$defs/DisplayUnits",
+          "description": "How the project shows and takes lengths (the model is metres whatever this says)."
+        },
+        "materials": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Material" }
+        },
+        "assemblies": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Assembly" },
+          "description": "Layered build-ups for walls, floors and roofs."
+        },
+        "types": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Type" },
+          "description": "Element types: wall types, door and window types, slab, roof, column and beam types."
+        },
+        "levels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Level" }
+        },
+        "grid_groups": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GridGroup" }
+        },
+        "grids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Grid" }
+        },
+        "walls": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Wall" }
+        },
+        "openings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Opening" },
+          "description": "Doors, windows and bare holes, each in a wall."
+        },
+        "slabs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Slab" }
+        },
+        "roofs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Roof" }
+        },
+        "columns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Column" }
+        },
+        "beams": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Beam" }
+        },
+        "stairs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Stair" }
+        },
+        "railings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Railing" }
+        },
+        "parts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Part" },
+          "description": "Extrusions and sweeps, solid or voids that cut what they meet."
+        },
+        "site": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SiteElement" },
+          "description": "Terrain, hard landscape and planting."
+        },
+        "objects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Object" },
+          "description": "Furniture and fixtures from the catalogue."
+        },
+        "rooms": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Room" }
+        },
+        "views": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/View" }
+        },
+        "sheets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Sheet" }
+        }
+      },
+      "required": ["version"],
+      "additionalProperties": false
+    },
+    "LengthIn": {
+      "type": "string",
+      "description": "A unit lengths are written in.",
+      "enum": ["m", "mm", "cm", "ft", "in"]
+    },
+    "DisplayUnits": {
+      "type": "object",
+      "description": "The project's display units.",
+      "properties": {
+        "length": { "$ref": "#/$defs/DisplayLength" },
+        "precision": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Decimal places; for feet and inches, the smallest fraction of an inch as a power of two (3 is 1/8\").",
+          "default": 0
+        }
+      },
+      "required": ["length"],
+      "additionalProperties": false
+    },
+    "DisplayLength": {
+      "type": "string",
+      "description": "How lengths are shown.",
+      "enum": ["mm", "cm", "m", "ft-in", "ft", "in"]
+    },
+    "Material": {
+      "type": "object",
+      "description": "What elements are made of: their colour in 3D and the hatch on their cut faces. Start from a library material by its name, or give the values yourself; any value given overrides the library's.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": {
+          "type": "string",
+          "description": "Shown in the app; the id when left out."
+        },
+        "library": {
+          "type": "string",
+          "description": "A material of CreaBIM's library, by name (\"Concrete, cast in place\"), to start from."
+        },
+        "hatch": { "$ref": "#/$defs/Hatch" },
+        "colour": {
+          "oneOf": [
+            { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            {
+              "type": "array",
+              "items": { "type": "number", "minimum": 0, "maximum": 1 },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          ]
+        },
+        "category": {
+          "type": "string",
+          "description": "IFC's material category: concrete, brick, wood, steel, glass..."
+        },
+        "description": { "type": "string" },
+        "roughness": { "type": "number", "description": "0 mirror-smooth to 1 fully matte." },
+        "metallic": {
+          "type": "number",
+          "description": "0 for almost everything, 1 for bare metal."
+        },
+        "opacity": { "type": "number", "description": "1 opaque; glass is about 0.3." }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "Hatch": {
+      "type": "string",
+      "description": "The pattern on a material's cut faces.",
+      "enum": ["empty", "solid", "diagonal", "cross", "brick", "concrete", "timber"]
+    },
+    "Assembly": {
+      "type": "object",
+      "description": "A layered build-up. Walls list layers from the exterior face in; floors and roofs from the top down. An element built of one is as thick as its layers.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "usage": { "$ref": "#/$defs/AssemblyUsage", "default": "wall" },
+        "layers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Layer" }
+        },
+        "description": { "type": "string" }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "AssemblyUsage": {
+      "type": "string",
+      "description": "What an assembly is for.",
+      "enum": ["wall", "floor", "roof"]
+    },
+    "Layer": {
+      "type": "object",
+      "description": "One layer of an assembly.",
+      "properties": {
+        "function": { "$ref": "#/$defs/LayerFunction", "default": "structure" },
+        "material": { "type": "string", "description": "A material's id; none for an air gap." },
+        "thickness": { "type": "number" }
+      },
+      "required": ["thickness"],
+      "additionalProperties": false
+    },
+    "LayerFunction": {
+      "type": "string",
+      "description": "What a layer does. The core runs from the first structure layer to the last.",
+      "enum": ["structure", "substrate", "insulation", "air-gap", "membrane", "finish"]
+    },
+    "Type": {
+      "type": "object",
+      "description": "An element type: shared values its instances take, so editing the type in the app changes them all. An instance names it in its `type` field and may still set any of those values itself.\n\nWhich fields a category uses: wall: `thickness` (or `assembly`), `material`, `location`, `height`, `screen`; door and window: `width`, `height`, `sill`, `frame`, `material`; slab and roof: `thickness` (or `assembly`), `material`; column: `width` and `depth`, or `diameter`, and `material`; beam: `width`, `depth`, `material`.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "$ref": "#/$defs/TypeCategory" },
+        "description": { "type": "string" },
+        "thickness": { "type": "number" },
+        "assembly": { "type": "string", "description": "An assembly's id." },
+        "material": { "type": "string", "description": "A material's id." },
+        "location": {
+          "$ref": "#/$defs/Location",
+          "description": "A wall type's location line."
+        },
+        "height": {
+          "type": "number",
+          "description": "A wall type's height for new walls; a door or window's height."
+        },
+        "width": { "type": "number" },
+        "sill": { "type": "number" },
+        "frame": { "$ref": "#/$defs/Frame" },
+        "depth": { "type": "number" },
+        "diameter": { "type": "number" },
+        "screen": {
+          "$ref": "#/$defs/Screen",
+          "description": "Makes a wall type a screen wall: a repeating unit with holes."
+        }
+      },
+      "required": ["id", "category"],
+      "additionalProperties": false
+    },
+    "TypeCategory": {
+      "type": "string",
+      "description": "What a type is for.",
+      "enum": ["wall", "door", "window", "slab", "roof", "column", "beam"]
+    },
+    "Location": {
+      "type": "string",
+      "description": "The line a wall is drawn along and kept on when it gets thicker. The exterior is on the wall's right, looking from start to end, unless the wall is flipped.",
+      "enum": [
+        "centre",
+        "core-centre",
+        "exterior-face",
+        "interior-face",
+        "core-exterior",
+        "core-interior"
+      ]
+    },
+    "Frame": {
+      "type": "object",
+      "description": "How a door or window is built inside its opening.",
+      "properties": {
+        "width": {
+          "type": "number",
+          "description": "Face width of the frame members.",
+          "default": 0.06
+        },
+        "depth": {
+          "type": "number",
+          "description": "Depth of the frame through the wall.",
+          "default": 0.1
+        },
+        "panes_across": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Window panes side by side.",
+          "default": 1
+        },
+        "panes_up": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Window panes one above the other.",
+          "default": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "Screen": {
+      "type": "object",
+      "description": "The repeating unit of a screen wall (breeze block, louvres, lattice).",
+      "properties": {
+        "unit": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "The unit's size, joints included: along the wall and up."
+        },
+        "holes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Rect" },
+          "description": "The open rectangles of one unit, from its lower left corner."
+        },
+        "frame": {
+          "type": "number",
+          "description": "A solid border this wide round the screen.",
+          "default": 0.0
+        },
+        "stagger": {
+          "type": "boolean",
+          "description": "Every other course shifted half a unit along.",
+          "default": false
+        }
+      },
+      "required": ["unit"],
+      "additionalProperties": false
+    },
+    "Rect": {
+      "type": "object",
+      "description": "A rectangle by its lower left and upper right corners.",
+      "properties": {
+        "min": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "max": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "required": ["min", "max"],
+      "additionalProperties": false
+    },
+    "Level": {
+      "type": "object",
+      "description": "A storey. Elements hang off a level, so moving it moves them.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "elevation": {
+          "type": "number",
+          "description": "Height of its floor above the project's zero."
+        },
+        "height": {
+          "type": "number",
+          "description": "Floor-to-floor height: the height walls on it take unless told otherwise.",
+          "default": 3.0
+        }
+      },
+      "required": ["id", "elevation"],
+      "additionalProperties": false
+    },
+    "GridGroup": {
+      "type": "object",
+      "description": "A grid system: how its lines are labelled and coloured.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "prefix": {
+          "type": "string",
+          "description": "Put before every label: \"A-\" gives A-1, A-2...",
+          "default": ""
+        },
+        "vertical": {
+          "$ref": "#/$defs/GridLabels",
+          "description": "How lines running north-south are labelled, west to east.",
+          "default": "letters"
+        },
+        "horizontal": {
+          "$ref": "#/$defs/GridLabels",
+          "description": "How lines running east-west are labelled, south to north.",
+          "default": "numbers"
+        },
+        "colour": {
+          "oneOf": [
+            { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            {
+              "type": "array",
+              "items": { "type": "number", "minimum": 0, "maximum": 1 },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          ]
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "GridLabels": {
+      "type": "string",
+      "description": "Grid labels.",
+      "enum": ["numbers", "letters"]
+    },
+    "Grid": {
+      "type": "object",
+      "description": "A grid line.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "label": {
+          "type": "string",
+          "description": "Its label after its group's prefix; the id when left out."
+        },
+        "start": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "end": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "group": { "type": "string", "description": "A grid group's id." }
+      },
+      "required": ["id", "start", "end"],
+      "additionalProperties": false
+    },
+    "Wall": {
+      "type": "object",
+      "description": "A straight wall along its centreline on a level.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "mark": {
+          "type": "string",
+          "description": "Its mark, shown by tags and schedules; none numbers it automatically."
+        },
+        "level": { "type": "string", "description": "A level's id." },
+        "start": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "end": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "type": {
+          "type": "string",
+          "description": "A wall type's id: the wall takes its thickness, assembly, material, location line and height."
+        },
+        "thickness": {
+          "type": "number",
+          "description": "Needed unless the wall has a type or an assembly."
+        },
+        "height": {
+          "type": "number",
+          "description": "Height above its base. Left out: up to `top_level` when given, else the type's height, else its level's height."
+        },
+        "base_offset": {
+          "type": "number",
+          "description": "Its base above its level.",
+          "default": 0.0
+        },
+        "top_level": {
+          "type": "string",
+          "description": "A level's id: the top stays `top_offset` above that level as levels move."
+        },
+        "top_offset": { "type": "number", "default": 0.0 },
+        "material": { "type": "string" },
+        "assembly": { "type": "string" },
+        "location": { "$ref": "#/$defs/Location" },
+        "flip": {
+          "type": "boolean",
+          "description": "The exterior face on the left instead of the right.",
+          "default": false
+        },
+        "attach_top": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Roofs and slabs (ids) the top follows the underside of."
+        }
+      },
+      "required": ["id", "level", "start", "end"],
+      "additionalProperties": false
+    },
+    "Opening": {
+      "type": "object",
+      "description": "A door, window or bare hole in a wall, placed by its distance along the wall from the wall's start.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "mark": { "type": "string" },
+        "kind": { "$ref": "#/$defs/OpeningKind" },
+        "wall": { "type": "string", "description": "The host wall's id." },
+        "offset": {
+          "type": "number",
+          "description": "From the wall's start to the opening's near edge. Give this or `centre`."
+        },
+        "centre": {
+          "type": "number",
+          "description": "From the wall's start to the opening's middle."
+        },
+        "type": {
+          "type": "string",
+          "description": "A door or window type's id: the opening takes its width, height, sill, frame and material."
+        },
+        "width": { "type": "number", "description": "Needed unless the opening has a type." },
+        "height": { "type": "number", "description": "Needed unless the opening has a type." },
+        "sill": {
+          "type": "number",
+          "description": "Its bottom above the wall's base. Left out: 0 for doors and holes, 0.9 m for windows (or the type's)."
+        },
+        "material": { "type": "string" },
+        "frame": { "$ref": "#/$defs/Frame" },
+        "flip_hand": {
+          "type": "boolean",
+          "description": "A door hinged on the jamb at the wall's end side.",
+          "default": false
+        },
+        "flip_facing": {
+          "type": "boolean",
+          "description": "A door opening to the wall's exterior; a window facing its interior.",
+          "default": false
+        }
+      },
+      "required": ["id", "kind", "wall"],
+      "additionalProperties": false
+    },
+    "OpeningKind": {
+      "type": "string",
+      "description": "What an opening is.",
+      "enum": ["door", "window", "hole"]
+    },
+    "Slab": {
+      "type": "object",
+      "description": "A floor slab: its outline pushed down from its top face.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "level": { "type": "string" },
+        "outline": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": "The corners in plan, either way round."
+        },
+        "bulges": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "How each edge bends (corner i to i + 1): the tangent of a quarter of the arc's angle, positive bulging left. 0 or left out is straight."
+        },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "description": "Holes through it, each an outline inside it."
+        },
+        "thickness": {
+          "type": "number",
+          "description": "Needed unless the slab has a type or an assembly."
+        },
+        "top_offset": {
+          "type": "number",
+          "description": "Its top face above its level; negative for below.",
+          "default": 0.0
+        },
+        "type": { "type": "string" },
+        "material": { "type": "string" },
+        "assembly": { "type": "string" }
+      },
+      "required": ["id", "level"],
+      "additionalProperties": false
+    },
+    "Roof": {
+      "type": "object",
+      "description": "A roof over a wall-plate outline.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "level": { "type": "string" },
+        "outline": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": "Where the slopes start, in plan."
+        },
+        "shape": { "$ref": "#/$defs/RoofShape", "default": "hip" },
+        "pitch": {
+          "type": "number",
+          "description": "Slope in degrees. Needed unless the roof is flat."
+        },
+        "overhang": {
+          "type": "number",
+          "description": "How far it reaches past the outline, in plan.",
+          "default": 0.0
+        },
+        "thickness": {
+          "type": "number",
+          "description": "Square to the slope. Needed unless the roof has a type or an assembly."
+        },
+        "base_offset": { "type": "number", "default": 0.0 },
+        "edge": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The outline edge a shed roof rises from, or a gable roof's ridge runs along (edge i runs from corner i to i + 1).",
+          "default": 0
+        },
+        "type": { "type": "string" },
+        "material": { "type": "string" },
+        "assembly": { "type": "string" },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "description": "Holes cut upright through it (roof lights, a chimney)."
+        }
+      },
+      "required": ["id", "level"],
+      "additionalProperties": false
+    },
+    "RoofShape": {
+      "type": "string",
+      "description": "A roof's shape.",
+      "enum": ["flat", "shed", "gable", "hip"]
+    },
+    "Column": {
+      "type": "object",
+      "description": "A column: a rectangular (`width` × `depth`) or round (`diameter`) profile standing on a level.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "mark": { "type": "string" },
+        "level": { "type": "string" },
+        "at": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "The profile's centre in plan."
+        },
+        "type": { "type": "string" },
+        "width": { "type": "number" },
+        "depth": { "type": "number" },
+        "diameter": { "type": "number" },
+        "rotation": {
+          "type": "number",
+          "description": "Turn of the profile, degrees anticlockwise.",
+          "default": 0.0
+        },
+        "base_offset": { "type": "number", "default": 0.0 },
+        "height": {
+          "type": "number",
+          "description": "A fixed height. Left out: up to `top_level`, else to the next level up."
+        },
+        "top_level": { "type": "string" },
+        "top_offset": { "type": "number", "default": 0.0 },
+        "material": { "type": "string" }
+      },
+      "required": ["id", "level", "at"],
+      "additionalProperties": false
+    },
+    "Beam": {
+      "type": "object",
+      "description": "A beam, its top `top_offset` below the top of its storey.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "mark": { "type": "string" },
+        "level": { "type": "string" },
+        "start": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "end": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "type": { "type": "string" },
+        "width": { "type": "number" },
+        "depth": { "type": "number", "description": "Height of the section." },
+        "top_offset": { "type": "number", "default": 0.0 },
+        "material": { "type": "string" }
+      },
+      "required": ["id", "level", "start", "end"],
+      "additionalProperties": false
+    },
+    "Stair": {
+      "type": "object",
+      "description": "A stair: one flight, or two with a landing between.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "level": { "type": "string" },
+        "start": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "The middle of the first riser, in plan."
+        },
+        "direction": {
+          "type": "number",
+          "description": "Which way the first flight climbs, degrees anticlockwise from x.",
+          "default": 0.0
+        },
+        "width": { "type": "number" },
+        "max_riser": {
+          "type": "number",
+          "description": "The tallest riser allowed; the risers share the height equally.",
+          "default": 0.18
+        },
+        "tread": {
+          "type": "number",
+          "description": "The depth of each tread.",
+          "default": 0.28
+        },
+        "height": {
+          "type": "number",
+          "description": "A fixed rise. Left out: up to the next level."
+        },
+        "base_offset": { "type": "number", "default": 0.0 },
+        "waist": {
+          "type": "number",
+          "description": "Thickness of the sloping slab under the steps.",
+          "default": 0.15
+        },
+        "landing": { "$ref": "#/$defs/Landing" },
+        "material": { "type": "string" }
+      },
+      "required": ["id", "level", "start", "width"],
+      "additionalProperties": false
+    },
+    "Landing": {
+      "type": "object",
+      "description": "A landing that turns a stair.",
+      "properties": {
+        "after": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The number of risers before it."
+        },
+        "turn": { "$ref": "#/$defs/Side" }
+      },
+      "required": ["after", "turn"],
+      "additionalProperties": false
+    },
+    "Side": {
+      "type": "string",
+      "description": "Left or right.",
+      "enum": ["left", "right"]
+    },
+    "Railing": {
+      "type": "object",
+      "description": "A railing along a path, or along one side of a stair.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "level": { "type": "string" },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "description": "Points of its path, heights above the level. Not used when it follows a stair."
+        },
+        "height": { "type": "number", "default": 1.0 },
+        "post_spacing": { "type": "number", "default": 1.0 },
+        "stair": {
+          "type": "string",
+          "description": "A stair's id: the railing follows its `side`."
+        },
+        "side": { "$ref": "#/$defs/Side" },
+        "material": { "type": "string" }
+      },
+      "required": ["id", "level"],
+      "additionalProperties": false
+    },
+    "Part": {
+      "type": "object",
+      "description": "An extrusion of a plan outline, or a sweep of a profile along a path. A void cuts what it meets (a firebox in a chimney, a hole through a slab) instead of being solid.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "level": { "type": "string" },
+        "outline": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": "An extrusion's outline in plan."
+        },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "description": "An extrusion's holes."
+        },
+        "base": {
+          "type": "number",
+          "description": "An extrusion's bottom above the level.",
+          "default": 0.0
+        },
+        "height": { "type": "number", "description": "An extrusion's height." },
+        "profile": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": "A sweep's section: `x` across the path (positive to its left), `y` up from it."
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "description": "A sweep's path through points, `z` above the level."
+        },
+        "closed": {
+          "type": "boolean",
+          "description": "The path runs from its last point back to its first.",
+          "default": false
+        },
+        "wall": {
+          "type": "string",
+          "description": "A sweep along a wall's id, at its top or base: it follows the wall (a coping, a plinth)."
+        },
+        "edge": { "$ref": "#/$defs/WallEdge", "default": "top" },
+        "offset": {
+          "type": "number",
+          "description": "Lifts a wall path off its edge.",
+          "default": 0.0
+        },
+        "extend": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Runs a wall path on past the wall's start and end."
+        },
+        "void": { "type": "boolean", "default": false },
+        "material": { "type": "string" },
+        "ifc_class": { "type": "string", "description": "The IFC class it exports as." }
+      },
+      "required": ["id", "level"],
+      "additionalProperties": false
+    },
+    "WallEdge": {
+      "type": "string",
+      "description": "A wall's top or base.",
+      "enum": ["top", "base"]
+    },
+    "SiteElement": {
+      "type": "object",
+      "description": "A site element: terrain, a hard landscape area or a plant.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": { "$ref": "#/$defs/SiteKind" },
+        "level": { "type": "string" },
+        "outline": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": "Terrain and area: the outline."
+        },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "description": "An area's holes."
+        },
+        "top": {
+          "type": "number",
+          "description": "Terrain and area: the top above the level.",
+          "default": 0.0
+        },
+        "thickness": { "type": "number", "description": "Terrain and area: how deep." },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "description": "Terrain: spot heights `[x, y, z]`, `z` above the level."
+        },
+        "contour": {
+          "type": "number",
+          "description": "Terrain: a contour every so much height; 0 draws none.",
+          "default": 0.0
+        },
+        "pattern": {
+          "$ref": "#/$defs/SitePattern",
+          "description": "An area's surface pattern."
+        },
+        "at": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "A plant's position."
+        },
+        "base": {
+          "type": "number",
+          "description": "A plant's base above the level.",
+          "default": 0.0
+        },
+        "plant": { "$ref": "#/$defs/PlantForm", "default": "tree" },
+        "canopy": { "type": "number", "description": "A plant's crown across." },
+        "height": { "type": "number", "description": "A plant's height." },
+        "material": { "type": "string" }
+      },
+      "required": ["id", "kind", "level"],
+      "additionalProperties": false
+    },
+    "SiteKind": {
+      "type": "string",
+      "description": "What a site element is.",
+      "enum": ["terrain", "area", "plant"]
+    },
+    "SitePattern": {
+      "type": "object",
+      "description": "An area's surface: units (`size`, `stagger`, `angle`), lines (`spacing`, `angle`) or stipple (`spacing`).",
+      "properties": {
+        "kind": { "$ref": "#/$defs/PatternKind" },
+        "size": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "stagger": { "type": "boolean", "default": false },
+        "angle": { "type": "number", "default": 0.0 },
+        "spacing": { "type": "number" }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "PatternKind": {
+      "type": "string",
+      "description": "A surface pattern.",
+      "enum": ["none", "units", "lines", "stipple"]
+    },
+    "PlantForm": {
+      "type": "string",
+      "description": "A plant's form.",
+      "enum": ["tree", "conifer", "palm", "shrub"]
+    },
+    "Object": {
+      "type": "object",
+      "description": "Furniture or a fixture from CreaBIM's catalogue.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "mark": { "type": "string" },
+        "level": { "type": "string" },
+        "catalogue": {
+          "type": "string",
+          "description": "The catalogue object's key: \"starter/sofa-3\" (`creabim catalogue` lists them; \"starter/\" may be left out)."
+        },
+        "at": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Where it goes in plan: its origin (the middle of its back edge), or its middle with `anchor` \"centre\"."
+        },
+        "anchor": { "$ref": "#/$defs/Anchor", "default": "origin" },
+        "rotation": {
+          "type": "number",
+          "description": "Turn, degrees anticlockwise. At 0 its back is towards +y.",
+          "default": 0.0
+        },
+        "offset": {
+          "type": "number",
+          "description": "Its floor above the level (for one hung from the ceiling, its top below the ceiling). Left out: the catalogue's."
+        }
+      },
+      "required": ["id", "level", "catalogue", "at"],
+      "additionalProperties": false
+    },
+    "Anchor": {
+      "type": "string",
+      "description": "Which point of an object `at` gives.",
+      "enum": ["origin", "centre"]
+    },
+    "Room": {
+      "type": "object",
+      "description": "A room: the space the walls close off round `at`, or an outline drawn for it.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "number": { "type": "string", "default": "" },
+        "level": { "type": "string" },
+        "at": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "A point inside it, where its tag sits."
+        },
+        "outline": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": "An outline of its own; left out, the walls round `at` bound it."
+        },
+        "height": {
+          "type": "number",
+          "description": "Its top above its level. Left out: to the ceiling, or the level's height."
+        },
+        "floor_finish": { "type": "string", "default": "" },
+        "wall_finish": { "type": "string", "default": "" },
+        "ceiling_finish": { "type": "string", "default": "" },
+        "occupancy": { "type": "string", "default": "" },
+        "department": { "type": "string", "default": "" }
+      },
+      "required": ["id", "level", "at"],
+      "additionalProperties": false
+    },
+    "View": {
+      "type": "object",
+      "description": "A view: a plan of a level, a section or elevation along a line, a 3D view, or a schedule. Which fields it uses depends on its `kind`: plan: `level`, `cut_height`, `ceiling_plan`; section and elevation: `start`, `end`, `depth`; 3d: `azimuth`, `altitude`; schedule: `category`, `by_type`.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "description": "Its title; the id when left out." },
+        "kind": { "$ref": "#/$defs/ViewKind" },
+        "scale": {
+          "type": "number",
+          "description": "The scale's denominator: 100 is 1:100.",
+          "default": 100.0
+        },
+        "style": {
+          "$ref": "#/$defs/ViewStyle",
+          "description": "Left out: shaded for 3D views, hidden line for the rest."
+        },
+        "level": { "type": "string", "description": "A plan's level." },
+        "cut_height": {
+          "type": "number",
+          "description": "A plan's cut above its level.",
+          "default": 1.2
+        },
+        "ceiling_plan": {
+          "type": "boolean",
+          "description": "A reflected ceiling plan.",
+          "default": false
+        },
+        "room_colours": {
+          "type": "boolean",
+          "description": "Each room washed in a colour of its own.",
+          "default": false
+        },
+        "start": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "A section or elevation's line. It looks to the left of start → end: a line drawn west to east looks north."
+        },
+        "end": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "depth": { "type": "number", "description": "How far a section or elevation looks." },
+        "azimuth": {
+          "type": "number",
+          "description": "A 3D view's compass bearing: 0 from the south, anticlockwise.",
+          "default": 30.0
+        },
+        "altitude": {
+          "type": "number",
+          "description": "A 3D view's angle above the horizon.",
+          "default": 30.0
+        },
+        "category": {
+          "$ref": "#/$defs/ScheduleCategory",
+          "description": "What a schedule lists."
+        },
+        "by_type": {
+          "type": "boolean",
+          "description": "A schedule's rows grouped by type.",
+          "default": false
+        }
+      },
+      "required": ["id", "kind"],
+      "additionalProperties": false
+    },
+    "ViewKind": {
+      "type": "string",
+      "description": "What a view is.",
+      "enum": ["plan", "section", "elevation", "3d", "schedule"]
+    },
+    "ViewStyle": {
+      "type": "string",
+      "description": "How a view draws.",
+      "enum": ["hidden-line", "shaded", "wireframe"]
+    },
+    "ScheduleCategory": {
+      "type": "string",
+      "description": "What a schedule lists.",
+      "enum": [
+        "doors",
+        "windows",
+        "walls",
+        "slabs",
+        "structure",
+        "furniture",
+        "fixtures",
+        "rooms"
+      ]
+    },
+    "Sheet": {
+      "type": "object",
+      "description": "A drawing sheet, with views placed on it. Its id is its number.",
+      "properties": {
+        "id": { "type": "string", "description": "Its number: \"A101\"." },
+        "name": { "type": "string", "description": "Its title; the number when left out." },
+        "size": {
+          "$ref": "#/$defs/PaperSize",
+          "description": "An ISO paper size, landscape. Give this or `width` and `height`."
+        },
+        "width": { "type": "number", "description": "In millimetres." },
+        "height": { "type": "number" },
+        "fields": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Title block fields by name."
+        },
+        "viewports": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Viewport" }
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "PaperSize": {
+      "type": "string",
+      "description": "ISO paper sizes, landscape.",
+      "enum": ["A0", "A1", "A2", "A3", "A4"]
+    },
+    "Viewport": {
+      "type": "object",
+      "description": "A view placed on a sheet.",
+      "properties": {
+        "view": { "type": "string", "description": "A view's id." },
+        "at": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Where on the sheet, in millimetres from its lower left corner."
+        },
+        "target": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "The drawing point (in the file's units, as the drawing's x and y) put at `at`. Left out: the middle of the crop, or of the whole drawing."
+        },
+        "crop": {
+          "$ref": "#/$defs/Rect",
+          "description": "Only this part of the drawing is shown (drawing coordinates)."
+        }
+      },
+      "required": ["view", "at"],
+      "additionalProperties": false
+    }
+  }
+}
