@@ -5560,6 +5560,7 @@ fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::SheetTemplate(_) => "sheet template",
         ElementKind::Units(_) => "project units",
         ElementKind::MarkRules(_) => "mark numbering",
+        ElementKind::StylePack(_) => "style pack",
         ElementKind::View(_) => "view",
         ElementKind::Sheet(_) => "sheet",
         ElementKind::Viewport(_) => "placed view",

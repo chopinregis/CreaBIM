@@ -414,6 +414,7 @@ pub fn build_scene(model: &Model) -> Vec<SceneItem> {
             | ElementKind::SheetTemplate(_)
             | ElementKind::Units(_)
             | ElementKind::MarkRules(_)
+            | ElementKind::StylePack(_)
             | ElementKind::ElementType(_)
             | ElementKind::Sketch(_)
             | ElementKind::Cut(_)

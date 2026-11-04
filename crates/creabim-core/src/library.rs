@@ -76,6 +76,7 @@ impl LibraryEntry {
             roughness: self.roughness,
             metallic: self.metallic,
             opacity: self.opacity,
+            pattern: None,
         }
     }
 
