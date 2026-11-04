@@ -62,6 +62,18 @@ pub enum Tool {
     Align,
     /// A piece of furniture or a fixture from the catalogue.
     Object,
+    /// A plan outline pulled up into a solid.
+    Extrusion,
+    /// A profile carried along a wall or a path: copings, plinths, steps.
+    Sweep,
+    /// A solid that cuts what it meets.
+    Void,
+    /// The ground: a surface over an outline.
+    Terrain,
+    /// Paving, gravel, a driveway: hard landscape with a pattern.
+    Paving,
+    /// Trees and shrubs.
+    Planting,
     /// A room: click inside walls, or draw its outline.
     Room,
     /// A line that splits a room in two where there is no wall.
@@ -75,7 +87,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 35] = [
+    pub const ALL: [Tool; 41] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -91,6 +103,12 @@ impl Tool {
         Tool::Railing,
         Tool::Footing,
         Tool::Object,
+        Tool::Extrusion,
+        Tool::Sweep,
+        Tool::Void,
+        Tool::Terrain,
+        Tool::Paving,
+        Tool::Planting,
         Tool::Room,
         Tool::RoomSeparator,
         Tool::Ceiling,
@@ -150,6 +168,12 @@ impl Tool {
             Tool::Level => "Level",
             Tool::Align => "Align",
             Tool::Object => "Object",
+            Tool::Extrusion => "Extrusion",
+            Tool::Sweep => "Sweep",
+            Tool::Void => "Void",
+            Tool::Terrain => "Terrain",
+            Tool::Paving => "Hard landscape",
+            Tool::Planting => "Planting",
             Tool::Room => "Room",
             Tool::RoomSeparator => "Room separator",
             Tool::Ceiling => "Ceiling",
@@ -190,6 +214,12 @@ impl Tool {
             Tool::Level => "In a section or elevation, click where the level line starts (its height), then where it ends; its floor plan is made with it. In other views the Levels window opens to add, rename and move levels.",
             Tool::Align => "Click a reference line (a wall face, slab edge, guide or grid line), then the edge of what to align: it turns parallel and moves flush. In Extend mode a wall, beam or grid line end stretches to the reference instead; in Stretch mode the face moves and the rest stays. Centre lines (dashed purple) can be picked too, both ways. In 3D, click a face, edge, corner, centre line or grid line, then a face.",
             Tool::Object => "Click to place the object picked in the Catalogue window. Sinks, WCs, kitchen units, beds and sofas back onto the nearest wall; Space turns the next one a quarter.",
+            Tool::Extrusion => "Draw the outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). It is pulled up from its base by its height, set in the bar: a chimney, a hearth, a pier.",
+            Tool::Sweep => "Click a wall to run the profile along its top (coping) or base (plinth); it follows the wall. Or click the points of a path, and the last one again to finish. Pick the profile and its sizes in the bar.",
+            Tool::Void => "Draw the void's outline like a slab. It cuts every wall, slab, roof, site surface and extrusion it meets, between its base and height: a firebox, a hole through a floor.",
+            Tool::Terrain => "Draw the ground's outline like a slab. It starts flat at the level; add spot heights in Properties to shape it. Paving drawn inside it sits flush.",
+            Tool::Paving => "Draw paving, gravel, a driveway or decking like a slab. Pick what in the bar; each has its own pattern and material.",
+            Tool::Planting => "Click to plant a tree, conifer, palm or shrub. Pick the form, canopy and height in the bar.",
             Tool::Room => "Click inside walls for a room that follows them (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch) where no walls close it off. Its name, number and finishes are in Properties.",
             Tool::RoomSeparator => "Click two points for a line that splits a room in two where there is no wall, such as between a kitchen and a dining room.",
             Tool::Callout => "On a plan or section, click two corners of a box round what to detail: it becomes a detail view at the scale in the top bar, numbered in a bubble on this view.",
@@ -202,7 +232,15 @@ impl Tool {
     pub fn draws_outline(self) -> bool {
         matches!(
             self,
-            Tool::Slab | Tool::Roof | Tool::Shaft | Tool::Room | Tool::Ceiling
+            Tool::Slab
+                | Tool::Roof
+                | Tool::Shaft
+                | Tool::Extrusion
+                | Tool::Void
+                | Tool::Terrain
+                | Tool::Paving
+                | Tool::Room
+                | Tool::Ceiling
         )
     }
 
@@ -352,6 +390,9 @@ pub struct PlanState {
     /// Sizes for new columns, beams, roofs, stairs and railings, and a
     /// railing path being clicked.
     pub members: crate::memberstool::MemberSettings,
+    /// Sizes for new extrusions, sweeps, voids and site elements, and a
+    /// sweep path being clicked.
+    pub parts: crate::partstool::PartSettings,
     /// The Level tool was used where level lines can't be drawn: the app
     /// opens the Levels window instead.
     pub want_levels: bool,
@@ -467,6 +508,7 @@ impl Default for PlanState {
             grid_group: None,
             level_drag: None,
             members: Default::default(),
+            parts: Default::default(),
             want_levels: false,
             objects: Default::default(),
             want_catalogue: false,
@@ -506,6 +548,7 @@ impl PlanState {
         self.guide_edge = None;
         self.outline = None;
         self.members.path.clear();
+        self.parts.path.clear();
         self.chain.1.clear();
         self.rested.1.clear();
         self.align.clear();
@@ -1530,7 +1573,7 @@ pub fn show(
                     accent.color,
                 );
             }
-            Tool::Slab | Tool::Roof | Tool::Shaft | Tool::Room | Tool::Ceiling => {
+            t if t.draws_outline() => {
                 painter.rect_stroke(
                     Rect::from_two_pos(xf.to_screen(a), xf.to_screen(b)),
                     0.0,
@@ -2048,8 +2091,17 @@ fn plan_click(
         | Tool::Sketch
         | Tool::Callout
         | Tool::Detail => Ok(()),
-        Tool::Slab | Tool::Roof | Tool::Shaft | Tool::Room | Tool::Ceiling => {
-            crate::slabtool::click(doc, level, p, state, selection)
+        Tool::Slab
+        | Tool::Roof
+        | Tool::Shaft
+        | Tool::Extrusion
+        | Tool::Void
+        | Tool::Terrain
+        | Tool::Paving
+        | Tool::Room
+        | Tool::Ceiling => crate::slabtool::click(doc, level, p, state, selection),
+        Tool::Sweep | Tool::Planting => {
+            crate::partstool::click(doc, level, tool, p, state, selection)
         }
         Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing => {
             crate::memberstool::click(doc, level, tool, p, state, selection)

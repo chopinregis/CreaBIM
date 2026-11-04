@@ -17,7 +17,8 @@
 //! the picked corners, then leaves Edit mode.
 
 use crate::handles::{Constraint, Handle, HandleKind, Ring};
-use creabim_core::{Document, Element, ElementId, ElementKind, Model};
+use creabim_core::parts::{Form, Path};
+use creabim_core::{Document, Element, ElementId, ElementKind, Model, SiteForm};
 use glam::{DVec2, DVec3};
 
 /// How far an edge's push grip stands off the add-corner grip in the
@@ -98,6 +99,53 @@ pub fn rings(model: &Model, e: &Element) -> Vec<RingInfo> {
                 normal: DVec3::Z,
                 reshapes: true,
             }]
+        }
+        // extrusions and voids, terrain and hard landscape: at their top
+        ElementKind::Part(p) => match &p.form {
+            Form::Extrusion {
+                outline,
+                holes: h,
+                base,
+                height,
+            } => {
+                let z = elevation(model, Some(p.level)) + base + height;
+                let mut out = vec![flat(Ring::Outline, outline, z)];
+                out.extend(holes(h, z));
+                out
+            }
+            Form::Sweep {
+                path: Path::Points { points, closed },
+                ..
+            } => {
+                let z = elevation(model, Some(p.level));
+                vec![RingInfo {
+                    ring: Ring::Outline,
+                    corners: points.iter().map(|q| *q + DVec3::Z * z).collect(),
+                    closed: *closed,
+                    normal: DVec3::Z,
+                    reshapes: true,
+                }]
+            }
+            Form::Sweep { .. } => vec![],
+        },
+        ElementKind::Site(s) => {
+            let z = elevation(model, Some(s.level));
+            match &s.form {
+                SiteForm::Terrain { boundary, top, .. } => {
+                    vec![flat(Ring::Outline, boundary, z + top)]
+                }
+                SiteForm::Area {
+                    boundary,
+                    holes: h,
+                    top,
+                    ..
+                } => {
+                    let mut out = vec![flat(Ring::Outline, boundary, z + top)];
+                    out.extend(holes(h, z + top));
+                    out
+                }
+                SiteForm::Plant { .. } => vec![],
+            }
         }
         ElementKind::Sketch(sk) if sk.circle.is_none() => {
             let lift = DVec3::Z * elevation(model, sk.level);
@@ -226,6 +274,31 @@ pub fn ring_mut(kind: &mut ElementKind, ring: Ring) -> Option<&mut Vec<DVec2>> {
         (ElementKind::Roof(r), Ring::Outline) => Some(&mut r.boundary),
         (ElementKind::Roof(r), Ring::Hole(k)) => r.holes.get_mut(k),
         (ElementKind::Sketch(sk), Ring::Outline) => Some(&mut sk.points),
+        (ElementKind::Part(p), ring) => match (&mut p.form, ring) {
+            (Form::Extrusion { outline, .. }, Ring::Outline) => Some(outline),
+            (Form::Extrusion { holes, .. }, Ring::Hole(k)) => holes.get_mut(k),
+            _ => None,
+        },
+        (ElementKind::Site(s), ring) => match (&mut s.form, ring) {
+            (SiteForm::Terrain { boundary, .. }, Ring::Outline)
+            | (SiteForm::Area { boundary, .. }, Ring::Outline) => Some(boundary),
+            (SiteForm::Area { holes, .. }, Ring::Hole(k)) => holes.get_mut(k),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// A sweep's path through points, which keep their heights.
+fn sweep_points(kind: &mut ElementKind) -> Option<&mut Vec<DVec3>> {
+    match kind {
+        ElementKind::Part(p) => match &mut p.form {
+            Form::Sweep {
+                path: Path::Points { points, .. },
+                ..
+            } => Some(points),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -234,6 +307,11 @@ pub fn ring_mut(kind: &mut ElementKind, ring: Ring) -> Option<&mut Vec<DVec2>> {
 fn set_corner(e: &mut Element, ring: Ring, i: usize, p: DVec2) -> Result<(), String> {
     if let (ElementKind::Railing(r), Ring::Outline) = (&mut e.kind, ring) {
         let c = r.path.get_mut(i).ok_or("that corner is gone")?;
+        *c = p.extend(c.z);
+        return Ok(());
+    }
+    if let Some(path) = sweep_points(&mut e.kind) {
+        let c = path.get_mut(i).ok_or("that corner is gone")?;
         *c = p.extend(c.z);
         return Ok(());
     }
@@ -289,6 +367,24 @@ fn insert(e: &mut Element, ring: Ring, i: usize, p: DVec2) {
             };
             r.path.insert((i + 1).min(n), p.extend(z));
         }
+        (
+            ElementKind::Part(creabim_core::Part {
+                form:
+                    Form::Sweep {
+                        path: Path::Points { points: path, .. },
+                        ..
+                    },
+                ..
+            }),
+            _,
+        ) => {
+            let n = path.len();
+            let z = match (path.get(i), path.get((i + 1) % n.max(1))) {
+                (Some(a), Some(b)) => (a.z + b.z) / 2.0,
+                _ => 0.0,
+            };
+            path.insert((i + 1).min(n), p.extend(z));
+        }
         (kind, ring) => {
             if let Some(pts) = ring_mut(kind, ring) {
                 pts.insert(i + 1, p);
@@ -321,6 +417,21 @@ fn remove(e: &mut Element, ring: Ring, i: usize) {
                 r.path.remove(i);
             }
         }
+        (
+            ElementKind::Part(creabim_core::Part {
+                form:
+                    Form::Sweep {
+                        path: Path::Points { points: path, .. },
+                        ..
+                    },
+                ..
+            }),
+            _,
+        ) => {
+            if i < path.len() {
+                path.remove(i);
+            }
+        }
         (kind, ring) => {
             if let Some(pts) = ring_mut(kind, ring) {
                 if i < pts.len() {
@@ -336,6 +447,14 @@ fn remove_hole(e: &mut Element, k: usize) -> bool {
     let holes = match &mut e.kind {
         ElementKind::Slab(s) => &mut s.holes,
         ElementKind::Roof(r) => &mut r.holes,
+        ElementKind::Part(p) => match &mut p.form {
+            Form::Extrusion { holes, .. } => holes,
+            _ => return false,
+        },
+        ElementKind::Site(s) => match &mut s.form {
+            SiteForm::Area { holes, .. } => holes,
+            _ => return false,
+        },
         _ => return false,
     };
     if k < holes.len() {
@@ -498,6 +617,25 @@ fn shape_problem(e: &Element, disc: bool) -> Option<String> {
             (r.path.iter().map(|p| p.truncate()).collect(), false, vec![])
         }
         ElementKind::Sketch(sk) if sk.circle.is_none() => (sk.points.clone(), sk.closed, vec![]),
+        ElementKind::Part(p) => match &p.form {
+            Form::Extrusion { outline, holes, .. } => (outline.clone(), true, holes.clone()),
+            Form::Sweep {
+                path: Path::Points { points, closed },
+                ..
+            } => (
+                points.iter().map(|q| q.truncate()).collect(),
+                *closed,
+                vec![],
+            ),
+            Form::Sweep { .. } => return None,
+        },
+        ElementKind::Site(s) => match &s.form {
+            SiteForm::Terrain { boundary, .. } => (boundary.clone(), true, vec![]),
+            SiteForm::Area {
+                boundary, holes, ..
+            } => (boundary.clone(), true, holes.clone()),
+            SiteForm::Plant { .. } => return None,
+        },
         _ => return None,
     };
     creabim_core::slab::outline_problem(&outline, closed, &holes)
@@ -697,6 +835,9 @@ pub fn panel_hint(kind: &ElementKind) -> &'static str {
         }
         ElementKind::Shaft(_) => {
             "Click a corner and press Delete to remove it. Drag its corners and edges in any plan, section or 3D view, a ◇ to add a corner. The grips in its middle move its base and top."
+        }
+        ElementKind::Part(_) | ElementKind::Site(_) => {
+            "Click a corner (Shift+click or a box for more) and press Delete to remove it. Drag corners and edges of the outline and of each hole, a ◇ to add a corner. Right-click a corner, an edge or a hole for more."
         }
         ElementKind::Sketch(_) | ElementKind::Railing(_) => {
             "Click a corner and press Delete to remove it; drag corners to move them, a ◇ to add one. Right-click for more."
@@ -1295,5 +1436,36 @@ mod tests {
             panic!()
         };
         assert!(s.boundary[1].distance(at.truncate()) < 1e-9);
+    }
+
+    #[test]
+    fn parts_and_site_outlines_take_the_same_grips() {
+        let m = creabim_core::garden::garden_house();
+        let by = |m: &Model, n: &str| m.iter().find(|e| e.name == n).unwrap().id;
+        let mut doc = Document::from_model(m);
+        let outline = |m: &Model, id| rings(m, m.get(id).unwrap())[0].corners.clone();
+        for name in ["Patio", "Ground", "Chimney stack", "Firebox"] {
+            let id = by(doc.model(), name);
+            let before = outline(doc.model(), id);
+            let to = before[0] + DVec3::new(-0.2, -0.1, 0.0);
+            drag(
+                &mut doc,
+                id,
+                HandleKind::Vertex {
+                    ring: Ring::Outline,
+                    i: 0,
+                },
+                to,
+            );
+            let after = outline(doc.model(), id);
+            assert!(after[0].truncate().distance(to.truncate()) < 1e-9, "{name}");
+            add_corner(&mut doc, id, Ring::Outline, 1, None).unwrap();
+            assert_eq!(outline(doc.model(), id).len(), before.len() + 1, "{name}");
+        }
+        // plants and a sweep along a wall have no outline to edit
+        for name in ["Oak", "Coping"] {
+            let id = by(doc.model(), name);
+            assert!(rings(doc.model(), doc.model().get(id).unwrap()).is_empty());
+        }
     }
 }

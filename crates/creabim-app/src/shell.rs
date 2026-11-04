@@ -116,6 +116,12 @@ fn tool_icon(t: Tool) -> &'static str {
         Tool::Level => "level",
         Tool::Align => "align-tool",
         Tool::Object => "sofa",
+        Tool::Extrusion => "extrusion",
+        Tool::Sweep => "sweep",
+        Tool::Void => "void",
+        Tool::Terrain => "terrain",
+        Tool::Paving => "paving",
+        Tool::Planting => "tree",
         Tool::Room => "room",
         Tool::RoomSeparator => "room-separator",
         Tool::Ceiling => "ceiling",
@@ -141,9 +147,13 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::Railing
         | Tool::Footing
         | Tool::Object
+        | Tool::Extrusion
+        | Tool::Sweep
+        | Tool::Void
         | Tool::Room
         | Tool::RoomSeparator
         | Tool::Ceiling => 1,
+        Tool::Terrain | Tool::Paving | Tool::Planting => 5,
         Tool::Section | Tool::Elevation | Tool::Callout => 2,
         Tool::Dimension
         | Tool::Tag
@@ -566,6 +576,9 @@ impl CreaBimApp {
             Item::new("new.furnished", "New furnished sample house")
                 .icon("sofa")
                 .hint("The sample house with a kitchen, living room, bedrooms and a bathroom furnished from the starter catalogue"),
+            Item::new("new.garden", "New sample house in its garden")
+                .icon("tree")
+                .hint("The sample house with a chimney and its firebox, a breeze-block screen with a coping, terrain, paving, a driveway, trees and a car"),
             Item::new("new.sheet", "New sheet").icon("file-text"),
             Item::sub("New schedule", schedule_items()).icon("table-2"),
             Item::Separator,
@@ -698,6 +711,7 @@ impl CreaBimApp {
         for (group, title) in [
             (1, "Building elements"),
             (2, "Views"),
+            (5, "Site"),
             (3, "Annotation"),
             (4, "Sketching"),
         ] {
@@ -716,6 +730,11 @@ impl CreaBimApp {
                     Item::new("tool.curtain", "Curtain wall")
                         .icon("curtain-wall")
                         .hint("The Wall tool drawing a curtain wall type: mullions and glass on a grid"),
+                );
+                items.push(
+                    Item::new("tool.screen", "Screen wall")
+                        .icon("screen-wall")
+                        .hint("The Wall tool drawing a screen wall type: breeze blocks, louvres or a lattice"),
                 );
                 items.push(
                     Item::new("catalogue", "Catalogue…")
@@ -748,6 +767,13 @@ impl CreaBimApp {
                     Item::new("levels", "Levels…")
                         .icon("level")
                         .hint("Add, duplicate, rename, move and delete levels"),
+                );
+            }
+            if group == 5 {
+                items.push(
+                    Item::new("catalogue.entourage", "Cars and people…")
+                        .icon("car")
+                        .hint("Entourage from the catalogue: a car, people, for scale"),
                 );
             }
             if group == 2 {
@@ -1168,6 +1194,12 @@ impl CreaBimApp {
                     "Loaded the furnished sample house: see Create › Catalogue… to place more."
                         .into();
             }
+            "new.garden" => {
+                self.load_model(creabim_core::garden::garden_house());
+                self.status =
+                    "Loaded the garden sample: see Create › Site and Create › Building elements."
+                        .into();
+            }
             "new.sample" => {
                 self.load_model(creabim_core::starter::starter_house());
                 self.status = STARTER_LOADED.into();
@@ -1369,6 +1401,7 @@ impl CreaBimApp {
                     self.catalogue.open = true;
                 }
             }
+            "part" => crate::partstool::toggle_option(&mut self.plan, arg),
             "member" => {
                 if arg == "square" || arg == "round" {
                     self.plan.types.remove(&creabim_core::TypeCategory::Column);
@@ -1818,6 +1851,7 @@ impl CreaBimApp {
                 .collect()));
         }
         options.extend(crate::memberstool::tool_options(&self.plan));
+        options.extend(crate::partstool::tool_options(&self.plan));
         if tool == Tool::Footing {
             // like Revit's multiple selection: footings under all the walls
             // and columns picked, in one step
@@ -2515,6 +2549,9 @@ impl CreaBimApp {
                     }
                     k if k.starts_with("object.") => {
                         crate::objecttool::set_option(&mut self.plan, k, v)
+                    }
+                    k if k.starts_with("part.") => {
+                        crate::partstool::set_option(&mut self.plan, k, v)
                     }
                     k if k.starts_with("member.") => {
                         if k.contains("column") {

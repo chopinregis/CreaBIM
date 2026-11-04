@@ -138,5 +138,13 @@ window.ICONS = {
 "ceiling": "<path d=\"M2 4h20\" /> <path d=\"M3 8h18\" /> <path d=\"M7 8v3M17 8v3\" /> <path d=\"M9.5 15a2.5 2.5 0 0 0 5 0z\" /> <path d=\"M12 8v7M4 20h16\" stroke-dasharray=\"2 1.5\" />",
 "callout": "<rect x=\"3\" y=\"3\" width=\"11\" height=\"11\" stroke-dasharray=\"2.5 2\" /> <path d=\"m14 14 3 3\" /> <circle cx=\"19\" cy=\"19\" r=\"3\" />",
 "detail-component": "<path d=\"M3 20h18\" /> <path d=\"M3 8c2-3 3 3 5 0s3 3 5 0 3 3 5 0 2 2 3 0\" /> <path d=\"M3 14h18\" stroke-width=\"3\" />",
-"join": "<rect x=\"3\" y=\"3\" width=\"8\" height=\"18\" /> <path d=\"M11 9h10v6H11\" /> <path d=\"M7 3v18M11 12h10\" stroke-dasharray=\"2 1.5\" />"
+"join": "<rect x=\"3\" y=\"3\" width=\"8\" height=\"18\" /> <path d=\"M11 9h10v6H11\" /> <path d=\"M7 3v18M11 12h10\" stroke-dasharray=\"2 1.5\" />",
+"extrusion": "<path d=\"M4 17 9 20l11-4-5-3z\" /> <path d=\"M4 17V7l5 3v10M9 10l11-4v10M4 7l11-4 5 3\" />",
+"sweep": "<path d=\"M3 15h18v4H3z\" /> <path d=\"M3 15c3-8 15-8 18 0\" stroke-dasharray=\"2.5 2\" /> <path d=\"M6 11V7h4v4\" />",
+"void": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" /> <rect x=\"7\" y=\"9\" width=\"10\" height=\"12\" stroke-dasharray=\"2 2\" /> <path d=\"M7 9a5 5 0 0 1 10 0\" stroke-dasharray=\"2 2\" />",
+"screen-wall": "<rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" /> <rect x=\"5\" y=\"7\" width=\"4\" height=\"4\" /> <rect x=\"10\" y=\"7\" width=\"4\" height=\"4\" /> <rect x=\"15\" y=\"7\" width=\"4\" height=\"4\" /> <rect x=\"5\" y=\"13\" width=\"4\" height=\"4\" /> <rect x=\"10\" y=\"13\" width=\"4\" height=\"4\" /> <rect x=\"15\" y=\"13\" width=\"4\" height=\"4\" />",
+"terrain": "<path d=\"M2 18c4-6 8-2 11-6s6-4 9-2v10H2z\" /> <path d=\"M2 14c3-3 6-1 9-4\" stroke-dasharray=\"2 2\" />",
+"paving": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" /> <path d=\"M3 9h18M3 15h18M9 3v6M15 3v6M6 9v6M12 9v6M18 9v6M9 15v6M15 15v6\" />",
+"tree": "<circle cx=\"12\" cy=\"10\" r=\"7\" /> <path d=\"M12 17v5M9 22h6\" /> <path d=\"M9 10h6M12 7v6\" />",
+"car": "<path d=\"M3 16v-4l2-4h10l3 4h3v4z\" /> <circle cx=\"7\" cy=\"17\" r=\"2\" /> <circle cx=\"17\" cy=\"17\" r=\"2\" /> <path d=\"M6 12h11\" />"
 };
