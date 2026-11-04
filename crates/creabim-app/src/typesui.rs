@@ -73,7 +73,9 @@ pub(super) fn category_of_tool(tool: Tool) -> Option<TypeCategory> {
 }
 
 fn len_field(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
-    crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed())
+    crate::props::row(ui, text, |ui| {
+        crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
+    })
 }
 
 fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bool {
@@ -307,7 +309,9 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                 label = "Type frame";
             }
             let panes = |ui: &mut egui::Ui, text: &str, v: &mut u32| {
-                crate::props::row(ui, text, |ui| crate::props::fill(ui, egui::DragValue::new(v).range(1..=12)).changed())
+                crate::props::row(ui, text, |ui| {
+                    crate::props::fill(ui, egui::DragValue::new(v).range(1..=12)).changed()
+                })
             };
             if panes(ui, "Panes across", &mut o.frame.panes_across) {
                 label = "Type panes";

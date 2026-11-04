@@ -335,7 +335,9 @@ fn text(ui: &mut egui::Ui, label: &str, v: &mut String) -> bool {
 
 /// A length in the project's units, with its label; true when it changed.
 fn length(ui: &mut egui::Ui, label: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
-    crate::props::row(ui, label, |ui| crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed())
+    crate::props::row(ui, label, |ui| {
+        crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
+    })
 }
 
 /// A room's properties: what it measures, then its number, finishes,

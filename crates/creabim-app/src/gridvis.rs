@@ -395,7 +395,7 @@ impl CreaBimApp {
                     ),
                 Item::new("hidden.colour3d", "Hidden elements in colour")
                     .checked(s.hidden_colour_3d)
-                    .icon("palette")
+                    .icon("hidden-colour")
                     .keep_open()
                     .hint("What is inside walls, slabs and roofs shows through them in its own colours"),
             ]);
@@ -414,7 +414,7 @@ impl CreaBimApp {
                 ),
                 Item::new(format!("vis.colour:{}", id.0), "Hidden elements in colour")
                     .checked(self.shows_hidden_colour(id))
-                    .icon("palette")
+                    .icon("hidden-colour")
                     .keep_open()
                     .hint("For detailing: what is inside others in its material colours, see-through, as well as dashed. Sheets show it too"),
                 Item::new(format!("vis.xray:{}", id.0), "X-ray while working")

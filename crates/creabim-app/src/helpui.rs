@@ -52,6 +52,14 @@ impl CreaBimApp {
             Item::new("help:start", "Getting started")
                 .icon("rocket")
                 .hint("A first house, step by step: levels, walls, doors, floors, views, sheets"),
+            Item::sub(
+                "Samples to learn from",
+                crate::app::appmenu::SAMPLES
+                    .iter()
+                    .map(|s| Item::new(s.id, s.title).icon(s.icon).hint(s.line))
+                    .collect(),
+            )
+            .icon("book-open"),
             Item::new("help:interface", "The window at a glance").icon("layout-dashboard"),
             Item::new("help:shortcuts", "Keyboard shortcuts").icon("keyboard"),
             Item::new("help:glossary", "BIM words explained").icon("info"),
@@ -64,6 +72,7 @@ impl CreaBimApp {
     /// shortcuts page.
     pub(crate) fn help_menus(&self) -> Vec<(&'static str, Vec<Item>)> {
         vec![
+            ("CreaBIM", self.app_menu()),
             ("File", self.menu_items("menu:File")),
             ("Edit", self.menu_items("menu:Edit")),
             ("View", self.menu_items("menu:View")),

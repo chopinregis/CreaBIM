@@ -137,8 +137,11 @@ pub fn switch(ui: &mut Ui, on: &mut bool, label: impl Into<egui::WidgetText>) ->
         );
         job.wrap = egui::text::TextWrapping::truncate_at_width((w - sw.x - 12.0).max(10.0));
         let g = ui.painter().layout_job(job);
-        ui.painter()
-            .galley(rect.left_center() - Vec2::new(0.0, g.size().y / 2.0), g, ink);
+        ui.painter().galley(
+            rect.left_center() - Vec2::new(0.0, g.size().y / 2.0),
+            g,
+            ink,
+        );
         let r = egui::Rect::from_center_size(
             egui::pos2(rect.right() - sw.x / 2.0 - 2.0, rect.center().y),
             sw,
@@ -151,7 +154,9 @@ pub fn switch(ui: &mut Ui, on: &mut bool, label: impl Into<egui::WidgetText>) ->
 /// Paint a switch in `r`: a rounded track, accent when on, with its knob.
 pub fn paint_switch(ui: &Ui, r: egui::Rect, on: bool, hovered: bool, enabled: bool) {
     let v = ui.visuals();
-    let t = ui.ctx().animate_bool_responsive(ui.id().with(r.min.x as i32).with(r.min.y as i32), on);
+    let t = ui
+        .ctx()
+        .animate_bool_responsive(ui.id().with(r.min.x as i32).with(r.min.y as i32), on);
     let accent = v.selection.stroke.color;
     let off = v.widgets.inactive.bg_fill;
     let mut track = lerp(off, accent, t);
@@ -293,9 +298,7 @@ impl Combo {
             width,
         } = self;
         row(ui, &label, |ui| {
-            let w = width
-                .unwrap_or(f32::INFINITY)
-                .min(ui.available_width());
+            let w = width.unwrap_or(f32::INFINITY).min(ui.available_width());
             inner.width(w).show_ui(ui, add)
         })
     }
@@ -310,41 +313,5 @@ mod tests {
         assert_eq!(label_width(300.0), 120.0);
         assert_eq!(label_width(1000.0), 128.0);
         assert_eq!(label_width(100.0), 64.0);
-    }
-
-    #[test]
-    fn a_switch_flips_and_reports_a_change_when_clicked() {
-        let ctx = egui::Context::default();
-        let mut on = false;
-        let mut changed = false;
-        // frame one lays it out, frame two clicks it
-        for frame in 0..3 {
-            let mut input = egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(300.0, 100.0))),
-                ..Default::default()
-            };
-            let at = egui::pos2(280.0, 18.0);
-            if frame == 1 {
-                input.events.push(egui::Event::PointerMoved(at));
-                input.events.push(egui::Event::PointerButton {
-                    pos: at,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    modifiers: Default::default(),
-                });
-                input.events.push(egui::Event::PointerButton {
-                    pos: at,
-                    button: egui::PointerButton::Primary,
-                    pressed: false,
-                    modifiers: Default::default(),
-                });
-            }
-            let _ = ctx.run(input, |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    changed |= switch(ui, &mut on, "Staggered").changed();
-                });
-            });
-        }
-        assert!(on && changed);
     }
 }

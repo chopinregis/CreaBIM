@@ -118,41 +118,41 @@ pub(super) fn view_style_icon(s: ViewStyle) -> &'static str {
 fn tool_icon(t: Tool) -> &'static str {
     match t {
         Tool::Select => "mouse-pointer-2",
-        Tool::Wall => "brick-wall",
-        Tool::Door => "door-open",
-        Tool::Window => "app-window",
-        Tool::Opening => "wall-opening",
-        Tool::Slab => "layers-2",
+        Tool::Wall => "wall",
+        Tool::Door => "door",
+        Tool::Window => "window",
+        Tool::Opening => "opening",
+        Tool::Slab => "slab",
         Tool::Shaft => "shaft",
         Tool::Mass => "box",
-        Tool::Section => "scissors-line-dashed",
-        Tool::Elevation => "building-2",
-        Tool::Dimension => "ruler",
+        Tool::Section => "section",
+        Tool::Elevation => "elevation",
+        Tool::Dimension => "dimension",
         Tool::Tag => "tag",
-        Tool::Angle => "drafting-compass",
+        Tool::Angle => "angle",
         Tool::Radius => "radius",
         Tool::Diameter => "diameter",
-        Tool::ArcLength => "spline",
+        Tool::ArcLength => "arc-length",
         Tool::Note => "message-square-text",
         Tool::SpotLevel => "spot-level",
         Tool::Sketch => "pen-tool",
-        Tool::Guide => "slash",
-        Tool::Grid => "grid-3x3",
-        Tool::Column => "rectangle-vertical",
-        Tool::Beam => "rectangle-horizontal",
+        Tool::Guide => "guide",
+        Tool::Grid => "hash",
+        Tool::Column => "column",
+        Tool::Beam => "beam",
         Tool::Roof => "tent",
         Tool::Stair => "stair",
-        Tool::Railing => "fence",
+        Tool::Railing => "railing",
         Tool::Footing => "footing",
         Tool::Level => "level",
-        Tool::Align => "align-tool",
-        Tool::Object => "sofa",
+        Tool::Align => "align-start-vertical",
+        Tool::Object => "object",
         Tool::Extrusion => "extrusion",
         Tool::Sweep => "sweep",
         Tool::Void => "void",
         Tool::Terrain => "terrain",
         Tool::Paving => "paving",
-        Tool::Planting => "tree",
+        Tool::Planting => "planting",
         Tool::Room => "room",
         Tool::RoomSeparator => "room-separator",
         Tool::Ceiling => "ceiling",
@@ -202,27 +202,27 @@ fn tool_group(t: Tool) -> u8 {
 fn icon_name(i: Icon) -> &'static str {
     match i {
         Icon::Storey => "layers-3",
-        Icon::Grid => "grid-3x3",
-        Icon::Wall => "brick-wall",
-        Icon::Slab => "layers-2",
-        Icon::Door => "door-open",
-        Icon::Window => "app-window",
-        Icon::Roof => "house",
-        Icon::Column => "columns-2",
-        Icon::Beam => "minus",
+        Icon::Grid => "hash",
+        Icon::Wall => "wall",
+        Icon::Slab => "slab",
+        Icon::Door => "door",
+        Icon::Window => "window",
+        Icon::Roof => "tent",
+        Icon::Column => "column",
+        Icon::Beam => "beam",
         Icon::Mass => "box",
         Icon::Material => "palette",
         Icon::Plan => "map",
-        Icon::Section => "scissors-line-dashed",
-        Icon::Elevation => "building-2",
+        Icon::Section => "section",
+        Icon::Elevation => "elevation",
         Icon::View3d => "axis-3d",
         Icon::Schedule => "table-2",
         Icon::Sheet => "file-text",
         Icon::Viewport => "frame",
-        Icon::Dimension => "ruler",
+        Icon::Dimension => "dimension",
         Icon::Tag => "tag",
         Icon::Sketch => "pen-tool",
-        Icon::Guide => "slash",
+        Icon::Guide => "guide",
         Icon::CropBox => "crop-box",
     }
 }
@@ -296,13 +296,13 @@ fn command_icon(c: Command) -> &'static str {
         Command::Move => "move",
         Command::Rotate => "rotate-cw",
         Command::Scale => "scaling",
-        Command::Duplicate => "copy-plus",
+        Command::Duplicate => "duplicate",
         Command::Copy => "copy",
         Command::Cut => "scissors",
         Command::Paste => "clipboard-paste",
         Command::Delete => "trash-2",
         Command::Hide => "eye-off",
-        Command::Isolate => "scan-eye",
+        Command::Isolate => "circle-dot-dashed",
         Command::ShowAll => "eye",
         Command::SelectAll => "square-dashed-mouse-pointer",
         Command::SelectNone => "square-dashed",
@@ -590,28 +590,10 @@ impl CreaBimApp {
             recent.push(Item::new("recent.clear", "Clear the list"));
         }
         let mut items = vec![
-            Item::new("new.empty", "New empty project").icon("file-plus"),
-            Item::new("new.sample", "New starter house")
-                .icon("house")
-                .hint("The house CreaBIM opens with: two storeys, a kitchen wing, furnished, with plans, sections, elevations, schedules and sheets"),
-            Item::new("new.simple", "New simple sample house")
-                .icon("house")
-                .hint("A plain box house with two floors, a few openings and four sheets"),
-            Item::new("new.layered", "New layered sample house")
-                .icon("house")
-                .hint("Walls, floors and a roof built from layered assemblies, the upper walls attached to the roof"),
-            Item::new("new.buried", "New sample with a beam in a wall")
-                .icon("house")
-                .hint("The sample house with a lintel beam inside its south wall, to try picking and showing what is hidden inside others"),
-            Item::new("new.typed", "New typed sample house")
-                .icon("house")
-                .hint("Walls, doors, windows and slabs of element types, a storefront curtain wall, a wall opening, a stair shaft and a slab hole"),
-            Item::new("new.furnished", "New furnished sample house")
-                .icon("sofa")
-                .hint("The sample house with a kitchen, living room, bedrooms and a bathroom furnished from the starter catalogue"),
-            Item::new("new.garden", "New sample house in its garden")
-                .icon("tree")
-                .hint("The sample house with a chimney and its firebox, a breeze-block screen with a coping, terrain, paving, a driveway, trees and a car"),
+            Item::new("new.project", "New project…")
+                .key("Ctrl+N")
+                .icon("file-plus")
+                .hint("Start empty or from the starter house, or open a sample made for learning"),
             Item::new("new.sheet", "New sheet").icon("file-text"),
             Item::sub("New schedule", schedule_items()).icon("table-2"),
             Item::Separator,
@@ -637,7 +619,7 @@ impl CreaBimApp {
             Item::Separator,
             Item::Header("Project".into()),
             Item::new("units", "Project units…")
-                .icon("ruler")
+                .icon("units")
                 .hint("Metric or imperial: how lengths are shown and typed, in dimensions, schedules and on sheets"),
             Item::new("levels", "Levels…")
                 .icon("level")
@@ -646,7 +628,7 @@ impl CreaBimApp {
                 .icon("tag")
                 .hint("How doors, windows and other elements are numbered: prefixes, digits, level-based marks, order. Renumber, and check for marks used twice."),
             Item::new("graphicstyles", "Graphic styles…")
-                .icon("palette")
+                .icon("align-left")
                 .hint("Style packs: pens by scale, object styles, hatch patterns and view templates. Load an office's pack to restyle every drawing."),
             Item::new("styles", "Annotation styles…")
                 .icon("anno-styles")
@@ -693,7 +675,7 @@ impl CreaBimApp {
                 .icon("box")
                 .hint("Every element as a mesh with its CreaBIM id, so edits saved in Blender come back to the same elements."),
             Item::new("export.fcstd", "FreeCAD (.FCStd)")
-                .icon("cuboid")
+                .icon("freecad")
                 .hint("Every element as a solid with its BIM type and CreaBIM id; open it in FreeCAD, edit, save, and link it back."),
             Item::new("export.pdf", "Sheets as PDF").icon("file-text"),
             Item::new("export.svg", "This view or sheet as SVG").icon("file"),
@@ -908,7 +890,7 @@ impl CreaBimApp {
             "theme": self.theme(),
             "popup": self.popup_key(),
             "buttons": [
-                b("frame", "maximize-2", "Frame all (Home)", false),
+                b("frame", "frame-all", "Frame all (Home)", false),
                 fitsel,
                 b("nav.orbitsel", "rotate-3d", "Orbit around the selection", self.orbit_selection),
                 b("nav.zoomin", "zoom-in", "Zoom in", false),
@@ -1024,7 +1006,7 @@ impl CreaBimApp {
             Item::Header("3D view".into()),
             Item::new("frame", "Frame all")
                 .key("Home")
-                .icon("maximize-2"),
+                .icon("frame-all"),
             Item::new("nav.fitsel", "Frame the selection")
                 .key(".")
                 .icon("scan")
@@ -1216,52 +1198,68 @@ impl CreaBimApp {
                 }
             }
             "new.layered" => {
+                self.path = new_path("Layered walls");
                 self.load_model(creabim_core::sample::layered_house());
                 self.status = "Loaded the layered sample house.".into();
             }
             "new.typed" => {
+                self.path = new_path("Wall types");
                 self.load_model(creabim_core::sample::typed_house());
                 self.status =
                     "Loaded the typed sample house: see Materials › Types… for its types.".into();
             }
             "new.furnished" => {
+                self.path = new_path("Furnished house");
                 self.load_model(creabim_core::sample::furnished_house());
                 self.status =
                     "Loaded the furnished sample house: see Create › Catalogue… to place more."
                         .into();
             }
             "new.garden" => {
+                self.path = new_path("House in its garden");
                 self.load_model(creabim_core::garden::garden_house());
                 self.status =
                     "Loaded the garden sample: see Create › Site and Create › Building elements."
                         .into();
             }
             "new.sample" => {
+                self.path = new_path("Starter house");
                 self.load_model(creabim_core::starter::starter_house());
                 self.status = STARTER_LOADED.into();
             }
             "new.simple" => {
+                self.path = new_path("Simple house");
                 self.load_model(sample_house());
                 self.status = "Loaded the simple sample house.".into();
             }
             "new.buried" => {
+                self.path = new_path("Beam in a wall");
                 self.load_model(creabim_core::sample::sample_with_buried_beam().0);
                 self.status = "Loaded the sample house with a beam inside its south wall. Hover it in Section A and press Tab to reach the beam.".into();
             }
             "new.empty" => {
+                // two levels, in the units in use
+                let units = self.doc.model().units();
                 let mut m = Document::new();
-                let l = Element::new(
-                    "Level 0",
-                    ElementKind::Level(creabim_core::Level {
-                        elevation: 0.0,
-                        height: 3.0,
-                    }),
-                );
-                let _ = m.commit(Transaction::new("New project").insert(l));
+                let mut tx = Transaction::new("New project");
+                for (name, z) in [("Level 0", 0.0), ("Level 1", 3.0)] {
+                    tx = tx.insert(Element::new(
+                        name,
+                        ElementKind::Level(creabim_core::Level {
+                            elevation: z,
+                            height: 3.0,
+                        }),
+                    ));
+                }
+                let _ = m.commit(tx);
+                let tx = creabim_core::units::set_units(m.model(), units);
+                let _ = m.commit(tx);
                 self.load_model(m.model().clone());
+                self.path = new_path("Untitled");
                 self.status =
-                    "New project with one level. Pick the Wall tool to start drawing.".into();
+                    "New project with two levels. Pick the Wall tool to start drawing.".into();
             }
+            "new.project" => self.open_new_project(ctx),
             "new.sheet" => self.new_sheet(),
             "levels" => self.open_levels(),
             "level.add" => self.add_level_above(),
@@ -2125,12 +2123,12 @@ impl CreaBimApp {
                 }
                 options.push(json!({
                     "kind": "toggle", "id": "view.reveal", "label": "Hidden",
-                    "on": v.show_hidden, "icon": "eye",
+                    "on": v.show_hidden, "icon": "hidden-elements",
                     "hint": "Show elements hidden inside others (a beam in a wall) with dashed lines",
                 }));
                 options.push(json!({
                     "kind": "toggle", "id": "view.colour", "label": "In colour",
-                    "on": v.show_hidden && v.hidden_in_colour, "icon": "palette",
+                    "on": v.show_hidden && v.hidden_in_colour, "icon": "hidden-colour",
                     "hint": "For detailing: hidden elements in their material colours, see-through over what hides them",
                 }));
                 if let Some(id) = self.active_view {
@@ -2165,7 +2163,7 @@ impl CreaBimApp {
                 }));
                 options.push(json!({
                     "kind": "toggle", "id": "view.rooms", "label": "Room colours",
-                    "on": colours, "icon": "palette",
+                    "on": colours, "icon": "colour-scheme",
                     "hint": "Fill each room with a colour of its own, the same in every view",
                 }));
             }
@@ -2232,8 +2230,8 @@ impl CreaBimApp {
                 let icon = match g {
                     crate::browser::ViewGroup::Plans => "map",
                     crate::browser::ViewGroup::Views3d => "axis-3d",
-                    crate::browser::ViewGroup::Sections => "scissors-line-dashed",
-                    crate::browser::ViewGroup::Elevations => "building-2",
+                    crate::browser::ViewGroup::Sections => "section",
+                    crate::browser::ViewGroup::Elevations => "elevation",
                     crate::browser::ViewGroup::Details => "callout",
                     crate::browser::ViewGroup::Schedules => "table-2",
                 };
@@ -2465,6 +2463,40 @@ impl CreaBimApp {
             size: egui::vec2(w, 380.0),
         });
         self.shell.focus_popup = true;
+    }
+
+    /// The New project window, in the middle of the window.
+    pub(super) fn open_new_project(&mut self, ctx: &egui::Context) {
+        if self.shell.web.is_none() {
+            // the classic panels keep the File menu's list
+            self.new_project_classic = true;
+            return;
+        }
+        let screen = ctx.viewport_rect();
+        let size = egui::vec2(
+            900.0f32.min(screen.width() - 32.0),
+            520.0f32.min(screen.height() - 32.0),
+        );
+        self.shell.popup = Some(Popup {
+            key: "newproject".into(),
+            at: screen.center() - size / 2.0,
+            up: None,
+            above: None,
+            size,
+        });
+        self.shell.focus_popup = true;
+    }
+
+    /// The New project window's choices, for its page.
+    fn new_project_state(&self) -> Value {
+        let card = |s: &crate::app::appmenu::Start| json!({"id": s.id, "title": s.title, "line": s.line, "icon": s.icon});
+        json!({
+            "title": "New project",
+            "starts": crate::app::appmenu::STARTS.iter().map(card).collect::<Vec<_>>(),
+            "samples_title": "Samples to learn from · each shows one thing",
+            "samples": crate::app::appmenu::SAMPLES.iter().map(card).collect::<Vec<_>>(),
+            "note": "A sample opens as a new, unsaved project, so the original is never changed.",
+        })
     }
 
     fn close_popup(&mut self) {
@@ -2835,6 +2867,12 @@ impl CreaBimApp {
                     let state = json!({"theme": self.theme(), "key": p.key, "items": [], "controls": rows});
                     return (rect, state, empty);
                 }
+                // the New project window keeps its own size
+                "newproject" => {
+                    let rect = egui::Rect::from_center_size(screen.center(), p.size);
+                    let state = json!({"theme": self.theme(), "key": p.key, "items": [], "dialog": self.new_project_state()});
+                    return (rect, state, false);
+                }
                 // a few lines on the tool in use
                 "toolhelp" => {
                     let help = self.tool_quick_help();
@@ -3035,6 +3073,12 @@ fn popup_size(p: &Popup, screen: egui::Rect) -> egui::Vec2 {
         p.size.x.min(screen.width() - 2.0 * margin),
         p.size.y.min(room).max(40.0),
     )
+}
+
+/// Where a new project or a sample would be saved: beside the projects
+/// opened before, never over one of them.
+fn new_path(name: &str) -> String {
+    format!("{name}.creabim")
 }
 
 /// egui's spacing and type, roomier than its defaults.

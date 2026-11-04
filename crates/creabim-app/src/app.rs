@@ -214,6 +214,8 @@ pub struct CreaBimApp {
     crop_pick: Option<ElementId>,
     /// The Settings window is open.
     settings_open: bool,
+    /// The New project window, with the classic panels.
+    new_project_classic: bool,
 }
 
 impl CreaBimApp {
@@ -286,6 +288,7 @@ impl CreaBimApp {
             catalogue: Default::default(),
             levels: Default::default(),
             settings_open: false,
+            new_project_classic: false,
             marks: Default::default(),
             gstyles: Default::default(),
             level_copy: Default::default(),
@@ -888,6 +891,9 @@ impl CreaBimApp {
         });
         if settings {
             self.settings_open = !self.settings_open;
+        }
+        if ctx.input(|i| i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::N)) {
+            self.open_new_project(ctx);
         }
         if shortcuts {
             self.open_help("shortcuts");
@@ -3976,7 +3982,9 @@ impl CreaBimApp {
         let mut extrude_sketch = false;
         let mut draw_hole = false;
         let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
-            crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed())
+            crate::props::row(ui, text, |ui| {
+                crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
+            })
         };
         let mut redraw = false;
         let mut new_style = false;
@@ -4193,7 +4201,10 @@ impl CreaBimApp {
                     }
                     if o.kind == creabim_core::OpeningKind::Window {
                         let panes = |ui: &mut egui::Ui, text: &str, v: &mut u32| {
-                            crate::props::row(ui, text, |ui| crate::props::fill(ui, egui::DragValue::new(v).range(1..=12)).changed())
+                            crate::props::row(ui, text, |ui| {
+                                crate::props::fill(ui, egui::DragValue::new(v).range(1..=12))
+                                    .changed()
+                            })
                         };
                         if panes(ui, "Panes across", &mut o.frame.panes_across) {
                             label = "Window panes"
@@ -4286,10 +4297,16 @@ impl CreaBimApp {
                         ViewKind::Axonometric { azimuth, altitude } => {
                             let deg =
                                 |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| {
-                                    crate::props::row(ui, text, |ui| crate::props::fill(ui, egui::DragValue::new(v)
+                                    crate::props::row(ui, text, |ui| {
+                                        crate::props::fill(
+                                            ui,
+                                            egui::DragValue::new(v)
                                                 .speed(0.5)
                                                 .range(lo..=hi)
-                                                .suffix("°"),).changed())
+                                                .suffix("°"),
+                                        )
+                                        .changed()
+                                    })
                                 };
                             if deg(ui, "Azimuth", azimuth, 0.0, 360.0)
                                 | deg(ui, "Altitude", altitude, -89.0, 89.0)
@@ -4380,7 +4397,10 @@ impl CreaBimApp {
                         }
                     }
                     let mm = |ui: &mut egui::Ui, text: &str, v: &mut f64| {
-                        crate::props::row(ui, text, |ui| crate::props::fill(ui, egui::DragValue::new(v).speed(1.0).suffix(" mm")).changed())
+                        crate::props::row(ui, text, |ui| {
+                            crate::props::fill(ui, egui::DragValue::new(v).speed(1.0).suffix(" mm"))
+                                .changed()
+                        })
                     };
                     if mm(ui, "Centre X", &mut vp.center.x) | mm(ui, "Centre Y", &mut vp.center.y) {
                         label = "Move view on sheet"
@@ -5386,6 +5406,7 @@ impl eframe::App for CreaBimApp {
         self.templates_window(&ctx);
         self.units_window(&ctx);
         self.settings_window(&ctx);
+        self.new_project_window(&ctx);
         self.marks_window(&ctx);
         self.graphic_styles_window(&ctx);
         self.ground_spacing_window(&ctx);
@@ -5752,9 +5773,7 @@ fn plan_graphics_ui(
                 label = Some("Below-cut fill");
             }
         });
-        if crate::props::switch(ui, &mut g.below_grey, "In grey, not material colours")
-            .changed()
-        {
+        if crate::props::switch(ui, &mut g.below_grey, "In grey, not material colours").changed() {
             label = Some("Below-cut fill");
         }
     }
@@ -5846,7 +5865,8 @@ fn view_style_combo(ui: &mut egui::Ui, salt: &str, style: &mut ViewStyle) -> boo
 /// The file named on the command line, if any: the first argument that
 /// isn't an option.
 pub(crate) fn launch_file(args: impl Iterator<Item = String>) -> Option<String> {
-    args.into_iter().find(|a| !a.starts_with('-') && !a.is_empty())
+    args.into_iter()
+        .find(|a| !a.starts_with('-') && !a.is_empty())
 }
 
 /// What the status bar says when the starter house opens.

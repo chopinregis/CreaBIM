@@ -563,7 +563,9 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
 // ---- Properties ----
 
 fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
-    crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed())
+    crate::props::row(ui, text, |ui| {
+        crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
+    })
 }
 
 fn weak(ui: &mut egui::Ui, t: impl Into<String>) {
@@ -819,7 +821,9 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
                     });
             }
             let deg = |ui: &mut egui::Ui, v: &mut f64| {
-                crate::props::row(ui, "Angle", |ui| crate::props::fill(ui, egui::DragValue::new(v).speed(1.0).suffix("°")).changed())
+                crate::props::row(ui, "Angle", |ui| {
+                    crate::props::fill(ui, egui::DragValue::new(v).speed(1.0).suffix("°")).changed()
+                })
             };
             match pattern {
                 Pattern::None => {}

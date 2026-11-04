@@ -615,6 +615,8 @@ pub fn key_names(keys: &str) -> Vec<String> {
         "Del" => vec!["Delete".into()],
         "Esc" => vec!["Escape".into()],
         "." => vec!["Period".into()],
+        "," => vec!["Comma".into()],
+        "/" => vec!["Slash".into()],
         "1–4" => (1..=4).map(|n| format!("Num{n}")).collect(),
         "Arrow keys" => ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]
             .map(String::from)

@@ -486,13 +486,21 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
     }
     let mut label = "";
     let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
-        crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed())
+        crate::props::row(ui, text, |ui| {
+            crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
+        })
     };
     let deg = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
-        crate::props::row(ui, text, |ui| crate::props::fill(ui, egui::DragValue::new(v)
+        crate::props::row(ui, text, |ui| {
+            crate::props::fill(
+                ui,
+                egui::DragValue::new(v)
                     .speed(0.5)
                     .range(lo..=hi)
-                    .suffix("°"),).changed())
+                    .suffix("°"),
+            )
+            .changed()
+        })
     };
     let weak = |ui: &mut egui::Ui, t: String| {
         ui.label(egui::RichText::new(t).weak());
@@ -604,9 +612,12 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 .selected_text(r.shape.label())
                 .show_ui(ui, |ui| {
                     for s in RoofShape::ALL {
-                        let pick = crate::props::picture_option(ui, r.shape == s, s.label(), |p, rect, st| {
-                            roof_glyph(p, rect, st, s)
-                        });
+                        let pick = crate::props::picture_option(
+                            ui,
+                            r.shape == s,
+                            s.label(),
+                            |p, rect, st| roof_glyph(p, rect, st, s),
+                        );
                         if pick.clicked() && r.shape != s {
                             r.shape = s;
                             label = "Roof shape"
@@ -796,7 +807,9 @@ fn column_levels(ui: &mut egui::Ui, model: &Model, c: &mut Column) -> &'static s
         label = "Column base level";
     }
     let num = |ui: &mut egui::Ui, text: &str, v: &mut f64| -> bool {
-        crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(-50.0..=50.0)).changed())
+        crate::props::row(ui, text, |ui| {
+            crate::props::fill(ui, crate::units::drag(v).range(-50.0..=50.0)).changed()
+        })
     };
     if num(ui, "Base offset", &mut c.base_offset) {
         label = "Column base offset";
@@ -830,7 +843,9 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
     use creabim_core::FootingKind;
     let mut label = "";
     let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
-        crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed())
+        crate::props::row(ui, text, |ui| {
+            crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
+        })
     };
     let weak = |ui: &mut egui::Ui, t: String| {
         ui.label(egui::RichText::new(t).weak());
@@ -1355,7 +1370,13 @@ fn roof_glyph(p: &egui::Painter, r: egui::Rect, st: egui::Stroke, s: RoofShape) 
             line(&[(0.2, 0.47), (0.2, 0.85), (0.8, 0.85), (0.8, 0.47)]);
         }
         RoofShape::Hip => {
-            line(&[(0.1, 0.65), (0.3, 0.3), (0.7, 0.3), (0.9, 0.65), (0.1, 0.65)]);
+            line(&[
+                (0.1, 0.65),
+                (0.3, 0.3),
+                (0.7, 0.3),
+                (0.9, 0.65),
+                (0.1, 0.65),
+            ]);
             line(&[(0.2, 0.65), (0.2, 0.85), (0.8, 0.85), (0.8, 0.65)]);
         }
     }

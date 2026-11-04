@@ -92,7 +92,11 @@ const AXIS_SNAP: f32 = 2.0 * std::f32::consts::PI / 180.0;
 /// [`AXIS_SNAP`] of it.
 fn snap_angle(a: f32, step: f32) -> f32 {
     let n = (a / step).round() * step;
-    if (a - n).abs() < AXIS_SNAP { n } else { a }
+    if (a - n).abs() < AXIS_SNAP {
+        n
+    } else {
+        a
+    }
 }
 
 impl OrbitCamera {

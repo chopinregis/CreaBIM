@@ -352,7 +352,9 @@ impl CreaBimApp {
         }
         ui.add_space(4.0);
         let num = |ui: &mut egui::Ui, text: &str, v: &mut f64| -> bool {
-            crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(-1e5..=1e5)).changed())
+            crate::props::row(ui, text, |ui| {
+                crate::props::fill(ui, crate::units::drag(v).range(-1e5..=1e5)).changed()
+            })
         };
         egui::Grid::new(("crop extents", id))
             .num_columns(2)

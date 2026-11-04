@@ -260,6 +260,44 @@ impl CreaBimApp {
     }
 }
 
+impl CreaBimApp {
+    /// New project with the classic panels: the same choices as the web
+    /// window, as a list.
+    pub(super) fn new_project_window(&mut self, ctx: &egui::Context) {
+        if !self.new_project_classic {
+            return;
+        }
+        let mut open = true;
+        let mut pick = None;
+        egui::Window::new("New project")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                for s in STARTS.iter() {
+                    if ui
+                        .button(egui::RichText::new(s.title).strong())
+                        .on_hover_text(s.line)
+                        .clicked()
+                    {
+                        pick = Some(s.id);
+                    }
+                }
+                crate::props::section(ui, "Samples to learn from");
+                for s in SAMPLES.iter() {
+                    if ui.button(s.title).on_hover_text(s.line).clicked() {
+                        pick = Some(s.id);
+                    }
+                }
+            });
+        self.new_project_classic = open && pick.is_none();
+        if let Some(id) = pick {
+            self.run_action(ctx, id);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,6 +337,30 @@ mod tests {
         for want in ["app.about", "app.updates", "app.settings", "app.exit"] {
             assert!(ids.iter().any(|i| i == want), "{want} in {ids:?}");
         }
+    }
+
+    #[test]
+    fn samples_open_as_new_unsaved_projects() {
+        let mut app = test_app();
+        app.path = "/work/my house.creabim".into();
+        let ctx = egui::Context::default();
+        app.run_action(&ctx, "new.garden");
+        assert_eq!(app.path, "House in its garden.creabim");
+        app.run_action(&ctx, "new.empty");
+        assert_eq!(app.path, "Untitled.creabim");
+        assert_eq!(app.doc.model().levels().count(), 2);
+        // one New project… in the File menu, the samples under Help
+        let file: Vec<String> = app
+            .menu_items("menu:File")
+            .into_iter()
+            .filter_map(|i| match i {
+                Item::Action { id, .. } if id.starts_with("new.") => Some(id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(file, ["new.project", "new.sheet"]);
+        let help = app.help_menu();
+        assert!(help.iter().any(|i| matches!(i, Item::Sub { label, items, .. } if label == "Samples to learn from" && items.len() == 6)));
     }
 
     #[test]

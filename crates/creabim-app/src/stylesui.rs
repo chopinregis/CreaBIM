@@ -1224,9 +1224,7 @@ fn templates_page(
                 .changed();
         });
         let mut sun = cues.shadows.is_some();
-        if crate::props::switch(ui, &mut sun, "Sun shadows in plans from above")
-            .changed()
-        {
+        if crate::props::switch(ui, &mut sun, "Sun shadows in plans from above").changed() {
             cues.shadows = sun.then_some(Shadows {
                 direction: -50.0,
                 length: 0.6,

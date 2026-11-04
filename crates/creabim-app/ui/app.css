@@ -934,3 +934,29 @@ kbd {
 .hdoc figure.zoomable { cursor: zoom-in; }
 .hdoc figure.zoomable.big { cursor: zoom-out; position: fixed; inset: 8px; margin: 0; z-index: 10; background: var(--panel); padding: 8px; border-radius: 8px; box-shadow: 0 0 0 1px var(--border-2), 0 10px 40px rgba(0, 0, 0, 0.35); display: flex; flex-direction: column; justify-content: center; overflow: auto; }
 .hdoc figure.zoomable.big img { width: auto; max-width: none; min-width: 100%; }
+
+/* ---------- New project ---------- */
+
+.np { display: flex; flex-direction: column; gap: 14px; padding: 20px 24px; height: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
+.np-head { display: flex; align-items: baseline; }
+.np-head b { font-size: 17px; font-weight: 650; flex: 1; }
+.np-esc { color: var(--muted); font-size: 12px; }
+.np-starts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.np-big { display: flex; flex-direction: column; text-align: left; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); }
+.np-big .np-pic { height: 92px; border-radius: 8px; background: var(--panel-2); display: grid; place-items: center; color: var(--accent); }
+.np-big .np-pic svg { width: 56px; height: 56px; stroke-width: 1.4; }
+.np-text { display: flex; flex-direction: column; gap: 3px; }
+.np-text b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.np-text span { color: var(--muted); font-size: 12px; }
+.np-sub { font-size: 11px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.np-samples { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.np-sample { display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); }
+.np-icon { width: 36px; height: 36px; border-radius: 8px; background: var(--panel-2); display: grid; place-items: center; color: var(--text-2); flex: none; }
+.np-icon svg { width: 20px; height: 20px; }
+.np-big:hover, .np-sample:hover { border-color: var(--border-2); background: var(--panel-2); }
+.np-big.on, .np-sample.on { border: 1.5px solid var(--accent); background: var(--accent-soft); }
+.np-big.on .np-pic { background: var(--panel); }
+.np-foot { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin-top: auto; }
+.np-btn { height: 32px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border-2); color: var(--text); background: var(--panel); font-weight: 550; }
+.np-btn:hover { background: var(--raise); }
+.np-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
