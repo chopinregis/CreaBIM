@@ -349,6 +349,7 @@ fn materials_and_types(b: &mut Builder) {
             location: LocationLine::Centre,
             height: None,
             curtain: None,
+            screen: None,
         })
     };
     let slab_type = |b: &Builder, a: &str| SlabType {
@@ -414,6 +415,7 @@ fn materials_and_types(b: &mut Builder) {
                 panel: PanelKind::Glass,
                 ..Default::default()
             }),
+            screen: None,
         }),
     );
     let p = TypeParams::Slab(slab_type(b, "Ground floor 350, insulated"));

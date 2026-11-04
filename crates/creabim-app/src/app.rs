@@ -610,6 +610,9 @@ impl CreaBimApp {
                 self.camera.frame(lo, hi, self.aspect);
                 self.status = "Framed the selection.".into();
             }
+            None if !self.selection.is_empty() => {
+                self.status = "The selection isn't shown in this 3D view: its category is hidden here (voids and openings usually are). Show it from the view's visibility to frame it.".into()
+            }
             None => self.status = "Select something to frame it.".into(),
         }
     }
@@ -2795,7 +2798,7 @@ impl CreaBimApp {
                         );
                     }
                 }
-                Tool::Slab | Tool::Roof | Tool::Shaft | Tool::Room | Tool::Ceiling => {
+                t if t.draws_outline() => {
                     let (lo, hi) = (a.truncate().min(p), a.truncate().max(p));
                     let pts = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y), lo];
                     let scr: Vec<egui::Pos2> =
@@ -2859,10 +2862,10 @@ impl CreaBimApp {
             } else {
                 self.status = match (tool, self.pending_3d) {
                     (Tool::Wall, Some(_)) => format!("Drawing walls on {level_name}. Click the next corner; Esc or right-click ends."),
-                    (Tool::Slab | Tool::Roof | Tool::Shaft | Tool::Room | Tool::Ceiling | Tool::RoomSeparator, _) => {
+                    (t, _) if t.draws_outline() || t == Tool::RoomSeparator => {
                         self.plan.status.take().unwrap_or_default()
                     }
-                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Object, _) => self
+                    (Tool::Column | Tool::Beam | Tool::Stair | Tool::Railing | Tool::Footing | Tool::Object | Tool::Sweep | Tool::Planting, _) => self
                         .plan
                         .status
                         .take()
@@ -4993,7 +4996,9 @@ impl CreaBimApp {
                 | ElementKind::Roof(_)
                 | ElementKind::Stair(_)
                 | ElementKind::Railing(_)
-                | ElementKind::Footing(_)) => {
+                | ElementKind::Footing(_)
+                | ElementKind::Part(_)
+                | ElementKind::Site(_)) => {
                     if let ElementKind::Roof(r) = k {
                         if self.assembly_combo(ui, creabim_core::AssemblyUse::Roof, &mut r.assembly)
                         {
@@ -5016,7 +5021,11 @@ impl CreaBimApp {
                         }
                         draw_hole |= draw;
                     }
-                    if let Some(m) = creabim_core::members::material_mut(k).filter(|_| !layered) {
+                    // a void cuts, so it has no material to show
+                    let void = matches!(k, ElementKind::Part(p) if p.void);
+                    if let Some(m) =
+                        creabim_core::members::material_mut(k).filter(|_| !layered && !void)
+                    {
                         if self.material_combo(ui, m) {
                             label = "Material";
                         }
@@ -5578,6 +5587,10 @@ fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::ElementType(_) => "type",
         ElementKind::Shaft(_) => "shaft",
         ElementKind::Footing(_) => "footing",
+        ElementKind::Part(p) if p.void => "void",
+        ElementKind::Part(_) => "part",
+        ElementKind::Site(s) if s.is_plant() => "plant",
+        ElementKind::Site(_) => "site element",
     }
 }
 

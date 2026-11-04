@@ -134,7 +134,18 @@ pub fn section_view_with(
         for s in &scene {
             for loop_ in cut_loops(s, &frame) {
                 let pts: Vec<DVec2> = loop_.iter().map(|p| DVec2::new(p.x, p.y)).collect();
-                if pts.iter().all(|p| p.x < -1e-6 || p.x > frame.length + 1e-6) {
+                let (x0, x1) = (-1e-6, frame.length + 1e-6);
+                if pts.iter().all(|p| p.x < x0) || pts.iter().all(|p| p.x > x1) {
+                    continue;
+                }
+                // what runs on past the section line's ends (the ground,
+                // a long slab) is cut off at them
+                let pts = if pts.iter().any(|p| p.x < x0 || p.x > x1) {
+                    clip_x(&clip_x(&pts, 0.0, 1.0), frame.length, -1.0)
+                } else {
+                    pts
+                };
+                if pts.len() < 3 {
                     continue;
                 }
                 match s.layer {
@@ -976,6 +987,24 @@ fn cut_loops(item: &SceneItem, frame: &SectionFrame) -> Vec<Vec<DVec2>> {
         }
     }
     chain(segs)
+}
+
+/// The part of `poly` on the side of `x = at` that `side` (1 or -1)
+/// points to.
+fn clip_x(poly: &[DVec2], at: f64, side: f64) -> Vec<DVec2> {
+    let inside = |p: DVec2| (p.x - at) * side >= 0.0;
+    let mut out = Vec::new();
+    for i in 0..poly.len() {
+        let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
+        if inside(a) {
+            out.push(a);
+        }
+        if inside(a) != inside(b) {
+            let t = (at - a.x) / (b.x - a.x);
+            out.push(a + (b - a) * t);
+        }
+    }
+    out
 }
 
 /// Join segments that share endpoints into loops.

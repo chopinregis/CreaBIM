@@ -123,6 +123,8 @@ impl Element {
             ElementKind::Sketch(s) => s.level.into_iter().collect(),
             // a footing goes with the wall or column it is under
             ElementKind::Footing(f) => std::iter::once(f.level).chain(f.host).collect(),
+            // a sweep along a wall goes with the wall
+            ElementKind::Part(p) => std::iter::once(p.level).chain(p.host()).collect(),
             ElementKind::Room(r) => vec![r.level],
             ElementKind::RoomSeparator(s) => vec![s.level],
             // a ceiling's room is soft: without it the ceiling has no
@@ -177,6 +179,13 @@ impl Element {
             ElementKind::Stair(_) => "IfcStair",
             ElementKind::Railing(_) => "IfcRailing",
             ElementKind::Footing(_) => "IfcFooting",
+            ElementKind::Part(p) if p.void => "IfcOpeningElement",
+            ElementKind::Part(p) => &p.ifc_class,
+            ElementKind::Site(s) => match s.form {
+                crate::SiteForm::Terrain { .. } => "IfcGeographicElement",
+                crate::SiteForm::Area { .. } => "IfcCivilElement",
+                crate::SiteForm::Plant { .. } => "IfcGeographicElement",
+            },
             ElementKind::Room(_) => "IfcSpace",
             ElementKind::RoomSeparator(_) => "IfcVirtualElement",
             ElementKind::Ceiling(_) => "IfcCovering",
@@ -332,6 +341,8 @@ impl Element {
             ElementKind::Shaft(s) => s.validate(),
             ElementKind::Object(o) => o.validate(),
             ElementKind::Footing(f) => f.validate(),
+            ElementKind::Part(p) => p.validate(),
+            ElementKind::Site(s) => s.validate(),
             ElementKind::Room(r) => r.validate(),
             ElementKind::RoomSeparator(s) => s.validate(),
             ElementKind::Ceiling(c) => c.validate(),
@@ -405,6 +416,11 @@ pub enum ElementKind {
     Object(crate::objects::Object),
     /// A strip footing under a wall or a pad footing under a column.
     Footing(crate::footing::Footing),
+    /// An extrusion or a sweep of a profile, solid or a void that cuts
+    /// what it meets.
+    Part(crate::parts::Part),
+    /// Terrain, hard landscape or a plant.
+    Site(crate::site::Site),
     /// A room (IfcSpace): the space the walls close off round a point, or
     /// an outline drawn for it.
     Room(crate::room::Room),
@@ -450,6 +466,8 @@ impl ElementKind {
             ElementKind::Shaft(_) => "Shaft",
             ElementKind::Object(_) => "Object",
             ElementKind::Footing(_) => "Footing",
+            ElementKind::Part(_) => "Part",
+            ElementKind::Site(_) => "Site",
             ElementKind::Room(_) => "Room",
             ElementKind::RoomSeparator(_) => "RoomSeparator",
             ElementKind::Ceiling(_) => "Ceiling",
