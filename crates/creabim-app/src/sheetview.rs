@@ -336,7 +336,7 @@ pub fn show(
     );
     for v in views {
         if state.active != Some(v.viewport) {
-            paper::draw_with(&mut canvas, &v.drawing, &v.map, &v.weights);
+            paper::draw_looks(&mut canvas, &v.drawing, &v.map, &v.looks);
         }
         sheet::draw_view_title(&mut canvas, v);
         if selection.contains(v.viewport) && state.active.is_none() {

@@ -527,6 +527,44 @@ pub struct StylePack {
     pub title_blocks: Vec<NamedTitleBlock>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark_rules: Option<MarkRules>,
+    /// The template a view without one of its own takes, by kind.
+    #[serde(default, skip_serializing_if = "KindTemplates::is_empty")]
+    pub default_templates: KindTemplates,
+}
+
+/// A template name for each kind of view.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct KindTemplates {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<String>,
+    /// Plans that look down from above: roof and site plans.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_from_above: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elevation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub axonometric: Option<String>,
+}
+
+impl KindTemplates {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The name for a view of `v`'s kind.
+    pub fn of(&self, v: &View) -> Option<&str> {
+        use crate::ViewKind as K;
+        match &v.kind {
+            K::Plan { .. } if v.graphics.range.from_above => self.plan_from_above.as_deref(),
+            K::Plan { .. } => self.plan.as_deref(),
+            K::Section { cut: true, .. } => self.section.as_deref(),
+            K::Section { cut: false, .. } => self.elevation.as_deref(),
+            K::Axonometric { .. } => self.axonometric.as_deref(),
+            K::Schedule { .. } => None,
+        }
+    }
 }
 
 /// The two packs that ship with CreaBIM, as data.
@@ -768,6 +806,10 @@ pub struct ViewLook {
     pub overrides: Vec<Override>,
     #[serde(default, skip_serializing_if = "DepthCues::is_default")]
     pub cues: DepthCues,
+    /// Set on the copy [`resolved`] makes, which has its template laid in
+    /// already.
+    #[serde(skip)]
+    pub resolved: bool,
 }
 
 impl ViewLook {
@@ -791,14 +833,20 @@ impl ViewLook {
 }
 
 /// The view as it draws: its template's scale, style, hidden categories,
-/// pens and cues laid under its own settings. A template the pack lacks
-/// is ignored.
+/// pens and cues laid under its own settings. A view without a template
+/// takes its pack's default for its kind; a template the pack lacks is
+/// ignored.
 pub fn resolved<'a>(model: &Model, v: &'a View) -> Cow<'a, View> {
-    let Some(name) = &v.look.template else {
+    if v.look.resolved {
         return Cow::Borrowed(v);
-    };
+    }
     let pack = active_pack(model);
-    let Some(t) = pack.template(name) else {
+    let name = v
+        .look
+        .template
+        .as_deref()
+        .or_else(|| pack.default_templates.of(v));
+    let Some(t) = name.and_then(|n| pack.template(n)) else {
         return Cow::Borrowed(v);
     };
     let mut out = v.clone();
@@ -827,6 +875,7 @@ pub fn resolved<'a>(model: &Model, v: &'a View) -> Cow<'a, View> {
     if let (Some(c), true) = (t.cues, v.look.cues.is_default()) {
         out.look.cues = c;
     }
+    out.look.resolved = true;
     Cow::Owned(out)
 }
 

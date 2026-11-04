@@ -44,6 +44,14 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
   creabim sheet <model> <number> <out.svg>
                                        draw one sheet
   creabim pdf <model> <out.pdf>        export every sheet to one PDF
+  creabim apply-style <model> <pack> [--out <model>] [--pdf <out.pdf>]
+                                       load a style pack (a .json file, or a
+                                       shipped one by name: Standard, Light
+                                       linework) into the project and make it
+                                       the default; saved in place unless
+                                       --out names another file
+  creabim style-packs [out-dir]        list the shipped style packs, or write
+                                       each as a .json file to start one from
   creabim schedule <model> <doors|windows|walls|slabs|rooms> [out.csv]
                                        print or save a schedule as CSV
   creabim stats <model>                count elements by IFC class
@@ -267,6 +275,23 @@ fn main() -> ExitCode {
             }
             std::fs::write(out, sheets_pdf(&m, &info(input))).map_err(|e| e.to_string())
         }),
+        ["apply-style", input, pack, rest @ ..] => apply_style(input, pack, rest),
+        ["style-packs"] => {
+            for p in creabim_core::styles::StylePack::shipped() {
+                println!("{:16} {}", p.name, p.description);
+            }
+            Ok(())
+        }
+        ["style-packs", dir] => std::fs::create_dir_all(dir)
+            .map_err(|e| e.to_string())
+            .and_then(|_| {
+                for p in creabim_core::styles::StylePack::shipped() {
+                    let name = p.name.to_lowercase().replace(' ', "-");
+                    let path = std::path::Path::new(dir).join(format!("{name}.json"));
+                    std::fs::write(&path, p.to_json()).map_err(|e| e.to_string())?;
+                }
+                Ok(())
+            }),
         ["schedule", input, category, rest @ ..] if rest.len() <= 1 => load(input).and_then(|m| {
             let cat = creabim_core::ScheduleCategory::ALL
                 .into_iter()
@@ -407,6 +432,52 @@ fn rooms_from_notes(doc: &mut Document, out: &str) -> Result<(), String> {
     } else {
         creabim_store::save(out, doc).map_err(|e| format!("{out}: {e}"))
     }
+}
+
+/// `apply-style`: the pack into the project, one undo step, then saved and
+/// the sheets exported with it.
+fn apply_style(input: &str, pack: &str, rest: &[&str]) -> Result<(), String> {
+    use creabim_core::styles::{apply_pack, StylePack};
+    let (mut out, mut pdf) = (input.to_string(), None);
+    let mut it = rest.iter();
+    while let Some(flag) = it.next() {
+        let value = it.next().ok_or_else(|| format!("{flag} needs a value"))?;
+        match *flag {
+            "--out" => out = value.to_string(),
+            "--pdf" => pdf = Some(value.to_string()),
+            _ => return Err(format!("unknown option {flag}\n{USAGE}")),
+        }
+    }
+    let pack = match StylePack::shipped()
+        .into_iter()
+        .find(|p| p.name.eq_ignore_ascii_case(pack))
+    {
+        Some(p) => p,
+        None => std::fs::read_to_string(pack)
+            .map_err(|e| format!("{pack}: {e}"))
+            .and_then(|t| StylePack::from_json(&t).map_err(|e| format!("{pack}: {e}")))?,
+    };
+    let mut doc = if is_json(input) {
+        creabim_store::import_json(input).map_err(|e| format!("{input}: {e}"))?
+    } else {
+        creabim_store::load(input).map_err(|e| format!("{input}: {e}"))?
+    };
+    doc.commit(apply_pack(doc.model(), &pack))
+        .map_err(|e| e.to_string())?;
+    if is_json(&out) {
+        std::fs::write(&out, doc.model().to_json()).map_err(|e| e.to_string())?;
+    } else {
+        creabim_store::save(&out, &doc).map_err(|e| format!("{out}: {e}"))?;
+    }
+    println!("{}: style pack {} applied", out, pack.name);
+    if let Some(pdf) = pdf {
+        if sheets(doc.model()).is_empty() {
+            return Err("the model has no sheets".into());
+        }
+        std::fs::write(&pdf, sheets_pdf(doc.model(), &info(&out))).map_err(|e| e.to_string())?;
+        println!("{pdf}: sheets exported");
+    }
+    Ok(())
 }
 
 fn is_json(path: &str) -> bool {
