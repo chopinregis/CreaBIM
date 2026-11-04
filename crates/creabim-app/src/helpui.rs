@@ -9,9 +9,6 @@ use crate::help;
 use crate::ui_model::Item;
 use serde_json::{json, Value};
 
-/// Below this width a drop-down's label goes above it instead of beside it.
-pub(crate) const NARROW: f32 = 250.0;
-
 /// A labelled drop-down, as every Properties row is: the label at the left
 /// and the box filling the rest ([`crate::props::row`]).
 pub(crate) fn combo(_ui: &mut egui::Ui, label: &str) -> crate::props::Combo {

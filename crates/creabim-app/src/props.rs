@@ -282,11 +282,6 @@ impl Combo {
         self
     }
 
-    pub fn height(mut self, h: f32) -> Self {
-        self.inner = self.inner.height(h);
-        self
-    }
-
     pub fn show_ui<R>(
         self,
         ui: &mut Ui,

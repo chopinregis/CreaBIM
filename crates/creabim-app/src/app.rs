@@ -5142,8 +5142,40 @@ impl CreaBimApp {
             if slot.is_some() {
                 creabim_core::assembly::set_assembly(self.doc.model(), &mut edited, slot);
             }
-            let r = self.doc.edit_merged(id, label, |e| *e = edited.clone());
-            self.report(r, format!("{label}."));
+            // with several selected, the change goes to each of the same kind
+            let mut others = vec![];
+            for o in self.selection.all() {
+                let Some(other) = self.doc.model().get(o) else {
+                    continue;
+                };
+                if let Some(mut out) = crate::multiedit::apply_to(&e, &edited, other) {
+                    let slot = creabim_core::assembly::assembly_slot(&out).flatten();
+                    if slot.is_some() {
+                        creabim_core::assembly::set_assembly(self.doc.model(), &mut out, slot);
+                    }
+                    others.push((other.clone(), out));
+                }
+            }
+            let msg = if others.is_empty() {
+                format!("{label}.")
+            } else {
+                format!("{label}: {} elements.", others.len() + 1)
+            };
+            let r = if others.is_empty() {
+                self.doc.edit_merged(id, label, |e| *e = edited.clone())
+            } else {
+                let mut tx = creabim_core::Transaction::new(label);
+                if let Some(cur) = self.doc.model().get(id).cloned() {
+                    if cur != edited {
+                        tx = tx.replace(cur, edited.clone());
+                    }
+                }
+                for (b, a) in others {
+                    tx = tx.replace(b, a);
+                }
+                self.doc.commit_merged(tx)
+            };
+            self.report(r, msg);
         }
         if object_type {
             self.object_type_section(ui, id);

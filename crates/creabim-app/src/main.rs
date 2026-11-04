@@ -18,6 +18,7 @@ mod hoverpick;
 mod icons;
 mod memberstool;
 mod modal;
+mod multiedit;
 mod objecttool;
 mod optionbar;
 mod outline;
