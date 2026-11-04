@@ -889,6 +889,7 @@ dependencies = [
  "creabim-exchange",
  "creabim-geom",
  "creabim-ifc",
+ "creabim-spec",
  "creabim-store",
  "glam",
 ]
@@ -950,6 +951,16 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "uuid",
+]
+
+[[package]]
+name = "creabim-spec"
+version = "0.1.0"
+dependencies = [
+ "creabim-core",
+ "creabim-geom",
+ "glam",
+ "serde_json",
 ]
 
 [[package]]
