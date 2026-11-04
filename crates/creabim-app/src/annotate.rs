@@ -990,6 +990,52 @@ pub fn draw_grips(
     selection: &Selection,
     mm: f64,
 ) {
+    // a selected room tag: a dashed box round its lines and one square to
+    // move it by
+    let mut boxes: Vec<(ElementId, egui::Rect)> = vec![];
+    for it in items {
+        let PlanItem::Annotation { id, item } = it else {
+            continue;
+        };
+        if !selection.contains(*id) || !matches!(item.shape, Shape::Note { .. }) {
+            continue;
+        }
+        if !matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Tag(_))) {
+            continue;
+        }
+        for b in item.text_boxes() {
+            let r = egui::Rect::from_points(&b.map(|p| xf.to_screen(p)));
+            match boxes.iter_mut().find(|(i, _)| i == id) {
+                Some((_, all)) => *all = all.union(r),
+                None => boxes.push((*id, r)),
+            }
+        }
+    }
+    for (_, r) in boxes {
+        let r = r.expand(5.0);
+        let c = [
+            r.left_top(),
+            r.right_top(),
+            r.right_bottom(),
+            r.left_bottom(),
+            r.left_top(),
+        ];
+        for w in c.windows(2) {
+            painter.extend(egui::Shape::dashed_line(
+                &[w[0], w[1]],
+                Stroke::new(1.0, ACCENT),
+                4.0,
+                3.0,
+            ));
+        }
+        painter.rect(
+            egui::Rect::from_center_size(r.center_top(), Vec2::splat(8.0)),
+            1.0,
+            Color32::WHITE,
+            Stroke::new(1.5, ACCENT),
+            egui::StrokeKind::Middle,
+        );
+    }
     for it in items {
         if !selection.contains(it.id()) {
             continue;

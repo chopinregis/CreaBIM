@@ -305,6 +305,11 @@ impl CreaBimApp {
                     walls::flip_facing(o);
                     true
                 }
+                // furniture turns round about its middle
+                ElementKind::Object(_) if !hand => {
+                    crate::handles::turn_object(model, &mut after, 180.0);
+                    true
+                }
                 _ => false,
             };
             if changed {
