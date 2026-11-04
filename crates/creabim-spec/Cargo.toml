@@ -1,0 +1,14 @@
+[package]
+name = "creabim-spec"
+description = "The open JSON model format: a documented, versioned description of levels, walls, openings, slabs, roofs, views and sheets that builds a CreaBIM model, and the export back to it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+creabim-core.workspace = true
+creabim-geom.workspace = true
+glam.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"] }
