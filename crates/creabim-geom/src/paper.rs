@@ -4,7 +4,8 @@
 
 use crate::annotate::{dimension_geometry, tag_geometry};
 use crate::annotation::{Ends, Marks, TextLook};
-use crate::plan::{hatch_lines, Hatch, Pen, PlanItem, PlanView};
+use crate::looks::Looks;
+use crate::plan::{Hatch, Pen, PlanItem, PlanView};
 use crate::raster::Raster;
 use creabim_core::{Font, LineWeights};
 use glam::DVec2;
@@ -202,13 +203,18 @@ pub fn draw(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap) {
 
 /// [`draw`] with a view's own line weights.
 pub fn draw_with(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, w: &LineWeights) {
+    draw_looks(canvas, drawing, map, &crate::looks::Looks::plain(*w));
+}
+
+/// [`draw`] with a view's looks: its pens, and its style pack's object
+/// styles, patterns and overrides.
+pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, looks: &Looks) {
     let to = |p: DVec2| map.to_paper(p);
-    let pen_stroke = |pen: Pen| pen_stroke_with(pen, w);
-    let hatch_stroke = Stroke {
-        width: w.hatch,
-        ..HATCH
-    };
-    for it in &drawing.items {
+    if looks.has_surfaces() {
+        let drawn = drawing.items.iter().map(|it| it.id()).collect();
+        looks.surfaces(canvas, &drawn, map);
+    }
+    for it in looks.order(&drawing.items) {
         match it {
             // guides and underlays are for working, not for print
             PlanItem::Line {
@@ -218,13 +224,7 @@ pub fn draw_with(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, w:
             | PlanItem::Arc {
                 pen: Pen::Underlay, ..
             } => {}
-            PlanItem::Fill { points, hatch, .. } => {
-                let pts: Vec<DVec2> = points.iter().map(|p| to(*p)).collect();
-                canvas.fill(&pts, hatch_fill(*hatch));
-                for (a, b) in hatch_lines(*hatch, points, HATCH_SPACING / map.k()) {
-                    canvas.line(&[to(a), to(b)], hatch_stroke);
-                }
-            }
+            PlanItem::Fill { id, points, hatch } => looks.fill(canvas, *id, points, *hatch, map),
             PlanItem::Tint { points, rgb, .. }
             | PlanItem::Room {
                 points,
@@ -235,25 +235,25 @@ pub fn draw_with(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, w:
                 canvas.tint(&pts, *rgb);
             }
             PlanItem::Room { rgb: None, .. } => {}
-            PlanItem::Shade { points, rgb, .. } => {
-                let pts: Vec<DVec2> = points.iter().map(|p| to(*p)).collect();
-                canvas.fill_rgb(&pts, *rgb);
-            }
-            PlanItem::Polygon { pen, points, .. } => {
-                let pts: Vec<DVec2> = points.iter().map(|p| to(*p)).collect();
+            PlanItem::Shade { id, points, rgb } => looks.shade(canvas, *id, points, *rgb, map),
+            PlanItem::Polygon { id, pen, points } => {
                 if *pen == Pen::Cut {
-                    canvas.fill(&pts, hatch_fill(Hatch::Solid));
+                    looks.fill(canvas, *id, points, Hatch::Solid, map);
                 }
-                canvas.polygon(&pts, pen_stroke(*pen));
+                let mut pts: Vec<DVec2> = points.iter().map(|p| to(*p)).collect();
+                if let Some(first) = pts.first() {
+                    pts.push(*first);
+                }
+                looks.line(canvas, *id, *pen, &pts);
             }
-            PlanItem::Line { pen, a, b, .. } => canvas.line(&[to(*a), to(*b)], pen_stroke(*pen)),
+            PlanItem::Line { id, pen, a, b } => looks.line(canvas, *id, *pen, &[to(*a), to(*b)]),
             PlanItem::Arc {
+                id,
                 pen,
                 center,
                 radius,
                 start,
                 end,
-                ..
             } => {
                 let pts: Vec<DVec2> = (0..=24)
                     .map(|i| {
@@ -261,7 +261,7 @@ pub fn draw_with(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, w:
                         to(*center + DVec2::from_angle(t) * *radius)
                     })
                     .collect();
-                canvas.line(&pts, pen_stroke(*pen));
+                looks.line(canvas, *id, *pen, &pts);
             }
             PlanItem::Label { at, text, .. } => {
                 let p = to(*at);

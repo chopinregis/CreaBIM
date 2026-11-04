@@ -612,6 +612,9 @@ impl CreaBimApp {
             Item::new("marks", "Mark numbering…")
                 .icon("tag")
                 .hint("How doors, windows and other elements are numbered: prefixes, digits, level-based marks, order. Renumber, and check for marks used twice."),
+            Item::new("graphicstyles", "Graphic styles…")
+                .icon("palette")
+                .hint("Style packs: pens by scale, object styles, hatch patterns and view templates. Load an office's pack to restyle every drawing."),
             Item::new("styles", "Annotation styles…")
                 .icon("anno-styles")
                 .hint("Named styles for dimensions, notes and tags: text, ends, tag shape, colour"),
@@ -1246,6 +1249,7 @@ impl CreaBimApp {
             }
             "units" => self.levels.units_open = true,
             "marks" => self.marks.open = true,
+            "graphicstyles" => self.gstyles.open = true,
             "underlay" => {
                 if let Some((view, level)) = self.active_plan() {
                     let u = match arg {

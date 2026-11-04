@@ -103,8 +103,9 @@ fn is_default_category_pens(v: &[CategoryPen]) -> bool {
 }
 
 /// How far a plan looks, about its cut plane (which stays the plan's
-/// `cut_height`). Only the depth below the floor is kept so far; a top and
-/// a bottom, each relative to a level, can join it.
+/// `cut_height`): its view range. With none of `top`, `bottom` and
+/// `beyond` set it draws its own level only, as plans always did; with
+/// any of them it draws every level's elements within the range.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PlanRange {
     /// How far below its level's floor the plan looks, in metres: what
@@ -114,11 +115,56 @@ pub struct PlanRange {
     /// *beyond*. None looks down to the level below.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub view_depth: Option<f64>,
+    /// The top of the range: levels starting above it are left out. None
+    /// is the next level up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top: Option<RangeLimit>,
+    /// The bottom of the range: levels from here up to the cut are drawn,
+    /// cut or in projection. None is the plan's own level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bottom: Option<RangeLimit>,
+    /// The view depth as a plane: levels between it and the bottom are
+    /// drawn in the lighter *beyond* style. None draws nothing beyond.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beyond: Option<RangeLimit>,
+    /// Draw what is above the cut, up to the top, dashed: roof edges,
+    /// beams, the floor over a void.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub overhead: bool,
+    /// Look down from the top of the range with nothing cut, upper slabs
+    /// and roofs hiding what is under them: a roof or site plan.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub from_above: bool,
+}
+
+/// A height given by a level and an offset from it, so it moves with the
+/// level. A level that is gone counts as the plan's own.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RangeLimit {
+    pub level: crate::ElementId,
+    #[serde(default)]
+    pub offset: f64,
+}
+
+impl RangeLimit {
+    /// The height it stands for, with `own` the plan's level elevation.
+    pub fn z(&self, model: &crate::Model, own: f64) -> f64 {
+        model.level(self.level).map_or(own, |l| l.elevation) + self.offset
+    }
 }
 
 impl PlanRange {
     pub fn is_default(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// Does it reach past its own level (or look from above)?
+    pub fn spans_levels(&self) -> bool {
+        self.top.is_some()
+            || self.bottom.is_some()
+            || self.beyond.is_some()
+            || self.overhead
+            || self.from_above
     }
 }
 
