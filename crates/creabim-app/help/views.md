@@ -34,7 +34,7 @@ With nothing selected, *Properties* shows the same and more, such as the view's 
 
 Plans follow the usual conventions of permit drawings:
 
-- **Line weights** step down from heavy to light: cut walls, columns and footings are heaviest, then what is seen below the cut (slab edges, the stair), then symbols (door leaves and swings, window frames), then furniture and fixtures, then hatching. Lines overhead (beams, wall cupboards) are light and dashed. The weights suit the view's scale: heavier at 1:50, lighter at 1:100.
+- **Line weights** step down from heavy to light: cut walls, columns and footings are heaviest, then what is seen below the cut (slab edges, the stair), then symbols (door leaves and swings, window frames), then furniture and fixtures, then hatching. Lines overhead (beams, wall cupboards) are light and dashed. The weights suit the view's scale: heavier at 1:50, lighter at 1:100. They come from the project's [style pack](graphic-styles).
 - **Below the cut**, furniture, fittings and imported meshes get a light tint of their material's colour under their lines.
 - **Joins**: cut walls and footings of the same material that touch or overlap merge into one outline, with no lines inside.
 - **Stairs**: on its own level, a stair is drawn up to a break line where the plan cuts it. On the level above, the stair is seen through its well, with *DN*, and the well is not crossed over it. A void's cross runs corner to corner in each part of the opening, so an L-shaped well gets a cross in each leg. On the stair's own level the well above is a dashed outline.
@@ -47,8 +47,9 @@ A plan's *Properties* has a *Graphics* group:
 
 - *Tint what lies below the cut*, its *Strength*, and *In grey, not material colours*.
 - *View depth*: how far below its floor the plan looks through holes in the floor, such as a stair well. Between the floor and the cut is *below* the cut, drawn in projection. Under the floor, down to the view depth, is *beyond*. By default the plan looks down to the level below.
-- *Pens by category*: the pen each category's lines take, for example furniture in the fine pen. *As drawn* keeps the category's usual pens.
-- *Line weights from the scale*: untick it to set each pen's width in millimetres on paper (cut, projection, symbols, furniture and fixtures, hatching, hidden). Sheets, PDF and SVG use the same weights.
+- *Line weights from the style pack*: untick it to set each pen's width in millimetres on paper (cut, projection, symbols, furniture and fixtures, hatching, hidden) for this view only. Sheets, PDF and SVG use the same weights.
+- The pen, colour, pattern and hatch of each category are **object styles** of the project's style pack, and a view can override them: see [Graphic styles](graphic-styles).
+- *View range*: what levels a plan draws, and the roof or site plan seen from above: see [View range](view-range).
 
 ## Ordering the browser
 

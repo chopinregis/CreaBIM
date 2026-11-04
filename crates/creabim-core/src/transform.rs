@@ -380,6 +380,7 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         | ElementKind::SheetTemplate(_)
         | ElementKind::Units(_)
         | ElementKind::MarkRules(_)
+        | ElementKind::StylePack(_)
         | ElementKind::Cut(_)
         | ElementKind::Join(_)
         | ElementKind::Detail(_)

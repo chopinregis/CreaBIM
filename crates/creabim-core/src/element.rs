@@ -109,7 +109,7 @@ impl Element {
             // a missing style falls back to the default look, like materials
             ElementKind::TextStyle(_) => vec![],
             ElementKind::SheetTemplate(_) => vec![],
-            ElementKind::Units(_) | ElementKind::MarkRules(_) => vec![],
+            ElementKind::Units(_) | ElementKind::MarkRules(_) | ElementKind::StylePack(_) => vec![],
             // types are soft too: an element whose type is gone keeps its values
             ElementKind::ElementType(_) => vec![],
             // a shaft's top level is soft: without it the shaft stops at
@@ -171,6 +171,7 @@ impl Element {
             ElementKind::SheetTemplate(_) => "SheetTemplate",
             ElementKind::Units(_) => "ProjectUnits",
             ElementKind::MarkRules(_) => "MarkRules",
+            ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::Sketch(_) => "Sketch",
             ElementKind::Cut(_) => "Cut",
@@ -340,6 +341,7 @@ impl Element {
             ElementKind::SheetTemplate(t) => t.validate(),
             ElementKind::Units(_) => Ok(()),
             ElementKind::MarkRules(r) => r.validate(),
+            ElementKind::StylePack(p) => p.validate(),
             ElementKind::CropBox(c) => c.validate(),
             ElementKind::Assembly(a) => a.validate(),
             ElementKind::ElementType(t) => t.validate(),
@@ -417,6 +419,10 @@ pub enum ElementKind {
     /// The project's mark numbering rules: at most one per project, read
     /// through [`crate::marks::rules`].
     MarkRules(crate::marks::MarkRules),
+    /// A style pack: object styles, patterns, pens and view templates.
+    /// The one marked default is what the project draws with, read through
+    /// [`crate::styles::active_pack`].
+    StylePack(Box<crate::styles::StylePack>),
     /// A box that crops a 3D view (Revit's section box).
     CropBox(crate::cropbox::CropBox),
     /// A named set of shared parameters (a wall type, a door type...) that
@@ -478,6 +484,7 @@ impl ElementKind {
             ElementKind::Assembly(_) => "Assembly",
             ElementKind::Units(_) => "Units",
             ElementKind::MarkRules(_) => "MarkRules",
+            ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::ElementType(_) => "ElementType",
             ElementKind::Shaft(_) => "Shaft",
@@ -566,6 +573,10 @@ pub struct Material {
     /// 1 is opaque; glass is around 0.3.
     #[serde(default = "one_f32", skip_serializing_if = "is_one")]
     pub opacity: f32,
+    /// A hatch pattern of the project's style pack, by name, for its cut
+    /// faces; none uses the built-in pattern `hatch` names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
 }
 
 /// The roughness of a material that doesn't say: matte, like most
@@ -598,6 +609,7 @@ impl Default for Material {
             roughness: DEFAULT_ROUGHNESS,
             metallic: 0.0,
             opacity: 1.0,
+            pattern: None,
         }
     }
 }
@@ -1384,6 +1396,10 @@ pub struct View {
     /// heads where the automatic layout puts them.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub level_heads: BTreeMap<ElementId, LevelHead>,
+    /// Its view template, graphic overrides and depth cues, over the
+    /// project's style pack.
+    #[serde(default, skip_serializing_if = "crate::styles::boxed_look_is_default")]
+    pub look: Box<crate::styles::ViewLook>,
 }
 
 /// Where a detail view comes from: the box `lo`..`hi` (drawing
@@ -1609,6 +1625,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             level_heads: BTreeMap::new(),
+            look: Default::default(),
         }
     }
 
@@ -1632,6 +1649,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             level_heads: BTreeMap::new(),
+            look: Default::default(),
         }
     }
 }
@@ -1652,6 +1670,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             level_heads: BTreeMap::new(),
+            look: Default::default(),
         }
     }
 
@@ -1673,6 +1692,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             level_heads: BTreeMap::new(),
+            look: Default::default(),
         }
     }
 
@@ -1693,6 +1713,7 @@ impl View {
             graphics: parent.graphics.clone(),
             callout: Some(Callout::new(parent_id, a, b)),
             level_heads: BTreeMap::new(),
+            look: Default::default(),
         }
     }
 

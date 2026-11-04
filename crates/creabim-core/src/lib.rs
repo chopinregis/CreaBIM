@@ -40,6 +40,7 @@ pub mod site;
 pub mod sketch;
 pub mod slab;
 pub mod starter;
+pub mod styles;
 pub mod titleblock;
 pub mod transform;
 pub mod types;

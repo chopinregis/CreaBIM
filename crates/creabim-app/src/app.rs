@@ -53,6 +53,8 @@ mod objectsui;
 mod selectsimilar;
 #[path = "shell.rs"]
 mod shell;
+#[path = "stylesui.rs"]
+mod stylesui;
 #[path = "typepreview.rs"]
 mod typepreview;
 #[path = "typesui.rs"]
@@ -124,6 +126,8 @@ pub struct CreaBimApp {
     sheet: SheetState,
     /// Generated drawings by view, with the model revision they were made at.
     drawings: HashMap<ElementId, (u64, Drawing)>,
+    /// Each view's looks on sheets, with the model revision they are for.
+    looks: HashMap<ElementId, (u64, std::sync::Arc<creabim_geom::looks::Looks>)>,
     /// The same for views seen in X-ray, which their sheets don't follow.
     xray_drawings: HashMap<ElementId, (u64, Drawing)>,
     camera: OrbitCamera,
@@ -189,6 +193,7 @@ pub struct CreaBimApp {
     /// The Levels manager and the Project units dialog.
     levels: levelsui::LevelsUi,
     marks: marksui::MarksUi,
+    gstyles: stylesui::StylesUi,
     /// The Copy to levels and Move to level windows.
     level_copy: levelcopy::LevelCopyUi,
     /// What the last IFC import brought across, and what it couldn't.
@@ -235,6 +240,7 @@ impl CreaBimApp {
             active_view: None,
             sheet: SheetState::default(),
             drawings: HashMap::new(),
+            looks: HashMap::new(),
             xray_drawings: HashMap::new(),
             camera: OrbitCamera::default(),
             aspect: 0.65,
@@ -272,6 +278,7 @@ impl CreaBimApp {
             catalogue: Default::default(),
             levels: Default::default(),
             marks: Default::default(),
+            gstyles: Default::default(),
             level_copy: Default::default(),
             import_report: None,
             drafting: Default::default(),
@@ -294,6 +301,7 @@ impl CreaBimApp {
         self.active_view = None;
         self.sheet = SheetState::default();
         self.drawings.clear();
+        self.looks.clear();
         self.xray_drawings.clear();
         self.plan.xray.clear();
         self.plan.hover = None;
@@ -550,9 +558,22 @@ impl CreaBimApp {
             self.drawing(id);
         }
         let cache = &self.drawings;
-        sheets::placed_views(self.doc.model(), sheet, &mut |v| {
-            cache.get(&v).map(|(_, d)| d.clone())
-        })
+        let model = self.doc.model();
+        let rev = model.revision();
+        let looks = &mut self.looks;
+        sheets::placed_views_with(
+            model,
+            sheet,
+            &mut |v| cache.get(&v).map(|(_, d)| d.clone()),
+            &mut |id, v| match looks.get(&id) {
+                Some((r, l)) if *r == rev => l.clone(),
+                _ => {
+                    let l = std::sync::Arc::new(creabim_geom::looks::Looks::for_view(model, id, v));
+                    looks.insert(id, (rev, l.clone()));
+                    l
+                }
+            },
+        )
     }
 
     /// Every view in the model, plans first, in model order.
@@ -3829,6 +3850,8 @@ impl CreaBimApp {
                         }
                     }
                 }
+                // its range, template and overrides
+                self.view_graphics_sections(ui, v);
             }
             ui.add_space(8.0);
             self.visibility_panel(ui, gridvis::VisTarget::Window3d, Some("3D view"));
@@ -4635,6 +4658,12 @@ impl CreaBimApp {
                         self.marks.open = true;
                     }
                 }
+                ElementKind::StylePack(p) => {
+                    ui.label(egui::RichText::new(p.description.clone()).weak());
+                    if ui.button("Graphic styles…").clicked() {
+                        self.gstyles.open = true;
+                    }
+                }
                 ElementKind::TextStyle(s) => {
                     if let Some(l) = crate::annotate::style_ui(ui, s) {
                         label = l;
@@ -5116,6 +5145,9 @@ impl CreaBimApp {
         if show_visibility {
             ui.add_space(6.0);
             self.visibility_panel(ui, gridvis::VisTarget::View(id), None);
+            self.view_graphics_sections(ui, id);
+        } else {
+            self.element_override_section(ui, id);
         }
         if creabim_core::joins::joinable(&e.kind) {
             ui.add_space(6.0);
@@ -5357,6 +5389,7 @@ impl eframe::App for CreaBimApp {
         self.templates_window(&ctx);
         self.units_window(&ctx);
         self.marks_window(&ctx);
+        self.graphic_styles_window(&ctx);
         self.ground_spacing_window(&ctx);
         self.import_report_window(&ctx);
         self.help_window(&ctx);
@@ -5599,6 +5632,7 @@ fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::SheetTemplate(_) => "sheet template",
         ElementKind::Units(_) => "project units",
         ElementKind::MarkRules(_) => "mark numbering",
+        ElementKind::StylePack(_) => "style pack",
         ElementKind::View(_) => "view",
         ElementKind::Sheet(_) => "sheet",
         ElementKind::Viewport(_) => "placed view",
@@ -5749,8 +5783,8 @@ fn plan_graphics_ui(
     }
     let mut auto = g.weights.is_none();
     if ui
-        .checkbox(&mut auto, "Line weights from the scale")
-        .on_hover_text("Heavier pens at 1:50 and larger, lighter at 1:100 and smaller.")
+        .checkbox(&mut auto, "Line weights from the style pack")
+        .on_hover_text("The style pack's pens for the view's scale: in the Standard pack, heavier at 1:50 and larger, lighter at 1:100 and smaller.")
         .changed()
     {
         g.weights = if auto {
@@ -5760,38 +5794,23 @@ fn plan_graphics_ui(
         };
         label = Some("Line weights");
     }
-    egui::CollapsingHeader::new("Pens by category")
-        .id_salt("plan_category_pens")
-        .show(ui, |ui| {
-            use creabim_core::graphics::{CategoryPen, PenClass};
-            use creabim_core::Category as C;
-            for c in [
-                C::Objects,
-                C::Railings,
-                C::Stairs,
-                C::Slabs,
-                C::Roofs,
-                C::FreeMeshes,
-            ] {
-                let current = g.pen_of(c);
-                let mut pick = current;
-                egui::ComboBox::from_label(c.label())
-                    .selected_text(current.map_or("As drawn", |p| p.label()))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut pick, None, "As drawn");
-                        for p in PenClass::ALL {
-                            ui.selectable_value(&mut pick, Some(p), p.label());
-                        }
-                    });
-                if pick != current {
-                    g.category_pens.retain(|x| x.category != c);
-                    if let Some(pen) = pick {
-                        g.category_pens.push(CategoryPen { category: c, pen });
-                    }
-                    label = Some("Pens by category");
-                }
+    // pens by category are object styles now; a view's own from before
+    // still draws, and can be cleared
+    if g.category_pens != creabim_core::graphics::default_category_pens() {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new("This view has pens by category of its own.").weak());
+            if ui
+                .small_button("Use the style pack's")
+                .on_hover_text(
+                    "Object styles in File, Graphic styles set each category's pens for every view",
+                )
+                .clicked()
+            {
+                g.category_pens = creabim_core::graphics::default_category_pens();
+                label = Some("Pens by category");
             }
         });
+    }
     if let Some(w) = &mut g.weights {
         for (name, v) in w.fields_mut() {
             ui.horizontal(|ui| {

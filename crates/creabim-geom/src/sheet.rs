@@ -27,6 +27,9 @@ pub struct PlacedView {
     pub drawing: Drawing,
     /// The pens it is drawn with: its view's line weights.
     pub weights: creabim_core::LineWeights,
+    /// Those pens with the object styles, patterns and overrides of the
+    /// project's style pack and the view.
+    pub looks: std::sync::Arc<crate::looks::Looks>,
     /// The drawing's extent on paper, mm.
     pub bounds: (DVec2, DVec2),
 }
@@ -95,6 +98,19 @@ pub fn placed_views(
     sheet: ElementId,
     drawing: &mut dyn FnMut(ElementId) -> Option<Drawing>,
 ) -> Vec<PlacedView> {
+    placed_views_with(model, sheet, drawing, &mut |id, v| {
+        std::sync::Arc::new(crate::looks::Looks::for_view(model, id, v))
+    })
+}
+
+/// [`placed_views`] with `looks` supplying each view's looks (given the
+/// view as its template resolves it), so callers can cache those too.
+pub fn placed_views_with(
+    model: &Model,
+    sheet: ElementId,
+    drawing: &mut dyn FnMut(ElementId) -> Option<Drawing>,
+    looks: &mut dyn FnMut(ElementId, &View) -> std::sync::Arc<crate::looks::Looks>,
+) -> Vec<PlacedView> {
     let mut out = Vec::new();
     for e in model.iter() {
         let ElementKind::Viewport(vp) = &e.kind else {
@@ -106,6 +122,9 @@ pub fn placed_views(
         let (Some(view), Some(mut d)) = (view_of(model, vp.view), drawing(vp.view)) else {
             continue;
         };
+        // its scale and pens as its view template gives them
+        let view = creabim_core::styles::resolved(model, view);
+        let looks = looks(vp.view, &view);
         if let Some([lo, hi]) = vp.crop {
             d = crate::crop::crop(&d, lo, hi);
         }
@@ -128,7 +147,8 @@ pub fn placed_views(
                 .unwrap_or_default(),
             map,
             drawing: d,
-            weights: view.graphics.weights_at(view.paper_scale()),
+            weights: looks.weights,
+            looks,
             bounds,
         });
     }
@@ -496,7 +516,7 @@ pub fn draw_sheet(
     let title = model.get(sheet).map(|e| e.name.as_str()).unwrap_or("");
     draw_frame(c, model, s, title, &scale_text(model, views), info);
     for v in views {
-        paper::draw_with(c, &v.drawing, &v.map, &v.weights);
+        paper::draw_looks(c, &v.drawing, &v.map, &v.looks);
         draw_view_title(c, v);
     }
     draw_sheet_notes(c, model, sheet);

@@ -532,7 +532,7 @@ fn revealable(model: &Model) -> HashSet<ElementId> {
 /// `reveal` elements that are hidden because they are inside another
 /// element (behind its near face and in front of its far one) come back
 /// dashed, as [`Pen::Hidden`].
-fn hidden_lines(
+pub(crate) fn hidden_lines(
     scene: &[SceneItem],
     project: &dyn Fn(DVec3) -> DVec3,
     depth: f64,
@@ -616,6 +616,9 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     let ElementKind::View(v) = &e.kind else {
         return None;
     };
+    // as its view template has it
+    let resolved = creabim_core::styles::resolved(model, v);
+    let v = resolved.as_ref();
     let reveal = v.show_hidden || xray;
     let style = v.style;
     // what the view leaves out: gone from the model it is drawn from, and
@@ -640,8 +643,13 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         })
         .unwrap_or(&v.kind);
     let mut d = match kind {
+        // seen from above, nothing is cut: no rooms, no underlay
+        creabim_core::ViewKind::Plan { level, cut_height } if v.graphics.range.from_above => {
+            crate::ranges::plan(model, v, *level, *cut_height)
+        }
         creabim_core::ViewKind::Plan { level, cut_height } => {
-            let mut d = crate::plan::plan_view_with(model, *level, *cut_height, &v.graphics);
+            // with the other levels its range reaches
+            let mut d = crate::ranges::plan(model, v, *level, *cut_height);
             if reveal {
                 crate::plan::reveal_covered(model, &mut d.items);
             }

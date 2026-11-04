@@ -1,0 +1,66 @@
+# Graphic styles
+
+How every drawing looks is data in the project, not built into CreaBIM: pen widths for each scale, how each category of element draws (its **object style**), the hatch patterns of cut faces, and **view templates**. All of it is kept together as a **style pack**, a `.json` file an office can keep its drawing standard in. Load another pack and every view and sheet is restyled.
+
+## Style packs
+
+Open *File › Graphic styles…*.
+
+- The *Style pack* list shows the packs in the project. The one ticked is the default: the project draws with it.
+- *Add a shipped pack*: CreaBIM comes with two, *Standard* (its usual look: black linework, grey poché, the usual hatches) and *Light linework* (fine pens, pale blue-grey poché, furniture in grey, sections fading with depth, sun shadows on plans from above).
+- *Load pack…* reads a `.json` pack and makes it the default. A pack of the same name is replaced. The pack's text styles, title blocks and mark numbering replace the project's of the same names.
+- *Save pack as…* writes the pack to a file, to use in another project or to share.
+
+A project without a pack draws with the *Standard* pack. Loading a pack is one undo step.
+
+On the command line, `creabim apply-style <project> <pack> --pdf sheets.pdf` loads a pack (a file, or *Standard* or *Light linework*) into a project and exports its sheets. `creabim style-packs <folder>` writes the shipped packs as files to start your own from.
+
+## Object styles
+
+The *Object styles* page has a row for each category: walls, slabs, roofs, columns, doors, windows, furniture and so on.
+
+- *Projection*: the weight of its lines seen below the cut or in elevation. *Cut*: the weight of its outline where the view cuts it. Each is *As drawn* (CreaBIM's pen), one of the pens (so it follows the scale), or a width in millimetres.
+- *Colour*: a line colour of its own.
+- *Line*: *Solid*, *Dashed*, *Dotted*, *Centre* or *Dash dot*.
+- *Cut fill*: the colour behind its cut hatch. *Cut pattern*: a pattern for its cut faces; *Material's* keeps each material's own.
+
+The pack's file can also set a style for one category in one material, a surface fill and pattern (a roof seen from above, or a hard landscape area), the draw order and transparency.
+
+A hard landscape area keeps the paving pattern set on it. The Site style's surface fill goes under every area. Its surface pattern is drawn only on areas whose own pattern is *None*.
+
+## Pens
+
+The *Pens* page lists the pen widths, in millimetres on paper, for each range of scales. A drawing takes the first table its scale fits: with *Up to 1:75* and *Up to 1:100000*, a 1:50 plan takes the first and a 1:100 plan the second.
+
+## Patterns
+
+A hatch pattern is one or more families of parallel lines (an angle, a spacing, an offset, a stagger and dashes, where a dash of 0 is a dot), or a small tile repeated, over a background colour.
+
+- *on paper (mm)*: the pattern is the same size at any scale, like fixed-size dots.
+- *true size (m)*: the pattern is drawn to the model's size, like brick coursing or tiles.
+
+A material's cut faces take the pattern its *Hatch* names (*Brick*, *Concrete*…). A pack pattern with the same name replaces that built-in for every material using it. A material can also name any pattern of the pack.
+
+## View templates
+
+A view template is a named bundle: scale, style, the categories its views leave out, pens of its own, distance fading and sun shadows. Every view that uses it changes when it changes.
+
+- Give a view a template under *Template and overrides* in its *Properties*, or select views in the project browser and use *Give it to the N selected views* on the *View templates* page.
+- *Views without a template take* names the template a view of each kind gets from the pack when it has none of its own.
+- Views name their template, so loading another pack with templates of the same names restyles them.
+
+## Overrides
+
+A view can change how a category or one element draws in it only, over the object styles.
+
+- In a view's *Properties*, under *Template and overrides*, *Add a category…* adds an override: *Halftone*, *No hatch*, a *Weight*, a *Line* pattern or a *Colour*.
+- For one element, select it with the view open: *In <view>* in its *Properties* has the same fields, for example the boundary wall dashed in the site plan only.
+
+## Depth cues
+
+Under *Template and overrides*:
+
+- *Fade with distance*: in sections, elevations and plans from above, lines and fills further from the cut or the viewer draw lighter.
+- *Sun shadows*: in plans from above, each element casts a shadow on the ground, *Toward* a direction, with a *Length* for each metre of height and a *Strength*.
+
+Cut elements always take the heavy cut pen.
