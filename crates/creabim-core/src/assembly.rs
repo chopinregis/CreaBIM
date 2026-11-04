@@ -108,6 +108,11 @@ pub struct Layer {
     pub material: Option<ElementId>,
     /// In metres.
     pub thickness: f64,
+    /// Where elements meet, which layers run through which: lower runs
+    /// through higher. `None` takes its function's
+    /// ([`crate::joins::layer_priority`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<u8>,
 }
 
 impl Layer {
@@ -116,7 +121,13 @@ impl Layer {
             function,
             material,
             thickness,
+            priority: None,
         }
+    }
+
+    /// Its join priority: its own, or its function's.
+    pub fn join_priority(&self) -> u8 {
+        crate::joins::layer_priority(self.function, self.priority)
     }
 }
 
@@ -279,6 +290,8 @@ pub struct Band {
     pub material: Option<ElementId>,
     pub function: LayerFunction,
     pub core: bool,
+    /// Its join priority ([`Layer::join_priority`]).
+    pub priority: u8,
 }
 
 /// A wall's layers across it, exterior first. The exterior is on the
@@ -303,6 +316,7 @@ pub fn wall_bands(a: &Assembly, wall: &Wall) -> Vec<Band> {
                 material: l.material,
                 function: l.function,
                 core: a.is_core(i),
+                priority: l.join_priority(),
             }
         })
         .collect()
@@ -330,6 +344,7 @@ pub fn depth_bands(a: &Assembly, thickness: f64) -> Vec<Band> {
             material: l.material,
             function: l.function,
             core: a.is_core(i),
+            priority: l.join_priority(),
         })
         .collect()
 }

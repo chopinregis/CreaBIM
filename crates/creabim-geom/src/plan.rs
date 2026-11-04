@@ -164,12 +164,9 @@ fn scan_lines(polygon: &[DVec2], angle: f64, spacing: f64, phase: f64) -> Vec<(D
 
 /// Which cut wins where two overlap: higher numbers cut through lower ones.
 fn cut_priority(model: &Model, id: ElementId) -> u8 {
-    match model.get(id).map(|e| &e.kind) {
-        Some(ElementKind::Column(_)) => 3,
-        Some(ElementKind::Wall(_)) => 2,
-        Some(ElementKind::Slab(_)) => 1,
-        _ => 0,
-    }
+    model
+        .get(id)
+        .map_or(0, |e| creabim_core::joins::category_rank(&e.kind))
 }
 
 /// Elements of the same material (or, without materials, the same type)
@@ -193,14 +190,60 @@ pub struct CutPiece {
     pub layer: Option<crate::scene::LayerPart>,
 }
 
-impl CutPiece {
-    /// Which cut wins where two overlap: a wall's core cuts through
-    /// another wall's finishes, walls through slabs, columns through all.
-    fn priority(&self, model: &Model) -> u8 {
-        let core = self.layer.is_none_or(|l| l.core);
-        cut_priority(model, self.id) * 2 + u8::from(core)
+/// What decides which cut wins where two overlap: the junction rules set
+/// by hand, and the order elements were drawn in.
+struct Joining {
+    rules: Vec<creabim_core::JoinRule>,
+    order: std::collections::HashMap<ElementId, usize>,
+}
+
+impl Joining {
+    fn of(model: &Model) -> Self {
+        Self {
+            rules: creabim_core::joins::rules(model),
+            order: model.iter().enumerate().map(|(i, e)| (e.id, i)).collect(),
+        }
     }
 
+    /// Does `a` cut through `b` where they overlap? By the junction's own
+    /// rule if it has one, else layer by layer: the layer with the lower
+    /// join priority runs through (cores join cores, finishes stop at the
+    /// structure), then columns through walls through slabs, then the
+    /// element drawn first. An element without layers is all structure.
+    fn cuts(&self, model: &Model, a: &CutPiece, b: &CutPiece) -> bool {
+        if a.id == b.id {
+            return false;
+        }
+        if let Some(r) = self.rules.iter().find(|r| r.joins(a.id, b.id)) {
+            if !r.cleanup {
+                return false;
+            }
+            if let Some(w) = r.wins(a.id, b.id) {
+                return w;
+            }
+        }
+        let strength = |p: &CutPiece| {
+            (
+                std::cmp::Reverse(p.layer.map_or(1, |l| l.priority)),
+                cut_priority(model, p.id),
+            )
+        };
+        let (sa, sb) = (strength(a), strength(b));
+        if sa != sb {
+            return sa > sb;
+        }
+        // as strong: the same material merges into one mass where they
+        // overlap (see the outlines below); different ones are told
+        // apart by the order they were drawn in
+        if a.key(model) == b.key(model) {
+            return false;
+        }
+        let order = |p: &CutPiece| self.order.get(&p.id).copied().unwrap_or(usize::MAX);
+        order(a) < order(b)
+    }
+}
+
+impl CutPiece {
     /// What it merges with: the same material, or for a layer without
     /// one, layers of the same function (air gaps run on into each other).
     fn key(&self, model: &Model) -> (Option<ElementId>, u8) {
@@ -382,14 +425,15 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
         _ => true,
     });
     cuts.extend(layers);
-    // where cuts overlap, the higher-priority element cuts through the
-    // other: a wall runs through the end of the slab that sits in it
+    // where cuts overlap, the stronger cuts through the other (see
+    // `Joining::cuts`): a wall runs through the end of the slab that sits
+    // in it, and the slab's structure through the wall's plaster
+    let joining = Joining::of(model);
     let mut polys: Vec<CutPiece> = Vec::new();
     for c in &cuts {
         let mut pieces = vec![c.points.clone()];
-        let mine = c.priority(model);
         for other in &cuts {
-            if other.priority(model) <= mine || other.id == c.id || !is_convex(&other.points) {
+            if !joining.cuts(model, other, c) || !is_convex(&other.points) {
                 continue;
             }
             let hole = &other.points;
@@ -1011,12 +1055,7 @@ pub fn plan_view_with(
                                     at(b, band.s1),
                                     at(a, band.s1),
                                 ],
-                                layer: Some(crate::scene::LayerPart {
-                                    index: band.index,
-                                    material: band.material,
-                                    function: band.function,
-                                    core: band.core,
-                                }),
+                                layer: Some(crate::scene::LayerPart::of(&band)),
                             });
                         }
                     }
@@ -1122,7 +1161,8 @@ pub fn plan_view_with(
                     });
                 }
             }
-            ElementKind::View(v) => {
+            // a callout's detail view is marked by its box, not its line
+            ElementKind::View(v) if v.callout.is_none() => {
                 if let creabim_core::ViewKind::Section {
                     start, end, cut, ..
                 } = &v.kind

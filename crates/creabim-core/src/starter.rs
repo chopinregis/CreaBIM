@@ -36,6 +36,9 @@ use std::collections::HashMap;
 const EXT: f64 = 0.4;
 /// Thickness of the block partitions.
 const BLOCK: f64 = 0.126;
+/// How far the block of the rendered exterior wall sits in from its outer
+/// face: the render and the insulation.
+const CORE_OUT: f64 = 0.02 + 0.15;
 /// Half the exterior wall, and half a block partition.
 const H: f64 = EXT / 2.0;
 const HB: f64 = BLOCK / 2.0;
@@ -155,6 +158,7 @@ pub fn starter_house() -> Model {
     furnish(&mut b);
     rooms_and_ceilings(&mut b);
     let views = views(&mut b);
+    details(&mut b);
     annotate(&mut b, &views);
     sheets(&mut b, &views);
     b.doc.model().clone()
@@ -752,7 +756,21 @@ fn structure(b: &mut Builder) {
         "Ground floor 350, insulated",
     );
     tx = b.keep("GF Slab", e, tx);
-    let mut ff = Slab::new(f, polygon::rectangle(v(-H, -H), v(11.0 + H, 9.6 + H)), 0.3);
+    // the upper floor bears on the block of the walls under it, inside
+    // their insulation and render, which run on past it; over the loggia
+    // it reaches out to the balcony's edge
+    let core = H - CORE_OUT;
+    let ff_outline = vec![
+        v(-core, -core),
+        v(11.0 + core, -core),
+        v(11.0 + core, 9.6 + core),
+        v(4.0 - H, 9.6 + core),
+        v(4.0 - H, 9.6 + H),
+        v(-H, 9.6 + H),
+        v(-H, 5.6 + H),
+        v(-core, 5.6 + H),
+    ];
+    let mut ff = Slab::new(f, ff_outline, 0.3);
     // a riser for the soil stack and ducts, in the en-suite's corner
     ff.holes = vec![polygon::rectangle(v(10.35, 8.95), v(10.75, 9.35))];
     let e = b.typed(
@@ -1780,6 +1798,227 @@ fn views(b: &mut Builder) -> Views {
     }
 }
 
+/// How the house is detailed: a wall section through the study and the
+/// bedroom over it, three details called out from it at 1:10 (the wall's
+/// base and foundation, the window's head and sill, the eaves), drawn
+/// from the model with detail components for what it does not show, and
+/// the junctions set by hand where the upper floor bears on the walls.
+fn details(b: &mut Builder) {
+    use visibility::Category as C;
+    // the first floor bears on the block of the walls under it: the slab
+    // cuts through them, where by layer priority their block would win
+    let mut tx = Transaction::new("Starter house: junctions");
+    for wall in ["GF South", "GF East", "GF North", "GF West"] {
+        let mut rule = JoinRule::new(b.id("FF Slab"), b.id(wall));
+        rule.winner = JoinWinner::First;
+        tx = tx.insert(Element::new("Junction", ElementKind::Join(rule)));
+    }
+    b.commit(tx);
+
+    // the wall section: north to south through the study window,
+    // looking east, so the outside is on the right
+    let mut tx = Transaction::new("Starter house: wall section");
+    let mut section = View::section(v(2.0, 2.5), v(2.0, -2.5), 0.9, true);
+    section.scale = 25.0;
+    section.hidden.categories = vec![C::Openings, C::Objects];
+    let parent = section.clone();
+    tx = b.keep(
+        "Section C-C",
+        Element::new("Section C-C", ElementKind::View(section)),
+        tx,
+    );
+    b.commit(tx);
+    let sid = b.id("Section C-C");
+    let mut tx = Transaction::new("Starter house: details");
+    for (name, lo, hi) in DETAIL_BOXES {
+        let d = View::callout(sid, &parent, v(lo.0, lo.1), v(hi.0, hi.1), 10.0);
+        tx = b.keep(name, Element::new(*name, ElementKind::View(d)), tx);
+    }
+    b.commit(tx);
+
+    // what the model doesn't show, drafted in each detail
+    let mut tx = Transaction::new("Starter house: detail components");
+    for (detail, kind, width, pts) in detail_components() {
+        let mut item = DetailItem::new(b.id(detail), kind, pts);
+        item.width = width;
+        tx = tx.insert(Element::new(kind.label(), ElementKind::Detail(item)));
+    }
+    for (detail, at, text, leader) in detail_notes() {
+        let mut n = Note::new(b.id(detail), at, text);
+        n.leader = leader.map(HostPoint::free);
+        tx = tx.insert(Element::new("Note", ElementKind::Note(n)));
+    }
+    b.commit(tx);
+}
+
+/// A detail view: its name and the corners of its callout box.
+type DetailBox = (&'static str, (f64, f64), (f64, f64));
+/// The details called out from the wall section, and their boxes in its
+/// drawing (metres along the section, and height).
+const DETAIL_BOXES: &[DetailBox] = &[
+    ("Detail 1 Wall base", (1.85, -0.95), (3.35, 0.45)),
+    ("Detail 2 Window", (1.95, 0.5), (3.15, 2.6)),
+    ("Detail 3 Eaves", (1.85, 5.2), (3.45, 6.5)),
+];
+
+/// The detail components in each detail: (detail, kind, width, path).
+/// In the section's drawing the wall's inner face is at 2.3 and its outer
+/// face at 2.7 along it, the outside to the right.
+fn detail_components() -> Vec<(&'static str, DetailKind, f64, Vec<DVec2>)> {
+    use DetailKind as K;
+    let (base, window, eaves) = (DETAIL_BOXES[0].0, DETAIL_BOXES[1].0, DETAIL_BOXES[2].0);
+    let pts = |p: &[(f64, f64)]| p.iter().map(|&(x, y)| v(x, y)).collect::<Vec<_>>();
+    let region = |h: Hatch| K::Region { hatch: h };
+    vec![
+        // the wall's base: a damp-proof course under it, a membrane under
+        // the floor's insulation, rigid insulation down the slab's edge,
+        // and paving outside
+        (base, K::Membrane, 0.0, pts(&[(2.3, 0.0), (2.8, 0.0)])),
+        (base, K::Membrane, 0.0, pts(&[(1.85, -0.18), (2.7, -0.18)])),
+        (
+            base,
+            region(Hatch::Cross),
+            0.0,
+            pts(&[(2.7, 0.0), (2.8, 0.0), (2.8, -0.35), (2.7, -0.35)]),
+        ),
+        (
+            base,
+            K::Repeat {
+                module: 0.3,
+                joint: 0.01,
+            },
+            0.04,
+            pts(&[(2.8, -0.13), (3.35, -0.13)]),
+        ),
+        (base, K::BreakLine, 0.0, pts(&[(1.88, 0.08), (1.88, -0.42)])),
+        (base, K::BreakLine, 0.0, pts(&[(2.24, 0.42), (2.78, 0.42)])),
+        // the window: a precast lintel over it, flashings at its head and
+        // sill, an oak window board inside
+        (
+            window,
+            region(Hatch::Concrete),
+            0.0,
+            pts(&[(2.315, 2.25), (2.53, 2.25), (2.53, 2.4), (2.315, 2.4)]),
+        ),
+        (
+            window,
+            K::Flashing,
+            0.003,
+            pts(&[(2.54, 2.252), (2.72, 2.252), (2.72, 2.22)]),
+        ),
+        (
+            window,
+            K::Flashing,
+            0.003,
+            pts(&[(2.54, 0.722), (2.77, 0.712), (2.77, 0.68)]),
+        ),
+        (
+            window,
+            K::Membrane,
+            0.0,
+            pts(&[(2.45, 0.735), (2.69, 0.735)]),
+        ),
+        (
+            window,
+            K::Blocking,
+            0.022,
+            pts(&[(2.27, 0.76), (2.45, 0.76)]),
+        ),
+        (
+            window,
+            K::BreakLine,
+            0.0,
+            pts(&[(2.24, 2.55), (2.78, 2.55)]),
+        ),
+        (
+            window,
+            K::BreakLine,
+            0.0,
+            pts(&[(2.24, 0.56), (2.78, 0.56)]),
+        ),
+        // the eaves: fascia, gutter and soffit, and insulation closing the
+        // eaves over the wall's head
+        (
+            eaves,
+            K::Blocking,
+            0.025,
+            pts(&[(3.115, 5.47), (3.115, 5.76)]),
+        ),
+        (
+            eaves,
+            K::Flashing,
+            0.002,
+            pts(&[(3.135, 5.63), (3.135, 5.5), (3.27, 5.5), (3.3, 5.64)]),
+        ),
+        (eaves, K::Blocking, 0.015, pts(&[(2.7, 5.49), (3.1, 5.49)])),
+        (eaves, K::Batt, 0.08, pts(&[(2.72, 5.56), (2.9, 5.56)])),
+        (eaves, K::BreakLine, 0.0, pts(&[(2.24, 5.26), (2.78, 5.26)])),
+    ]
+}
+
+/// The notes in each detail: (detail, where, text, leader point).
+fn detail_notes() -> Vec<(&'static str, DVec2, &'static str, Option<DVec2>)> {
+    let (base, window, eaves) = (DETAIL_BOXES[0].0, DETAIL_BOXES[1].0, DETAIL_BOXES[2].0);
+    vec![
+        (
+            base,
+            v(3.0, 0.36),
+            "20 RENDER\n150 MINERAL WOOL\n215 CONCRETE BLOCK\n15 PLASTER",
+            Some(v(2.6, 0.3)),
+        ),
+        (base, v(3.0, 0.06), "DPC", Some(v(2.76, 0.0))),
+        (
+            base,
+            v(3.0, -0.26),
+            "PERIMETER INSULATION",
+            Some(v(2.76, -0.25)),
+        ),
+        (base, v(3.0, -0.07), "PAVING", Some(v(3.1, -0.12))),
+        (
+            base,
+            v(3.0, -0.6),
+            "STRIP FOOTING\nC30/37, 800 × 450",
+            Some(v(2.86, -0.6)),
+        ),
+        (
+            base,
+            v(1.9, 0.28),
+            "PARQUET, SCREED\n100 PIR ON DPM\n170 SLAB",
+            Some(v(2.0, -0.1)),
+        ),
+        (window, v(2.85, 2.45), "PRECAST LINTEL", Some(v(2.45, 2.33))),
+        (window, v(2.85, 2.2), "HEAD FLASHING", Some(v(2.71, 2.245))),
+        (
+            window,
+            v(2.85, 1.5),
+            "TIMBER WINDOW\nTRIPLE GLAZED",
+            Some(v(2.5, 1.5)),
+        ),
+        (
+            window,
+            v(2.85, 0.68),
+            "SILL FLASHING\nWITH DRIP",
+            Some(v(2.77, 0.69)),
+        ),
+        (
+            window,
+            v(1.98, 0.86),
+            "OAK WINDOW BOARD",
+            Some(v(2.33, 0.77)),
+        ),
+        (
+            eaves,
+            v(2.9, 6.42),
+            "SLATE ON BATTENS\nBREATHER MEMBRANE\n100 WOOD FIBRE\n185 RAFTERS",
+            Some(v(2.6, 6.2)),
+        ),
+        (eaves, v(3.25, 5.82), "TIMBER FASCIA", Some(v(3.12, 5.7))),
+        (eaves, v(3.25, 5.4), "GUTTER", Some(v(3.25, 5.52))),
+        (eaves, v(2.9, 5.32), "VENTED SOFFIT", Some(v(2.95, 5.48))),
+        (eaves, v(1.9, 5.7), "EAVES INSULATION", Some(v(2.8, 5.56))),
+    ]
+}
+
 /// Room tags, notes, door and window tags, and dimensions.
 fn annotate(b: &mut Builder, views: &Views) {
     let mut tx = Transaction::new("Starter house: annotation styles");
@@ -1838,7 +2077,7 @@ fn annotate(b: &mut Builder, views: &Views) {
             Some(v(11.8, 11.4)),
         ),
         // the slope arrows give the pitch and the fall
-        (views.roof, v(0.6, 2.2), "SLATE\nnatural slate on battens", None),
+        (views.roof, v(2.4, 3.3), "SLATE\nnatural slate on battens", None),
         (views.roof, v(0.6, 8.8), "SLATE\nnatural slate on battens", None),
         (views.roof, v(12.4, 7.6), "GREEN ROOF\nsedum on EPDM\nfalls 1:60 to the east", None),
         (views.roof, v(4.4, -2.4), "ZINC CANOPY", Some(v(5.6, -0.9))),
@@ -2106,6 +2345,37 @@ fn sheets(b: &mut Builder, views: &Views) {
             ],
         ),
         (
+            "A501",
+            "Details",
+            "A2",
+            vec![
+                (
+                    b.id("Section C-C"),
+                    v(100.0, 235.0),
+                    v(2.3, 2.8),
+                    crop((0.8, -1.0), (3.8, 6.7)),
+                ),
+                (
+                    b.id(DETAIL_BOXES[0].0),
+                    v(290.0, 115.0),
+                    v(2.6, -0.25),
+                    None,
+                ),
+                (
+                    b.id(DETAIL_BOXES[1].0),
+                    v(470.0, 255.0),
+                    v(2.55, 1.55),
+                    None,
+                ),
+                (
+                    b.id(DETAIL_BOXES[2].0),
+                    v(290.0, 320.0),
+                    v(2.65, 5.85),
+                    None,
+                ),
+            ],
+        ),
+        (
             "A601",
             "Door, Window and Structure Schedules",
             "A2",
@@ -2192,7 +2462,7 @@ fn sheets(b: &mut Builder, views: &Views) {
             v(30.0, 84.0),
             "A000  Cover\nA101  Ground Floor Plan  1:50\nA102  First Floor Plan  1:50\n\
              A103  Foundation Plan  1:50\nA104  Roof Plan  1:100\nA201  Section A-A  1:50\nA202  Section B-B  1:50\n\
-             A301  Elevations  1:100\nA601  Door, Window and Structure Schedules\nA602  Furniture, Fixture and Wall Schedules\nA603  Room Schedule\nA901  3D Views"
+             A301  Elevations  1:100\nA501  Details  1:25, 1:10\nA601  Door, Window and Structure Schedules\nA602  Furniture, Fixture and Wall Schedules\nA603  Room Schedule\nA901  3D Views"
                 .to_string(),
             None,
         ),
@@ -2444,8 +2714,8 @@ mod tests {
             .collect();
         let numbers: Vec<&str> = sheets.iter().map(|(_, s)| s.number.as_str()).collect();
         for n in [
-            "A000", "A101", "A102", "A103", "A104", "A201", "A202", "A301", "A601", "A602", "A603",
-            "A901",
+            "A000", "A101", "A102", "A103", "A104", "A201", "A202", "A301", "A501", "A601", "A602",
+            "A603", "A901",
         ] {
             assert!(numbers.contains(&n), "no sheet {n}");
         }
