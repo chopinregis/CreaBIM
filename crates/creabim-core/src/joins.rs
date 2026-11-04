@@ -628,7 +628,15 @@ fn joins_among(walls: &[Joinable]) -> HashMap<ElementId, WallEnds> {
                     .filter_map(|o| tee(p, d_in, me, o))
                     .min_by(|a, b| a.1.total_cmp(&b.1))
                     .map(|(e, _)| e),
-                _ => node(walls, me, p, d_in, &neighbours),
+                // three or more ends drawn to one point; ends only near
+                // each other are left as they are
+                _ if neighbours
+                    .iter()
+                    .all(|(o, _)| o.wall.start.distance(p).min(o.wall.end.distance(p)) < TOL) =>
+                {
+                    node(walls, me, p, d_in, &neighbours)
+                }
+                _ => None,
             };
             let Some((left, right, core)) = ext else {
                 continue;

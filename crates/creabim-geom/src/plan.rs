@@ -226,10 +226,20 @@ impl Joining {
             (
                 std::cmp::Reverse(p.layer.map_or(1, |l| l.priority)),
                 cut_priority(model, p.id),
-                std::cmp::Reverse(self.order.get(&p.id).copied().unwrap_or(usize::MAX)),
             )
         };
-        strength(a) > strength(b)
+        let (sa, sb) = (strength(a), strength(b));
+        if sa != sb {
+            return sa > sb;
+        }
+        // as strong: the same material merges into one mass where they
+        // overlap (see the outlines below); different ones are told
+        // apart by the order they were drawn in
+        if a.key(model) == b.key(model) {
+            return false;
+        }
+        let order = |p: &CutPiece| self.order.get(&p.id).copied().unwrap_or(usize::MAX);
+        order(a) < order(b)
     }
 }
 
