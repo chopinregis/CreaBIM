@@ -1,6 +1,6 @@
 {
   "name": "Light linework",
-  "description": "A lighter, presentation look: fine pens, pale blue-grey poch\u00e9 instead of hatching, furniture and fittings in grey, site elements halftone, sections fading with depth and sun shadows on site and roof plans.",
+  "description": "A lighter, presentation look: fine pens, pale blue-grey poch\u00e9 instead of hatching, furniture and fittings in grey, doors and windows in blue-grey, sections and elevations in hidden line fading with depth, and roof and site plans with roofing lines and sun shadows.",
   "pens": [
     {
       "up_to": 75.0,
@@ -152,10 +152,11 @@
         "shadows": {
           "direction": -50.0,
           "length": 0.6,
-          "opacity": 0.35
+          "opacity": 0.25
         },
         "fade": 0.5
-      }
+      },
+      "style": "HiddenLine"
     },
     {
       "name": "Roof plan",
@@ -168,22 +169,25 @@
         "shadows": {
           "direction": -50.0,
           "length": 0.6,
-          "opacity": 0.35
+          "opacity": 0.25
         },
         "fade": 0.4
-      }
+      },
+      "style": "HiddenLine"
     },
     {
       "name": "Section",
       "cues": {
         "fade": 0.6
-      }
+      },
+      "style": "HiddenLine"
     },
     {
       "name": "Elevation",
       "cues": {
         "fade": 0.7
-      }
+      },
+      "style": "HiddenLine"
     },
     {
       "name": "3D view"

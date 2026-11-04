@@ -238,6 +238,26 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
     // over them: the fill a style gives them, white without one
     let mut faces: Vec<(f64, ElementId, Vec<DVec2>)> = Vec::new();
     for s in &scene {
+        // a roof without holes as its faces, not their triangles, so its
+        // pattern runs on without seams
+        if let Some(ElementKind::Roof(r)) = model.get(s.id).map(|e| &e.kind) {
+            let base = r.base(model) + r.vertical_thickness();
+            let top_z = |f: &creabim_core::members::RoofFace| {
+                f.outline
+                    .iter()
+                    .map(|p| base + f.z(*p))
+                    .fold(f64::MIN, f64::max)
+            };
+            let fs = r.faces();
+            if r.holes.is_empty() && !fs.is_empty() && fs.iter().all(|f| top_z(f) < top) {
+                if s.layer.is_none_or(|l| l.index == 0) {
+                    for f in fs {
+                        faces.push((top_z(&f), s.id, f.outline));
+                    }
+                }
+                continue;
+            }
+        }
         for t in tris(s) {
             let n = (t[1] - t[0]).cross(t[2] - t[0]);
             if n.z.abs() < 0.2 * n.length() || n.length() < 1e-9 {
