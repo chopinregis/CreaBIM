@@ -1555,7 +1555,8 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
         K::Schedule => &["category", "by_type"],
     };
     let allowed: Vec<&str> = COMMON.iter().chain(own).copied().collect();
-    let kind = format!("a {} view", v.kind.key());
+    let article = if v.kind == K::Elevation { "an" } else { "a" };
+    let kind = format!("{article} {} view", v.kind.key());
     if !check_stray(c, v, &allowed, &kind, at) {
         return c.fail(&v.id);
     }

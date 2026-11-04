@@ -159,7 +159,9 @@ house.json: $.views[1].level: `level` is not used by a section view
 Fields the format doesn't know are errors, never ignored, so a misspelt
 field can't silently fall back to its default. An element with a problem
 is left out of the check that follows, so what refers to it doesn't repeat
-the message. A file with problems builds nothing; the command fails with a
+the message. Problems with the file's shape (unknown fields, wrong types,
+missing fields) are reported first; what refers to what is checked once
+the shape is right. A file with problems builds nothing; the command fails with a
 non-zero exit code, which makes it usable in a script or a CI job.
 
 Some things build but look wrong; those are printed as warnings (a window
