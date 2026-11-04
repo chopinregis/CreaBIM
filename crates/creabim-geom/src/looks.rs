@@ -45,6 +45,9 @@ pub struct Looks {
     by_id: HashMap<ElementId, Look>,
     patterns: HashMap<String, HatchPattern>,
     ordered: bool,
+    /// Site areas whose surface a style fills or patterns: their boundary
+    /// and holes, and the pattern drawn when the area has none of its own.
+    areas: Vec<(ElementId, Vec<Vec<DVec2>>, Option<String>)>,
 }
 
 impl Looks {
@@ -55,6 +58,7 @@ impl Looks {
             by_id: HashMap::new(),
             patterns: HashMap::new(),
             ordered: false,
+            areas: vec![],
         }
     }
 
@@ -68,6 +72,7 @@ impl Looks {
         let beyond = crate::ranges::beyond(model, v);
         let fades = distance_fades(model, v);
         let mut by_id = HashMap::new();
+        let mut areas = vec![];
         for e in model.iter() {
             if e.id == view {
                 continue;
@@ -164,6 +169,31 @@ impl Looks {
             if let Some(f) = fades.get(&e.id) {
                 mix(&mut l.fade, *f);
             }
+            if let ElementKind::Site(creabim_core::site::Site {
+                form:
+                    creabim_core::site::SiteForm::Area {
+                        boundary,
+                        holes,
+                        pattern,
+                        ..
+                    },
+                ..
+            }) = &e.kind
+            {
+                // an area's own pattern wins; else its style's or material's
+                let named = (*pattern == creabim_core::site::Pattern::None)
+                    .then(|| {
+                        l.surface_pattern
+                            .clone()
+                            .or_else(|| l.material_pattern.as_ref().map(|(_, n)| n.clone()))
+                    })
+                    .flatten();
+                if l.surface_fill.is_some() || named.is_some() {
+                    let mut loops = vec![boundary.clone()];
+                    loops.extend(holes.iter().cloned());
+                    areas.push((e.id, loops, named));
+                }
+            }
             if l != Look::default() {
                 by_id.insert(e.id, l);
             }
@@ -189,6 +219,49 @@ impl Looks {
             by_id,
             patterns,
             ordered,
+            areas,
+        }
+    }
+
+    /// Whether any site area has a styled surface.
+    pub fn has_surfaces(&self) -> bool {
+        !self.areas.is_empty()
+    }
+
+    /// Draw the styled surfaces of the site areas in `drawn` (the elements
+    /// a drawing shows), under everything else: the style's fill, and its
+    /// pattern where the area has none of its own.
+    pub fn surfaces(&self, canvas: &mut dyn Canvas, drawn: &HashSet<ElementId>, map: &PaperMap) {
+        for (id, loops, named) in &self.areas {
+            if !drawn.contains(id) || loops.is_empty() {
+                continue;
+            }
+            let l = self.look(*id);
+            let fade = l.map_or(0.0, |l| l.fade);
+            let paper = |pts: &[DVec2]| pts.iter().map(|p| map.to_paper(*p)).collect::<Vec<_>>();
+            if let Some(c) = l.and_then(|l| l.surface_fill) {
+                canvas.fill_rgb(&paper(&loops[0]), c.map(|v| 1.0 - (1.0 - v) * (1.0 - fade)));
+                for h in &loops[1..] {
+                    canvas.fill_rgb(&paper(h), [1.0; 3]);
+                }
+            }
+            let Some(p) = named.as_deref().and_then(|n| self.pattern(n)) else {
+                continue;
+            };
+            let (s, c, _) = self.stroke(*id, Pen::Fine);
+            let s = Stroke {
+                width: self.weights.hatch,
+                ..s
+            };
+            for (a, b) in pattern_lines(&p, &loops[0], map.k()) {
+                for (a, b) in crate::parts::clip_line(loops, a, b) {
+                    let seg = [map.to_paper(a), map.to_paper(b)];
+                    match c {
+                        Some(c) => canvas.line_rgb(&seg, s, c),
+                        None => canvas.line(&seg, s),
+                    }
+                }
+            }
         }
     }
 

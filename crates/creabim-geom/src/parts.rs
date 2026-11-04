@@ -532,11 +532,40 @@ pub fn plan_items(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
                 finish: None,
             };
             let mut out = vec![];
-            crate::plan::sliced_plan(model, &item, z(p.level), &mut out);
+            let cut_z = z(p.level);
+            match item.mesh.bounds() {
+                // wholly above the cut, like a coping on a low wall: its
+                // outline dashed, as overhead
+                Some((lo, _)) if lo.z as f64 > cut_z + 1e-6 => overhead_outline(&item, &mut out),
+                _ => crate::plan::sliced_plan(model, &item, cut_z, &mut out),
+            }
             out
         }
         ElementKind::Site(s) => site_plan(model, e.id, s),
         _ => vec![],
+    }
+}
+
+/// A part's edges seen from below, flattened and dashed: how something
+/// above the plan cut is drawn.
+fn overhead_outline(item: &SceneItem, out: &mut Vec<PlanItem>) {
+    let key = |p: DVec2| ((p.x * 1e3).round() as i64, (p.y * 1e3).round() as i64);
+    let mut seen = std::collections::HashSet::new();
+    for (a, b) in crate::section::feature_edges(item) {
+        let (a, b) = (a.truncate(), b.truncate());
+        if a.distance(b) < 1e-4 {
+            continue;
+        }
+        let (ka, kb) = (key(a), key(b));
+        if !seen.insert(if ka <= kb { (ka, kb) } else { (kb, ka) }) {
+            continue;
+        }
+        out.push(PlanItem::Line {
+            id: item.id,
+            pen: Pen::Hidden,
+            a,
+            b,
+        });
     }
 }
 
@@ -982,6 +1011,16 @@ mod tests {
         assert!(items
             .iter()
             .any(|i| matches!(i, PlanItem::Fill { id, .. } if *id == c.id)));
+        // a cut below it shows it overhead, dashed
+        let items = plan_items(&m, &c, 0.5);
+        assert!(!items.is_empty());
+        assert!(items.iter().all(|i| matches!(
+            i,
+            PlanItem::Line {
+                pen: Pen::Hidden,
+                ..
+            }
+        )));
     }
 
     #[test]

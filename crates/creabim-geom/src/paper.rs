@@ -210,6 +210,10 @@ pub fn draw_with(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, w:
 /// styles, patterns and overrides.
 pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, looks: &Looks) {
     let to = |p: DVec2| map.to_paper(p);
+    if looks.has_surfaces() {
+        let drawn = drawing.items.iter().map(|it| it.id()).collect();
+        looks.surfaces(canvas, &drawn, map);
+    }
     for it in looks.order(&drawing.items) {
         match it {
             // guides and underlays are for working, not for print

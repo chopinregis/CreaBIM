@@ -225,3 +225,78 @@ fn a_template_sets_the_scale_and_pens_of_every_view_using_it() {
     assert_eq!(p.map.scale, 200.0);
     assert_eq!(p.weights, LineWeights::for_scale(200.0));
 }
+
+#[test]
+fn a_style_fills_and_patterns_site_areas_that_have_no_pattern_of_their_own() {
+    use creabim_core::site::{Pattern, Site};
+    use creabim_geom::paper::{draw_looks, PaperMap, SvgCanvas};
+    use creabim_geom::plan::PlanView;
+    use glam::DVec2;
+    let lv = Element::new(
+        "L0",
+        ElementKind::Level(Level {
+            elevation: 0.0,
+            height: 3.0,
+        }),
+    );
+    let sq = vec![
+        DVec2::ZERO,
+        DVec2::new(4.0, 0.0),
+        DVec2::new(4.0, 4.0),
+        DVec2::new(0.0, 4.0),
+    ];
+    let bare = Element::new(
+        "Bare",
+        ElementKind::Site(Site::area(lv.id, sq.clone(), 0.1, Pattern::None)),
+    );
+    let paved = Element::new(
+        "Paved",
+        ElementKind::Site(Site::area(
+            lv.id,
+            sq.iter().map(|p| *p + DVec2::X * 6.0).collect(),
+            0.1,
+            Pattern::Lines {
+                spacing: 0.5,
+                angle: 0.0,
+            },
+        )),
+    );
+    let view = Element::new("Plan", ElementKind::View(View::plan(lv.id)));
+    let m = Model::from_elements([lv, bare.clone(), paved.clone(), view.clone()]).unwrap();
+    let svg = |m: &Model, only: ElementId| {
+        let v = view_of(m, view.id);
+        let looks = Looks::for_view(m, view.id, &styles::resolved(m, &v));
+        let e = m.get(only).unwrap();
+        let drawing = PlanView {
+            items: creabim_geom::parts::plan_items(m, e, 1.2),
+        };
+        let mut c = SvgCanvas::new(DVec2::new(200.0, 200.0));
+        let map = PaperMap {
+            model: DVec2::ZERO,
+            paper: DVec2::new(10.0, 10.0),
+            scale: 50.0,
+        };
+        draw_looks(&mut c, &drawing, &map, &looks);
+        c.finish()
+    };
+    let lines = |s: &str| s.matches("<polyline").count() + s.matches("<line").count();
+    let plain_bare = svg(&m, bare.id);
+    let plain_paved = svg(&m, paved.id);
+    // a pack that fills site areas and gives them a pattern
+    let mut pack = StylePack::standard();
+    let mut st = styles::ObjectStyle::new(visibility::Category::Site);
+    st.surface_fill = Some(styles::Rgb([0.9, 0.85, 0.8]));
+    st.surface_pattern = Some(Hatch::Diagonal.label().into());
+    pack.objects.push(st);
+    let m = with_pack(&m, &pack);
+    let styled_bare = svg(&m, bare.id);
+    assert!(
+        lines(&styled_bare) > lines(&plain_bare) + 4,
+        "{styled_bare}"
+    );
+    assert!(styled_bare.len() > plain_bare.len());
+    // an area's own pattern stays: only the fill is added
+    let styled_paved = svg(&m, paved.id);
+    assert_eq!(lines(&styled_paved), lines(&plain_paved));
+    assert!(styled_paved.len() > plain_paved.len());
+}

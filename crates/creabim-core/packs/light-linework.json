@@ -81,6 +81,22 @@
       "colour": "#6b7780"
     },
     {
+      "category": "Parts",
+      "colour": "#3c4650",
+      "cut_fill": "#c9d3de"
+    },
+    {
+      "category": "Site",
+      "colour": "#7d8064",
+      "projection_weight": "Fine",
+      "surface_fill": "#f4f2ec"
+    },
+    {
+      "category": "Planting",
+      "colour": "#5f7d5a",
+      "projection_weight": "Fine"
+    },
+    {
       "category": "Grids",
       "colour": "#9aa5b1",
       "pattern": "Centre"

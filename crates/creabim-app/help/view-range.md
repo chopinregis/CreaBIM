@@ -13,6 +13,8 @@ A plan's **view range** says which levels it draws. Set it under *View range* in
 - **View depth**: levels between it and the bottom are drawn lighter, in the *beyond* style.
 - **Overhead dashed**: what lies above the cut, up to the top, is drawn in dashed lines: roof edges, an upper slab, a chimney cap.
 
+On the plan's own level, a part that lies wholly above the cut, such as the coping on a low screen wall, is always drawn dashed as overhead.
+
 Each height is a level and an offset from it, so it moves when the level moves.
 
 ## From above

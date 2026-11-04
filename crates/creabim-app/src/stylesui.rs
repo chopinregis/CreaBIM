@@ -34,7 +34,7 @@ pub(super) struct StylesUi {
 }
 
 /// The categories object styles are set for: those with linework.
-pub(super) const STYLED: [Category; 17] = [
+pub(super) const STYLED: [Category; 20] = [
     Category::Walls,
     Category::Slabs,
     Category::Roofs,
@@ -48,6 +48,9 @@ pub(super) const STYLED: [Category; 17] = [
     Category::Ceilings,
     Category::Objects,
     Category::FreeMeshes,
+    Category::Parts,
+    Category::Site,
+    Category::Planting,
     Category::Openings,
     Category::Rooms,
     Category::Grids,

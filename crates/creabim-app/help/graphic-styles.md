@@ -24,7 +24,9 @@ The *Object styles* page has a row for each category: walls, slabs, roofs, colum
 - *Line*: *Solid*, *Dashed*, *Dotted*, *Centre* or *Dash dot*.
 - *Cut fill*: the colour behind its cut hatch. *Cut pattern*: a pattern for its cut faces; *Material's* keeps each material's own.
 
-The pack's file can also set a style for one category in one material, a surface fill and pattern (a roof seen from above), the draw order and transparency.
+The pack's file can also set a style for one category in one material, a surface fill and pattern (a roof seen from above, or a hard landscape area), the draw order and transparency.
+
+A hard landscape area keeps the paving pattern set on it. The Site style's surface fill goes under every area. Its surface pattern is drawn only on areas whose own pattern is *None*.
 
 ## Pens
 
