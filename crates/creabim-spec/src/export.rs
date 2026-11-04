@@ -26,6 +26,8 @@ fn not_in_format(kind: &str) -> &'static str {
         "Sketch" | "Guide" => "drafting is not in the format yet",
         "FreeMesh" => "free meshes are not in the format yet",
         "Footing" | "Shaft" | "Ceiling" | "RoomSeparator" => "not in the format yet",
+        "Join" => "join rules are not in the format yet",
+        "Detail" => "detail components are not in the format yet",
         "CropBox" | "Cut" => "not in the format yet",
         _ => "not in the format yet",
     }
@@ -282,6 +284,7 @@ pub fn export(model: &Model) -> Exported {
                         },
                         material: ids.of(l.material),
                         thickness: l.thickness,
+                        priority: l.priority.map(u32::from),
                     })
                     .collect(),
                 description: (!a.description.is_empty()).then(|| a.description.clone()),
@@ -965,6 +968,13 @@ fn view(e: &Element, id: &str, v: &core::View, ids: &Ids) -> f::View {
         altitude: 30.0,
         category: None,
         by_type: false,
+        callout: v.callout.and_then(|co| {
+            Some(f::Callout {
+                parent: ids.get(co.parent)?,
+                min: co.lo,
+                max: co.hi,
+            })
+        }),
     };
     let mut default_style = core::ViewStyle::HiddenLine;
     match &v.kind {

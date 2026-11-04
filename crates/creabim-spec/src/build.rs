@@ -551,6 +551,15 @@ fn assembly(c: &mut Ctx, a: &f::Assembly, at: &Path) {
             },
             material,
             thickness: c.l(l.thickness),
+            priority: match l.priority {
+                Some(p @ 1..=5) => Some(p as u8),
+                Some(p) => {
+                    c.err(&lp.key("priority"), format!("must be from 1 to 5, got {p}"));
+                    ok = false;
+                    None
+                }
+                None => None,
+            },
         });
     }
     if !ok {
@@ -1537,7 +1546,7 @@ fn room(c: &mut Ctx, r: &f::Room, at: &Path) {
 
 fn view(c: &mut Ctx, v: &f::View, at: &Path) {
     use f::ViewKind as K;
-    const COMMON: &[&str] = &["id", "name", "kind", "scale", "style"];
+    const COMMON: &[&str] = &["id", "name", "kind", "scale", "style", "callout"];
     let own: &[&str] = match v.kind {
         K::Plan => &["level", "cut_height", "ceiling_plan", "room_colours"],
         K::Section => &["start", "end", "depth", "room_colours"],
@@ -1609,6 +1618,16 @@ fn view(c: &mut Ctx, v: &f::View, at: &Path) {
         };
     }
     view.room_colours = v.room_colours;
+    if let Some(co) = &v.callout {
+        let Some(parent) = c.get(&co.parent, &[Tag::View], &at.key("callout").key("parent")) else {
+            return c.fail(&v.id);
+        };
+        view.callout = Some(core::element::Callout::new(
+            parent,
+            c.p(co.min),
+            c.p(co.max),
+        ));
+    }
     c.insert(
         &v.id,
         Element::new(name_of(&v.name, &v.id), ElementKind::View(view)),

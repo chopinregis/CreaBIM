@@ -37,6 +37,7 @@ The *Sheets* group holds a set of drawings like one sent for planning permission
 - A103 Foundation Plan, 1:50, and A104 Roof Plan, 1:100
 - A201 Section A-A and A202 Section B-B, 1:50
 - A301 Elevations, 1:100
+- A501 Details: section C-C at 1:25 and three [details](details) at 1:10
 - A601 and A602 Schedules, and A603 Room Schedule
 - A901 3D Views
 

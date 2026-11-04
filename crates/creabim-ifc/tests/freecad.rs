@@ -141,7 +141,7 @@ fn the_starter_house_round_trips_natively_through_ifc4() {
     for (k, v) in &before {
         let building = !matches!(
             k.as_str(),
-            "View" | "Sheet" | "Viewport" | "Dimension" | "Tag" | "Note" | "TextStyle"
+            "View" | "Sheet" | "Viewport" | "Dimension" | "Tag" | "Note" | "TextStyle" | "Detail" | "Join"
                 | "SheetTemplate" | "Guide" | "CropBox" | "Units" | "Sketch" | "Cut"
                 // IFC4 export writes no grids, and a shaft goes out as the
                 // holes it cuts (known gaps); layered materials add a few

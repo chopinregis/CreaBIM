@@ -630,7 +630,16 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         filtered = creabim_core::visibility::without(model, &hidden);
         &filtered
     };
-    let mut d = match &v.kind {
+    // a detail view is drawn from the plan or section it is called out
+    // from, so it follows that view's line and cut
+    let kind = v
+        .callout
+        .and_then(|c| match model.get(c.parent).map(|p| &p.kind) {
+            Some(ElementKind::View(p)) if p.callout.is_none() => Some(&p.kind),
+            _ => None,
+        })
+        .unwrap_or(&v.kind);
+    let mut d = match kind {
         creabim_core::ViewKind::Plan { level, cut_height } => {
             let mut d = crate::plan::plan_view_with(model, *level, *cut_height, &v.graphics);
             if reveal {
@@ -679,7 +688,11 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         }
     };
     if reveal && v.hidden_in_colour {
-        tint_hidden(model, view, &v.kind, &mut d.items);
+        tint_hidden(model, view, kind, &mut d.items);
+    }
+    // a detail view shows only what is inside its callout's box
+    if let Some(c) = v.callout {
+        d = crate::crop::crop(&d, c.lo, c.hi);
     }
     // tag the image with its view, so viewers can keep one texture per view
     for it in &mut d.items {
@@ -698,7 +711,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         d.items.retain(|it| !hidden.contains(&it.id()));
     }
     // a plan's names, notes and tags moved off lines and each other
-    if matches!(v.kind, creabim_core::ViewKind::Plan { .. }) {
+    if matches!(kind, creabim_core::ViewKind::Plan { .. }) {
         crate::declutter::place_labels(&mut d.items, v.scale / 1000.0);
     }
     // dimension lines whose style says so break where tags and notes

@@ -206,8 +206,11 @@ leaves out.
 - Objects other than the starter catalogue's (a catalogue folder of your
   own, or objects imported from Blender, FreeCAD or IFC), and footing types.
 - Wall joins switched off at a wall's end.
-- Elements added by work in progress (wall details and joins, graphic
-  styles and view ranges) will join the format as they land.
+- Join rules between walls (which wall cuts which, cleanup switched off)
+  and 2D detail components drawn in detail views. Callout views and layer
+  join priorities are in the format.
+- Elements added by work in progress (graphic styles and view ranges)
+  will join the format as they land.
 
 ## Reference
 
@@ -304,6 +307,7 @@ One layer of an assembly.
 | `function` | [LayerFunction](#layerfunction) | default `"structure"` |  |
 | `material` | string |  | A material's id; none for an air gap. |
 | `thickness` | number | required |  |
+| `priority` | integer |  | Which layer wins where walls join: 1 cuts through 5. Left out, it follows the layer's function (structure 1, finish 5). |
 
 ### Assembly
 
@@ -799,6 +803,16 @@ What a schedule lists.
 - `"fixtures"`
 - `"rooms"`
 
+### Callout
+
+The box of a parent view a callout enlarges, in that view's drawing coordinates.
+
+| Field | Type | | Description |
+|---|---|---|---|
+| `parent` | string | required | The parent view's id. |
+| `min` | [x, y] | required |  |
+| `max` | [x, y] | required |  |
+
 ### View
 
 A view: a plan of a level, a section or elevation along a line, a 3D view, or a schedule. Which fields it uses depends on its `kind`: plan: `level`, `cut_height`, `ceiling_plan`; section and elevation: `start`, `end`, `depth`; 3d: `azimuth`, `altitude`; schedule: `category`, `by_type`.
@@ -821,6 +835,7 @@ A view: a plan of a level, a section or elevation along a line, a 3D view, or a 
 | `altitude` | number | default `30.0` | A 3D view's angle above the horizon. |
 | `category` | [ScheduleCategory](#schedulecategory) |  | What a schedule lists. |
 | `by_type` | boolean | default `false` | A schedule's rows grouped by type. |
+| `callout` | [Callout](#callout) |  | Makes it a callout of another view: an enlarged part of it. Give it the same kind and line (or level) as its parent. |
 
 ### PaperSize
 

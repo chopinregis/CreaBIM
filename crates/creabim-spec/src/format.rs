@@ -178,6 +178,9 @@ spec_struct! {
         /// A material's id; none for an air gap.
         material: Option<String>,
         thickness: f64,
+        /// Which layer wins where walls join: 1 cuts through 5. Left out,
+        /// it follows the layer's function (structure 1, finish 5).
+        priority: Option<u32>,
     }
 }
 
@@ -809,6 +812,20 @@ spec_struct! {
         category: Option<ScheduleCategory>,
         /// A schedule's rows grouped by type.
         by_type: bool = false,
+        /// Makes it a callout of another view: an enlarged part of it.
+        /// Give it the same kind and line (or level) as its parent.
+        callout: Option<Callout>,
+    }
+}
+
+spec_struct! {
+    /// The box of a parent view a callout enlarges, in that view's
+    /// drawing coordinates.
+    pub struct Callout {
+        /// The parent view's id.
+        parent: String,
+        min: DVec2,
+        max: DVec2,
     }
 }
 

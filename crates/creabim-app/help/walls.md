@@ -41,7 +41,7 @@ The wall turns about its location line, and its doors and windows turn with it.
 
 ## Joins
 
-Walls that meet join by themselves: an L corner is mitred (layer by layer for layered walls), a wall ending on another makes a T, and two walls that cross make a clean cross, the thicker one running through. Move or drag a wall and the walls joined to it follow.
+Walls that meet join by themselves: an L corner is mitred (layer by layer for layered walls), a wall ending on another makes a T, and two walls that cross make a clean cross, the thicker one running through. Three or more walls drawn to one point make a clean node. Where walls meet slabs and other walls, their layers join by priority: see [Joins](joins). Move or drag a wall and the walls joined to it follow.
 
 To keep an end free:
 
