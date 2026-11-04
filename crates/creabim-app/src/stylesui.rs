@@ -1239,3 +1239,34 @@ fn templates_page(
     });
     changed
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_shipped_pack_applies_and_undoes_in_one_step() {
+        let mut app = crate::app::test_app();
+        let before = app.doc.model().clone();
+        let light = StylePack::shipped().remove(1);
+        app.apply_style_pack(light);
+        assert_eq!(styles::active_pack(app.doc.model()).name, "Light linework");
+        // editing the pack edits the project's copy, merged per label
+        let (id, mut pack) = app.edited_pack();
+        pack.pens[0].weights.cut = 0.6;
+        app.commit_pack(id, pack.clone(), "Pens");
+        pack.pens[0].weights.cut = 0.65;
+        app.commit_pack(id, pack, "Pens");
+        assert_eq!(
+            styles::active_pack(app.doc.model()).pens[0].weights.cut,
+            0.65
+        );
+        app.doc.undo();
+        assert_eq!(
+            styles::active_pack(app.doc.model()).pens[0].weights.cut,
+            0.5
+        );
+        app.doc.undo();
+        assert_eq!(app.doc.model(), &before);
+    }
+}

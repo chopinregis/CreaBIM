@@ -29,7 +29,8 @@
     {
       "category": "Walls",
       "cut_fill": "#c9d3de",
-      "cut_pattern": "Plain"
+      "cut_pattern": "Plain",
+      "colour": "#2b3a4a"
     },
     {
       "category": "Columns",

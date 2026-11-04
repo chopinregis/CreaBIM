@@ -276,7 +276,11 @@ impl Looks {
 
     /// The pattern and background a cut fill of element `id` takes, whose
     /// drawing says `hatch`.
-    fn cut_pattern(&self, id: ElementId, hatch: Hatch) -> (Option<[f32; 3]>, Option<HatchPattern>) {
+    pub fn cut_pattern(
+        &self,
+        id: ElementId,
+        hatch: Hatch,
+    ) -> (Option<[f32; 3]>, Option<HatchPattern>) {
         let builtin = || self.pattern(hatch.label());
         let Some(l) = self.look(id) else {
             let p = builtin();
@@ -457,7 +461,7 @@ pub fn pattern_lines(p: &HatchPattern, polygon: &[DVec2], k: f64) -> Vec<(DVec2,
         let (w, h) = (t.size[0] * unit, t.size[1] * unit);
         let (lo, hi) = bounds(polygon);
         let cells = ((hi.x - lo.x) / w).ceil() * ((hi.y - lo.y) / h).ceil();
-        if !(cells < MAX_PATTERN_LINES as f64) {
+        if cells.is_nan() || cells >= MAX_PATTERN_LINES as f64 {
             return out;
         }
         let (i0, j0) = ((lo.x / w).floor() as i64, (lo.y / h).floor() as i64);

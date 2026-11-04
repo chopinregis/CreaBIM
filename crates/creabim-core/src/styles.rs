@@ -601,18 +601,18 @@ impl StylePack {
         }
         for p in &self.patterns {
             for l in &p.lines {
-                if !(l.spacing > 0.0) {
+                if l.spacing.is_nan() || l.spacing <= 0.0 {
                     return Err(format!("pattern {}: spacing must be above 0", p.name));
                 }
             }
             if let Some(t) = &p.tile {
-                if !(t.size[0] > 0.0 && t.size[1] > 0.0) {
+                if t.size.iter().any(|v| v.is_nan() || *v <= 0.0) {
                     return Err(format!("pattern {}: tile size must be above 0", p.name));
                 }
             }
         }
         for t in &self.pens {
-            if !(t.up_to > 0.0) {
+            if t.up_to.is_nan() || t.up_to <= 0.0 {
                 return Err("pen tables need a scale above 0".into());
             }
         }
@@ -741,15 +741,10 @@ pub fn apply_pack(model: &Model, pack: &StylePack) -> Transaction {
         match found {
             Some(before) => {
                 let mut e = before.clone();
-                e.kind = ElementKind::TextStyle(s.style.clone());
+                e.kind = ElementKind::TextStyle(s.style);
                 t = t.replace(before.clone(), e);
             }
-            None => {
-                t = t.insert(Element::new(
-                    &s.name,
-                    ElementKind::TextStyle(s.style.clone()),
-                ))
-            }
+            None => t = t.insert(Element::new(&s.name, ElementKind::TextStyle(s.style))),
         }
     }
     for b in &pack.title_blocks {

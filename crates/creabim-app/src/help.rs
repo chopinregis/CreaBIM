@@ -76,6 +76,8 @@ pub const PAGES: &[(&str, &str, &str)] = &[
     page!("Building the model", "ceilings"),
     page!("Views and drawings", "views"),
     page!("Views and drawings", "sections"),
+    page!("Views and drawings", "view-range"),
+    page!("Views and drawings", "graphic-styles"),
     page!("Views and drawings", "visibility"),
     page!("Views and drawings", "crop-boxes"),
     page!("Views and drawings", "schedules"),
