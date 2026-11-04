@@ -1,4 +1,4 @@
-pub use crate::annotation::{DimAxis, DimensionKind, Note, TextStyle};
+pub use crate::annotation::{DimAxis, DimensionKind, Note, Terminator, TextStyle};
 pub use crate::grids::GridGroup;
 pub use crate::members::{Beam, Column, Railing, Roof, Stair};
 pub use crate::sketch::Sketch;
@@ -12,6 +12,7 @@ use crate::{
 };
 use glam::{DVec2, DVec3};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// One object in the building model. Lengths are in metres.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -28,6 +29,11 @@ pub struct Element {
     /// and which of the type's parameters it sets for itself.
     #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
     pub of_type: Option<crate::types::TypeRef>,
+    /// The mark typed on it (a door's "D-101"), shown by its tags and
+    /// schedules; none takes the number the project's rules give it (see
+    /// [`crate::marks`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<String>,
 }
 
 /// An object in another file that an element mirrors.
@@ -51,6 +57,7 @@ impl Element {
             kind,
             source: None,
             of_type: None,
+            mark: None,
         }
     }
 
@@ -102,7 +109,7 @@ impl Element {
             // a missing style falls back to the default look, like materials
             ElementKind::TextStyle(_) => vec![],
             ElementKind::SheetTemplate(_) => vec![],
-            ElementKind::Units(_) => vec![],
+            ElementKind::Units(_) | ElementKind::MarkRules(_) => vec![],
             // types are soft too: an element whose type is gone keeps its values
             ElementKind::ElementType(_) => vec![],
             // a shaft's top level is soft: without it the shaft stops at
@@ -161,6 +168,7 @@ impl Element {
             ElementKind::TextStyle(_) => "TextStyle",
             ElementKind::SheetTemplate(_) => "SheetTemplate",
             ElementKind::Units(_) => "ProjectUnits",
+            ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::Sketch(_) => "Sketch",
             ElementKind::Cut(_) => "Cut",
@@ -309,7 +317,10 @@ impl Element {
                 }
             }
             ElementKind::Tag(t) => {
-                if t.offset.is_finite() {
+                if t.offset.is_finite()
+                    && t.elbow.is_none_or(|p| p.is_finite())
+                    && t.end.is_none_or(|p| p.is_finite())
+                {
                     Ok(())
                 } else {
                     Err("tag position must be finite".into())
@@ -319,6 +330,7 @@ impl Element {
             ElementKind::TextStyle(s) => s.validate(),
             ElementKind::SheetTemplate(t) => t.validate(),
             ElementKind::Units(_) => Ok(()),
+            ElementKind::MarkRules(r) => r.validate(),
             ElementKind::CropBox(c) => c.validate(),
             ElementKind::Assembly(a) => a.validate(),
             ElementKind::ElementType(t) => t.validate(),
@@ -391,6 +403,9 @@ pub enum ElementKind {
     Assembly(crate::assembly::Assembly),
     /// The project's units: one per project, read through [`crate::Model::units`].
     Units(crate::units::Units),
+    /// The project's mark numbering rules: at most one per project, read
+    /// through [`crate::marks::rules`].
+    MarkRules(crate::marks::MarkRules),
     /// A box that crops a 3D view (Revit's section box).
     CropBox(crate::cropbox::CropBox),
     /// A named set of shared parameters (a wall type, a door type...) that
@@ -446,6 +461,7 @@ impl ElementKind {
             ElementKind::GridGroup(_) => "GridGroup",
             ElementKind::Assembly(_) => "Assembly",
             ElementKind::Units(_) => "Units",
+            ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::ElementType(_) => "ElementType",
             ElementKind::Shaft(_) => "Shaft",
@@ -671,6 +687,10 @@ pub struct Dimension {
     /// A linear dimension can measure across or up the drawing only.
     #[serde(default, skip_serializing_if = "DimAxis::is_aligned")]
     pub axis: DimAxis,
+    /// What a spot level reads (see [`crate::annotation::spot_text`]);
+    /// none is just the elevation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
 }
 
 impl Dimension {
@@ -686,6 +706,16 @@ impl Dimension {
             style: None,
             color: None,
             axis: DimAxis::Aligned,
+            pattern: None,
+        }
+    }
+
+    /// A spot level of the point `a`, written at `b`.
+    pub fn spot(view: ElementId, a: HostPoint, b: HostPoint, pattern: Option<String>) -> Self {
+        Self {
+            kind: DimensionKind::Spot,
+            pattern,
+            ..Self::linear(view, a, b, 0.0)
         }
     }
 
@@ -721,6 +751,16 @@ pub struct Tag {
     /// number and area.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<crate::room::RoomField>,
+    /// A bend in its leader, from the host's centre like `offset`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elbow: Option<DVec2>,
+    /// Where its leader ends, from the host's centre; none is the centre.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<DVec2>,
+    /// The mark at the end of its leader; none is its style's leader end,
+    /// or a plain line when the style sets none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader_end: Option<Terminator>,
 }
 
 impl Tag {
@@ -732,6 +772,9 @@ impl Tag {
             style: None,
             color: None,
             fields: Vec::new(),
+            elbow: None,
+            end: None,
+            leader_end: None,
         }
     }
 }
@@ -1318,6 +1361,11 @@ pub struct View {
     /// that view inside the callout's box, at its own scale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callout: Option<Callout>,
+    /// How a section or elevation shows each level's head: turned off, or
+    /// dragged away from where it would sit. Levels not listed show their
+    /// heads where the automatic layout puts them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub level_heads: BTreeMap<ElementId, LevelHead>,
 }
 
 /// Where a detail view comes from: the box `lo`..`hi` (drawing
@@ -1340,6 +1388,24 @@ impl Callout {
             lo: a.min(b),
             hi: a.max(b),
         }
+    }
+}
+
+/// One level's head in one section or elevation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LevelHead {
+    /// Leave the head (name and elevation) out of this view; its datum line stays.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+    /// Where it was dragged to, from the end of its datum line, in drawing
+    /// units; none lets the automatic layout place it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<DVec2>,
+}
+
+impl LevelHead {
+    pub fn is_default(&self) -> bool {
+        *self == LevelHead::default()
     }
 }
 
@@ -1524,6 +1590,7 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            level_heads: BTreeMap::new(),
         }
     }
 
@@ -1546,6 +1613,7 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            level_heads: BTreeMap::new(),
         }
     }
 }
@@ -1565,6 +1633,7 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            level_heads: BTreeMap::new(),
         }
     }
 
@@ -1585,6 +1654,7 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            level_heads: BTreeMap::new(),
         }
     }
 
@@ -1604,6 +1674,7 @@ impl View {
             ceiling_plan: parent.ceiling_plan,
             graphics: parent.graphics.clone(),
             callout: Some(Callout::new(parent_id, a, b)),
+            level_heads: BTreeMap::new(),
         }
     }
 

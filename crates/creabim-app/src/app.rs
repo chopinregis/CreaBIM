@@ -41,6 +41,8 @@ mod importui;
 mod levelcopy;
 #[path = "levelsui.rs"]
 mod levelsui;
+#[path = "marksui.rs"]
+mod marksui;
 #[path = "materials.rs"]
 mod materials;
 #[path = "objectsui.rs"]
@@ -186,6 +188,7 @@ pub struct CreaBimApp {
     catalogue: objectsui::CatalogueUi,
     /// The Levels manager and the Project units dialog.
     levels: levelsui::LevelsUi,
+    marks: marksui::MarksUi,
     /// The Copy to levels and Move to level windows.
     level_copy: levelcopy::LevelCopyUi,
     /// What the last IFC import brought across, and what it couldn't.
@@ -268,6 +271,7 @@ impl CreaBimApp {
             type_preview: Default::default(),
             catalogue: Default::default(),
             levels: Default::default(),
+            marks: Default::default(),
             level_copy: Default::default(),
             import_report: None,
             drafting: Default::default(),
@@ -3876,6 +3880,7 @@ impl CreaBimApp {
                 .edit_merged(id, "Rename", |e| e.name = name.clone());
             self.report(r, "Renamed.");
         }
+        self.mark_field(ui, id);
         ui.add_space(6.0);
         if creabim_core::types::TypeCategory::of(&e.kind).is_some() {
             self.type_picker(ui, id);
@@ -3949,6 +3954,7 @@ impl CreaBimApp {
                     {
                         self.open_levels();
                     }
+                    self.level_head_controls(ui, id);
                 }
                 ElementKind::Wall(w) => {
                     let mut curtain = w.curtain.is_some();
@@ -4488,9 +4494,25 @@ impl CreaBimApp {
                         })
                         .weak(),
                     );
-                    let what = crate::annotate::offset_label(d.kind);
-                    if num(ui, what, &mut d.offset, -100.0, 100.0) {
-                        label = "Move dimension line"
+                    if d.kind == creabim_core::DimensionKind::Spot {
+                        let mut pattern = d
+                            .pattern
+                            .clone()
+                            .unwrap_or_else(|| creabim_core::annotation::SPOT_PATTERN.into());
+                        ui.horizontal(|ui| {
+                            ui.label("Reads").on_hover_text(
+                                "{elevation} in the project's units, {m} in metres (+0.45), {m3} to three places, {mm} in millimetres, {level} the level's name. For example: {m} FFL",
+                            );
+                            if ui.text_edit_singleline(&mut pattern).changed() {
+                                d.pattern = Some(pattern.clone());
+                                label = "Spot level text";
+                            }
+                        });
+                    } else {
+                        let what = crate::annotate::offset_label(d.kind);
+                        if num(ui, what, &mut d.offset, -100.0, 100.0) {
+                            label = "Move dimension line"
+                        }
                     }
                     if d.kind == creabim_core::DimensionKind::Linear {
                         crate::app::helpui::combo(ui, "Measures")
@@ -4534,6 +4556,26 @@ impl CreaBimApp {
                         if !l.is_empty() {
                             label = l;
                         }
+                    } else {
+                        if let Some(l) = crate::annotate::leader_ui(
+                            ui,
+                            &mut t.leader_end,
+                            "Style's (a plain line)",
+                            &mut t.elbow,
+                        ) {
+                            label = l;
+                        }
+                        if t.end.is_some()
+                            && ui
+                                .button("Leader back to the centre")
+                                .on_hover_text(
+                                    "Its leader points at the middle of what it tags again",
+                                )
+                                .clicked()
+                        {
+                            t.end = None;
+                            label = "Move leader";
+                        }
                     }
                     match crate::annotate::look_ui(ui, self.doc.model(), &mut t.style, &mut t.color)
                     {
@@ -4553,6 +4595,16 @@ impl CreaBimApp {
                     {
                         label = l;
                     }
+                    if n.leader.is_some() {
+                        if let Some(l) = crate::annotate::leader_ui(
+                            ui,
+                            &mut n.leader_end,
+                            "Style's (an arrow)",
+                            &mut n.elbow,
+                        ) {
+                            label = l;
+                        }
+                    }
                     match crate::annotate::look_ui(ui, self.doc.model(), &mut n.style, &mut n.color)
                     {
                         crate::annotate::LookEdit::Changed(l) => label = l,
@@ -4563,6 +4615,11 @@ impl CreaBimApp {
                 ElementKind::Units(_) => {
                     if ui.button("Project units…").clicked() {
                         self.levels.units_open = true;
+                    }
+                }
+                ElementKind::MarkRules(_) => {
+                    if ui.button("Mark numbering…").clicked() {
+                        self.marks.open = true;
                     }
                 }
                 ElementKind::TextStyle(s) => {
@@ -5278,6 +5335,7 @@ impl eframe::App for CreaBimApp {
         self.styles_window(&ctx);
         self.templates_window(&ctx);
         self.units_window(&ctx);
+        self.marks_window(&ctx);
         self.ground_spacing_window(&ctx);
         self.import_report_window(&ctx);
         self.help_window(&ctx);
@@ -5519,6 +5577,7 @@ fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::TextStyle(_) => "text style",
         ElementKind::SheetTemplate(_) => "sheet template",
         ElementKind::Units(_) => "project units",
+        ElementKind::MarkRules(_) => "mark numbering",
         ElementKind::View(_) => "view",
         ElementKind::Sheet(_) => "sheet",
         ElementKind::Viewport(_) => "placed view",
