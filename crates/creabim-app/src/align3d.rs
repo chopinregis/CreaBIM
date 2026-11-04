@@ -716,6 +716,16 @@ pub fn draw(
     }
 }
 
+/// A distance in the preview, beside the point at `c`: on a dark pill, so
+/// it reads on orange, brick and every other colour.
+fn distance_label(painter: &egui::Painter, c: egui::Pos2, text: String, accent: Color32) {
+    let galley = painter.layout_no_wrap(text, egui::FontId::proportional(12.0), accent);
+    let at = c + egui::vec2(8.0, -8.0 - galley.size().y);
+    let back = egui::Rect::from_min_size(at, galley.size()).expand2(egui::vec2(4.0, 2.0));
+    painter.rect_filled(back, 3.0, Color32::from_black_alpha(190));
+    painter.galley(at, galley, accent);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1188,14 +1198,4 @@ mod tests {
             ElementKind::Wall(host)
         );
     }
-}
-
-/// A distance in the preview, beside the point at `c`: on a dark pill, so
-/// it reads on orange, brick and every other colour.
-fn distance_label(painter: &egui::Painter, c: egui::Pos2, text: String, accent: Color32) {
-    let galley = painter.layout_no_wrap(text, egui::FontId::proportional(12.0), accent);
-    let at = c + egui::vec2(8.0, -8.0 - galley.size().y);
-    let back = egui::Rect::from_min_size(at, galley.size()).expand2(egui::vec2(4.0, 2.0));
-    painter.rect_filled(back, 3.0, Color32::from_black_alpha(190));
-    painter.galley(at, galley, accent);
 }
