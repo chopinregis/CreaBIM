@@ -122,6 +122,8 @@ impl Element {
             // outline to show until it is given one
             ElementKind::Ceiling(c) => vec![c.level],
             ElementKind::Cut(c) => vec![c.target, c.cutter],
+            ElementKind::Join(j) => vec![j.a, j.b],
+            ElementKind::Detail(d) => vec![d.view],
             ElementKind::Guide(g) => g.level.into_iter().collect(),
             ElementKind::Railing(r) => std::iter::once(r.level)
                 .chain(r.stair.map(|s| s.stair))
@@ -162,6 +164,9 @@ impl Element {
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::Sketch(_) => "Sketch",
             ElementKind::Cut(_) => "Cut",
+            // drawing rules and drafting, not building elements
+            ElementKind::Join(_) => "Join",
+            ElementKind::Detail(_) => "DetailItem",
             ElementKind::Guide(_) => "Guide",
             ElementKind::Column(_) => "IfcColumn",
             ElementKind::Beam(_) => "IfcBeam",
@@ -324,6 +329,14 @@ impl Element {
             ElementKind::RoomSeparator(s) => s.validate(),
             ElementKind::Ceiling(c) => c.validate(),
             ElementKind::Sketch(s) => s.check(),
+            ElementKind::Join(j) => {
+                if j.a == j.b {
+                    Err("an element can't join itself".into())
+                } else {
+                    Ok(())
+                }
+            }
+            ElementKind::Detail(d) => d.validate(),
             ElementKind::Cut(c) => {
                 if c.target == c.cutter {
                     Err("an element can't cut itself".into())
@@ -397,6 +410,10 @@ pub enum ElementKind {
     RoomSeparator(crate::room::Separator),
     /// A ceiling (IfcCovering CEILING) over a room or an outline.
     Ceiling(crate::room::Ceiling),
+    /// How two elements join in drawings, set by hand for that junction.
+    Join(crate::joins::JoinRule),
+    /// A detail component drawn in one view: a flashing, a membrane...
+    Detail(crate::detail::DetailItem),
 }
 
 impl ElementKind {
@@ -437,6 +454,8 @@ impl ElementKind {
             ElementKind::Room(_) => "Room",
             ElementKind::RoomSeparator(_) => "RoomSeparator",
             ElementKind::Ceiling(_) => "Ceiling",
+            ElementKind::Join(_) => "Join",
+            ElementKind::Detail(_) => "Detail",
         }
     }
 }
@@ -1295,6 +1314,33 @@ pub struct View {
         skip_serializing_if = "crate::graphics::PlanGraphics::is_default"
     )]
     pub graphics: crate::graphics::PlanGraphics,
+    /// A detail view called out from another view: it shows the part of
+    /// that view inside the callout's box, at its own scale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub callout: Option<Callout>,
+}
+
+/// Where a detail view comes from: the box `lo`..`hi` (drawing
+/// coordinates, lower-left and upper-right) drawn on `parent`. The detail
+/// is drawn from its parent's plan or section, so it follows the parent's
+/// line and cut; the parent shows the box with the detail's number. The
+/// parent is soft: without it the detail keeps the view it had.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Callout {
+    pub parent: ElementId,
+    pub lo: DVec2,
+    pub hi: DVec2,
+}
+
+impl Callout {
+    /// The box, with its corners in order whichever way it was drawn.
+    pub fn new(parent: ElementId, a: DVec2, b: DVec2) -> Self {
+        Self {
+            parent,
+            lo: a.min(b),
+            hi: a.max(b),
+        }
+    }
 }
 
 /// What a plan shows faintly under its own level (Revit's underlay).
@@ -1477,6 +1523,7 @@ impl View {
             room_colours: false,
             ceiling_plan: false,
             graphics: Default::default(),
+            callout: None,
         }
     }
 
@@ -1498,6 +1545,7 @@ impl View {
             room_colours: false,
             ceiling_plan: false,
             graphics: Default::default(),
+            callout: None,
         }
     }
 }
@@ -1516,6 +1564,7 @@ impl View {
             room_colours: false,
             ceiling_plan: false,
             graphics: Default::default(),
+            callout: None,
         }
     }
 
@@ -1535,6 +1584,26 @@ impl View {
             room_colours: false,
             ceiling_plan: false,
             graphics: Default::default(),
+            callout: None,
+        }
+    }
+
+    /// A detail view of the box `a`..`b` on `parent` (a plan or a
+    /// section), at `scale`: a copy of the parent's view, cropped.
+    pub fn callout(parent_id: ElementId, parent: &View, a: DVec2, b: DVec2, scale: f64) -> Self {
+        Self {
+            kind: parent.kind.clone(),
+            scale,
+            style: ViewStyle::HiddenLine,
+            hidden: parent.hidden.clone(),
+            underlay: Underlay::None,
+            browser_order: None,
+            show_hidden: false,
+            hidden_in_colour: false,
+            room_colours: false,
+            ceiling_plan: parent.ceiling_plan,
+            graphics: parent.graphics.clone(),
+            callout: Some(Callout::new(parent_id, a, b)),
         }
     }
 

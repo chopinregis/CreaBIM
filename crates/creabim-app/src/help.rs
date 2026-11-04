@@ -228,6 +228,8 @@ pub fn tool_page(t: Tool) -> &'static str {
         Tool::Object => "furniture",
         Tool::Room | Tool::RoomSeparator => "rooms",
         Tool::Ceiling => "ceilings",
+        Tool::Callout => "details#callouts",
+        Tool::Detail => "details#detail-components",
     }
 }
 
@@ -256,6 +258,8 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
         ElementKind::Object(_) => "furniture",
         ElementKind::Room(_) | ElementKind::RoomSeparator(_) => "rooms",
         ElementKind::Ceiling(_) => "ceilings",
+        ElementKind::Join(_) => "joins",
+        ElementKind::Detail(_) => "details#detail-components",
         ElementKind::Dimension(_) => "dimensions",
         ElementKind::Tag(_) => "tags",
         ElementKind::Note(_) => "notes",
@@ -263,6 +267,7 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
         ElementKind::Sheet(_) | ElementKind::Viewport(_) | ElementKind::SheetTemplate(_) => {
             "sheets"
         }
+        ElementKind::View(v) if v.callout.is_some() => "details#callouts",
         ElementKind::View(v) => match v.kind {
             ViewKind::Section { .. } => "sections",
             ViewKind::Schedule { .. } => "schedules",

@@ -53,6 +53,8 @@ mod shell;
 mod typepreview;
 #[path = "typesui.rs"]
 mod typesui;
+#[path = "joinsui.rs"]
+mod joinsui;
 #[path = "wallsui.rs"]
 mod wallsui;
 
@@ -4920,6 +4922,12 @@ impl CreaBimApp {
                         label = "Material";
                     }
                 }
+                ElementKind::Join(j) => {
+                    label = crate::detailtool::join_fields(ui, self.doc.model(), j);
+                }
+                ElementKind::Detail(d) => {
+                    label = crate::detailtool::detail_fields(ui, d);
+                }
                 ElementKind::RoomSeparator(sep) => {
                     ui.label(format!(
                         "{} long. Rooms on either side of it are measured apart.",
@@ -5032,6 +5040,12 @@ impl CreaBimApp {
         if show_visibility {
             ui.add_space(6.0);
             self.visibility_panel(ui, gridvis::VisTarget::View(id), None);
+        }
+        if creabim_core::joins::joinable(&e.kind) {
+            ui.add_space(6.0);
+            if self.prop_header(ui, "joins", "Junctions", false, Some("joins")) {
+                self.joins_section(ui, id);
+            }
         }
         if redraw {
             self.plan.cancel();
@@ -5238,6 +5252,10 @@ impl eframe::App for CreaBimApp {
         }
         if std::mem::take(&mut self.plan.want_levels) {
             self.open_levels();
+        }
+        // a detail view just called out opens beside its parent
+        if let Some(v) = self.plan.want_view.take() {
+            self.active_view = Some(v);
         }
         if std::mem::take(&mut self.plan.want_catalogue) {
             self.catalogue.open = true;
@@ -5515,6 +5533,8 @@ fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::Object(_) => "object",
         ElementKind::Room(_) => "room",
         ElementKind::RoomSeparator(_) => "room separator",
+        ElementKind::Join(_) => "junction rule",
+        ElementKind::Detail(_) => "detail component",
         ElementKind::Ceiling(_) => "ceiling",
         ElementKind::ElementType(_) => "type",
         ElementKind::Shaft(_) => "shaft",

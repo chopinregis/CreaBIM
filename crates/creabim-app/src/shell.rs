@@ -118,6 +118,8 @@ fn tool_icon(t: Tool) -> &'static str {
         Tool::Room => "room",
         Tool::RoomSeparator => "room-separator",
         Tool::Ceiling => "ceiling",
+        Tool::Callout => "callout",
+        Tool::Detail => "detail-component",
     }
 }
 
@@ -141,14 +143,15 @@ fn tool_group(t: Tool) -> u8 {
         | Tool::Room
         | Tool::RoomSeparator
         | Tool::Ceiling => 1,
-        Tool::Section | Tool::Elevation => 2,
+        Tool::Section | Tool::Elevation | Tool::Callout => 2,
         Tool::Dimension
         | Tool::Tag
         | Tool::Angle
         | Tool::Radius
         | Tool::Diameter
         | Tool::ArcLength
-        | Tool::Note => 3,
+        | Tool::Note
+        | Tool::Detail => 3,
         Tool::Sketch | Tool::Guide | Tool::Grid | Tool::Level => 4,
     }
 }
@@ -415,6 +418,7 @@ impl CreaBimApp {
                         items.push(Item::Separator);
                     }
                     items.extend(self.wall_menu_items());
+                    items.extend(self.join_menu_items());
                     items.extend(self.level_menu_items());
                     for group in [
                         &[
@@ -1377,6 +1381,18 @@ impl CreaBimApp {
                 }
             }
             "note.leader" => self.plan.anno.leader = !self.plan.anno.leader,
+            "detail.kind" => {
+                if let Some(k) = index.and_then(|i| creabim_core::DetailKind::ALL.get(i)) {
+                    self.plan.details.pick(*k);
+                    self.plan.details.path.clear();
+                }
+            }
+            "callout.scale" => {
+                if let Some(s) = index.and_then(|i| crate::detailtool::CALLOUT_SCALES.get(i)) {
+                    self.plan.details.callout_scale = *s;
+                }
+            }
+            _ if self.join_action(head, arg) => {}
             _ if self.crop_action(head, arg) => {}
             _ if self.similar_action(head, arg) => {}
             _ if self.help_action(head, arg) => {}
@@ -1821,6 +1837,46 @@ impl CreaBimApp {
                     o
                 }),
         );
+        if tool == Tool::Detail {
+            options.push(seg(creabim_core::DetailKind::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, k)| {
+                    opt(
+                        format!("detail.kind:{i}"),
+                        k.label(),
+                        self.plan.details.kind.same(*k),
+                        "What the next clicks draw",
+                    )
+                })
+                .collect()));
+            if !matches!(
+                self.plan.details.kind,
+                creabim_core::DetailKind::Membrane
+                    | creabim_core::DetailKind::Region { .. }
+                    | creabim_core::DetailKind::BreakLine
+            ) {
+                options.push(json!({
+                    "kind": "number", "key": "detail.width", "label": "Width",
+                    "value": self.plan.details.width, "unit": "m", "step": 0.005, "min": 0.0, "max": 5.0,
+                    "hint": "How wide the component is across its path: a batt's thickness, a course's depth",
+                }));
+            }
+        }
+        if tool == Tool::Callout {
+            options.push(seg(crate::detailtool::CALLOUT_SCALES
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    opt(
+                        format!("callout.scale:{i}"),
+                        &format!("1:{s:.0}"),
+                        self.plan.details.callout_scale == *s,
+                        "The scale of the detail view the box makes",
+                    )
+                })
+                .collect()));
+        }
         if tool == Tool::Note {
             options.push(json!({
                 "kind": "toggle", "id": "note.leader", "label": "Leader",
@@ -2463,6 +2519,7 @@ impl CreaBimApp {
                         crate::memberstool::set_option(&mut self.plan, k, v)
                     }
                     "view.number" => self.set_view_number(v),
+                    "detail.width" => self.plan.details.width = v.clamp(0.0, 5.0),
                     _ => {}
                 }
             }

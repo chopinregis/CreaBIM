@@ -478,7 +478,8 @@ pub fn sheet_notes(model: &Model, sheet: ElementId) -> Vec<PlanItem> {
         .collect()
 }
 
-/// The dimensions, tags and notes placed in a view, as drawing items.
+/// The dimensions, tags, notes and detail components placed in a view,
+/// and the boxes of the detail views called out from it, as drawing items.
 pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanItem> {
     let Some(project) = Projector::of(model, view) else {
         return vec![];
@@ -486,6 +487,20 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
     let mut out = Vec::new();
     for e in model.iter() {
         match &e.kind {
+            ElementKind::Detail(d) if d.view == view_id => {
+                out.extend(crate::detail::detail_items(e.id, d));
+            }
+            ElementKind::View(v) => {
+                if let Some(c) = v.callout.filter(|c| c.parent == view_id) {
+                    out.extend(crate::detail::callout_items(
+                        e.id,
+                        &e.name,
+                        c.lo,
+                        c.hi,
+                        view.scale / 1000.0,
+                    ));
+                }
+            }
             ElementKind::Dimension(d) if d.view == view_id && !d.kind.is_linear() => {
                 out.extend(measured(model, view, e.id, d));
             }

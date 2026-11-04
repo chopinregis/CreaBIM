@@ -5,8 +5,13 @@
 //! at the corner; walls built of the same assembly then meet layer by layer
 //! along the mitre. A wall that ends on the middle of another (a T) is
 //! trimmed back to that wall's face; when both are layered, its core runs
-//! on through the other's finishes to the other's core. Three or more walls
-//! at one point are left as they are.
+//! on through the other's finishes to the other's core.
+//!
+//! Where three or more wall ends meet at one point (two walls of a run
+//! ending on a partition's end, or four ends in a cross) the two that run
+//! on most nearly straight, the thicker pair first, join each other as if
+//! the rest were not there, and every other wall is trimmed back to their
+//! faces as at a T, its core running on to theirs.
 //!
 //! Two walls that cross (an X) clean up too: the thicker one (or, as thick,
 //! the one drawn first) runs through and the other stops at its faces on
@@ -22,9 +27,207 @@
 //! it stays square, butting into what it meets, and the walls it met no
 //! longer follow it (nor it them).
 
-use crate::{assembly, Element, ElementId, ElementKind, Model, Wall};
+use crate::{assembly, Element, ElementId, ElementKind, LayerFunction, Model, Wall};
 use glam::DVec2;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+
+// ---------------------------------------------------------------- join rules
+
+/// Which element wins where two elements' cuts overlap in a drawing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum JoinWinner {
+    /// Layer by layer, by each layer's priority ([`layer_priority`]):
+    /// cores join cores and finishes stop at the structure. Where two
+    /// layers are as strong, columns win over walls and walls over slabs,
+    /// then the element drawn first.
+    #[default]
+    Auto,
+    /// The rule's first element cuts through every layer of the second.
+    First,
+    /// The second cuts through every layer of the first.
+    Second,
+}
+
+impl JoinWinner {
+    pub const ALL: [JoinWinner; 3] = [JoinWinner::Auto, JoinWinner::First, JoinWinner::Second];
+}
+
+/// How two elements join where they meet in drawings, set by hand for one
+/// junction: Revit's *Switch Join Order* and *Unjoin*, ArchiCAD's
+/// priorities overridden. Without one, every junction joins
+/// automatically. Deleting either element deletes the rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JoinRule {
+    pub a: ElementId,
+    pub b: ElementId,
+    #[serde(default)]
+    pub winner: JoinWinner,
+    /// Off leaves the two overlapping as they are, each drawn whole.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub cleanup: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+impl JoinRule {
+    pub fn new(a: ElementId, b: ElementId) -> Self {
+        Self {
+            a,
+            b,
+            winner: JoinWinner::Auto,
+            cleanup: true,
+        }
+    }
+
+    /// Is this the rule for the junction of `x` and `y`, either way round?
+    pub fn joins(&self, x: ElementId, y: ElementId) -> bool {
+        (self.a == x && self.b == y) || (self.a == y && self.b == x)
+    }
+
+    /// Does `x` cut through `y` outright under this rule? `None` when it
+    /// leaves that to the layers' priorities.
+    pub fn wins(&self, x: ElementId, y: ElementId) -> Option<bool> {
+        match self.winner {
+            JoinWinner::Auto => None,
+            JoinWinner::First => Some(self.a == x && self.b == y),
+            JoinWinner::Second => Some(self.b == x && self.a == y),
+        }
+    }
+
+    /// The same rule as an automatic join: nothing left to keep.
+    pub fn is_default(&self) -> bool {
+        self.winner == JoinWinner::Auto && self.cleanup
+    }
+}
+
+/// The rule set by hand for the junction of `x` and `y`, with its id.
+pub fn rule_for(model: &Model, x: ElementId, y: ElementId) -> Option<(ElementId, JoinRule)> {
+    model.iter().find_map(|e| match &e.kind {
+        ElementKind::Join(r) if r.joins(x, y) => Some((e.id, *r)),
+        _ => None,
+    })
+}
+
+/// Every junction rule in the model.
+pub fn rules(model: &Model) -> Vec<JoinRule> {
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Join(r) => Some(*r),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Which kind of element runs through which where two are as strong:
+/// columns through walls, walls through slabs.
+pub fn category_rank(kind: &ElementKind) -> u8 {
+    match kind {
+        ElementKind::Column(_) => 3,
+        ElementKind::Wall(_) => 2,
+        ElementKind::Slab(_) => 1,
+        _ => 0,
+    }
+}
+
+/// Can `kind` take part in a junction rule: is it cut and filled in
+/// drawings?
+pub fn joinable(kind: &ElementKind) -> bool {
+    matches!(
+        kind,
+        ElementKind::Wall(_)
+            | ElementKind::Slab(_)
+            | ElementKind::Roof(_)
+            | ElementKind::Column(_)
+            | ElementKind::Beam(_)
+            | ElementKind::Footing(_)
+            | ElementKind::Ceiling(_)
+    )
+}
+
+/// Of `a` and `b`, the one that runs through where their layers are as
+/// strong and no rule says otherwise: the higher kind, then the one drawn
+/// first.
+pub fn default_winner(model: &Model, a: ElementId, b: ElementId) -> ElementId {
+    let rank = |id: ElementId| model.get(id).map_or(0, |e| category_rank(&e.kind));
+    if rank(a) != rank(b) {
+        return if rank(a) > rank(b) { a } else { b };
+    }
+    let first = model.iter().find(|e| e.id == a || e.id == b);
+    first.map_or(a, |e| e.id)
+}
+
+/// The edit that sets the junction of `a` and `b` to what `f` makes of its
+/// rule (an automatic one when it has none): the rule is added, changed,
+/// or taken away when it is back to automatic.
+pub fn set_rule(
+    model: &Model,
+    a: ElementId,
+    b: ElementId,
+    label: &str,
+    f: impl FnOnce(&mut JoinRule),
+) -> crate::Transaction {
+    let tx = crate::Transaction::new(label);
+    let old = rule_for(model, a, b);
+    let mut rule = old.map_or(JoinRule::new(a, b), |(_, r)| r);
+    f(&mut rule);
+    match (old, rule.is_default()) {
+        (None, true) => tx,
+        (None, false) => tx.insert(Element::new("Junction", ElementKind::Join(rule))),
+        (Some((id, _)), true) => tx.remove_cascade(model, id),
+        (Some((id, _)), false) => {
+            let before = model.get(id).cloned().expect("a rule");
+            let mut after = before.clone();
+            after.kind = ElementKind::Join(rule);
+            tx.replace(before, after)
+        }
+    }
+}
+
+/// Switch which of `a` and `b` cuts through the other (Revit's *Switch
+/// Join Order*): from automatic, the one that would lose wins outright;
+/// after that, the two swap.
+pub fn switch_order(model: &Model, a: ElementId, b: ElementId) -> crate::Transaction {
+    let loser = if default_winner(model, a, b) == a { b } else { a };
+    set_rule(model, a, b, "Switch join order", |r| {
+        let wins_now = match r.winner {
+            JoinWinner::Auto => None,
+            JoinWinner::First => Some(r.a),
+            JoinWinner::Second => Some(r.b),
+        };
+        let next = match wins_now {
+            None => loser,
+            Some(w) if w == r.a => r.b,
+            Some(_) => r.a,
+        };
+        r.winner = if next == r.a {
+            JoinWinner::First
+        } else {
+            JoinWinner::Second
+        };
+        r.cleanup = true;
+    })
+}
+
+/// How strongly a layer holds its place where elements meet: lower runs
+/// through higher, as Revit's layer priorities. Structure 1, substrate 2,
+/// insulation, air gaps and membranes 3, finishes 4; a layer's own
+/// `priority` overrides its function's.
+pub fn layer_priority(function: LayerFunction, own: Option<u8>) -> u8 {
+    own.unwrap_or(match function {
+        LayerFunction::Structure => 1,
+        LayerFunction::Substrate => 2,
+        LayerFunction::Insulation | LayerFunction::AirGap | LayerFunction::Membrane => 3,
+        LayerFunction::Finish => 4,
+    })
+}
 
 /// How far each face of a wall runs past its nominal end, in metres along the
 /// wall. Index 0 is the face on the wall's left (start → end), index 1 the
@@ -425,7 +628,7 @@ fn joins_among(walls: &[Joinable]) -> HashMap<ElementId, WallEnds> {
                     .filter_map(|o| tee(p, d_in, me, o))
                     .min_by(|a, b| a.1.total_cmp(&b.1))
                     .map(|(e, _)| e),
-                _ => None,
+                _ => node(walls, me, p, d_in, &neighbours),
             };
             let Some((left, right, core)) = ext else {
                 continue;
@@ -446,6 +649,123 @@ fn joins_among(walls: &[Joinable]) -> HashMap<ElementId, WallEnds> {
         out.insert(me.id, ends);
     }
     out
+}
+
+/// The end of a wall at a joint where three or more wall ends meet (see
+/// the module notes): the face extensions and core run of the end of `me`
+/// at `p`, arriving along `d_in`, given the other ends there.
+fn node(
+    walls: &[Joinable],
+    me: &Joinable,
+    p: DVec2,
+    d_in: DVec2,
+    neighbours: &[(&Joinable, DVec2)],
+) -> Option<(f64, f64, f64)> {
+    // every end at the joint, with its direction leaving it
+    let mut ends: Vec<(&Joinable, DVec2)> = vec![(me, -d_in)];
+    ends.extend(neighbours.iter().copied());
+    let index = |j: &Joinable| walls.iter().position(|w| w.id == j.id).unwrap_or(usize::MAX);
+    // the pair running on: most nearly straight, then thickest, then first
+    // drawn, so every wall at the joint picks the same two
+    let key = |i: usize, k: usize| {
+        let (a, b) = (ends[i], ends[k]);
+        let straight = -a.1.dot(b.1);
+        let thick = a.0.wall.thickness + b.0.wall.thickness;
+        let (x, y) = (index(a.0), index(b.0));
+        (straight, thick, x.min(y), x.max(y))
+    };
+    let better = |a: (f64, f64, usize, usize), b: (f64, f64, usize, usize)| {
+        if (a.0 - b.0).abs() > 1e-6 {
+            return a.0 > b.0;
+        }
+        if (a.1 - b.1).abs() > 1e-9 {
+            return a.1 > b.1;
+        }
+        (a.2, a.3) < (b.2, b.3)
+    };
+    let mut pair = (0, 1);
+    for i in 0..ends.len() {
+        for k in i + 1..ends.len() {
+            if better(key(i, k), key(pair.0, pair.1)) {
+                pair = (i, k);
+            }
+        }
+    }
+    // where a wall's end at the joint is: the one of its ends nearest `p`
+    let end_at = |j: &Joinable| {
+        if j.wall.start.distance(p) <= j.wall.end.distance(p) {
+            j.wall.start
+        } else {
+            j.wall.end
+        }
+    };
+    let t = me.wall.thickness / 2.0;
+    if pair.0 == 0 {
+        // one of the two running on: join the other as at an L
+        let (o, d_out) = ends[pair.1];
+        let q = end_at(o);
+        return Some(
+            miter(p, d_in, t, q, d_out, o.wall.thickness / 2.0)
+                .map_or((0.0, 0.0, 0.0), |(l, r)| (l, r, 0.0)),
+        );
+    }
+    let run = [ends[pair.0], ends[pair.1]];
+    let n_in = d_in.perp();
+    // the face of a wall running on that faces this one, across it from
+    // its end at the joint, and that end
+    let face_of = |k: &Joinable, dk: DVec2| {
+        let c = end_at(k);
+        let nk = dk.perp();
+        let side = if (-d_in).dot(nk) > 0.0 { 1.0 } else { -1.0 };
+        (c, nk, side, c + nk * (k.wall.thickness / 2.0 * side))
+    };
+    // how far the line `s` across this wall runs before it meets the
+    // faces of the walls running on: the face it meets on that wall's own
+    // side of the joint, else the nearer
+    let reach = |s: f64| -> Option<(f64, usize)> {
+        let mut hits = vec![];
+        for (i, (k, dk)) in run.iter().enumerate() {
+            let (c, _, _, face) = face_of(k, *dk);
+            let Some(x) = meet(p + n_in * s, d_in, face, *dk) else {
+                continue;
+            };
+            let at = p + n_in * s + d_in * x;
+            hits.push((x, i, (at - c).dot(*dk) >= -TOL));
+        }
+        let on: Vec<_> = hits.iter().filter(|h| h.2).collect();
+        let pick = if on.is_empty() {
+            hits.iter().min_by(|a, b| a.0.total_cmp(&b.0))
+        } else {
+            on.into_iter().min_by(|a, b| a.0.total_cmp(&b.0))
+        };
+        pick.map(|h| (h.0, h.1))
+    };
+    let (left, _) = reach(t)?;
+    let (right, _) = reach(-t)?;
+    let limit = 4.0 * run.iter().map(|r| r.0.wall.thickness).fold(t * 2.0, f64::max);
+    if left.abs() > limit || right.abs() > limit {
+        return None;
+    }
+    // layered into layered: the core runs on to the core of the wall its
+    // centreline meets
+    let core = match (me.core, reach(0.0)) {
+        (Some(_), Some((f, i))) => {
+            let (k, dk) = run[i];
+            k.core.map_or(0.0, |(c0, c1)| {
+                let (c, nk, side, _) = face_of(k, dk);
+                // the core's span in the frame leaving the joint
+                let (lo, hi) = if dk.dot(k.wall.direction()) > 0.0 {
+                    (c0, c1)
+                } else {
+                    (-c1, -c0)
+                };
+                let s = if side > 0.0 { hi } else { lo };
+                meet(p, d_in, c + nk * s, dk).map_or(0.0, |x| (x - f).max(0.0))
+            })
+        }
+        _ => 0.0,
+    };
+    Some((left, right, core))
 }
 
 /// Distance along `a` from `p` to where the line `p + a s` meets `q + b r`.
@@ -985,6 +1305,55 @@ mod tests {
         let j = wall_joins(&m);
         assert!(j[&ids[1]].gaps.is_empty() && j[&ids[0]].gaps.is_empty());
         assert!((j[&ids[1]].end[0] + 0.25).abs() < 1e-9);
+    }
+
+    #[test]
+    fn three_walls_at_a_point_join_as_a_tee() {
+        // a run of two walls ending on a partition's end: the run butts
+        // square, the partition stops at its face
+        let (m, ids) = model(&[
+            (DVec2::new(0.0, 0.0), DVec2::new(3.0, 0.0)),
+            (DVec2::new(3.0, 0.0), DVec2::new(6.0, 0.0)),
+            (DVec2::new(3.0, 4.0), DVec2::new(3.0, 0.0)),
+        ]);
+        let j = wall_joins(&m);
+        assert_eq!(j[&ids[0]], WallEnds::default());
+        assert_eq!(j[&ids[1]], WallEnds::default());
+        let b = &j[&ids[2]];
+        assert!((b.end[0] + 0.1).abs() < 1e-9 && (b.end[1] + 0.1).abs() < 1e-9);
+        // the same whichever was drawn first, and with the partition first
+        let (m, ids) = model(&[
+            (DVec2::new(3.0, 0.0), DVec2::new(3.0, 4.0)),
+            (DVec2::new(6.0, 0.0), DVec2::new(3.0, 0.0)),
+            (DVec2::new(3.0, 0.0), DVec2::new(0.0, 0.0)),
+        ]);
+        let j = wall_joins(&m);
+        let b = &j[&ids[0]];
+        assert!((b.start[0] + 0.1).abs() < 1e-9 && (b.start[1] + 0.1).abs() < 1e-9);
+        assert_eq!(j[&ids[1]], WallEnds::default());
+        // no two footprints overlap
+        let fp: Vec<[DVec2; 4]> = ids
+            .iter()
+            .map(|id| j[id].footprint(&wall(&m, *id)))
+            .collect();
+        assert!(fp[0].iter().all(|p| p.y >= 0.1 - 1e-9));
+    }
+
+    #[test]
+    fn four_walls_at_a_point_make_a_cross() {
+        let (m, ids) = model(&[
+            (DVec2::new(0.0, 0.0), DVec2::new(3.0, 0.0)),
+            (DVec2::new(3.0, 0.0), DVec2::new(6.0, 0.0)),
+            (DVec2::new(3.0, 3.0), DVec2::new(3.0, 0.0)),
+            (DVec2::new(3.0, 0.0), DVec2::new(3.0, -3.0)),
+        ]);
+        let m = set_wall(&m, ids[0], |w| w.thickness = 0.3);
+        let m = set_wall(&m, ids[1], |w| w.thickness = 0.3);
+        let j = wall_joins(&m);
+        // the thicker run goes through; the thinner ones stop at its faces
+        assert_eq!(j[&ids[0]], WallEnds::default());
+        assert!((j[&ids[2]].end[0] + 0.15).abs() < 1e-9);
+        assert!((j[&ids[3]].start[1] + 0.15).abs() < 1e-9);
     }
 
     #[test]

@@ -66,10 +66,14 @@ pub enum Tool {
     RoomSeparator,
     /// A ceiling under a room, or drawn.
     Ceiling,
+    /// A box on a plan or section that makes a larger-scale detail view.
+    Callout,
+    /// A detail component: flashing, membrane, insulation, blocking...
+    Detail,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 32] = [
+    pub const ALL: [Tool; 34] = [
         Tool::Select,
         Tool::Wall,
         Tool::Door,
@@ -90,6 +94,7 @@ impl Tool {
         Tool::Ceiling,
         Tool::Section,
         Tool::Elevation,
+        Tool::Callout,
         Tool::Dimension,
         Tool::Tag,
         Tool::Angle,
@@ -97,6 +102,7 @@ impl Tool {
         Tool::Diameter,
         Tool::ArcLength,
         Tool::Note,
+        Tool::Detail,
         Tool::Sketch,
         Tool::Guide,
         Tool::Grid,
@@ -143,6 +149,8 @@ impl Tool {
             Tool::Room => "Room",
             Tool::RoomSeparator => "Room separator",
             Tool::Ceiling => "Ceiling",
+            Tool::Callout => "Callout",
+            Tool::Detail => "Detail component",
         }
     }
 
@@ -179,6 +187,8 @@ impl Tool {
             Tool::Object => "Click to place the object picked in the Catalogue window. Sinks, WCs, kitchen units, beds and sofas back onto the nearest wall; Space turns the next one a quarter.",
             Tool::Room => "Click inside walls for a room that follows them (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch) where no walls close it off. Its name, number and finishes are in Properties.",
             Tool::RoomSeparator => "Click two points for a line that splits a room in two where there is no wall, such as between a kitchen and a dining room.",
+            Tool::Callout => "On a plan or section, click two corners of a box round what to detail: it becomes a detail view at the scale in the top bar, numbered in a bubble on this view.",
+            Tool::Detail => "Pick what to draw in the top bar, then click its points; click the last point again (or Enter) to finish, the first again to close a region. Detail components show in this view only.",
             Tool::Ceiling => "Click inside a room for a ceiling over it that follows its walls (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch). Set its height and thickness in the top bar or Properties.",
         }
     }
@@ -394,6 +404,11 @@ pub struct PlanState {
     centre_lines: HashMap<ElementId, (u64, Arc<Vec<crate::aligntool::CentreLine>>)>,
     /// The type each tool draws new elements as.
     pub types: HashMap<creabim_core::TypeCategory, ElementId>,
+    /// What the Detail and Callout tools draw, and the Detail tool's
+    /// points so far.
+    pub details: crate::detailtool::DetailSettings,
+    /// A view made in a pane that the app should open: a new detail view.
+    pub want_view: Option<ElementId>,
 }
 
 impl PlanState {
@@ -469,6 +484,8 @@ impl Default for PlanState {
             axo_snaps: HashMap::new(),
             centre_lines: HashMap::new(),
             types: HashMap::new(),
+            details: Default::default(),
+            want_view: None,
         }
     }
 }
@@ -487,6 +504,7 @@ impl PlanState {
         self.chain.1.clear();
         self.rested.1.clear();
         self.align.clear();
+        self.details.path.clear();
     }
 
     /// Is a tool part way through, with clicks to undo?
@@ -501,6 +519,7 @@ impl PlanState {
             || self.armed.is_some()
             || !self.members.path.is_empty()
             || self.align.has_input()
+            || !self.details.path.is_empty()
     }
 
     /// Drop every snap reference, and the guides they make.
@@ -547,6 +566,7 @@ impl PlanState {
             || self.tag_host.is_some()
             || self.sketch.is_some()
             || self.modal.is_some()
+            || !self.details.path.is_empty()
     }
 }
 
@@ -1428,6 +1448,19 @@ pub fn show(
             false,
         );
     }
+    // a callout's box or a detail component being drawn, and Enter to
+    // finish the component
+    if matches!(tool, Tool::Callout | Tool::Detail) {
+        crate::detailtool::preview(&painter, &xf, tool, state, view, hover_world, mm);
+        let enter = response.hovered()
+            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+            && !ui.ctx().egui_wants_keyboard_input();
+        if tool == Tool::Detail && enter && state.details.view == Some(view) {
+            if let Err(e) = crate::detailtool::finish(doc, state, selection) {
+                return Some(e.to_string());
+            }
+        }
+    }
     // preview of the tool in progress
     if let (Some(a), Some(b)) = (state.pending, hover_world) {
         let accent = Stroke::new(1.5, Color32::from_rgb(230, 120, 30));
@@ -1700,6 +1733,13 @@ pub fn show(
                 selection,
             ),
             (_, Tool::Tag) => tag_tool(doc, view, &view_def, picked(), raw, state, selection),
+            (PaneKind::Plan { .. } | PaneKind::Section { .. }, Tool::Callout) => {
+                crate::detailtool::callout_click(doc, view, p, state, selection)
+                    .map(|made| state.want_view = made.or(state.want_view))
+            }
+            (PaneKind::Plan { .. } | PaneKind::Section { .. }, Tool::Detail) => {
+                crate::detailtool::detail_click(doc, view, p, state, selection)
+            }
             (_, t) if crate::annotate::is_tool(t) => match &view_def {
                 Some(v) => crate::annotate::click(
                     doc,
@@ -1986,7 +2026,9 @@ fn plan_click(
         | Tool::Diameter
         | Tool::ArcLength
         | Tool::Note
-        | Tool::Sketch => Ok(()),
+        | Tool::Sketch
+        | Tool::Callout
+        | Tool::Detail => Ok(()),
         Tool::Slab | Tool::Roof | Tool::Shaft | Tool::Room | Tool::Ceiling => {
             crate::slabtool::click(doc, level, p, state, selection)
         }
