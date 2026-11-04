@@ -1094,8 +1094,17 @@ pub fn plan_view_with(
                             points: s.outline(),
                         },
                     );
+                    let here = model.level(level).map_or(0.0, |l| l.elevation);
                     for h in &holes {
-                        items.extend(hole_marks(e.id, h, Pen::Projection));
+                        if stair_arrives_in(model, here, h) {
+                            items.push(PlanItem::Polygon {
+                                id: e.id,
+                                pen: Pen::Projection,
+                                points: h.clone(),
+                            });
+                        } else {
+                            items.extend(hole_marks(e.id, h, Pen::Projection));
+                        }
                     }
                 }
             }
@@ -1143,7 +1152,17 @@ pub fn plan_view_with(
                         });
                     }
                 } else if z0 - 1e-6 <= z && z <= z1 + 1e-6 {
-                    items.extend(hole_marks(e.id, &sh.boundary, Pen::Symbol));
+                    if z > z0 + 1e-6 && stair_arrives_in(model, z, &sh.boundary) {
+                        // the stair drawn through it says what it is: its
+                        // outline, with no cross over the stair
+                        items.push(PlanItem::Polygon {
+                            id: e.id,
+                            pen: Pen::Symbol,
+                            points: sh.boundary.clone(),
+                        });
+                    } else {
+                        items.extend(hole_marks(e.id, &sh.boundary, Pen::Symbol));
+                    }
                 }
             }
             ElementKind::Sketch(sk) if sk.level == Some(level) => {
@@ -1241,6 +1260,23 @@ fn stair_in(model: &Model, level: ElementId, outline: &[DVec2]) -> bool {
     model.iter().any(|e| match &e.kind {
         ElementKind::Stair(s) => s.level == level && point_in(s.start, outline),
         _ => false,
+    })
+}
+
+/// Does a stair from below arrive at the floor at height `z` through
+/// `outline`: does its last flight end inside it?
+fn stair_arrives_in(model: &Model, z: f64, outline: &[DVec2]) -> bool {
+    model.iter().any(|e| {
+        let ElementKind::Stair(s) = &e.kind else {
+            return false;
+        };
+        let (base, rise) = (s.base(model), s.rise(model));
+        base < z - 1e-6
+            && (base + rise - z).abs() <= 0.05
+            && s.layout(rise)
+                .flights
+                .last()
+                .is_some_and(|f| point_in(f.end(s.tread) - f.dir * (s.tread / 2.0), outline))
     })
 }
 
@@ -2266,23 +2302,13 @@ mod tests {
         assert!(items.iter().any(
             |it| matches!(it, PlanItem::Label { id, text, .. } if *id == stair && text == "DN")
         ));
-        // the well's cross stays inside the L of the well
-        let mut crossing = 0;
-        for it in &items {
-            if let PlanItem::Line {
-                id,
-                pen: Pen::Fine,
-                a,
-                b,
-            } = it
-            {
-                if *id == shaft {
-                    crossing += 1;
-                    assert!(point_in((*a + *b) / 2.0, &well));
-                }
-            }
-        }
-        assert_eq!(crossing, 4);
+        // the well keeps its outline, with no cross over the stair
+        assert!(!items
+            .iter()
+            .any(|it| matches!(it, PlanItem::Line { id, .. } if *id == shaft)));
+        assert!(items
+            .iter()
+            .any(|it| matches!(it, PlanItem::Polygon { id, .. } if *id == shaft)));
         // a view depth too shallow to reach the stair's foot shows less
         let f = named(&m, "First Floor");
         let shallow = creabim_core::PlanGraphics {
