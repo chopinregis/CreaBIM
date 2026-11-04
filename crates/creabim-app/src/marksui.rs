@@ -43,19 +43,13 @@ impl CreaBimApp {
             (Some(m), false) => format!("{m} (numbered)"),
             _ => "None".into(),
         };
-        let changed = ui
-            .horizontal(|ui| {
-                ui.label("Mark").on_hover_text(
+        let changed = crate::props::row(ui, "Mark", |ui| {
+            crate::props::fill(ui, egui::TextEdit::singleline(&mut text).hint_text(hint))
+                .on_hover_text(
                     "What its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering).",
-                );
-                ui.add(
-                    egui::TextEdit::singleline(&mut text)
-                        .hint_text(hint)
-                        .desired_width(120.0),
                 )
                 .changed()
-            })
-            .inner;
+        });
         if changed {
             let value = (!text.trim().is_empty()).then(|| text.clone());
             let r = self.doc.edit_merged(id, "Mark", |e| e.mark = value.clone());

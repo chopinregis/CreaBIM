@@ -3941,7 +3941,9 @@ impl CreaBimApp {
         if matches!(e.kind, ElementKind::Level(_)) {
             // a level is renamed with the plans named after it, once typed
             self.level_name_field(ui, id, &e.name);
-        } else if ui.text_edit_singleline(&mut name).changed() {
+        } else if crate::props::row(ui, "Name", |ui| {
+            crate::props::fill(ui, egui::TextEdit::singleline(&mut name)).changed()
+        }) {
             let r = self
                 .doc
                 .edit_merged(id, "Rename", |e| e.name = name.clone());
