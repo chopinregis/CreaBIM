@@ -24,6 +24,8 @@ The menus, tool palette, project browser, status bar and every dropdown and righ
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - The properties panel is still drawn by egui, restyled to match the new look. Moving it to the web interface comes next.
 - The bars that appear inside the views (the slab tool's modes, the move/rotate/scale panel, the sketch tools) are still egui.
 - On Linux the panes need X11, so the app runs through XWayland on Wayland desktops.

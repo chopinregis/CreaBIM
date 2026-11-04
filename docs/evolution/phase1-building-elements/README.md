@@ -27,6 +27,8 @@ Each element has its own tool in the palette, next to Wall, Door, Window, Slab a
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Gable and hip roofs need a convex outline. On an L-shaped or other non-convex outline the roof falls back to flat, and the properties say so. Valleys aren't computed yet.
 - Arcs in a roof outline are flattened to straight segments.
 - Stairs are straight or L-shaped. There are no U-shaped stairs, winders or spirals yet.

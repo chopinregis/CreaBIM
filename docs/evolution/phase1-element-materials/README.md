@@ -31,6 +31,8 @@ same answer.
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - A door or window draws in a single colour: frame and glass can't take different
   materials yet.
 - The 3D view's navigation buttons draw on top of the material browser where the

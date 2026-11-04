@@ -31,6 +31,8 @@ This round covers the editable marks of P3, the leaders, spot levels and dimensi
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - IFC5 (`.ifcx`) export does not carry marks yet. IFC4 does.
 - Object categories (furniture, fixtures) have no prefixes in the mark rules yet. A mark typed on an object or its type does show in tags and schedules.
 - Spot levels work in plans, sections and elevations, but not in axonometric views.

@@ -28,6 +28,9 @@ pub(super) struct Shell {
     popup: Option<Popup>,
     /// Keys pressed while a page had the keyboard, for the views.
     pub keys: Vec<egui::Event>,
+    /// Ctrl, Shift or Alt came with the keys fed last frame, and are to
+    /// be let go of now.
+    keys_held: bool,
     /// A right-click menu was asked for from the 3D view this frame.
     pub menu_3d: bool,
     /// The open right-click menu came from the 3D view (else a 2D pane).
@@ -53,6 +56,7 @@ impl Default for Shell {
             settings: Default::default(),
             popup: None,
             keys: vec![],
+            keys_held: false,
             menu_3d: false,
             context_3d: false,
             focus_popup: false,
@@ -60,6 +64,33 @@ impl Default for Shell {
             help: Default::default(),
             bar: None,
         }
+    }
+}
+
+impl Shell {
+    /// Feed the keys pressed while a page had the keyboard to the views.
+    /// egui keeps Ctrl, Shift and Alt from `ModifiersChanged` events, not
+    /// from each key, and the window saw none of them go down while the
+    /// page had the keyboard. So the keys' own modifiers are set for the
+    /// frame they arrive in and let go of in the next: otherwise Ctrl+S
+    /// over a view reads as S, which scales. True when a next frame is
+    /// needed to let go of them.
+    pub fn feed_keys(&mut self, raw: &mut egui::RawInput) -> bool {
+        if std::mem::take(&mut self.keys_held) {
+            // first, so a real change this frame still wins
+            raw.events
+                .insert(0, egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        }
+        let held = self.keys.iter().find_map(|e| match e {
+            egui::Event::Key { modifiers, .. } if !modifiers.is_none() => Some(*modifiers),
+            _ => None,
+        });
+        if let Some(m) = held {
+            raw.events.push(egui::Event::ModifiersChanged(m));
+            self.keys_held = true;
+        }
+        raw.events.append(&mut self.keys);
+        self.keys_held
     }
 }
 
@@ -2166,9 +2197,16 @@ impl CreaBimApp {
 
     fn left_state(&self) -> Value {
         let model = self.doc.model();
+        // the search finds elements by their marks (D01, W05) too
+        let marks = creabim_core::marks::marks(model);
+        let mark = |e: &Element| match &e.kind {
+            ElementKind::Object(_) => creabim_core::marks::mark_of(model, e.id),
+            _ => marks.get(&e.id).cloned(),
+        };
         let row = |e: &Element, opens: bool| {
             json!({
                 "id": e.id.0.to_string(), "name": e.name, "icon": icon_name(Icon::of(e)),
+                "mark": mark(e),
                 "sel": self.selection.contains(e.id),
                 "active": opens && self.active_view == Some(e.id),
                 "hint": if opens {
@@ -3094,4 +3132,82 @@ fn align_item() -> Item {
     Item::new("align", "Align to a reference…")
         .icon("align-tool")
         .hint("Pick a reference line (a wall face, an edge, a guide or a grid line), then an edge to bring flush with it")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A key as a page forwards it: pressed and let go in one frame, with
+    /// its modifiers on the key only.
+    fn forwarded(key: egui::Key, modifiers: egui::Modifiers) -> Vec<egui::Event> {
+        [true, false]
+            .map(|pressed| egui::Event::Key {
+                key,
+                physical_key: Some(key),
+                pressed,
+                repeat: false,
+                modifiers,
+            })
+            .to_vec()
+    }
+
+    #[test]
+    fn ctrl_s_typed_in_a_page_saves_and_does_not_scale() {
+        let ctx = egui::Context::default();
+        let mut shell = Shell {
+            keys: forwarded(egui::Key::S, egui::Modifiers::COMMAND),
+            ..Default::default()
+        };
+        let mut raw = egui::RawInput::default();
+        assert!(shell.feed_keys(&mut raw), "a next frame lets go of Ctrl");
+        let mut seen = (false, None);
+        ctx.run_ui(raw, |ui| {
+            seen = (
+                ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)),
+                crate::planview::start_keys(ui.ctx()),
+            );
+        })
+        .textures_delta
+        .clear();
+        assert!(seen.0, "Ctrl+S reads as Save");
+        assert_eq!(seen.1, None, "and starts no Scale");
+
+        // the next frame Ctrl is up again, so S alone scales
+        let mut raw = egui::RawInput::default();
+        assert!(!shell.feed_keys(&mut raw));
+        ctx.run_ui(raw, |ui| {
+            assert!(!ui.input(|i| i.modifiers.command));
+        })
+        .textures_delta
+        .clear();
+        shell.keys = forwarded(egui::Key::S, egui::Modifiers::NONE);
+        let mut raw = egui::RawInput::default();
+        shell.feed_keys(&mut raw);
+        let mut scale = None;
+        ctx.run_ui(raw, |ui| scale = crate::planview::start_keys(ui.ctx()))
+            .textures_delta
+            .clear();
+        assert_eq!(scale, Some((crate::modal::Mode::Scale, false)));
+    }
+
+    #[test]
+    fn browser_rows_carry_marks_for_the_search() {
+        let app = crate::app::test_app();
+        let model = app.doc.model();
+        let door = model
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == creabim_core::OpeningKind::Door))
+            .unwrap();
+        let mark = creabim_core::marks::mark_of(model, door.id).expect("doors are marked");
+        let left = app.left_state();
+        let row = left["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|g| g["rows"].as_array().unwrap())
+            .find(|r| r["id"] == door.id.0.to_string())
+            .unwrap();
+        assert_eq!(row["mark"], mark.as_str());
+    }
 }

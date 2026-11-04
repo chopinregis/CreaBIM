@@ -36,6 +36,8 @@ levels outside sections and elevations, and where new plans go in the browser.
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - The rename step isn't screenshotted: typing into egui text fields doesn't work under the headless X server used for screenshots (no window manager or input method). The renaming is covered by tests (`plans_the_user_named_keep_their_names_when_the_level_is_renamed`).
 - In the 3D view, tracking covers slab outlines, wall and beam chains and sketches; guides drawn on a workplane don't track yet. Tracking uses the model's X and Y axes, so on a tilted workplane the alignment lines are its X and Y projected onto it.
 - Points rested on are acquired after 0.4 s on a point snap, only in 2D panes.

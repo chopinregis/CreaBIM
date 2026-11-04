@@ -86,6 +86,8 @@ All shots are from the sample house, in the one-view layout.
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - **Title block import:** PDF and raster title blocks are not imported; use DXF or SVG. Templates are named and reusable within a project, and can be copied between projects by importing a `.creabim`.
 - **DXF import:** blocks (INSERT), hatches, dimensions and splines are skipped.
 - **SVG import:** curves come in as straight chords between their end points, and only plain text and `tspan` are read.

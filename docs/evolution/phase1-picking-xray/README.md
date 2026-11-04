@@ -41,6 +41,8 @@ Reference screenshots, taken from *File > New sample with a beam in a wall*: the
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - 2D X-ray is per session. It is not saved with the view, and sheets never show it.
 - The coloured fill of a hidden element is the convex hull of its projected shape, so it is accurate for beams, columns and members but rough for L-shaped or hollow elements.
 - In 3D, "buried" (for *Hidden elements in colour*) is decided by bounding box: elements whose centre lies inside the bounds of a wall, slab or roof.

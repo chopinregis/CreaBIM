@@ -954,9 +954,10 @@ pub fn plan_view_with(
                 // gaps crossing walls leave follow its joins
                 let at = |u: f64, s: f64| w.start + d * ends.place(w, u, s, false) + n * s;
                 let cut_v = cut_height - w.base_offset;
-                if cut_v <= 0.0 || cut_v >= w.height {
+                let top_v = wall_top_height(model, w);
+                if cut_v <= 0.0 || cut_v >= top_v {
                     // wall entirely below or above the cut: show its outline in projection
-                    if cut_v >= w.height {
+                    if cut_v >= top_v {
                         items.push(PlanItem::Polygon {
                             id: e.id,
                             pen: Pen::Projection,
@@ -1093,8 +1094,17 @@ pub fn plan_view_with(
                             points: s.outline(),
                         },
                     );
+                    let here = model.level(level).map_or(0.0, |l| l.elevation);
                     for h in &holes {
-                        items.extend(hole_marks(e.id, h, Pen::Projection));
+                        if stair_arrives_in(model, here, h) {
+                            items.push(PlanItem::Polygon {
+                                id: e.id,
+                                pen: Pen::Projection,
+                                points: h.clone(),
+                            });
+                        } else {
+                            items.extend(hole_marks(e.id, h, Pen::Projection));
+                        }
                     }
                 }
             }
@@ -1142,7 +1152,17 @@ pub fn plan_view_with(
                         });
                     }
                 } else if z0 - 1e-6 <= z && z <= z1 + 1e-6 {
-                    items.extend(hole_marks(e.id, &sh.boundary, Pen::Symbol));
+                    if z > z0 + 1e-6 && stair_arrives_in(model, z, &sh.boundary) {
+                        // the stair drawn through it says what it is: its
+                        // outline, with no cross over the stair
+                        items.push(PlanItem::Polygon {
+                            id: e.id,
+                            pen: Pen::Symbol,
+                            points: sh.boundary.clone(),
+                        });
+                    } else {
+                        items.extend(hole_marks(e.id, &sh.boundary, Pen::Symbol));
+                    }
                 }
             }
             ElementKind::Sketch(sk) if sk.level == Some(level) => {
@@ -1243,6 +1263,23 @@ fn stair_in(model: &Model, level: ElementId, outline: &[DVec2]) -> bool {
     })
 }
 
+/// Does a stair from below arrive at the floor at height `z` through
+/// `outline`: does its last flight end inside it?
+fn stair_arrives_in(model: &Model, z: f64, outline: &[DVec2]) -> bool {
+    model.iter().any(|e| {
+        let ElementKind::Stair(s) = &e.kind else {
+            return false;
+        };
+        let (base, rise) = (s.base(model), s.rise(model));
+        base < z - 1e-6
+            && (base + rise - z).abs() <= 0.05
+            && s.layout(rise)
+                .flights
+                .last()
+                .is_some_and(|f| point_in(f.end(s.tread) - f.dir * (s.tread / 2.0), outline))
+    })
+}
+
 /// The footprint of a mesh lying wholly below `z`, as the faces it shows
 /// from above, tinted. Very large meshes are tinted as their hull.
 fn mesh_shade(
@@ -1283,6 +1320,26 @@ fn mesh_shade(
         })
     })
     .collect()
+}
+
+/// The height of a wall's top above its base where it is highest. A top
+/// attached to a roof or slab follows their undersides where they are
+/// over it, and keeps the wall's own height elsewhere.
+fn wall_top_height(model: &Model, w: &creabim_core::Wall) -> f64 {
+    let Some(top) = creabim_core::walls::top_profile(model, w) else {
+        return w.height;
+    };
+    let base = creabim_core::walls::base_z(model, w);
+    let mut ts = vec![0.0, 1.0];
+    ts.extend(top.breaks(w.start, w.end));
+    ts.iter()
+        .flat_map(|t| [t - 1e-4, t + 1e-4])
+        .filter(|t| (0.0..=1.0).contains(t))
+        .map(|t| {
+            top.z_at(w.start.lerp(w.end, t))
+                .map_or(w.height, |z| z - base)
+        })
+        .fold(0.0, f64::max)
 }
 
 /// Stairs climbing from a level below up to `level`, seen through the
@@ -2026,6 +2083,65 @@ mod tests {
     }
 
     #[test]
+    fn a_wall_attached_under_the_cut_is_drawn_in_projection() {
+        use creabim_core::{Document, Element, Transaction};
+        let m = creabim_core::sample::sample_house();
+        let (wid, w) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.curtain.is_none() => Some((e.id, w.clone())),
+                _ => None,
+            })
+            .unwrap();
+        let cut = |m: &Model| {
+            plan_view(m, w.level, 1.2).items.iter().any(|it| {
+                it.id() == wid
+                    && matches!(
+                        it,
+                        PlanItem::Polygon { pen: Pen::Cut, .. } | PlanItem::Fill { .. }
+                    )
+            })
+        };
+        assert!(cut(&m), "a full-height wall is cut at 1.2 m");
+        // a slab over the whole wall with its underside at 1 m, and the
+        // wall's top attached to it
+        let (lo, hi) = (w.start.min(w.end), w.start.max(w.end));
+        let pad = DVec2::splat(1.0);
+        let mut slab = creabim_core::Slab::new(
+            w.level,
+            vec![
+                lo - pad,
+                DVec2::new(hi.x + 1.0, lo.y - 1.0),
+                hi + pad,
+                DVec2::new(lo.x - 1.0, hi.y + 1.0),
+            ],
+            0.2,
+        );
+        slab.top_offset = 1.2;
+        let se = Element::new("Low slab", ElementKind::Slab(slab));
+        let sid = se.id;
+        let mut d = Document::from_model(m);
+        d.commit(Transaction::new("slab").insert(se)).unwrap();
+        d.edit(wid, "attach", |e| {
+            if let ElementKind::Wall(w) = &mut e.kind {
+                w.attach_top = vec![sid];
+            }
+        })
+        .unwrap();
+        assert!(!cut(d.model()), "its top is under the cut");
+        assert!(plan_view(d.model(), w.level, 1.2).items.iter().any(|it| {
+            it.id() == wid
+                && matches!(
+                    it,
+                    PlanItem::Polygon {
+                        pen: Pen::Projection,
+                        ..
+                    }
+                )
+        }));
+    }
+
+    #[test]
     fn a_foundation_level_plan_cuts_the_footings_under_the_floor_above() {
         let m = creabim_core::starter::starter_house();
         // 0.25 above the foundation level is 0.55 below the ground floor:
@@ -2186,23 +2302,13 @@ mod tests {
         assert!(items.iter().any(
             |it| matches!(it, PlanItem::Label { id, text, .. } if *id == stair && text == "DN")
         ));
-        // the well's cross stays inside the L of the well
-        let mut crossing = 0;
-        for it in &items {
-            if let PlanItem::Line {
-                id,
-                pen: Pen::Fine,
-                a,
-                b,
-            } = it
-            {
-                if *id == shaft {
-                    crossing += 1;
-                    assert!(point_in((*a + *b) / 2.0, &well));
-                }
-            }
-        }
-        assert_eq!(crossing, 4);
+        // the well keeps its outline, with no cross over the stair
+        assert!(!items
+            .iter()
+            .any(|it| matches!(it, PlanItem::Line { id, .. } if *id == shaft)));
+        assert!(items
+            .iter()
+            .any(|it| matches!(it, PlanItem::Polygon { id, .. } if *id == shaft)));
         // a view depth too shallow to reach the stair's foot shows less
         let f = named(&m, "First Floor");
         let shallow = creabim_core::PlanGraphics {

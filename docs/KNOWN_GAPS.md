@@ -1,0 +1,355 @@
+# Known gaps
+
+This is the one place to look for what CreaBIM doesn't do yet, or does wrong. It gathers the "Known gaps" sections of every milestone README in [docs/evolution](evolution), the review of the starter house on 2026-10-28, and gaps found while working. Each milestone README keeps its own list as it was written, and points here.
+
+Last checked against `main` on 2026-11-04, after the open JSON import (#44) and graphic styles and view ranges (#45).
+
+**How to read it**
+
+- **Size** is a rough guess. **S** is a day or less, a few lines up to a small function. **M** is a few days. **L** is a milestone of its own.
+- **Found in** names the milestone folders in `docs/evolution`, without the `phase1-` prefix. *review* is the 2026-10-28 review of the starter house sheets. *sweep* is the gaps sweep of 2026-11-04.
+- **Checked** ✓ means the gap was confirmed in the code, a test or the running app on 2026-11-04. A blank means it is carried over from its README and was not checked again.
+- Within each theme, the gaps that hurt users most come first.
+- When you close a gap, move it to [Recently fixed](#recently-fixed) with the branch that fixed it. When you find one, add it here and in your milestone README.
+
+## Summary
+
+| Theme | S | M | L | Open |
+| --- | ---: | ---: | ---: | ---: |
+| [Plans, sections and drawing quality](#plans-sections-and-drawing-quality) | 14 | 7 | 0 | 21 |
+| [Rooms and ceilings](#rooms-and-ceilings) | 3 | 2 | 0 | 5 |
+| [Walls, joins and details](#walls-joins-and-details) | 9 | 6 | 0 | 15 |
+| [Openings](#openings-doors-windows-curtain-walls) | 3 | 2 | 0 | 5 |
+| [Roofs, stairs, structure](#roofs-stairs-structure) | 7 | 3 | 2 | 12 |
+| [Furniture, fixtures, parts and site](#furniture-fixtures-parts-and-site) | 11 | 1 | 1 | 13 |
+| [Annotation and marks](#annotation-and-marks) | 15 | 4 | 0 | 19 |
+| [Sheets and schedules](#sheets-and-schedules) | 8 | 3 | 0 | 11 |
+| [Editing and manipulation](#editing-and-manipulation) | 22 | 7 | 0 | 29 |
+| [3D view](#3d-view) | 10 | 4 | 0 | 14 |
+| [IFC import and export](#ifc-import-and-export) | 6 | 6 | 2 | 14 |
+| [JSON model format](#json-model-format) | 3 | 5 | 0 | 8 |
+| [DXF, SVG and other exchange](#dxf-svg-and-other-exchange) | 3 | 2 | 1 | 6 |
+| [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
+| [Performance](#performance) | 0 | 2 | 0 | 2 |
+| **Total** | **127** | **58** | **7** | **192** |
+
+The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
+
+---
+
+## Plans, sections and drawing quality
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| The plan and section panes on screen draw with CreaBIM's own pens at fixed pixel widths. The view's line weights and graphic styles reach sheets, the sheet view, PDF and SVG only. | M | drawing-quality, styles-ranges | |
+| A plan on its own level's range doesn't show the roof of the level below. It shows only with a view range of *Levels in range* reaching down to it. | S | building-elements | |
+| There is no coarse, medium or fine detail level. | M | styles-ranges | |
+| Sun shadows are cast only on the ground, from from-above plans. They don't fall on lower roofs and aren't drawn in elevations or sections. | M | styles-ranges | |
+| Detail items (filled regions, components) have no category, so they follow pack patterns by hatch name but take no object style or override. | S | styles-ranges | |
+| The label placement pass runs on plans only, not on sections or elevations. | M | drawing-quality | |
+| Dimension text is not moved off other lines; labels keep clear of it instead. | M | drawing-quality, annotation | |
+| In a crowded room, a tag can move a fair way from its door or window (its leader still points back). | S | drawing-quality | |
+| The below-cut tint of furniture is the convex outline of each part, so an L-shaped worktop made as one part is tinted as its hull. | S | drawing-quality | |
+| Grid lines in plans and sections use the plain grid pen, not their group's colour, and have a bubble at one end only (`Grid` has no bubble settings). | S | grids-visibility | ✓ |
+| A wall whose attached top drops below the cut along part of its length is still drawn cut along all of it. (A wall wholly under the cut is drawn in projection since the sweep.) | S | sweep | ✓ |
+| Parts that lie wholly above the plan cut, such as a screen wall's coping, are not drawn in plan. There is no overhead line style for them. | S | parts-site | |
+| Elevations draw each wall's own outline at corners. Joins clean up plans and sections only. | M | details-joins | |
+| In Section A-A, a short outline of a partition beyond the cut shows above the ceiling line over the landing. | S | rooms-ceilings | |
+| In hidden-line sections and 3D views, a hidden door or window panel still hides the lines behind it. | S | grids-visibility | |
+| In sections, where a beam's cut is subtracted from a wall's cut, the beam is not drawn dashed. | S | ui-visibility | |
+| In sections, the cavity (air gap) of a layered wall is left open at the wall's ends. | S | layered-assemblies | |
+| In sections, a hidden element's coloured fill is the convex hull of its shape, so it is rough for L-shaped or hollow elements. | S | picking-xray | |
+| A selected shaft is highlighted only on its base level's plan. | S | types-curtainwalls | |
+| Fine patterns (block paving) fill solid when zoomed far out; their lines don't thin out with the scale. | S | parts-site | |
+| Plants in section are drawn with the facets of their 3D form, not a soft outline. | M | parts-site | |
+
+## Rooms and ceilings
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| The Slab tool's *Fill room* shows no preview before the click, and fills to wall centrelines rather than inner faces (the Room tool fills to inner faces). | S | workflow | ✓ |
+| Rooms in sections are coloured only when *Colour rooms* is on. There are no room tags in sections or elevations. | M | rooms-ceilings | |
+| An `IfcSpace` from another program keeps the outline of its body. It doesn't follow the walls until it is placed again with the Room tool. | M | rooms-ceilings | |
+| A ceiling is drawn only in ceiling plans, sections and 3D. Selecting one in a floor plan doesn't highlight it there. | S | rooms-ceilings | |
+| The Room and Ceiling tools' `1`–`4` keys work only while the pointer is over the drawing, as with the Slab tool. | S | rooms-ceilings | |
+
+## Walls, joins and details
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| Flipping a wall, changing its thickness about a line other than its centre, or pushing its side doesn't stretch the walls joined to it, so a corner can open or overlap until a neighbour is touched. | M | wall-behaviour, openings-frames | |
+| Walls on different levels are not joined, and crossings are worked out per level. Moving a ground-floor wall leaves the first-floor wall above where it was. | M | layered-assemblies, wall-behaviour | |
+| A wall attached to a roof that only partly covers it keeps its own height on the uncovered part in 3D; in IFC that part is extruded to the roof's highest point. | M | wall-behaviour | |
+| A junction rule changes how overlapping pieces are cut, not how wall ends are trimmed, so at a wall-to-wall node *Switch join order* may make no visible difference. | M | details-joins | |
+| A slab drawn past the wall's structure into its insulation leaves the part in the insulation as a separate island of concrete. | M | details-joins | |
+| Detail components can't be moved with G or M, or edited with grips. | M | details-joins | |
+| Typing new start or end coordinates in Properties moves only that wall. Joined walls follow drags and moves, not typed values. | S | layered-assemblies | |
+| Where three walls meet and no two are in line (a Y), the third wall's trim can leave a small overlap. | S | details-joins | |
+| Layer priorities can only be overridden in the assembly file. *Edit layers…* has no priority column. | S | details-joins | |
+| A detail stores a copy of its parent's view settings when made. If the parent changes, the stored copy goes stale, and a detail whose parent is deleted draws from that old copy. | S | details-joins | |
+| A callout box is always a rectangle aligned with the view. A detail of a detail has had little testing. | S | details-joins | |
+| Core-line locations are not kept when the layers inside an assembly are edited. | S | wall-behaviour | |
+| Editing the thickness in a tool's option strip clears that tool's type. | S | types-curtainwalls | |
+| A copied wall (*Copy to levels*, *Duplicate level*) is made *Unconnected* and keeps its fixed height, so it may not meet the slab above where storey heights differ. | S | levels-footings | ✓ |
+| Window reveals on shaded 3D views placed on sheets show no linings, because drawings leave them out. The 3D viewport shows them. | S | drawing-quality | |
+
+## Openings (doors, windows, curtain walls)
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| A door or window has one material, so frame and glass can't differ (`OpeningFrame` has no material). In IFC its parts have no materials of their own. | M | element-materials, openings-frames | ✓ |
+| Curtain panels can be swapped in the data, but the only UI is resetting them. | M | types-curtainwalls | |
+| Nothing stops a curtain wall's opening from overlapping a door or window in the same wall. | S | edit-mode | |
+| There is no exterior sill nosing. | S | openings-frames | |
+| A type's *Overrides* are listed in one summary line, with no marker on each field. | S | types-curtainwalls | |
+
+## Roofs, stairs, structure
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| Gable and hip roofs need a convex outline. On an L shape they fall back to flat, and valleys aren't computed. | L | building-elements | ✓ |
+| Stairs are straight or L-shaped only: no U-shaped stairs, winders or spirals. | L | building-elements | |
+| A stair doesn't cut the slab above by itself. A Shaft does, as in the starter house, but it isn't tied to the stair. | M | building-elements | ✓ |
+| Railings are rails and posts only: no balusters, glass panels or handrail profiles. | M | building-elements | |
+| Beams don't join or cut back at columns or at each other. They overlap. | M | building-elements | |
+| A strip footing is always centred under its wall: no eccentric offset. | S | levels-footings | |
+| Curtain walls get no strip footing. | S | levels-footings | |
+| Arcs in a roof outline are flattened to straight segments. | S | building-elements | |
+| Pushing a sloped roof face changes its thickness rather than moving the eave along the slope. | S | manipulation | |
+| Pushing a stair's side widens the first flight only, not the landings. | S | manipulation | |
+| Railings that follow a stair only change height with push and pull. | S | manipulation | |
+| Grips not done: flipping a stair and its landing grips; a wall's base offset and a beam's height in section. | S | edit-safety | |
+
+## Furniture, fixtures, parts and site
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| There are no pipes, ducts, cable runs or circuits, and no `IfcDistributionSystem` or ports. | L | mep-fixtures | |
+| Sloped terrain doesn't leave holes for areas on its surface. Areas cut the ground only when the terrain is flat. | M | parts-site | |
+| Changing a type between *On the floor / On a wall* and *From the ceiling* keeps the stored offset, so existing instances jump. | S | mep-fixtures | |
+| Pasting objects into a project that lacks their type drops them. | S | object-catalogue | |
+| Mounting heights in the schedule are to the underside of a wall fixture, not its centre line. | S | mep-fixtures | |
+| Catalogue pictures show ceiling fixtures from above, as if they stood on the floor. | S | mep-fixtures | |
+| The user catalogue folder is read once per session, and the name guess knows only English words. | S | object-catalogue | |
+| *Make a type of this* on a screen wall loses the screen pattern: the new type is a solid wall type. | S | parts-site | |
+| New hard landscape areas start at top 0, so on ground at -150 their top must be set by hand. | S | parts-site | |
+| Entourage (cars, people) is exported as `IfcFurniture` and has no visibility category of its own. | S | parts-site | |
+| There is no preview of a sweep's path while drawing it. | S | parts-site | |
+| Wall-hosted sweeps have no corner grips; they follow their wall. | S | parts-site | |
+| Objects have no host: they can't snap to a wall face and slide along it with a grip. | S | edit-safety | |
+
+## Annotation and marks
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| Annotation tools don't work in the live 3D viewport. | M | annotation, annotations | |
+| Sketch constraints are set in Properties only, and there are no tangent, angle or fixed-point constraints. | M | editing | |
+| The duplicates list in the Mark numbering dialog is the only place that lists duplicate marks. There is no model-check window. | M | marks-annotation | |
+| Dimension lines break only at tags and notes, not at room names or other text. The declutter pass may still move a tag off a dimension line on its own. | M | marks-annotation | |
+| At 1:100, tags take their size from the annotation style, so type marks are large next to small symbols such as sockets. | S | mep-fixtures | |
+| Roof tags point to the centre of the roof's bounding box, which for pitched roofs is inside the attic. | S | ui-visibility | |
+| On screen, Serif is drawn with the sans font and bold is faked. PDF and SVG are correct. | S | annotation | |
+| Leaders of notes placed on sheets end at a free point and are not attached to an element. | S | annotation | |
+| In sections, dimensions snap only to levels and cut corners, not to edges seen beyond the cut. | S | annotations | |
+| A dimension on a slab doesn't follow edits to the slab's first two corners. One on a mass doesn't follow vertex edits. | S | workflow | |
+| Radius, diameter and arc length can only pick drawn arcs. Other curves need the three-point pick. | S | annotation | |
+| Tags and dimensions can be box-selected and deleted, but not moved with G. Leader and witness grips on tags, notes and dimensions are not done. | S | editing, edit-safety | |
+| Colours are chosen with the plain egui picker, not a named palette. | S | annotation | |
+| IFC5 (`.ifcx`) export doesn't carry marks. IFC4 does. | S | marks-annotation | |
+| Object categories (furniture, fixtures) have no prefixes in the mark rules. A mark typed on an object or its type does show. | S | marks-annotation | |
+| Spot levels work in plans, sections and elevations, but not in axonometric views. | S | marks-annotation | |
+| The Spot level tool takes its pattern from the last spot level made; its option strip has no pattern field. | S | marks-annotation | |
+| Level heads spread apart only up and down, and only in sections and elevations. Dragging the end of a level's label is not done. | S | marks-annotation, edit-safety | |
+| Level lines can't be shortened by dragging their ends. | S | levels-units | |
+
+## Sheets and schedules
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| Schedule columns are fixed per category. They can't be added, removed or reordered (`ViewKind::Schedule` stores only the category and `by_type`). | M | annotations | ✓ |
+| A viewport can't override its view's visibility, so you need a duplicate view. | M | grids-visibility | |
+| Shaded images on sheets are pixels without anti-aliasing, so they look stepped when zoomed in the PDF. | M | annotations | |
+| Schedules can't be sorted or filtered by clicking a header. | S | ui-pass2 | ✓ |
+| Viewport and view crops are rectangles only. Crop grips on sheet viewports are not done. | S | annotations, edit-safety | ✓ |
+| The underlay is not printed on sheets, and it shows the other level at this plan's cut height. | S | levels-units | |
+| Views on a sheet have no alignment guides and can be dragged on top of each other. | S | sheets | |
+| Title blocks can't be imported from PDF or raster files (DXF and SVG only). In the template editor, lines can't be dragged. | S | drafting-tools | |
+| In the schedule, the material and thickness cells of layered walls stay editable, and the values snap back. | S | layered-assemblies | |
+| Distance fade doesn't lighten shaded raster images (3D views placed on sheets). | S | styles-ranges | |
+| Through several scale changes, a viewport's centre can drift by a millimetre or so: its middle is taken from the drawing's extent, which includes symbols and text drawn at a fixed paper size. | S | ui-workflow | |
+
+## Editing and manipulation
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| With many elements selected, Properties edits only the active one. | M | editing | |
+| Walls, doors, windows and masses always draw on the level in 3D, not on a custom workplane. | M | workflow | |
+| A sketch is a single profile: no holes, and a circle is a sketch of its own. | M | editing | |
+| Modifiers are for masses only, mirror only uses the mass's own axes, and values are edited in Properties, not with handles. | M | modeling | |
+| Scale is uniform only and uses pointer distance, without base points. | M | modeling, move-layout | |
+| Rotate turns about the vertical in plans and 3D and tilts only in sections. Masses can't be tilted freely in 3D. | M | modeling, move-layout | |
+| Footings have no polygon outline, and there is no free 2D region element, so neither is in the shared Edit mode grammar. | M | edit-safety | |
+| Paste goes only to the same place or onto another level. There is no paste at the cursor. | S | editing | |
+| Drag-move moves the element under the pointer, not the whole selection (Move with M moves all of it). | S | move-layout | |
+| Box selection while in a tool exists only for footings. Other tools still treat a drag as drawing. | S | ui-workflow | |
+| In Edit mode, dragging the body of the element draws a selection box rather than moving it. Finish editing to move it. | S | edit-safety | |
+| A shaft dragged across a slab's edge is reported, not clipped to the slab. | S | edit-safety | |
+| Holes are drawn as polygons only, with no rectangle mode. A shaft's outline can't be redrawn. | S | types-curtainwalls | |
+| In Edit mode, sketches with arcs or constraints only let you move corners, not add or remove them. | S | edit-mode | |
+| A slab drawn in a section is a two-corner rectangle with its top on the nearest level; free heights are set afterwards. | S | annotations, workflow | |
+| Align moves what is picked as a whole, not a single slab edge or sketch vertex. In sections it only moves. | S | drafting-tools | |
+| Stretch needs the edge to be nearly parallel to the reference (within 5°) and doesn't rotate a face to meet a slanted line. | S | manipulation, stretch-3d | |
+| Temporary guides don't work in 3D, on sheets or while dragging grips, and circle guides can't be kept with K. | S | drafting-tools | |
+| In 3D, alignment tracking ignores guides on a workplane and uses model X and Y. Rest-on point acquisition works only in 2D panes. | S | levels-window | |
+| The workplane is not saved with the project. It is set only by clicking a face, with no three-point or offset option. | S | workflow, modeling | |
+| *Copy to levels* doesn't copy tags, grids or dimensions in the selection. | S | levels-footings | |
+| *Duplicate level* always puts the copy at the top. | S | levels-units | ✓ |
+| The Grid tool doesn't work in sections. A grid dragged in 3D snaps only to points lined up with it on screen. Grids can be references in 3D but not targets. | S | grids-visibility, move-layout, stretch-3d | |
+| The *Bounds centre* pivot uses each element's origin, not its full geometry. | S | editing | |
+| After a section is flipped, its pane keeps the old camera until Home. | S | manipulation | |
+| Arc edges of slabs can't be pushed. | S | openings-frames | |
+| An arrayed mesh offers the centre lines of the whole group, not of each copy. There is no centre plane across a wall's or beam's length. | S | stretch-3d | |
+| Thin faces, such as a wall's top seen from far away, are hard to pick. | S | stretch-3d | |
+| Grips not done: typing an opening's distance to the wall end; move and rotate grips on free meshes. A mass doesn't keep its sketch after extrusion. | S | edit-safety, modeling | |
+
+## 3D view
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| No textures. glTF base-colour textures and Blender image textures are ignored. | M | materials | |
+| See-through faces (glass, X-ray) are not depth-sorted, so overlapping ones blend in the wrong order. | M | materials, ui-visibility | |
+| Crop boxes stay square to the model axes and can't be turned. | M | crop-boxes | |
+| Crop boxes affect 3D only. Plans, sections and elevations ignore them and don't draw them. | M | crop-boxes | |
+| Crop caps are a flat shade, not hatched with the material's cut pattern, and open meshes get no cap. | S | crop-boxes | |
+| The crop box's move handle slides only in plan. Vertical moves are typed. | S | crop-boxes | |
+| 3D visibility (single hidden elements, quick switches) is per session and not saved in the project. | S | grids-visibility, ui-visibility, editing | |
+| The face highlight is drawn over the image, so it shows through what is in front. The 2D view shown in 3D is drawn on top of the model, without depth testing. | S | openings-frames, sections | |
+| "Buried" (for hidden elements in colour) is decided by bounding box. | S | picking-xray | |
+| Grid lines in 3D are one pixel wide and get no blue hover wash, and *Frame all* doesn't include grids. | S | grids-visibility, picking-xray | |
+| The orthographic camera has no clipping control. | S | ui-pass2 | |
+| The 3D view's buttons hide when the view is narrower than 320 px. Above that they scroll sideways. | S | sweep | ✓ |
+| The app frames the 3D view and the plan for the window size it starts at, so on a large screen the plan first looks small. | S | starter-house | |
+| Voids are hidden in presentation 3D views, together with openings; turn on *Openings, shafts and void cutters* to see one. | S | parts-site | |
+
+## IFC import and export
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| Roofs, stairs and railings from other tools stay typed meshes, and `IfcMember` stays a mesh. Only CreaBIM's own exports bring them back native. | L | ifc-import, building-elements | |
+| Openings are not cut in walls imported as meshes, and their doors and windows don't become native openings. | L | exchange, review | |
+| L-shaped or T-shaped wall B-reps stay meshes rather than being split into straight walls. Notched or stepped beams, and sloped columns and beams, stay meshes. | M | ifc-import | |
+| IFC STEP import of parts and site elements brings back plain shapes, not parametric elements. IFCX round-trips them. | M | parts-site | |
+| NURBS and curved advanced B-rep faces are not read. | M | exchange | |
+| Each element is exported as one body. Layers are described only by the material layer set, not as one solid per layer. | M | layered-assemblies | |
+| Cut elements export as meshes, not `IfcBooleanResult` (attached wall tops already use `IfcBooleanClippingResult`). | M | exchange, wall-behaviour | |
+| IFC5 (`.ifcx`) export leaves out furniture, fixtures, objects and curtain-wall openings. | M | mep-fixtures, object-catalogue, edit-mode | |
+| IFC4 export writes no grids, so the starter house round trip loses them. A shaft comes back as the holes it cuts. | S | grids-visibility, ifc-import | ✓ |
+| Door hand and swing are exported but not read back on import. | S | wall-behaviour | ✓ |
+| The import report shows the element list in a small font, has no filter, and clicking a line doesn't select the element. | S | ifc-import | |
+| A typed door or window's per-instance frame override is lost on export. | S | types-curtainwalls | |
+| Materials: layer, profile and constituent sets are not read as separate materials, and *Open* creates only the materials that elements use. (`IfcSpecularExponent` is ignored on purpose.) | S | materials | ✓ |
+| Importing a material whose name already exists replaces it, with no "keep both". | S | materials | |
+
+## JSON model format
+
+From the open JSON import (#44). [`docs/json-format.md`](json-format.md) keeps the full list, and `export-json` reports what it leaves out.
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| Annotation is not in the format: dimensions, spot levels, text styles, a tag's room fields, and note leaders that point at an element. | M | open-import | |
+| Per-view settings are not in the format: visibility, plan graphics and view range, underlays, level heads, crop boxes of 3D views, view templates and style packs. | M | open-import | |
+| Curtain walls and their types, openings in curtain walls, footings, shafts, ceilings, room separators, sketches, guides, free meshes and booleans are not in the format. | M | open-import | |
+| Title block templates (sheets get the built-in one), mark rules, join rules, disallowed wall joins and detail components are not in the format. | M | open-import | |
+| Only the starter catalogue's objects can be named; a user catalogue folder can't be pointed to. | M | open-import | |
+| `--check` reports shape problems first, and references and geometry only once the shape is right, so a file with both takes two runs. | S | open-import | |
+| Walls are always given by their centreline. The location line only says which line stays put in the app. | S | open-import | |
+| The app's help guide doesn't cover the format; it is documented in `docs/json-format.md`. | S | open-import | |
+
+## DXF, SVG and other exchange
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| No DXF or DWG export, including dimensions and annotations. | L | annotation | |
+| DXF import skips blocks (INSERT), hatches, dimensions and splines. | M | drafting-tools | |
+| FreeCAD export gives plain solids with a BIM type, not native Arch walls, and curved faces are faceted. Only rendering colours are read from FreeCAD materials. | M | exchange, materials | |
+| SVG import turns curves into chords and reads only plain text and `tspan`. | S | drafting-tools | |
+| Blender: only the Principled BSDF's unlinked inputs are read. | S | materials | |
+| A Blender object becomes one part in its first material. | S | object-catalogue | |
+
+## Interface and help
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| Not yet run on Windows. The build compiles in CI but hasn't been started on a Windows machine, and WebView2 page-size handling for help pictures is untested. This blocks the first Windows release. | M | interface, help-guide | |
+| The Properties panel and the in-view bars (slab modes, the move, rotate and scale panel, the sketch tools) are still egui, restyled. The quick-help popover in Properties is an egui popup. | L | interface, ui-workflow | ✓ |
+| On Linux the panes need X11 (XWayland on Wayland), and the file picker needs xdg-desktop-portal. | M | interface, editing | |
+| The classic panels are behind: menus are text only, the outliner lists views in one group, there are no *Hide in view* items, and the guide has no pictures or links. | M | ui-visibility, levels-window, grids-visibility, help-guide | |
+| The shortcuts page has no table per tool. Tools have no single-key shortcuts; the keys used while drawing are under *While drawing*. | S | help-guide, ui-workflow | ✓ |
+| The project browser can't rename or hide elements. | S | interface, ui-pass2 | ✓ |
+| Guide pictures are whole-window screenshots, so they are small in a narrow panel. | S | help-guide | |
+| A plan opened in its own window keeps the old right-click menu. | S | interface | |
+| Keyboard focus left in a web panel after clicking it is not taken back by Tab. | S | picking-xray | |
+| The type preview's plan shows the sample section's marks, labelled *Preview*. | S | ui-workflow | |
+| The 3D type preview is a shaded axonometric drawing that turns as you drag, not the live GPU view. | S | ui-workflow | |
+| In a type's Properties, the class line repeats inside *Settings*. | S | ui-workflow | |
+| *Assign as…* and *Booleans* are not foldable sections in Properties. | S | ui-workflow | |
+| The Graphic styles editor doesn't cover object styles for one material, surface patterns, draw order or transparency, and the Materials window has no pattern picker. These are set in the pack's JSON. | M | styles-ranges | |
+| A view template's overrides and depth cues are edited in the pack file, not in the app. | S | styles-ranges | |
+| Packs carry mark rules, title blocks and text styles by name, but the Graphic styles editor doesn't show them. | S | styles-ranges | |
+| In the narrowest windows (under about 1000 px) the menu row scrolls sideways too, so its right end (the view switcher) is reached by scrolling. | S | sweep | ✓ |
+| The command palette finds actions and elements, but not properties. | S | ui-pass2 | |
+
+## Performance
+
+| Gap | Size | Found in | Checked |
+| --- | --- | --- | --- |
+| The scene is cropped again on every change, including every frame of a handle drag, which may lag on large models. | M | crop-boxes | |
+| Orbiting a 3D view on a sheet redraws the whole view, which is slow on bigger models. | M | sheets | |
+
+---
+
+## Pending pull requests
+
+None on 2026-11-04. Gaps reported by work that is still a pull request go here until it merges, then into the themes above.
+
+---
+
+## Recently fixed
+
+**In the gaps sweep (`claude/gaps-sweep`, 2026-11-04):**
+
+- `Ctrl+S` pressed over a view after clicking a web pane read as `S` and started Scale. Keys typed while a page has the keyboard now keep their Ctrl, Shift and Alt, so `Ctrl+S` saves, and `Ctrl+Z`, `Shift+D` and `Alt+H` work the same way (rooms-ceilings).
+- Under about 1100 px the menu and tool rows were cut off at the right. They now tighten, so the menu row fits down to 1000 px, and below that both rows scroll sideways with the wheel and fade at an end that has more (ui-workflow).
+- The 3D window zoomed toward the middle of the view. It now zooms toward the pointer (stretch-3d).
+- A wall attached to a roof or slab under the plan's cut was still drawn cut. It is now drawn in projection (wall-behaviour).
+- On the floor a stair arrives at, its well kept a cross over the stair. The well keeps its outline without the cross (review, drawing-quality).
+- *Attach top to roof/slab* was offered in the right-click menu with nothing overhead. It is greyed out then, as in Properties (wall-behaviour).
+- The distance in the 3D Align and Stretch preview was orange text with no background. It sits on a dark pill (stretch-3d).
+- The project browser's search didn't find elements by mark. It finds `D01` or `W05` as well as names (marks-annotation).
+
+**Found fixed by earlier milestones since they were reported** (checked on 2026-11-04):
+
+- **Graphic styles and view ranges (#45):** object styles give each category a projection pen, cut pen, colour, line pattern, cut fill and cut pattern, so there is line colour per category; plans have a view range (its level, *Levels in range* with top, bottom and view depth, or *From above*) with overhead elements dashed (styles-ranges).
+
+- **Plans:** the stair is drawn through its well on the upper floor; cut fills of one material merge, with no squares at footing and wall junctions; line weights step down from cut to hatch; furniture and meshes below the cut are tinted; roof plans have slope arrows; wall openings above the cut are dashed; window reveals in 3D are lined with the wall's finishes, not insulation; labels are moved off lines and each other, with leaders (drawing-quality).
+- **Rooms and ceilings:** there are Room and Ceiling elements, room schedules and tags, areas that follow the walls, and partitions that stop at ceilings; `IfcSpace` and `IfcCovering CEILING` import as rooms and ceilings; fixtures and the sofa no longer stand in doorways, `objects::against_wall` keeps clear of doors and windows, and `creabim check` reports objects in doorways (rooms-ceilings).
+- **IFC import:** walls, slabs, columns and beams that are prismatic B-reps become native; a wall along a polyline axis becomes one wall per run; import warnings list each element with its class and GlobalId; edit meshes are welded in `edit_mesh_to_tri`; scaled and mirrored mapped items use their full transform (ifc-import).
+- **Interface:** the command palette finds elements; links to websites in the guide open in the browser; the 3D buttons step aside for egui windows and scroll sideways when the view is narrow; the element count leaves out the units element; the browser has a button that folds every group (ui-workflow, ui-pass2).
+- **Editing:** Edit mode is safe (Delete removes picked corners, never the element); grips slide doors and windows, turn objects, columns and stairs, set column and beam sizes and split walls; a slab's arcs can be traced in Edit mode (edit-safety).
+
+For what was fixed before 2026-10-28, see the history of this file and the milestone READMEs.
+
+## Not gaps
+
+These were listed as gaps but are design choices, notes, or about other branches. They are kept here so they aren't added again:
+
+- Deleting a host deletes its tags, dimensions and notes. A dimension on a hidden element is hidden with it.
+- The last riser is the edge of the floor it climbs onto.
+- Shift+D places a copy beside the original on the same wall. Flip mirrors free dimension points.
+- A hosted footing ignores its own plan moves until it is let go. Footing tool fields are in metres.
+- Sheet units stay in millimetres. Rehosting takes the new level's storey height. The Level tool in plans points to sections. The underlay level is a soft reference.
+- The cut hatch is stored in `IfcMaterial.Description`. IFC5 is an alpha schema. Blender slabs snap to a level, and the Blender file's class wins on reload.
+- The live 3D render mode is per user. Orbit is about the selection's box. Sheet viewports keep their own projection. A cropped 3D view stays centred on the model.
+- 2D X-ray is per session and never on sheets. The plan pick ray only finds drawn elements.
+- No new keyboard shortcuts were added in a milestone (marks-annotation): a note, not a gap.
+- Screenshot and test-display notes (the levels-window rename shot, the import dialog missing from the materials shots), Ctrl+K typing through the app window, typing a path only in the classic panels, Esc in the help panel, the edge push grips' spacing, the style coverage note on level and grid marks, the manipulation coverage table, the Create menu "another branch" would fill, and the 3D colour encoding.

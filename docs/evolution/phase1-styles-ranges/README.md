@@ -36,6 +36,8 @@ No code changed between the Standard and Light linework sets. Only the pack diff
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - The plan and section panes on screen still draw with CreaBIM's own pens. Styles show on sheets, in the sheet view and in PDF/SVG export.
 - Sun shadows are cast only on the ground, from from-above plans. Shadows don't fall on lower roofs and aren't drawn in elevations or sections.
 - Distance fade doesn't lighten shaded raster images (3D views placed on sheets).

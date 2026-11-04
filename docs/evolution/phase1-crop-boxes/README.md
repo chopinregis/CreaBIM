@@ -42,6 +42,8 @@ Crop boxes are saved in the project file like other elements. Files from before 
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Boxes stay square to the model axes: they can't be turned to follow a building set at an angle.
 - Caps are a flat, darker shade of the element's colour. They are not hatched with the material's cut pattern.
 - A mesh that isn't closed (an open imported mass, for example) is cut without a cap there. Only outlines that close on themselves are filled.

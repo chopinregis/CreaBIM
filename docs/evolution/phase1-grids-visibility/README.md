@@ -42,6 +42,8 @@ Reference screenshots, taken from the sample house with a second building's grid
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - The 3D view's own visibility settings last for the session: they are not saved and not undone (views' settings are both).
 - A viewport can't override its view's visibility yet; to show something differently on a sheet, place a duplicate view.
 - In hidden-line sections and 3D views, a hidden door's or window's panel still hides the lines behind it (the opening stays in the wall on purpose).

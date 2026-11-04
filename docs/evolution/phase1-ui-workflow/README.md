@@ -138,6 +138,8 @@ Footings, viewport scale, types:
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - At window widths under about 1100 px, the menu row and the tool row are wider than the window and are cut at the right. Only the options strip has an overflow menu.
 - The quick-help popover in Properties is an egui popup, so it is styled like egui rather than like the web popover.
 - Through several scale changes, a viewport's centre can drift by a millimetre or so. Its middle is taken from the drawing's extent, which includes symbols and text drawn at a fixed paper size.

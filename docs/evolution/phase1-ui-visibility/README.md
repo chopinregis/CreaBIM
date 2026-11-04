@@ -60,6 +60,8 @@ Reference screenshots, taken from the sample house (a beam inside the north wall
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Single elements hidden in 3D (right-click *Hide in 3D view*) last for the session only; the categories and quick switches are remembered. 3D visibility is per user (app settings), not saved in the project.
 - X-ray transparency is not depth-sorted, so overlapping see-through faces can blend in a slightly different order as the camera turns.
 - In sections, where a wall's cut already has a beam's cut subtracted from it, the beam's cut is drawn normally and not dashed (only covered lines and projected edges are revealed).

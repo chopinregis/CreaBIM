@@ -142,10 +142,33 @@
       `<div class="m-view">${S.options.map((c) => control(c)).join("")}</div>` +
       `<span class="m-more"><button class="dd more-btn">${icon("ellipsis")}<span class="v">More</span></button></span></div>`;
     const cut = html.indexOf(`<div class="bar3 measure"`);
+    // a row scrolled sideways stays where it was
+    const scrolled = ROWS.map((sel) => { const r = root.querySelector(sel); return r ? r.scrollLeft : 0; });
     // the measured copies answer no clicks and hold no typing
     root.innerHTML = html.slice(0, cut) + html.slice(cut).replace(/ data-(key|act|popup|scrub)=/g, " data-m$1=");
+    ROWS.forEach((sel, i) => {
+      const r = root.querySelector(sel);
+      r.scrollLeft = scrolled[i];
+      r.addEventListener("scroll", () => edges(r));
+      edges(r);
+    });
     measureBar();
   }
+
+  // The menu and tool rows. In a narrow window they scroll sideways, with
+  // the wheel too, and fade at an end that has more past it.
+  const ROWS = [".bar1", ".bar2"];
+  function edges(row) {
+    const more = row.scrollWidth - row.clientWidth;
+    row.classList.toggle("more-l", more > 1 && row.scrollLeft > 1);
+    row.classList.toggle("more-r", more > 1 && row.scrollLeft < more - 1);
+  }
+  document.addEventListener("wheel", (e) => {
+    const row = pane === "top" && e.target.closest && e.target.closest(ROWS.join(","));
+    if (!row || row.scrollWidth <= row.clientWidth) return;
+    e.preventDefault();
+    row.scrollLeft += 2 * (e.deltaX || e.deltaY);
+  }, { passive: false });
 
   // The controls the More menu doesn't hold.
   function shown(list) {
@@ -182,7 +205,11 @@
     }
   }
 
-  window.addEventListener("resize", () => { if (pane === "top" && S) measureBar(); });
+  window.addEventListener("resize", () => {
+    if (pane !== "top" || !S) return;
+    measureBar();
+    ROWS.forEach((sel) => { const r = root.querySelector(sel); if (r) edges(r); });
+  });
 
   // ---- left pane: project browser ----
 
@@ -194,7 +221,7 @@
       `<label class="search">${icon("search")}<input data-key="filter" data-live="1" placeholder="Find views and elements" value="${esc(local.filter)}"></label></div><div class="tree">`;
     let any = false;
     for (const g of S.groups) {
-      const rows = f ? g.rows.filter((r) => r.name.toLowerCase().includes(f)) : g.rows;
+      const rows = f ? g.rows.filter((r) => r.name.toLowerCase().includes(f) || (r.mark && r.mark.toLowerCase().includes(f))) : g.rows;
       if (f && rows.length === 0) continue;
       any = true;
       const open = f ? true : (local.open[g.key] !== undefined ? local.open[g.key] : g.open);

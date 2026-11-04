@@ -70,6 +70,8 @@ and schedule views read without grouping.
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - **Frame overrides in IFC:** a typed door's or window's frame is written only on its
   IFC type. A per-instance frame override is lost on export.
 - **Hole outlines:** holes are drawn as polygons only. They have no rectangle mode and

@@ -297,6 +297,26 @@ html[data-pane="top"] body {
   background: var(--panel);
 }
 
+/* In a narrow window the menu and tool rows scroll sideways rather than
+   lose their right ends; an end with more past it fades out. */
+.bar1, .bar2 { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.bar1::-webkit-scrollbar, .bar2::-webkit-scrollbar { display: none; }
+.bar1 > :not(.doc):not(.spacer), .tools > * { flex-shrink: 0; }
+.bar1.more-r, .bar2.more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.bar1.more-l, .bar2.more-l { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent); }
+.bar1.more-l.more-r, .bar2.more-l.more-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
+
+/* Under about 1100 px the rows tighten first: the logo without its
+   name, and narrower menu, quick and tool buttons. */
+@media (max-width: 1100px) {
+  .brand { font-size: 0; gap: 0; margin-right: 6px; }
+  .menubtn { padding: 0 7px; }
+  .ibtn { width: 27px; }
+  .qsep { margin: 0 3px; }
+  .tool { min-width: 29px; padding: 0 5px; }
+  .bar2 .vsep { margin: 9px 3px; }
+}
+
 .tools { display: flex; align-items: center; gap: 2px; }
 
 /* Tools are icons; the one in use also shows its name. */

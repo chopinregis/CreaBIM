@@ -25,7 +25,7 @@ The **?** beside the tool's name opens a few lines on how to use it, with **Read
 
 ## The project browser (left)
 
-Everything in the project, grouped: views by kind, sheets, levels, then walls, doors, materials, types and so on. Type in its search box to filter. Click a row to select it, or to open a view or sheet. Double-click an element to zoom to it, or a type to see it on its own. `Shift` or `Ctrl` adds to the selection. Drag a view up or down to reorder its group. The button at the top folds every group shut, or opens them all. Drag the panel's edge to widen it.
+Everything in the project, grouped: views by kind, sheets, levels, then walls, doors, materials, types and so on. Type in its search box to filter, by name or by mark (`D01`, `W05`). Click a row to select it, or to open a view or sheet. Double-click an element to zoom to it, or a type to see it on its own. `Shift` or `Ctrl` adds to the selection. Drag a view up or down to reorder its group. The button at the top folds every group shut, or opens them all. Drag the panel's edge to widen it.
 
 ## The views (middle)
 

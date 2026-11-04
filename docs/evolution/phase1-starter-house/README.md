@@ -49,6 +49,8 @@ CreaBIM now opens on the **Maple Lane House**, a contemporary two-storey family 
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Rooms are notes, not room elements: an area is computed when the house is built and does not follow a moved wall. For the same reason there is no room schedule.
 - The roof plan has no slope arrows; notes say which way each roof falls.
 - The interior first-floor partitions run up to the vaulted roof rather than stopping at a ceiling, since there is no ceiling element.

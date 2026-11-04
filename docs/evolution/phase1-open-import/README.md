@@ -41,6 +41,8 @@ Then open `small-house.creabim` in the app (*File > Open…*).
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - **Not yet in the format.** The following can't be described yet:
   - dimensions and spot levels
   - text styles and title block templates (sheets get the built-in title block)

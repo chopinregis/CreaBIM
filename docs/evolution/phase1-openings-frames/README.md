@@ -22,6 +22,8 @@
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Face mode works in the 3D view only. In plans and sections, Move with Face chosen moves whole elements, and the status line says so.
 - Push and pull covers walls, slabs and masses. Columns, beams, roofs, stairs and doors move as whole objects.
 - Arc edges of slabs can't be pushed. Pushing a wall's side doesn't update the walls joined to it beyond what the joins already do.

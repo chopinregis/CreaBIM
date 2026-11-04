@@ -23,6 +23,8 @@ The sample comes with four materials: Brick, Concrete, Stud partition and Timber
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Drawing tools in 3D views: only the Tag tool works there. Walls, doors, slabs and dimensions are drawn in plans and sections.
 - Dimensions are aligned only (measured along the line between their two points). There are no horizontal, vertical, angular or radius dimensions yet.
 - In sections, dimensions snap to levels and to the corners of cut elements only, not to edges seen beyond the cut.

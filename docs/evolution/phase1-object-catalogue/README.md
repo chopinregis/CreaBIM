@@ -101,6 +101,8 @@ it is turned and how far above its level it sits.
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Pasting objects into another project drops them when that project
   lacks their type. Use the catalogue instead.
 - IFC5 (`.ifcx`) export leaves objects out. IFC4 has them.

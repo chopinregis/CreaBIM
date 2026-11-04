@@ -79,6 +79,8 @@ The **Move** column covers G, M and dragging a selected element. **Grips** means
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - In elevations, a slab hidden behind a wall can't be clicked. Select it in a plan, in 3D or in the project browser, then use M, its grips or Stretch.
 - ~~Align, Stretch and Extend work in plans, sections and elevations, not in 3D. In 3D, use Move face.~~ They now work in 3D too, and the 3D rows of the table above are updated: see [phase1-stretch-3d](../phase1-stretch-3d/README.md).
 - Stretch needs the edge to be parallel to the reference. It doesn't rotate the face to meet a slanted line. (Since phase1-stretch-3d, within 5°.)
