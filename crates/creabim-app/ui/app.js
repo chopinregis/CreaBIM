@@ -440,6 +440,13 @@
     if (pick) post({ t: "act", id: pick.dataset.pick });
   });
 
+  // A tool's help card closes when the pointer, having been on it, leaves.
+  document.documentElement.addEventListener("mouseenter", () => { local.inside = true; });
+  document.documentElement.addEventListener("mouseleave", () => {
+    if (pane === "popup" && S && S.help && local.inside) post({ t: "close" });
+    local.inside = false;
+  });
+
   // A popup that is a small panel rather than a list: the strip's
   // overflow, or a tool's quick help.
   function drawPanel(inner) {
@@ -957,6 +964,7 @@
       return;
     }
     if (pane === "popup" && dialogKey(e)) return;
+    if (pane === "popup" && e.key === "Escape" && S && S.help) { post({ t: "close" }); return; }
     if (pane === "popup" && ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Enter", "Escape"].includes(e.key)) {
       e.preventDefault();
       menuKey(e.key);

@@ -768,7 +768,7 @@ impl CreaBimApp {
             return;
         }
         if let Some(old) = self.plan.modal.as_mut() {
-            old.cancel(&mut self.doc);
+            old.discard(&mut self.doc);
             self.plan.modal = None;
         }
         self.plan.cancel();
@@ -786,6 +786,9 @@ impl CreaBimApp {
             }
             (Mode::Rotate, true) => {
                 "Rotate: click the centre in a view, then a reference direction, then the new direction.".into()
+            }
+            _ if c == Command::Duplicate => {
+                "Duplicate: point at a view and click a base point; the copy follows to where you click next. Esc leaves it in place.".into()
             }
             _ => format!(
                 "{}: point at a view and move the pointer, then click to finish. Right-click cancels.",
@@ -5380,7 +5383,7 @@ impl eframe::App for CreaBimApp {
         if std::mem::take(&mut self.plan.want_levels) {
             self.open_levels();
         }
-        // a detail view just called out opens beside its parent
+        // a view mark double-clicked: its view opens
         if let Some(v) = self.plan.want_view.take() {
             self.active_view = Some(v);
         }

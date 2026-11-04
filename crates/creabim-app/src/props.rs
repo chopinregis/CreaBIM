@@ -204,7 +204,7 @@ pub fn header(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, 
         } else if indent {
             Color32::TRANSPARENT
         } else {
-            v.faint_bg_color
+            v.widgets.inactive.weak_bg_fill.gamma_multiply(0.55)
         };
         ui.painter().rect_filled(rect, 6.0, fill);
         if !indent {

@@ -2593,7 +2593,8 @@ impl CreaBimApp {
                 });
             }
             "size" => {
-                if let Some(p) = &mut self.shell.popup {
+                // the New project window keeps the size it opened with
+                if let Some(p) = self.shell.popup.as_mut().filter(|p| p.key != "newproject") {
                     let h = b["h"].as_f64().unwrap_or(100.0) as f32;
                     // the palette keeps the width it was opened with
                     let w = match p.key.as_str() {
@@ -2875,6 +2876,20 @@ impl CreaBimApp {
                 }
                 // a few lines on the tool in use
                 "toolhelp" => {
+                    // never over a view's own toolbar or over Properties:
+                    // under the 3D view's buttons when it would cover them
+                    let mut rect = rect;
+                    if let Some(n) = nav.filter(|n| n.intersects(rect)) {
+                        rect = rect.translate(egui::vec2(0.0, n.bottom() + 6.0 - rect.top()));
+                    }
+                    let right = [self.rect_2d, self.rect_3d]
+                        .into_iter()
+                        .flatten()
+                        .map(|r| r.right())
+                        .fold(f32::NEG_INFINITY, f32::max);
+                    if right.is_finite() && rect.right() > right - 4.0 {
+                        rect = rect.translate(egui::vec2(right - 4.0 - rect.right(), 0.0));
+                    }
                     let help = self.tool_quick_help();
                     let state = json!({"theme": self.theme(), "key": p.key, "items": [], "help": help});
                     return (rect, state, false);

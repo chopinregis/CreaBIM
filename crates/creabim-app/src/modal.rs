@@ -1400,7 +1400,9 @@ impl Modal {
         self.axis = if self.axis == Some(a) { None } else { Some(a) };
     }
 
-    /// Undo whatever this edit has done.
+    /// Undo whatever this edit has done. A duplicate's copy stays where
+    /// it was made: Esc leaves it in place (and selected), as it is meant
+    /// to be moved off its original by hand then.
     pub fn cancel(&mut self, doc: &mut Document) {
         self.edit.cancel(doc);
         if let Some(c) = &mut self.copies {
@@ -1409,6 +1411,12 @@ impl Modal {
         if let Some(p) = &mut self.push {
             p.edit.cancel(doc);
         }
+    }
+
+    /// Undo everything, a duplicate's copy too: for an edit abandoned
+    /// before it began (another one replaces it).
+    pub fn discard(&mut self, doc: &mut Document) {
+        self.cancel(doc);
         if self.duplicated && doc.undo_label().is_some_and(|l| l.starts_with("Duplicate")) {
             doc.discard_last();
         }
@@ -1887,6 +1895,23 @@ mod tests {
         )
         .unwrap()
         .with_flow(Flow::Tool)
+    }
+
+    #[test]
+    fn esc_leaves_a_duplicate_in_place_and_discard_removes_it() {
+        let mut doc = Document::from_model(sample_house());
+        let (id, start) = first_wall(&doc);
+        let n = doc.model().len();
+        let copies = duplicate(&mut doc, &[id]).unwrap();
+        let made = doc.model().len();
+        assert!(made > n);
+        let mut m = tool(&doc, Mode::Move, copies[0]);
+        m.duplicated = true;
+        m.cancel(&mut doc);
+        assert_eq!(doc.model().len(), made, "the copy stays");
+        assert_eq!(wall_start(&doc, copies[0]), start);
+        m.discard(&mut doc);
+        assert_eq!(doc.model().len(), n, "discarded with the edit");
     }
 
     #[test]
