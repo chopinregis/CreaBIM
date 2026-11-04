@@ -29,6 +29,6 @@ A **shaft** is a vertical hole through every slab and roof between two levels: a
 
 By default it runs from this level to the next one up. Set its base and top levels and offsets in *Properties*. Move it and every hole it cuts moves with it.
 
-You can select a shaft in every view it passes through: the plan of each level from its base to its top (click inside its crossed outline), sections and elevations (where it is drawn dashed) and 3D. Inside walls or slabs, `Tab` and [X-ray](visibility#x-ray) reach it.
+You can select a shaft in every view it passes through: the plan of each level from its base to its top (click inside its outline, crossed unless a stair is seen through it), sections and elevations (where it is drawn dashed) and 3D. Inside walls or slabs, `Tab` and [X-ray](visibility#x-ray) reach it.
 
 Selected, its corners, edges, base and top have grips. Open it in [Edit mode](edit-mode) to add or take away corners. A shaft cuts only the slabs and roofs that hold it whole: dragged across a slab's edge it cuts nothing there, and the status bar says so.
