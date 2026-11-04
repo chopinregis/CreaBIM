@@ -38,6 +38,8 @@ pub struct Outline {
     pub hole_in: Option<ElementId>,
     /// The type the new slab or roof is an instance of.
     pub of_type: Option<ElementId>,
+    /// Make an extrusion, a void or a site element instead of a slab.
+    pub make: Option<crate::partstool::Make>,
 }
 
 /// What a pane does after passing a frame's input to [`Outline::input`].
@@ -72,6 +74,7 @@ impl Outline {
             space: None,
             hole_in: None,
             of_type: None,
+            make: None,
         })
     }
 
@@ -96,6 +99,7 @@ impl Outline {
             space: None,
             hole_in: Some(id),
             of_type: None,
+            make: None,
         })
     }
 
@@ -114,6 +118,7 @@ impl Outline {
             space: None,
             hole_in: None,
             of_type: None,
+            make: None,
         }
     }
 
@@ -237,7 +242,7 @@ impl Outline {
                     "Hole cancelled."
                 } else if self.shaft {
                     "Shaft cancelled. Right-click again to leave the Shaft tool."
-                } else if self.space.is_some() {
+                } else if self.make.is_some() || self.space.is_some() {
                     "Outline cancelled. Right-click again to leave the tool."
                 } else {
                     "Slab cancelled. Right-click again to leave the Slab tool."
@@ -276,6 +281,9 @@ impl Outline {
             slab.make_ccw();
             if let Some(host) = self.hole_in {
                 return add_hole(doc, host, slab.outline());
+            }
+            if let Some(make) = &self.make {
+                return crate::partstool::finish_outline(doc, self.level, slab.outline(), make);
             }
             if let Some(space) = self.space {
                 let mut sel = crate::selection::Selection::default();
