@@ -21,6 +21,7 @@ pub(super) enum Page {
     Pens,
     Patterns,
     Templates,
+    Marks,
 }
 
 /// The window's own state, for the session.
@@ -727,6 +728,7 @@ impl CreaBimApp {
                         (Page::Pens, "Pens"),
                         (Page::Patterns, "Patterns"),
                         (Page::Templates, "View templates"),
+                        (Page::Marks, "Tags and marks"),
                     ] {
                         ui.selectable_value(&mut self.gstyles.page, p, text);
                     }
@@ -746,6 +748,11 @@ impl CreaBimApp {
                     Page::Patterns => {
                         if patterns_page(ui, &mut pack, &mut self.gstyles.pattern) {
                             label = "Hatch pattern";
+                        }
+                    }
+                    Page::Marks => {
+                        if marks_page(ui, &mut pack) {
+                            label = "Tags and marks";
                         }
                     }
                     Page::Templates => {
@@ -829,6 +836,51 @@ impl CreaBimApp {
 }
 
 /// The object styles, a row per category. True when one changed.
+/// How the project's room tags and view marks are drawn: one choice for
+/// the whole project, so every tag and mark follows it.
+fn marks_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
+    let mut changed = false;
+    crate::props::section(ui, "Room tags");
+    crate::props::Combo::new("Layout")
+        .selected_text(pack.room_tags.label())
+        .show_ui(ui, |ui| {
+            for s in styles::RoomTagStyle::ALL {
+                changed |= ui
+                    .selectable_value(&mut pack.room_tags, s, s.label())
+                    .changed();
+            }
+        });
+    ui.label(
+        egui::RichText::new(match pack.room_tags {
+            styles::RoomTagStyle::Stacked => {
+                "The name in capitals, the area below it, the number small and last."
+            }
+            styles::RoomTagStyle::Inline => "The number and the area on one line.",
+        })
+        .weak(),
+    );
+    crate::props::section(ui, "View markers");
+    crate::props::Combo::new("Family")
+        .selected_text(pack.markers.label())
+        .show_ui(ui, |ui| {
+            for f in styles::MarkerFamily::ALL {
+                changed |= ui
+                    .selectable_value(&mut pack.markers, f, f.label())
+                    .changed();
+            }
+        });
+    ui.label(
+        egui::RichText::new(match pack.markers {
+            styles::MarkerFamily::Classic => {
+                "A split bubble, the view's number over its sheet, and a solid wedge the way the view looks. Callouts are dashed rounded boxes."
+            }
+            styles::MarkerFamily::Plain => "The first markers: a small arrow and the view's letter.",
+        })
+        .weak(),
+    );
+    changed
+}
+
 fn objects_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
     let mut changed = false;
     let names = pack.pattern_names();

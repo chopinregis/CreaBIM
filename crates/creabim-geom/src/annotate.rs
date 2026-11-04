@@ -371,6 +371,104 @@ pub fn room_tag_item(id: ElementId, text: String, at: DVec2, look: TextLook, mm:
     }
 }
 
+/// A room's tag laid out as `style` says, centred on `at`: each line its
+/// own drawing text. Stacked writes the name in capitals and semibold, the
+/// area below it and the number small and last; Inline is
+/// [`room_tag_text`] in one block. A tag moved out of its room (`room` is
+/// its outline in the drawing) gets a leader back to `centre`.
+#[allow(clippy::too_many_arguments)]
+pub fn room_tag_items(
+    model: &Model,
+    id: ElementId,
+    room: ElementId,
+    fields: &[RoomField],
+    at: DVec2,
+    centre: DVec2,
+    outline: Option<&[DVec2]>,
+    look: TextLook,
+    mm: f64,
+    style: creabim_core::styles::RoomTagStyle,
+) -> Vec<PlanItem> {
+    use creabim_core::styles::RoomTagStyle;
+    let outside = outline.is_some_and(|o| o.len() > 2 && !creabim_core::polygon::contains(o, at));
+    let mut out = match style {
+        RoomTagStyle::Inline => {
+            vec![room_tag_item(
+                id,
+                room_tag_text(model, room, fields),
+                at,
+                look,
+                mm,
+            )]
+        }
+        RoomTagStyle::Stacked => {
+            let order: &[RoomField] = if fields.is_empty() {
+                &[RoomField::Name, RoomField::Area, RoomField::Number]
+            } else {
+                fields
+            };
+            let lines: Vec<(String, TextLook)> = order
+                .iter()
+                .filter_map(|f| {
+                    let v = f.value(model, room);
+                    if v.is_empty() {
+                        return None;
+                    }
+                    let mut l = look;
+                    Some(match f {
+                        RoomField::Name => {
+                            l.bold = true;
+                            (v.to_uppercase(), l)
+                        }
+                        RoomField::Number => {
+                            l.size *= 0.72;
+                            (v, l)
+                        }
+                        _ => {
+                            l.size *= 0.9;
+                            (v, l)
+                        }
+                    })
+                })
+                .collect();
+            let steps: Vec<f64> = lines.iter().map(|(_, l)| l.size * 1.45 * mm).collect();
+            let total: f64 = steps.iter().sum::<f64>() - steps.last().copied().unwrap_or(0.0);
+            let mut y = at.y + total / 2.0;
+            let mut items = vec![];
+            for ((text, l), step) in lines.into_iter().zip(steps) {
+                items.push(room_tag_item(id, text, DVec2::new(at.x, y), l, mm));
+                y -= step;
+            }
+            items
+        }
+    };
+    if outside {
+        // a leader from the tag back to its room
+        let gap = look.size * mm;
+        let d = centre - at;
+        if d.length() > gap * 2.0 {
+            let from = at + d.normalize() * gap * 1.5;
+            out.push(PlanItem::Line {
+                id,
+                pen: crate::plan::Pen::Symbol,
+                a: from,
+                b: centre,
+            });
+            out.push(PlanItem::Polygon {
+                id,
+                pen: crate::plan::Pen::Symbol,
+                points: (0..12)
+                    .map(|i| {
+                        let t = i as f64 / 12.0 * std::f64::consts::TAU;
+                        centre + DVec2::new(t.cos(), t.sin()) * 0.6 * mm
+                    })
+                    .collect(),
+            });
+        }
+    }
+    out
+}
+
 /// A dimension's value as it is written in `units`.
 pub fn dimension_text(units: &creabim_core::Units, a: DVec2, b: DVec2) -> String {
     units.dimension(a.distance(b))
@@ -552,13 +650,25 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
             }
             ElementKind::View(v) => {
                 if let Some(c) = v.callout.filter(|c| c.parent == view_id) {
-                    out.extend(crate::detail::callout_items(
-                        e.id,
-                        &e.name,
-                        c.lo,
-                        c.hi,
-                        view.scale / 1000.0,
-                    ));
+                    let mm = view.scale / 1000.0;
+                    match creabim_core::styles::active_pack(model).markers {
+                        creabim_core::styles::MarkerFamily::Classic => {
+                            // a detail called out of a section is ringed
+                            let round = matches!(view.kind, ViewKind::Section { .. });
+                            out.extend(crate::markers::callout(
+                                e.id,
+                                &crate::markers::number_of(model, e.id),
+                                &crate::markers::sheet_ref(model, e.id),
+                                c.lo,
+                                c.hi,
+                                round,
+                                mm,
+                            ));
+                        }
+                        creabim_core::styles::MarkerFamily::Plain => {
+                            out.extend(crate::detail::callout_items(e.id, &e.name, c.lo, c.hi, mm))
+                        }
+                    }
                 }
             }
             ElementKind::Dimension(d) if d.view == view_id && d.kind == DimensionKind::Spot => {
@@ -600,12 +710,28 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     model.get(t.host).map(|h| &h.kind),
                     Some(ElementKind::Room(_))
                 ) {
-                    out.push(room_tag_item(
+                    let outline = match model.get(t.host).map(|h| &h.kind) {
+                        Some(ElementKind::Room(r)) => {
+                            creabim_core::room::shape_of(model, r).map(|s| {
+                                s.outline
+                                    .iter()
+                                    .map(|p| project.project(p.extend(c.z)))
+                                    .collect::<Vec<_>>()
+                            })
+                        }
+                        _ => None,
+                    };
+                    out.extend(room_tag_items(
+                        model,
                         e.id,
-                        room_tag_text(model, t.host, &t.fields),
+                        t.host,
+                        &t.fields,
                         centre + t.offset,
+                        centre,
+                        outline.as_deref(),
                         look_of(model, t.style, t.color),
                         view.scale / 1000.0,
+                        creabim_core::styles::active_pack(model).room_tags,
                     ));
                     continue;
                 }
@@ -1011,13 +1137,13 @@ mod tests {
             }
         })
         .unwrap();
-        let ElementKind::Tag(t) = &doc.model().get(tag).unwrap().kind else {
+        let ElementKind::Tag(t) = doc.model().get(tag).unwrap().kind.clone() else {
             unreachable!()
         };
-        let ElementKind::View(view) = &doc.model().get(t.view).unwrap().kind else {
+        let ElementKind::View(view) = doc.model().get(t.view).unwrap().kind.clone() else {
             unreachable!()
         };
-        let items = annotations(doc.model(), t.view, view);
+        let items = annotations(doc.model(), t.view, &view);
         let shown: Vec<String> = items
             .iter()
             .filter_map(|i| match i {
@@ -1026,10 +1152,34 @@ mod tests {
             })
             .collect();
         let ceiling = RoomField::CeilingFinish.value(doc.model(), study);
-        assert_eq!(
-            shown,
-            vec![format!("STUDY\n{ceiling}").trim_end().to_string()]
-        );
+        let want: Vec<String> = ["STUDY".to_string(), ceiling]
+            .into_iter()
+            .filter(|l| !l.is_empty())
+            .collect();
+        assert_eq!(shown, want);
+        // with no list, Stacked: the name in semibold, the area, the number small
+        doc.edit(tag, "Fields", |e| {
+            if let ElementKind::Tag(t) = &mut e.kind {
+                t.fields = vec![];
+            }
+        })
+        .unwrap();
+        let items = annotations(doc.model(), t.view, &view);
+        let lines: Vec<(String, f64, bool)> = items
+            .iter()
+            .filter_map(|i| match i {
+                PlanItem::Annotation { id, item } if *id == tag => {
+                    Some((item.text.clone(), item.look.size, item.look.bold))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0].0, "STUDY");
+        assert!(lines[0].2);
+        assert_eq!(lines[1].0, area);
+        assert_eq!(lines[2].0, "0.01");
+        assert!(lines[2].1 < lines[1].1 && lines[1].1 < lines[0].1);
     }
 
     #[test]
