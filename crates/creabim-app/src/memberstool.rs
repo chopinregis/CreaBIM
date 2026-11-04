@@ -1184,6 +1184,50 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
     }
 }
 
+/// The interface icon of a roof shape: each its own.
+pub(crate) fn roof_icon(s: RoofShape) -> &'static str {
+    match s {
+        RoofShape::Flat => "roof-flat",
+        RoofShape::Shed => "roof-mono",
+        RoofShape::Gable => "roof-gable",
+        RoofShape::Hip => "roof-hip",
+    }
+}
+
+/// A roof shape's outline, drawn small in `r` for its drop-down: the
+/// same pictures as the icons.
+fn roof_glyph(p: &egui::Painter, r: egui::Rect, st: egui::Stroke, s: RoofShape) {
+    let at = |x: f32, y: f32| egui::pos2(r.left() + x * r.width(), r.top() + y * r.height());
+    let line = |pts: &[(f32, f32)]| {
+        let pts: Vec<egui::Pos2> = pts.iter().map(|&(x, y)| at(x, y)).collect();
+        p.add(egui::Shape::line(pts, st));
+    };
+    match s {
+        RoofShape::Flat => {
+            line(&[(0.1, 0.4), (0.9, 0.4), (0.9, 0.55), (0.1, 0.55), (0.1, 0.4)]);
+            line(&[(0.2, 0.55), (0.2, 0.85)]);
+            line(&[(0.8, 0.55), (0.8, 0.85)]);
+        }
+        RoofShape::Shed => {
+            line(&[(0.1, 0.85), (0.1, 0.6), (0.9, 0.3), (0.9, 0.85)]);
+        }
+        RoofShape::Gable => {
+            line(&[(0.1, 0.55), (0.5, 0.2), (0.9, 0.55)]);
+            line(&[(0.2, 0.47), (0.2, 0.85), (0.8, 0.85), (0.8, 0.47)]);
+        }
+        RoofShape::Hip => {
+            line(&[
+                (0.1, 0.65),
+                (0.3, 0.3),
+                (0.7, 0.3),
+                (0.9, 0.65),
+                (0.1, 0.65),
+            ]);
+            line(&[(0.2, 0.65), (0.2, 0.85), (0.8, 0.85), (0.8, 0.65)]);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1335,49 +1379,5 @@ mod tests {
             doc.model().get(id.unwrap()).map(|e| &e.kind),
             Some(ElementKind::Roof(_))
         ));
-    }
-}
-
-/// The interface icon of a roof shape: each its own.
-pub(crate) fn roof_icon(s: RoofShape) -> &'static str {
-    match s {
-        RoofShape::Flat => "roof-flat",
-        RoofShape::Shed => "roof-mono",
-        RoofShape::Gable => "roof-gable",
-        RoofShape::Hip => "roof-hip",
-    }
-}
-
-/// A roof shape's outline, drawn small in `r` for its drop-down: the
-/// same pictures as the icons.
-fn roof_glyph(p: &egui::Painter, r: egui::Rect, st: egui::Stroke, s: RoofShape) {
-    let at = |x: f32, y: f32| egui::pos2(r.left() + x * r.width(), r.top() + y * r.height());
-    let line = |pts: &[(f32, f32)]| {
-        let pts: Vec<egui::Pos2> = pts.iter().map(|&(x, y)| at(x, y)).collect();
-        p.add(egui::Shape::line(pts, st));
-    };
-    match s {
-        RoofShape::Flat => {
-            line(&[(0.1, 0.4), (0.9, 0.4), (0.9, 0.55), (0.1, 0.55), (0.1, 0.4)]);
-            line(&[(0.2, 0.55), (0.2, 0.85)]);
-            line(&[(0.8, 0.55), (0.8, 0.85)]);
-        }
-        RoofShape::Shed => {
-            line(&[(0.1, 0.85), (0.1, 0.6), (0.9, 0.3), (0.9, 0.85)]);
-        }
-        RoofShape::Gable => {
-            line(&[(0.1, 0.55), (0.5, 0.2), (0.9, 0.55)]);
-            line(&[(0.2, 0.47), (0.2, 0.85), (0.8, 0.85), (0.8, 0.47)]);
-        }
-        RoofShape::Hip => {
-            line(&[
-                (0.1, 0.65),
-                (0.3, 0.3),
-                (0.7, 0.3),
-                (0.9, 0.65),
-                (0.1, 0.65),
-            ]);
-            line(&[(0.2, 0.65), (0.2, 0.85), (0.8, 0.85), (0.8, 0.65)]);
-        }
     }
 }
