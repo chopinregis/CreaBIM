@@ -17,6 +17,8 @@ pub struct OrbitCamera {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Look {
     Top,
+    /// From straight below, north up.
+    Bottom,
     Front,
     Right,
     Back,
@@ -26,8 +28,9 @@ pub enum Look {
 }
 
 impl Look {
-    pub const ALL: [Look; 6] = [
+    pub const ALL: [Look; 7] = [
         Look::Top,
+        Look::Bottom,
         Look::Front,
         Look::Right,
         Look::Back,
@@ -38,6 +41,7 @@ impl Look {
     pub fn label(self) -> &'static str {
         match self {
             Look::Top => "Top",
+            Look::Bottom => "Bottom",
             Look::Front => "Front",
             Look::Right => "Right",
             Look::Back => "Back",
@@ -51,7 +55,10 @@ impl Look {
     fn angles(self) -> (f32, f32) {
         use std::f32::consts::FRAC_PI_2;
         match self {
-            Look::Top => (-FRAC_PI_2, 1.55),
+            // straight down and straight up, exactly: a pitch short of
+            // 90° shows vertical edges as short diagonals
+            Look::Top => (-FRAC_PI_2, FRAC_PI_2),
+            Look::Bottom => (FRAC_PI_2, -FRAC_PI_2),
             Look::Front => (-FRAC_PI_2, 0.0),
             Look::Right => (0.0, 0.0),
             Look::Back => (FRAC_PI_2, 0.0),
@@ -74,15 +81,57 @@ impl Default for OrbitCamera {
     }
 }
 
+/// Orbiting stops at straight down and straight up.
+const PITCH_MAX: f32 = std::f32::consts::FRAC_PI_2;
+
+/// Within this of an axis view (top, bottom, or level and square to an
+/// axis) the camera shows the axis view exactly.
+const AXIS_SNAP: f32 = 2.0 * std::f32::consts::PI / 180.0;
+
+/// `a` snapped to the nearest multiple of `step` when it lies within
+/// [`AXIS_SNAP`] of it.
+fn snap_angle(a: f32, step: f32) -> f32 {
+    let n = (a / step).round() * step;
+    if (a - n).abs() < AXIS_SNAP { n } else { a }
+}
+
 impl OrbitCamera {
+    /// The yaw and pitch the camera shows: the stored ones, snapped to the
+    /// nearest axis view within about 2°. The stored angles stay as they
+    /// are, so orbiting on moves off the axis view again.
+    pub fn view_angles(&self) -> (f32, f32) {
+        use std::f32::consts::FRAC_PI_2;
+        let pitch = snap_angle(self.pitch, FRAC_PI_2).clamp(-FRAC_PI_2, FRAC_PI_2);
+        let yaw = if pitch.abs() < AXIS_SNAP || pitch.abs() > FRAC_PI_2 - AXIS_SNAP {
+            snap_angle(self.yaw, FRAC_PI_2)
+        } else {
+            self.yaw
+        };
+        (yaw, pitch)
+    }
+
     pub fn eye(&self) -> Vec3 {
-        let (sp, cp) = self.pitch.sin_cos();
-        let (sy, cy) = self.yaw.sin_cos();
+        let (yaw, pitch) = self.view_angles();
+        let (sp, cp) = pitch.sin_cos();
+        let (sy, cy) = yaw.sin_cos();
         self.target + Vec3::new(cp * cy, cp * sy, sp) * self.distance
     }
 
+    /// The camera's up direction. Z, except straight down or up, where Z
+    /// lies along the view: there the screen's up is the horizontal way
+    /// the camera faces, so Top shows north (+Y) up.
+    pub fn up(&self) -> Vec3 {
+        let (yaw, pitch) = self.view_angles();
+        let (sp, cp) = pitch.sin_cos();
+        if cp > 1e-3 {
+            return Vec3::Z;
+        }
+        let (sy, cy) = yaw.sin_cos();
+        Vec3::new(-cy * sp.signum(), -sy * sp.signum(), 0.0)
+    }
+
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
-        let view = Mat4::look_at_rh(self.eye(), self.target, Vec3::Z);
+        let view = Mat4::look_at_rh(self.eye(), self.target, self.up());
         let aspect = aspect.max(0.01);
         let proj = if self.ortho {
             let h = self.half_height();
@@ -117,9 +166,10 @@ impl OrbitCamera {
     /// pivot stays where it is on screen.
     pub fn orbit_around(&mut self, pivot: Vec3, delta: Vec2) {
         let dyaw = -delta.x * 0.008;
-        let pitch = (self.pitch + delta.y * 0.008).clamp(-1.55, 1.55);
-        let dir = (self.eye() - self.target).normalize_or_zero();
-        let axis = dir.cross(Vec3::Z).normalize_or_zero();
+        let pitch = (self.pitch + delta.y * 0.008).clamp(-PITCH_MAX, PITCH_MAX);
+        let (sy, cy) = self.yaw.sin_cos();
+        // the horizontal axis square to the view, defined at the poles too
+        let axis = Vec3::new(sy, -cy, 0.0);
         let turn = Quat::from_rotation_z(dyaw) * Quat::from_axis_angle(axis, pitch - self.pitch);
         self.target = pivot + turn * (self.target - pivot);
         self.yaw += dyaw;
@@ -128,13 +178,13 @@ impl OrbitCamera {
 
     pub fn orbit(&mut self, delta: Vec2) {
         self.yaw -= delta.x * 0.008;
-        self.pitch = (self.pitch + delta.y * 0.008).clamp(-1.55, 1.55);
+        self.pitch = (self.pitch + delta.y * 0.008).clamp(-PITCH_MAX, PITCH_MAX);
     }
 
     pub fn pan(&mut self, delta: Vec2, viewport_height: f32) {
         let eye = self.eye();
         let fwd = (self.target - eye).normalize();
-        let right = fwd.cross(Vec3::Z).normalize_or_zero();
+        let right = fwd.cross(self.up()).normalize_or_zero();
         let up = right.cross(fwd);
         let k = 2.0 * self.distance * (self.fov_y / 2.0).tan() / viewport_height.max(1.0);
         self.target += (-right * delta.x + up * delta.y) * k;
@@ -188,6 +238,53 @@ mod tests {
             "{before} {after}"
         );
         assert!((c.pitch - (0.55 - 0.2)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn the_top_view_looks_straight_down_with_north_up() {
+        for ortho in [false, true] {
+            let mut c = OrbitCamera {
+                ortho,
+                target: Vec3::ZERO,
+                ..Default::default()
+            };
+            c.look(Look::Top);
+            let vp = c.view_proj(1.5);
+            // a vertical edge under the target is a point
+            let foot = vp.project_point3(Vec3::ZERO);
+            let head = vp.project_point3(Vec3::new(0.0, 0.0, 3.0));
+            assert!((foot - head).truncate().length() < 1e-5, "{foot} {head}");
+            // north (+Y) is up the screen, east (+X) to the right
+            assert!(vp.project_point3(Vec3::Y).y > 0.1);
+            assert!(vp.project_point3(Vec3::X).x > 0.05);
+            c.look(Look::Bottom);
+            let vp = c.view_proj(1.5);
+            assert!(vp.project_point3(Vec3::Y).y > 0.1);
+            let head = vp.project_point3(Vec3::new(0.0, 0.0, -3.0));
+            assert!((vp.project_point3(Vec3::ZERO) - head).truncate().length() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn orbiting_near_an_axis_view_snaps_to_it_and_on_past_it() {
+        let mut c = OrbitCamera::default();
+        c.look(Look::Front);
+        // 1° off level and square: shown exactly level and square
+        c.pitch = 1f32.to_radians();
+        c.yaw += 1f32.to_radians();
+        let (yaw, pitch) = c.view_angles();
+        assert_eq!(pitch, 0.0);
+        assert!((yaw + std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        // further off, it follows the orbit
+        c.pitch = 5f32.to_radians();
+        assert_eq!(c.view_angles().1, c.pitch);
+        // orbiting up stops at straight down, and pans still work there
+        c.orbit(Vec2::new(0.0, 1000.0));
+        assert_eq!(c.view_angles().1, std::f32::consts::FRAC_PI_2);
+        let before = c.target;
+        c.pan(Vec2::new(10.0, 0.0), 600.0);
+        assert!((c.target - before).length() > 1e-4);
+        assert!((c.target - before).z.abs() < 1e-6);
     }
 
     #[test]
