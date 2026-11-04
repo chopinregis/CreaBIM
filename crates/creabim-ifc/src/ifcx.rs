@@ -801,6 +801,7 @@ pub fn import_ifcx(json: &str) -> Result<ImportResult, ImportError> {
             _ => &mut shafts,
         };
         list.push(Element {
+            mark: None,
             id,
             name,
             kind,
@@ -859,6 +860,7 @@ impl Builder {
         let id = self.id(path);
         let element = match ours {
             Some((name, kind @ ElementKind::Material(_))) => Element {
+                mark: None,
                 id,
                 name,
                 kind,
@@ -883,6 +885,7 @@ impl Builder {
                     })
                     .unwrap_or([0.75; 3]);
                 Element {
+                    mark: None,
                     source: None,
                     id,
                     kind: ElementKind::Material(creabim_core::library::imported(
@@ -935,6 +938,7 @@ impl Builder {
                 ),
             };
             self.levels.push(Element {
+                mark: None,
                 source: None,
                 id,
                 name,
@@ -996,6 +1000,7 @@ impl Builder {
             if let Some((name, kind)) = creabim_element(&o.attributes) {
                 let id = self.id(&o.path.clone());
                 let e = Element {
+                    mark: None,
                     id,
                     name,
                     kind,
@@ -1063,6 +1068,7 @@ impl Builder {
                         r.height = Some(p.z1 - elev).filter(|h| *h > 0.1);
                         let id = self.id(&o.path.clone());
                         self.main.push(Element {
+                            mark: None,
                             source: None,
                             id,
                             name,
@@ -1093,6 +1099,7 @@ impl Builder {
                         },
                     );
                     self.main.push(Element {
+                        mark: None,
                         source: None,
                         id,
                         name,
@@ -1123,6 +1130,7 @@ impl Builder {
                     if let Some(&(_, level)) = top {
                         let id = self.id(&o.path.clone());
                         self.main.push(Element {
+                            mark: None,
                             source: None,
                             id,
                             name,
@@ -1159,6 +1167,7 @@ impl Builder {
                         OpeningKind::Window
                     };
                     self.openings.push(Element {
+                        mark: None,
                         source: None,
                         id,
                         name,
@@ -1190,6 +1199,7 @@ impl Builder {
             }
             let id = self.id(&o.path.clone());
             self.main.push(Element {
+                mark: None,
                 source: None,
                 id,
                 name,
