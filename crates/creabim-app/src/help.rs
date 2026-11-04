@@ -133,6 +133,7 @@ pub const IMAGES: &[(&str, &[u8])] = &[
     img!("tab-pick"),
     img!("catalogue"),
     img!("object-against-wall"),
+    img!("details"),
 ];
 
 /// A page's text by id.

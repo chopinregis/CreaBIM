@@ -11,7 +11,9 @@ A **detail** is a larger-scale drawing of one part of the building, such as the 
 
 This makes a new view, named "Detail 1", "Detail 2" and so on, and opens it. The detail shows what its parent shows, cropped to the box and drawn at its own scale. On the parent, the box has a bubble with the detail's number. The number is the first word of the detail's name that has a digit in it: "Detail 3 Eaves" shows 3. If you rename the view, the bubble changes with it.
 
-A detail works like any other view: you can place it on a [sheet](sheets), set its [visibility](visibility) and [crop](crop-boxes) it. If you delete the view, its box disappears from the parent.
+![Section C-C of the starter house, with the boxes of its three details](img/details.jpg)
+
+Details are listed in their own **Details** group of the project browser. A detail works like any other view: you can place it on a [sheet](sheets), set its [visibility](visibility) and [crop](crop-boxes) it. If you delete the detail, its box disappears from the parent. If you delete the parent, the detail stays and keeps showing the same part.
 
 ## Detail components
 
