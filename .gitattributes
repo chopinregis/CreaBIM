@@ -1,0 +1,4 @@
+# Files that tests compare byte for byte with generated text keep LF on every platform
+docs/json-format.md text eol=lf
+docs/creabim-model.schema.json text eol=lf
+examples/*.json text eol=lf
