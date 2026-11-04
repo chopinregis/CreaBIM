@@ -244,7 +244,6 @@ impl Joining {
 }
 
 impl CutPiece {
-
     /// What it merges with: the same material, or for a layer without
     /// one, layers of the same function (air gaps run on into each other).
     fn key(&self, model: &Model) -> (Option<ElementId>, u8) {

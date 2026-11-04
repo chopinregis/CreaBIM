@@ -71,7 +71,10 @@ impl CreaBimApp {
         let (tx, ok) = match head {
             "join.switch" => {
                 let tx = joins::switch_order(model, a, b);
-                (tx, "Switched: the other element now cuts through. Ctrl+Z to undo.")
+                (
+                    tx,
+                    "Switched: the other element now cuts through. Ctrl+Z to undo.",
+                )
             }
             "join.cleanup" => {
                 let on = joins::rule_for(model, a, b).is_some_and(|r| !r.1.cleanup);
@@ -89,7 +92,10 @@ impl CreaBimApp {
                 let tx = joins::set_rule(model, a, b, "Join automatically", |r| {
                     *r = JoinRule::new(r.a, r.b)
                 });
-                (tx, "The junction joins automatically again, by layer priority.")
+                (
+                    tx,
+                    "The junction joins automatically again, by layer priority.",
+                )
             }
         };
         let r = self.doc.commit(tx);
@@ -120,11 +126,17 @@ impl CreaBimApp {
         let mut edit: Option<(ElementId, JoinRule, &'static str)> = None;
         for (rid, mut r) in mine {
             let other = if r.a == id { r.b } else { r.a };
-            let name = model.get(other).map_or("(missing)".into(), |e| e.name.clone());
+            let name = model
+                .get(other)
+                .map_or("(missing)".into(), |e| e.name.clone());
             ui.horizontal(|ui| {
                 ui.label(format!("With {name}"));
                 let now = crate::detailtool::winner_label(model, &r, r.winner);
-                let shown = if r.cleanup { now } else { "Not cleaned up".into() };
+                let shown = if r.cleanup {
+                    now
+                } else {
+                    "Not cleaned up".into()
+                };
                 egui::ComboBox::from_id_salt(("join", rid))
                     .selected_text(shown)
                     .show_ui(ui, |ui| {

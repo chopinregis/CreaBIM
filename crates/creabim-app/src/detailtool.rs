@@ -8,8 +8,8 @@
 use crate::planview::{PlanState, Xf};
 use crate::selection::Selection;
 use creabim_core::{
-    DetailItem, DetailKind, Document, Element, ElementId, ElementKind, Hatch, JoinRule,
-    JoinWinner, Model, ModelError, Transaction, View,
+    DetailItem, DetailKind, Document, Element, ElementId, ElementKind, Hatch, JoinRule, JoinWinner,
+    Model, ModelError, Transaction, View,
 };
 use eframe::egui::{self, Color32, Stroke};
 use glam::DVec2;
@@ -161,7 +161,10 @@ pub fn finish(
     };
     let need = if d.kind.is_area() { 3 } else { 2 };
     if path.len() < need {
-        state.status = Some(format!("A {} needs {need} points or more.", d.kind.label().to_lowercase()));
+        state.status = Some(format!(
+            "A {} needs {need} points or more.",
+            d.kind.label().to_lowercase()
+        ));
         return Ok(());
     }
     let mut item = DetailItem::new(view, d.kind, path);

@@ -33,14 +33,14 @@ pub fn detail_items(id: ElementId, d: &DetailItem) -> Vec<PlanItem> {
                 if half < 1e-6 {
                     continue;
                 }
-                let pitch = w.max(1e-3);
+                let pitch = (w * 0.6).max(1e-3);
                 let steps = ((len / pitch) * 16.0).ceil().max(2.0) as usize;
                 let at = |t: f64| {
                     let u = t * len;
                     // a figure-of-eight-ish loop: the point runs along and
                     // swings across, doubling back at each face
                     let phase = u / pitch * std::f64::consts::TAU;
-                    a + dir * (u - pitch * 0.18 * phase.sin()) + n * (half * 0.9 * phase.cos())
+                    a + dir * (u - pitch * 0.3 * phase.sin()) + n * (half * 0.95 * phase.cos())
                 };
                 let mut prev = at(0.0);
                 for i in 1..=steps {
@@ -103,6 +103,12 @@ pub fn detail_items(id: ElementId, d: &DetailItem) -> Vec<PlanItem> {
         DetailKind::Region { hatch } => {
             let pts = d.points.clone();
             if pts.len() >= 3 {
+                // a region masks what is under it, then takes its hatch
+                out.push(PlanItem::Shade {
+                    id,
+                    points: pts.clone(),
+                    rgb: [1.0, 1.0, 1.0],
+                });
                 if hatch != Hatch::Empty {
                     out.push(PlanItem::Fill {
                         id,
@@ -139,10 +145,14 @@ pub fn detail_items(id: ElementId, d: &DetailItem) -> Vec<PlanItem> {
     out
 }
 
-/// The short reference a callout or section mark shows: the last word of
-/// the view's name ("Detail 3" shows 3).
+/// The short reference a callout shows: the first word of the view's name
+/// with a digit in it ("Detail 3 Eaves" shows 3), else its last word.
 pub fn tag_of(name: &str) -> String {
-    name.rsplit(' ').next().unwrap_or(name).to_string()
+    name.split_whitespace()
+        .find(|w| w.chars().any(|c| c.is_ascii_digit()))
+        .or_else(|| name.rsplit(' ').next())
+        .unwrap_or(name)
+        .to_string()
 }
 
 /// A callout's box on its parent view, and its number in a bubble at the

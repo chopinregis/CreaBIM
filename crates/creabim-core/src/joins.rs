@@ -195,7 +195,11 @@ pub fn set_rule(
 /// Join Order*): from automatic, the one that would lose wins outright;
 /// after that, the two swap.
 pub fn switch_order(model: &Model, a: ElementId, b: ElementId) -> crate::Transaction {
-    let loser = if default_winner(model, a, b) == a { b } else { a };
+    let loser = if default_winner(model, a, b) == a {
+        b
+    } else {
+        a
+    };
     set_rule(model, a, b, "Switch join order", |r| {
         let wins_now = match r.winner {
             JoinWinner::Auto => None,
@@ -672,7 +676,12 @@ fn node(
     // every end at the joint, with its direction leaving it
     let mut ends: Vec<(&Joinable, DVec2)> = vec![(me, -d_in)];
     ends.extend(neighbours.iter().copied());
-    let index = |j: &Joinable| walls.iter().position(|w| w.id == j.id).unwrap_or(usize::MAX);
+    let index = |j: &Joinable| {
+        walls
+            .iter()
+            .position(|w| w.id == j.id)
+            .unwrap_or(usize::MAX)
+    };
     // the pair running on: most nearly straight, then thickest, then first
     // drawn, so every wall at the joint picks the same two
     let key = |i: usize, k: usize| {
@@ -750,7 +759,11 @@ fn node(
     };
     let (left, _) = reach(t)?;
     let (right, _) = reach(-t)?;
-    let limit = 4.0 * run.iter().map(|r| r.0.wall.thickness).fold(t * 2.0, f64::max);
+    let limit = 4.0
+        * run
+            .iter()
+            .map(|r| r.0.wall.thickness)
+            .fold(t * 2.0, f64::max);
     if left.abs() > limit || right.abs() > limit {
         return None;
     }

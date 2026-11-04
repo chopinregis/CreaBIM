@@ -163,11 +163,9 @@ mod tests {
         let region = DetailKind::Region {
             hatch: Hatch::Concrete,
         };
-        assert!(
-            DetailItem::new(v, region, vec![p(0.0, 0.0), p(1.0, 0.0)])
-                .validate()
-                .is_err()
-        );
+        assert!(DetailItem::new(v, region, vec![p(0.0, 0.0), p(1.0, 0.0)])
+            .validate()
+            .is_err());
         // a saved detail without a width still reads
         let json = format!(
             r#"{{"view":{},"kind":"Membrane","points":[[0.0,0.0],[1.0,0.0]]}}"#,

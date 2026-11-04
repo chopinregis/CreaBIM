@@ -37,6 +37,8 @@ mod gridvis;
 pub(crate) mod helpui;
 #[path = "importui.rs"]
 mod importui;
+#[path = "joinsui.rs"]
+mod joinsui;
 #[path = "levelcopy.rs"]
 mod levelcopy;
 #[path = "levelsui.rs"]
@@ -55,8 +57,6 @@ mod shell;
 mod typepreview;
 #[path = "typesui.rs"]
 mod typesui;
-#[path = "joinsui.rs"]
-mod joinsui;
 #[path = "wallsui.rs"]
 mod wallsui;
 
