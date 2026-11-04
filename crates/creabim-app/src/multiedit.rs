@@ -45,7 +45,8 @@ fn spread(old: &Value, new: &Value, other: &mut Value, key: Option<&str>) -> boo
                 let ov = o.get(k).unwrap_or(&Value::Null);
                 match t.get_mut(k) {
                     Some(tv) => any |= spread(ov, nv, tv, Some(k)),
-                    None if !PLACE.contains(&k.as_str()) && !is_geometry(nv) => {
+                    // a field the other leaves at its default, changed here
+                    None if ov != nv && !PLACE.contains(&k.as_str()) && !is_geometry(nv) => {
                         t.insert(k.clone(), nv.clone());
                         any = true;
                     }
@@ -171,5 +172,37 @@ mod tests {
             w.height = 3.0;
         }
         assert!(apply_to(&before, &after, &level).is_none());
+    }
+}
+
+#[cfg(test)]
+mod house_tests {
+    use super::*;
+    use creabim_core::Document;
+
+    #[test]
+    fn a_base_offset_on_two_hall_walls_leaves_their_joins() {
+        let m = creabim_core::starter::starter_house();
+        let id = |n: &str| m.iter().find(|e| e.name == n).unwrap().id;
+        let (w, e) = (id("GF Hall West"), id("GF Hall East"));
+        let mut doc = Document::from_model(m.clone());
+        let before = doc.model().get(w).unwrap().clone();
+        let mut after = before.clone();
+        if let ElementKind::Wall(x) = &mut after.kind {
+            x.base_offset = 0.15;
+        }
+        let other = doc.model().get(e).unwrap().clone();
+        let out = apply_to(&before, &after, &other).unwrap();
+        let joins = |el: &Element| match &el.kind {
+            ElementKind::Wall(x) => x.disallow_join,
+            _ => unreachable!(),
+        };
+        assert_eq!(joins(&out), joins(&other));
+        assert!(matches!(&out.kind, ElementKind::Wall(x) if x.base_offset == 0.15));
+        let tx = creabim_core::Transaction::new("Base offset")
+            .replace(before, after)
+            .replace(other.clone(), out);
+        doc.commit_merged(tx).unwrap();
+        assert_eq!(joins(doc.model().get(e).unwrap()), joins(&other));
     }
 }
