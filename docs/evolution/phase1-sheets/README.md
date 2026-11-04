@@ -19,6 +19,8 @@ A sample PDF of all three sheets is in the project files as `sample-house-sheets
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Where a slab runs into a wall (the first floor slab sits inside the ground floor walls), sections still show both fills overlapping. Walls join each other cleanly, but wall/slab joins need a priority rule that comes later.
 - Hatch patterns are fixed per element type (walls diagonal, slabs crossed, everything else solid grey). Materials with their own patterns come with the material system.
 - 3D views on sheets are hidden-line only, with no shading. Orbiting redraws the whole view, which takes a moment on bigger models.

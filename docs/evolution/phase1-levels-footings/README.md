@@ -33,6 +33,8 @@ The Help pages are *Footings* (new), *Levels › Copying and moving to other lev
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - A strip is always centred under its wall. There is no eccentric offset yet.
 - Curtain walls get no strip footing.
 - Tags, grids and dimensions in the selection are not copied to other levels. Their views stay on the original level.

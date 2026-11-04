@@ -53,6 +53,8 @@ The other 669 meshes are furniture, pipes, fittings, coverings and members, whic
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - L-shaped or T-shaped wall breps stay meshes (OSA-M01's `Cut009` and `Plane_246`). They are not split into straight walls.
 - Notched or stepped beams, and sloped columns and beams, stay meshes.
 - Roofs, stairs and railings from other tools stay typed meshes. Only CreaBIM's own exports bring them back native.

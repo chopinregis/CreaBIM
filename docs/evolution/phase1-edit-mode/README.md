@@ -34,6 +34,8 @@ These are reference screenshots for the round of 22 October. Shots 01–03 and 1
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - The live 3D window's render mode is a per-user setting. It is not saved with each 3D view: saved views and sheets use the view's *Style*.
 - A curtain wall's opening is worked out from where it stands (parallel to the wall and inside its thickness), not stored. It is written to IFC 4 but not yet to IFC5/ifcx.
 - Nothing stops a curtain wall's opening from overlapping a door or window in the same wall (shot 10 touches W01).

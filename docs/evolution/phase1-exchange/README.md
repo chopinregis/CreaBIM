@@ -29,6 +29,8 @@ Reference screenshots of what this milestone is meant to do. Most use the sample
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Cut elements export to IFC and glTF as meshes, not as IfcBooleanResult.
 - A Blender object made a slab moves to the nearest level's height, since slabs sit on their level.
 - If you change an imported element's class in CreaBIM and the Blender file names a different class, the file wins on the next reload.

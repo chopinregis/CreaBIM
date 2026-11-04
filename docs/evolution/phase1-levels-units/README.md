@@ -41,6 +41,8 @@ All screenshots are taken from the sample house (File > New sample house).
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - The underlay is shown on screen only. It is not printed on sheets, and it shows the other level's linework at this plan's cut height, without the other level's own view settings.
 - Underlay `Level(id)` is a soft reference. If that level is deleted, the plan shows no underlay until another one is chosen.
 - A level line runs across the whole section or elevation. Its ends cannot be dragged yet, and where you end the line with the Level tool doesn't matter.

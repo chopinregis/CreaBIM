@@ -34,6 +34,8 @@ These screenshots show the new Help panel and the guide inside it. The guide is 
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - *Furniture and fixtures* is a placeholder until the catalogue work merges. Its page needs rewriting then.
 - The pictures are whole-window screenshots, so they are small in a narrow panel. Widening the panel helps.
 - Links to outside websites are shown as plain text, not as clickable links.

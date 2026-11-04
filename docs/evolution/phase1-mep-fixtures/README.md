@@ -25,6 +25,8 @@ Reference screenshots for the first set of electrical, lighting, plumbing and he
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Only the fixtures themselves for now: there are no pipes, ducts, cable runs or circuits, and no IfcDistributionSystem or port connections.
 - The catalogue pictures show ceiling fixtures from above, as if they stood on the floor.
 - Changing a type between *On the floor / On a wall* and *From the ceiling* keeps the stored offset number, so existing instances are reinterpreted against the other datum and jump.

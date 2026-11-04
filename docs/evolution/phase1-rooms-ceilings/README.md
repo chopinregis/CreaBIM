@@ -62,6 +62,8 @@ In the old starter house, `creabim check` lists 17 objects in the way of doors a
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - A ceiling is drawn only in ceiling plans, sections and 3D. Selecting one in an ordinary floor plan doesn't highlight it there.
 - In Section A-A, a short outline of a partition beyond the cut shows above the ceiling line over the landing.
 - The Room and Ceiling tools' `1`–`4` keys work only while the pointer is over the drawing, as with the Slab tool.

@@ -4,7 +4,7 @@ CreaBIM is an open-source, BIM-native architectural modeler: one model for freef
 
 ![CreaBIM with the starter house's garden side in 3D beside its ground-floor plan](docs/screenshot.png)
 
-**Status: Phase 1 in progress.** The core architecture works end to end, from modelling to permit sheets and IFC. It is not yet a tool for real projects.
+**Status: Phase 1 in progress.** The core architecture works end to end, from modelling to permit sheets and IFC. It is not yet a tool for real projects. What it doesn't do yet is listed in [docs/KNOWN_GAPS.md](docs/KNOWN_GAPS.md).
 
 ## The starter house
 

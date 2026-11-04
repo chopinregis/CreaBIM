@@ -39,6 +39,8 @@ CreaBIM now has **parametric parts**, **screen walls** and **site** elements.
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - **IFC STEP import of parts and site comes back as plain shapes.** It does not bring them back as parametric elements, because main's STEP reader keeps no CreaBIM property set for them. IFCX round-trips them natively.
 - **"Make a type of this" on a screen wall loses the screen pattern.** The new type is a solid wall type.
 - **Parts that lie wholly above the plan cut are not drawn in plan.** For example, the coping on the screen wall. There is no overhead line style for them yet.

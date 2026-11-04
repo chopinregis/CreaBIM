@@ -45,6 +45,8 @@ Each annotation can use a named **text style**, which sets the font, the size on
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - There is no DXF exporter in CreaBIM yet, so none of this (nor the older dimensions) goes to DXF.
 - Line colours per category (the request's "if it fits naturally" part) are not in this change. `ViewStyle` is a simple style switch, and the grids and visibility work was changing `View` at the same time. Colour is per annotation and per text style for now.
 - On screen, Serif is drawn with the interface's sans font, and bold is faked by drawing the text twice. Sheets on screen use the same approximation. PDF and SVG use the real Times, Courier and bold or italic faces.

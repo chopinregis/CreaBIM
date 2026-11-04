@@ -43,6 +43,8 @@ Shots 01, 02 and 04 to 07 are of the app. Shots 03 and 08 are drawn by the comma
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Detail components can't be moved with G or M, or edited with grips. To change one, delete it and draw it again, or change its kind and width in *Properties*.
 - A detail stores a copy of its parent's view settings when it is made. If the parent's section line or depth later changes, the detail follows the parent's line when it draws, but the copy stored in the file goes stale. If the parent is deleted, the detail draws from that old copy.
 - A junction rule changes how overlapping pieces are cut. It doesn't change how wall ends are trimmed, so at a wall-to-wall node **Switch join order** may make no visible difference.

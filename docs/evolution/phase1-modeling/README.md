@@ -24,6 +24,8 @@ Reference screenshots of what this milestone is meant to do, taken from the samp
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - R turns about the vertical axis only. Masses can't be tilted yet, and rotating in a section is refused.
 - S scales evenly in every direction. Walls and slabs scale in plan and keep their heights; there is no scaling along one axis.
 - Rotate and scale work about the element's own origin (for a mass made from a sketch, the sketch's first corner). There is no way to pick a different pivot yet.

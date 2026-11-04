@@ -76,6 +76,8 @@ This round covers six points from the 2026-10-21 feedback (pages 6, 7, 13, 15, 1
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Flipping a wall, or changing its thickness, about a line other than its centre moves its centreline. The walls joined to it are not stretched to the new corner, so a corner can open or overlap until one of them is touched.
 - The core-line locations (core centre, core faces) are kept when the wall's thickness or assembly changes. They are not kept when the layers inside an assembly are edited.
 - Door hand and swing are exported to IFC but not read back on import. An imported door comes back with the default hand and swing.

@@ -39,6 +39,8 @@ These are reference screenshots for the round of 28 October. Shots 01–08 come 
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - A shaft that runs across a slab's edge is **reported** while it is dragged. It is not clipped to the slab.
 - Footings have no polygon outline, and the app has no free 2D region element, so neither is in the shared grammar.
 - Grips not done yet:

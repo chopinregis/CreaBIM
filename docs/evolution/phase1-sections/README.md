@@ -13,6 +13,8 @@ Reference screenshots of what this milestone is meant to do, taken from the app 
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Wall corners are not cleaned up yet, so corners show doubled lines in elevations and overlapping fills in sections.
 - Drawing tools (Wall, Door, Window, Slab, Mass) only work in plan views. In a section or elevation you can select and edit through Properties.
 - Section and elevation lines can't be dragged in the plan yet; move them with the Start and End fields.

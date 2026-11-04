@@ -66,6 +66,8 @@ and stretch, and a corner still mitres when two ends are a little apart.
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - There is no location line: walls are placed on their centreline. Use flip to
   choose which face is the exterior.
 - Typing new start or end coordinates in Properties moves only that wall. Joined

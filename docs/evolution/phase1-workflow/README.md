@@ -26,6 +26,8 @@ Reference screenshots for the fixes asked for after milestone 6, taken from the 
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - The new interface in Tauri comes next: these screens are still the old interface, with a toolbar that runs off the window on narrow screens.
 - Drawing a slab inside a section is still the two-corner rectangle with its top on the nearest level.
 - Fill room has no preview before the click, and goes to wall centre lines only (not the inner faces).

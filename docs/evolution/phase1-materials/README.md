@@ -65,6 +65,8 @@ Screenshots 09 to 12 were taken with the classic panels (`CREABIM_CLASSIC_UI=1`)
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - No textures. glTF base colour textures and Blender image textures are ignored; a material with only a texture comes in white or at its base factor.
 - Blender: only the Principled BSDF's unlinked inputs are read. A node tree that drives the colour from other nodes falls back to the viewport display colour.
 - FreeCAD: only the BasicRendering/Rendering colours, shininess and transparency are read. Render-workbench appearance models and physical properties (density, strength) are not kept.

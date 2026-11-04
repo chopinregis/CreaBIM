@@ -36,6 +36,8 @@ This pass:
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - The palette lists actions only. It doesn't search elements or properties yet.
 - When the palette is opened with Ctrl+K, typing reaches it through the app window. A click in its box also works.
 - *Orbit around the selection* turns about the middle of the selection's box, and only in the 3D view.

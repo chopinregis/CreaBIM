@@ -82,6 +82,8 @@ The 3D rows of the table in [phase1-manipulation](../phase1-manipulation/README.
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Grid lines can be references in 3D but not targets, because the 3D window has no face to click on them. Extend a grid in a plan.
 - An arrayed mesh (the pergola rafters) offers the centre lines of the whole group, not of each copy.
 - Thin faces, such as a wall's top seen from far away, are hard to pick. Zoom in, or use `Tab`.

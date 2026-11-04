@@ -110,6 +110,8 @@ The weights belong to each view: in a plan's *Properties*, under *Graphics*, unt
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - The on-screen plan pane still uses its own fixed pixel widths. The view's line weights reach sheets, PDF and SVG.
 - *Pens by category* covers lines seen below the cut. A cut line weight, a colour and a pattern per category are left for the object styles work (P1 of the 2026-10-28 spec).
 - The view depth applies to stairs seen through holes in the floor. Other elements of the level below are not drawn through voids yet, and there is no top or bottom clip yet (P2 of the spec).

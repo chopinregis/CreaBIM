@@ -57,6 +57,8 @@ It works the same in plans, sections and 3D; in 3D the move stays on its level u
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Drag-move moves the element under the pointer, not the whole selection; Move (M) moves all of it.
 - Moving a wall doesn't stretch the walls joined to it, so it can leave a gap at a corner.
 - Scale (S) still works the old way, by pointer distance, without base points.

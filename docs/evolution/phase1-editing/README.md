@@ -29,6 +29,8 @@ Reference screenshots of what this milestone is meant to do, taken from the samp
 
 ## Known gaps
 
+All open gaps, from every milestone, are kept up to date in [docs/KNOWN_GAPS.md](../../KNOWN_GAPS.md). The list below is as it was when this milestone landed; some of it may be fixed since.
+
 - Dimension constraints are set in Properties only. You can't drag a dimension in the viewport yet, and there are no tangent, angle or fixed-point constraints.
 - A sketch is a single profile: no holes, and a circle is a sketch of its own.
 - With many elements selected, Properties edits only the active one, and its Delete button counts only that element's attached items.
