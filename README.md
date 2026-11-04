@@ -85,6 +85,10 @@ cargo run -p creabim-cli -- sheets house.creabim.json            # list sheets
 cargo run -p creabim-cli -- pdf house.creabim.json house.pdf      # every sheet, one PDF
 cargo run -p creabim-cli -- schedule house.creabim.json windows w.csv  # doors, windows, walls or slabs
 python3 tools/validate_ifc.py house.ifc                          # needs: pip install ifcopenshell pytest
+# a whole model from a JSON description any script can write (docs/json-format.md)
+cargo run -p creabim-cli -- build examples/small-house.json small-house.creabim
+cargo run -p creabim-cli -- build --check my-model.json          # report problems by JSON path
+cargo run -p creabim-cli -- export-json house.creabim house.json  # and back to that format
 ```
 
 ## Using the app
