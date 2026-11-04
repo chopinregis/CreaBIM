@@ -671,13 +671,7 @@ pub fn draw(
                     line(a, b, Stroke::new(1.5, accent));
                     if let Some(c) = project(b) {
                         painter.circle_filled(c, 3.5, accent);
-                        painter.text(
-                            c + egui::vec2(8.0, -8.0),
-                            egui::Align2::LEFT_BOTTOM,
-                            crate::units::len(a.distance(b)),
-                            egui::FontId::proportional(12.0),
-                            accent,
-                        );
+                        distance_label(painter, c, crate::units::len(a.distance(b)), accent);
                     }
                 }
                 if let Some(s) = face.filter(|s| s.abs() > 1e-6) {
@@ -685,13 +679,7 @@ pub fn draw(
                     line(from, to, Stroke::new(1.5, accent));
                     if let Some(c) = project(to) {
                         painter.circle_filled(c, 3.5, accent);
-                        painter.text(
-                            c + egui::vec2(8.0, -8.0),
-                            egui::Align2::LEFT_BOTTOM,
-                            crate::units::len(s.abs()),
-                            egui::FontId::proportional(12.0),
-                            accent,
-                        );
+                        distance_label(painter, c, crate::units::len(s.abs()), accent);
                     }
                 }
             }
@@ -1200,4 +1188,14 @@ mod tests {
             ElementKind::Wall(host)
         );
     }
+}
+
+/// A distance in the preview, beside the point at `c`: on a dark pill, so
+/// it reads on orange, brick and every other colour.
+fn distance_label(painter: &egui::Painter, c: egui::Pos2, text: String, accent: Color32) {
+    let galley = painter.layout_no_wrap(text, egui::FontId::proportional(12.0), accent);
+    let at = c + egui::vec2(8.0, -8.0 - galley.size().y);
+    let back = egui::Rect::from_min_size(at, galley.size()).expand2(egui::vec2(4.0, 2.0));
+    painter.rect_filled(back, 3.0, Color32::from_black_alpha(190));
+    painter.galley(at, galley, accent);
 }
