@@ -343,6 +343,8 @@ impl CreaBimApp {
     /// The items of a menu or dropdown, by its key.
     pub(super) fn menu_items(&self, key: &str) -> Vec<Item> {
         match key {
+            "menu:CreaBIM" => self.app_menu(),
+            "units.menu" => self.unit_items(),
             "menu:File" => self.file_menu(),
             "menu:Edit" => self.edit_menu(),
             "menu:View" => self.view_menu(),
@@ -1469,6 +1471,7 @@ impl CreaBimApp {
             _ if self.join_action(head, arg) => {}
             _ if self.crop_action(head, arg) => {}
             _ if self.similar_action(head, arg) => {}
+            _ if self.app_action(ctx, head, arg) => {}
             _ if self.help_action(head, arg) => {}
             _ if self.wall_action(head, arg) => {}
             _ if self.level_action(head, arg) => {}
@@ -2043,15 +2046,13 @@ impl CreaBimApp {
             "popup": self.popup_key(),
             "menus": (["File", "Edit", "View", "Create", "Materials", "Help"].map(|m| json!({"name": m, "key": format!("menu:{m}")}))),
             "quick": quick,
+            // the selection count is in the status bar, where it belongs
             "doc": {
                 "name": file_label(&self.path),
                 "path": self.path,
-                "note": match self.selection.len() {
-                    0 => String::new(),
-                    1 => "1 selected".into(),
-                    n => format!("{n} selected"),
-                },
+                "note": "",
             },
+            "app": {"key": "menu:CreaBIM", "label": "CreaBIM"},
             "right": [{
                 "kind": "toggle", "id": "layout.toggle", "label": "",
                 "on": self.shell.settings.single_view,
@@ -2360,6 +2361,8 @@ impl CreaBimApp {
                  "hint": "Where sketches and guides drawn in 3D go"},
                 {"kind": "menu", "key": "pivot", "label": "Pivot", "value": self.plan.pivot.label(), "icon": "crosshair",
                  "hint": "What rotate and scale turn about. Shift+right-click places the pivot cursor."},
+                {"kind": "menu", "key": "units.menu", "label": "Units", "value": crate::app::appmenu::unit_short(self.doc.model().units().length), "icon": "units",
+                 "hint": "How lengths are shown and typed. Any unit can still be typed: 3 m, 10'6\", 450 mm."},
                 {"kind": "sep"},
                 {"kind": "meta", "label": format!("{} elements", self.element_count())},
             ],

@@ -143,7 +143,7 @@ impl CreaBimApp {
                                 ui.selectable_value(&mut self.marks.only, Some(c), c.label());
                             }
                         });
-                    ui.checkbox(&mut self.marks.replace, "Replace typed marks too");
+                    crate::props::switch(ui, &mut self.marks.replace, "Replace typed marks too");
                 });
                 ui.horizontal(|ui| {
                     if ui
@@ -333,8 +333,7 @@ impl CreaBimApp {
         let mut edited = head;
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            if ui
-                .checkbox(&mut shown, format!("Head in {name}"))
+            if crate::props::switch(ui, &mut shown, format!("Head in {name}"))
                 .on_hover_text(
                     "Show this level's name and elevation in this view; its line stays either way",
                 )

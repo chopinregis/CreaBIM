@@ -563,11 +563,7 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
 // ---- Properties ----
 
 fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
-    ui.horizontal(|ui| {
-        ui.label(text);
-        ui.add(crate::units::drag(v).range(lo..=hi)).changed()
-    })
-    .inner
+    crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed())
 }
 
 fn weak(ui: &mut egui::Ui, t: impl Into<String>) {
@@ -586,8 +582,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
 
 fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
     let mut label = "";
-    if ui
-        .checkbox(&mut p.void, "Void: cuts what it meets")
+    if crate::props::switch(ui, &mut p.void, "Void: cuts what it meets")
         .on_hover_text("A void cuts every wall, slab, roof, site surface and solid part it meets, and is drawn only as a see-through outline in 3D")
         .changed()
     {
@@ -680,7 +675,7 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
                     }
                 }
                 Path::Points { points, closed } => {
-                    if ui.checkbox(closed, "Closed path").changed() {
+                    if crate::props::switch(ui, closed, "Closed path").changed() {
                         label = "Sweep path";
                     }
                     let mut z = points.first().map_or(0.0, |q| q.z);
@@ -796,8 +791,7 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
             if num(ui, "Depth", thickness, 0.005, 10.0) {
                 label = "Area depth";
             }
-            ui.horizontal(|ui| {
-                ui.label("Pattern");
+            {
                 let choices = [
                     Pattern::None,
                     Pattern::Units {
@@ -811,21 +805,21 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
                     },
                     Pattern::Stipple { spacing: 0.12 },
                 ];
-                for c in choices {
-                    let on = pattern.label() == c.label();
-                    if ui.selectable_label(on, c.label()).clicked() && !on {
-                        *pattern = c;
-                        label = "Area pattern";
-                    }
-                }
-            });
+                // four choices: a drop-down
+                crate::props::Combo::new("Pattern")
+                    .selected_text(pattern.label())
+                    .show_ui(ui, |ui| {
+                        for c in choices {
+                            let on = pattern.label() == c.label();
+                            if ui.selectable_label(on, c.label()).clicked() && !on {
+                                *pattern = c;
+                                label = "Area pattern";
+                            }
+                        }
+                    });
+            }
             let deg = |ui: &mut egui::Ui, v: &mut f64| {
-                ui.horizontal(|ui| {
-                    ui.label("Angle");
-                    ui.add(egui::DragValue::new(v).speed(1.0).suffix("°"))
-                        .changed()
-                })
-                .inner
+                crate::props::row(ui, "Angle", |ui| crate::props::fill(ui, egui::DragValue::new(v).speed(1.0).suffix("°")).changed())
             };
             match pattern {
                 Pattern::None => {}
@@ -839,7 +833,7 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
                     {
                         label = "Pattern size";
                     }
-                    if ui.checkbox(stagger, "Staggered courses").changed() {
+                    if crate::props::switch(ui, stagger, "Staggered").changed() {
                         label = "Pattern bond";
                     }
                     if deg(ui, angle) {
@@ -868,14 +862,15 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
             canopy,
             height,
         } => {
-            ui.horizontal(|ui| {
-                ui.label("Form");
-                for f in PlantForm::ALL {
-                    if ui.selectable_value(form, f, f.label()).changed() {
-                        label = "Plant form";
+            crate::props::Combo::new("Form")
+                .selected_text(form.label())
+                .show_ui(ui, |ui| {
+                    for f in PlantForm::ALL {
+                        if ui.selectable_value(form, f, f.label()).changed() {
+                            label = "Plant form";
+                        }
                     }
-                }
-            });
+                });
             if num(ui, "Canopy", canopy, 0.1, 50.0) {
                 label = "Canopy";
             }

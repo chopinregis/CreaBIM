@@ -626,8 +626,7 @@ impl CreaBimApp {
                     }
                 }
             });
-        if ui
-            .checkbox(&mut t.border, "Draw the usual border too")
+        if crate::props::switch(ui, &mut t.border, "Draw the usual border too")
             .on_hover_text("Off for a template that brings its own frame")
             .changed()
         {

@@ -322,8 +322,7 @@ pub(super) fn range_ui(
             ) {
                 label = Some("View range");
             }
-            if ui
-                .checkbox(&mut r.overhead, "Overhead dashed")
+            if crate::props::switch(ui, &mut r.overhead, "Overhead dashed")
                 .on_hover_text("Draw what is above the cut, up to the top, in dashed lines: roof edges, upper slabs")
                 .changed()
             {
@@ -398,8 +397,7 @@ pub(super) fn look_ui(
         }
     });
     let mut sun = c.shadows.is_some();
-    if ui
-        .checkbox(&mut sun, "Sun shadows")
+    if crate::props::switch(ui, &mut sun, "Sun shadows")
         .on_hover_text("Shadows cast on the ground, in plans from above")
         .changed()
     {
@@ -496,13 +494,11 @@ pub(super) fn look_ui(
 pub(super) fn override_fields(ui: &mut egui::Ui, o: &mut Override) -> bool {
     let mut changed = false;
     ui.horizontal_wrapped(|ui| {
-        changed |= ui
-            .checkbox(&mut o.halftone, "Halftone")
+        changed |= crate::props::switch(ui, &mut o.halftone, "Halftone")
             .on_hover_text("Drawn half-strength, mixed toward white")
             .changed();
         let mut hatch_off = o.hatch == Some(false);
-        if ui
-            .checkbox(&mut hatch_off, "No hatch")
+        if crate::props::switch(ui, &mut hatch_off, "No hatch")
             .on_hover_text("Leave out the hatch lines of its cut faces")
             .changed()
         {
@@ -1185,8 +1181,7 @@ fn templates_page(
             }
         });
         let mut weights = t.weights.is_some();
-        if ui
-            .checkbox(&mut weights, "Pens of its own")
+        if crate::props::switch(ui, &mut weights, "Pens of its own")
             .on_hover_text("Fixed pen widths whatever the scale, not the pack's")
             .changed()
         {
@@ -1229,8 +1224,7 @@ fn templates_page(
                 .changed();
         });
         let mut sun = cues.shadows.is_some();
-        if ui
-            .checkbox(&mut sun, "Sun shadows in plans from above")
+        if crate::props::switch(ui, &mut sun, "Sun shadows in plans from above")
             .changed()
         {
             cues.shadows = sun.then_some(Shadows {

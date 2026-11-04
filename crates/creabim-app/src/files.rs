@@ -188,7 +188,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme: "dark".into(),
+            // the approved look (brief 02); anyone's saved theme stays theirs
+            theme: "sage".into(),
             left_width: 264.0,
             right_width: 290.0,
             single_view: false,

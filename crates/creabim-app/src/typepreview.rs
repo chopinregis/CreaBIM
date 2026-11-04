@@ -317,8 +317,7 @@ impl CreaBimApp {
         }
         if on {
             let mut ghost = self.plan.spotlight_ghost;
-            if ui
-                .checkbox(&mut ghost, "Fade the rest")
+            if crate::props::switch(ui, &mut ghost, "Fade the rest")
                 .on_hover_text("Draw everything else faint, to see them on their own; untick to see them in their context")
                 .changed()
             {

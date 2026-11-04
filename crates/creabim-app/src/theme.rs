@@ -149,8 +149,9 @@ impl Theme {
                 0x8CC4E6,
             ),
             Theme::Sage => t(
-                false, 0xEEF1EA, 0xF7F9F3, 0xE3E8DC, 0xCBD3C2, 0xB5C0AA, 0x1E2A22, 0x7A877C,
-                0x4F6E58,
+                // the approved mockup's palette (brief 02)
+                false, 0xF6F7F4, 0xFFFFFF, 0xF6F7F4, 0xE3E6DF, 0xD3D8CE, 0x22261F, 0x5D6558,
+                0x4F6B4C,
             ),
             Theme::Ink => t(
                 true, 0x0B0C0E, 0x141518, 0x1D1F23, 0x2A2D33, 0x3A3E46, 0xF5F3EE, 0x8F9096,

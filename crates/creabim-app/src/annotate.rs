@@ -1194,8 +1194,7 @@ pub fn look_ui(
         });
     ui.horizontal(|ui| {
         let mut own = color.is_some();
-        if ui
-            .checkbox(&mut own, "Own colour")
+        if crate::props::switch(ui, &mut own, "Own colour")
             .on_hover_text("Override the style's colour for this one")
             .changed()
         {
@@ -1261,8 +1260,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     });
     ui.horizontal(|ui| {
         let mut own = s.color.is_some();
-        if ui
-            .checkbox(&mut own, "Colour")
+        if crate::props::switch(ui, &mut own, "Colour")
             .on_hover_text("Off: black on paper, blue on screen")
             .changed()
         {
@@ -1298,15 +1296,17 @@ fn terminator_combo(
     t: &mut Option<Terminator>,
 ) -> bool {
     let mut changed = false;
-    egui::ComboBox::from_id_salt(salt)
-        .selected_text(t.map_or(usual.to_string(), |t| t.label().to_string()))
-        .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(t, None, usual).changed();
-            for k in Terminator::ALL {
-                changed |= ui.selectable_value(t, Some(k), k.label()).changed();
-            }
-        });
-    ui.label(text);
+    crate::props::row(ui, text, |ui| {
+        egui::ComboBox::from_id_salt(salt)
+            .selected_text(t.map_or(usual.to_string(), |t| t.label().to_string()))
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                changed |= ui.selectable_value(t, None, usual).changed();
+                for k in Terminator::ALL {
+                    changed |= ui.selectable_value(t, Some(k), k.label()).changed();
+                }
+            });
+    });
     changed
 }
 
@@ -1389,8 +1389,7 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
                 }
             }
         });
-    if ui
-        .checkbox(&mut s.break_at_tags, "Break dimension lines at tags")
+    if crate::props::switch(ui, &mut s.break_at_tags, "Break dimension lines at tags")
         .on_hover_text(
             "Dimension lines in this style leave a gap where a tag or a note sits across them",
         )
@@ -1508,8 +1507,7 @@ pub fn note_ui(
         label = Some("Note text");
     }
     let mut leader = n.leader.is_some();
-    if ui
-        .checkbox(&mut leader, "Leader")
+    if crate::props::switch(ui, &mut leader, "Leader")
         .on_hover_text("An arrow from the note to what it is about. Drag its square to move it.")
         .changed()
     {

@@ -73,11 +73,7 @@ pub(super) fn category_of_tool(tool: Tool) -> Option<TypeCategory> {
 }
 
 fn len_field(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
-    ui.horizontal(|ui| {
-        ui.label(text);
-        ui.add(crate::units::drag(v).range(lo..=hi)).changed()
-    })
-    .inner
+    crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed())
 }
 
 fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bool {
@@ -280,8 +276,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
             }
             ui.horizontal(|ui| {
                 let mut own = w.height.is_some();
-                if ui
-                    .checkbox(&mut own, "Default height")
+                if crate::props::switch(ui, &mut own, "Default height")
                     .on_hover_text("New walls of this type are drawn this high; otherwise as high as their level")
                     .changed()
                 {
@@ -312,11 +307,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                 label = "Type frame";
             }
             let panes = |ui: &mut egui::Ui, text: &str, v: &mut u32| {
-                ui.horizontal(|ui| {
-                    ui.label(text);
-                    ui.add(egui::DragValue::new(v).range(1..=12)).changed()
-                })
-                .inner
+                crate::props::row(ui, text, |ui| crate::props::fill(ui, egui::DragValue::new(v).range(1..=12)).changed())
             };
             if panes(ui, "Panes across", &mut o.frame.panes_across) {
                 label = "Type panes";

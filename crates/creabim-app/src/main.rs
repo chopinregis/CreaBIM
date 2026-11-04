@@ -24,6 +24,7 @@ mod outline;
 mod paneface;
 mod partstool;
 mod planview;
+mod props;
 mod render3d;
 mod roomtool;
 mod schedulepane;

@@ -12,18 +12,10 @@ use serde_json::{json, Value};
 /// Below this width a drop-down's label goes above it instead of beside it.
 pub(crate) const NARROW: f32 = 250.0;
 
-/// A labelled drop-down for a panel that can be dragged narrow: the label
-/// beside the box while there is room, on its own line above once there
-/// is not, so neither is squeezed into a column of single letters. Keeps
-/// the same id either way, so an open list stays open.
-pub(crate) fn combo(ui: &mut egui::Ui, label: &str) -> egui::ComboBox {
-    if ui.available_width() >= NARROW {
-        egui::ComboBox::from_label(label)
-    } else {
-        ui.label(label);
-        let w = ui.available_width().min(ui.spacing().combo_width);
-        egui::ComboBox::from_id_salt(label).width(w)
-    }
+/// A labelled drop-down, as every Properties row is: the label at the left
+/// and the box filling the rest ([`crate::props::row`]).
+pub(crate) fn combo(_ui: &mut egui::Ui, label: &str) -> crate::props::Combo {
+    crate::props::Combo::new(label)
 }
 
 #[derive(Default)]
@@ -132,26 +124,22 @@ impl CreaBimApp {
             .get(key)
             .copied()
             .unwrap_or(default_open);
-        let mut toggle = false;
-        ui.horizontal(|ui| {
-            let (_, r) = ui.allocate_exact_size(egui::vec2(14.0, 16.0), egui::Sense::click());
-            egui::collapsing_header::paint_default_icon(ui, if open { 1.0 } else { 0.0 }, &r);
-            let t = ui
-                .add(
-                    egui::Label::new(egui::RichText::new(title).strong())
-                        .sense(egui::Sense::click())
-                        .truncate(),
-                )
-                .on_hover_text(if open {
-                    "Click to fold this section"
-                } else {
-                    "Click to open this section"
-                });
-            toggle = r.clicked() || t.clicked();
-            if let Some(link) = help {
-                self.quick_help_button(ui, link, title);
-            }
+        // a sub-section (a key with a dot, "view.pens") is set in
+        let indent = key.contains('.');
+        let (resp, help_at) = crate::props::header(ui, title, open, indent);
+        let resp = resp.on_hover_text(if open {
+            "Click to fold this section"
+        } else {
+            "Click to open this section"
         });
+        let mut toggle = resp.clicked();
+        if let Some(link) = help.filter(|_| help_at.is_positive()) {
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(help_at));
+            if self.quick_help_button(&mut child, link, title) {
+                toggle = false;
+            }
+        }
+        ui.add_space(2.0);
         if toggle {
             let s = &mut self.shell.settings;
             if !open == default_open {
@@ -166,10 +154,11 @@ impl CreaBimApp {
 
     /// A small ? beside a heading in Properties: it opens a few lines from
     /// the page `link` and a link to read the rest in the Help panel.
-    pub(super) fn quick_help_button(&mut self, ui: &mut egui::Ui, link: &str, title: &str) {
+    /// Returns whether it was clicked.
+    pub(super) fn quick_help_button(&mut self, ui: &mut egui::Ui, link: &str, title: &str) -> bool {
         let lines = help::quick(link);
         if lines.is_empty() {
-            return;
+            return false;
         }
         let r = ui
             .add(
@@ -201,6 +190,7 @@ impl CreaBimApp {
         if read {
             self.open_help(link);
         }
+        r.clicked()
     }
 
     /// The Help menu's actions and the Help panel's buttons. Returns false

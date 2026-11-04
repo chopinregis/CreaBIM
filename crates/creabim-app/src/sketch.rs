@@ -490,7 +490,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
                 if sk.closed { "closed" } else { "open" }
             ));
             let mut closed = sk.closed;
-            if sk.can_close() && ui.checkbox(&mut closed, "Closed").changed() {
+            if sk.can_close() && crate::props::switch(ui, &mut closed, "Closed").changed() {
                 sk.set_closed(closed);
                 edit = Edit::Done("Close sketch");
             }

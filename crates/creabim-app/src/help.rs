@@ -671,6 +671,35 @@ pub fn shortcuts_page(menus: &[(&str, Vec<Item>)]) -> String {
 /// A page's text as it is shown: the version filled in.
 pub fn shown(md: &str) -> String {
     md.replace("{version}", env!("CARGO_PKG_VERSION"))
+        .replace("{build}", &build())
+}
+
+/// The commit and day this app was built: `3b056f4 · 4 Nov 2026`.
+pub fn build() -> String {
+    let day: i64 = env!("CREABIM_BUILD_DAY").parse().unwrap_or(0);
+    format!("{} · {}", env!("CREABIM_COMMIT"), date_of_day(day))
+}
+
+/// The version line of About CreaBIM: `Version 0.1.0 · build 3b056f4 · 4 Nov 2026`.
+pub fn version_line() -> String {
+    format!("Version {} · build {}", env!("CARGO_PKG_VERSION"), build())
+}
+
+/// A day counted from 1970-01-01, as `4 Nov 2026` (the civil calendar).
+fn date_of_day(z: i64) -> String {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    format!("{d} {} {y}", MONTHS[(m - 1) as usize])
 }
 
 /// Pictures as `data:` addresses, for the Help panel's page.
@@ -718,6 +747,14 @@ pub fn pages_json() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_days_read_as_dates() {
+        assert_eq!(date_of_day(0), "1 Jan 1970");
+        assert_eq!(date_of_day(20_396), "4 Nov 2025");
+        assert_eq!(date_of_day(20_761), "4 Nov 2026");
+        assert_eq!(date_of_day(11_016), "29 Feb 2000");
+    }
 
     #[test]
     fn base64_matches_the_usual_encoding() {

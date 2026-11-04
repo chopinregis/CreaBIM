@@ -9,11 +9,7 @@ use creabim_core::{walls, LocationLine, Opening, OpeningKind, Wall, WallTop};
 
 /// A length field in a row, as the rest of Properties draws them.
 fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
-    ui.horizontal(|ui| {
-        ui.label(text);
-        ui.add(crate::units::drag(v).range(lo..=hi)).changed()
-    })
-    .inner
+    crate::props::row(ui, text, |ui| crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed())
 }
 
 /// The model's levels, lowest first.

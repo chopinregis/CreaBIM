@@ -307,8 +307,7 @@ pub fn join_fields(ui: &mut egui::Ui, model: &Model, j: &mut JoinRule) -> &'stat
         name_of(model, j.a),
         name_of(model, j.b)
     ));
-    if ui
-        .checkbox(&mut j.cleanup, "Clean up the junction")
+    if crate::props::switch(ui, &mut j.cleanup, "Clean up the junction")
         .on_hover_text("Off: both are drawn whole where they overlap, with their own outlines.")
         .changed()
     {
