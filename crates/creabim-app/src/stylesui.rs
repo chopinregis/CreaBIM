@@ -117,15 +117,22 @@ fn pattern_combo(
     changed
 }
 
-/// A colour that may be left as drawn.
-fn colour_pick(ui: &mut egui::Ui, c: &mut Option<Rgb>, hover: &str) -> bool {
+/// A colour that can be left unset. A fill starts light, a line dark.
+fn colour_pick(ui: &mut egui::Ui, c: &mut Option<Rgb>, fill: bool, hover: &str) -> bool {
     let mut on = c.is_some();
     let mut changed = ui.checkbox(&mut on, "").on_hover_text(hover).changed();
     if changed {
-        *c = on.then_some(Rgb([0.2, 0.2, 0.2]));
+        let v = if fill { 0.85 } else { 0.2 };
+        *c = on.then_some(Rgb([v; 3]));
     }
     if let Some(Rgb(rgb)) = c {
-        changed |= ui.color_edit_button_rgb(rgb).changed();
+        // the picker rounds through its own colour space every frame: keep
+        // what it gives back only when it was used
+        let mut edit = *rgb;
+        if ui.color_edit_button_rgb(&mut edit).changed() {
+            *rgb = edit;
+            changed = true;
+        }
     }
     changed
 }
@@ -509,7 +516,7 @@ pub(super) fn override_fields(ui: &mut egui::Ui, o: &mut Override) -> bool {
         ui.label("Line");
         changed |= pattern_combo(ui, "ov_pattern", &mut o.pattern);
         ui.label("Colour");
-        changed |= colour_pick(ui, &mut o.colour, "A colour of its own in this view");
+        changed |= colour_pick(ui, &mut o.colour, false, "A colour of its own in this view");
     });
     changed
 }
@@ -667,7 +674,7 @@ impl CreaBimApp {
         egui::Window::new("Graphic styles")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
-            .default_size(Vec2::new(720.0, 520.0))
+            .default_size(Vec2::new(940.0, 560.0))
             .constrain_to(area)
             .collapsible(false)
             .show(ctx, |ui| {
@@ -831,7 +838,7 @@ fn objects_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
     let names = pack.pattern_names();
     egui::Grid::new("object_styles")
         .striped(true)
-        .num_columns(7)
+        .num_columns(8)
         .show(ui, |ui| {
             for h in [
                 "Category",
@@ -841,6 +848,7 @@ fn objects_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
                 "Line",
                 "Cut fill",
                 "Cut pattern",
+                "Surface fill",
             ] {
                 ui.label(egui::RichText::new(h).strong());
             }
@@ -852,16 +860,23 @@ fn objects_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
                     .position(|s| s.category == c && s.material.is_none());
                 let mut s = i.map_or_else(|| ObjectStyle::new(c), |i| pack.objects[i].clone());
                 let before = s.clone();
-                ui.push_id(c.label(), |ui| {
-                    ui.label(c.label());
-                    weight_combo(ui, "proj", &mut s.projection_weight);
-                    weight_combo(ui, "cut", &mut s.cut_weight);
-                    ui.horizontal(|ui| colour_pick(ui, &mut s.colour, "A line colour of its own"));
-                    pattern_combo(ui, "pattern", &mut s.pattern);
-                    ui.horizontal(|ui| {
-                        colour_pick(ui, &mut s.cut_fill, "A fill colour behind its cut hatch")
-                    });
-                    name_combo(ui, "cut_pattern", &names, &mut s.cut_pattern, "Material's");
+                let k = c.label();
+                ui.label(k);
+                weight_combo(ui, (k, "proj"), &mut s.projection_weight);
+                weight_combo(ui, (k, "cut"), &mut s.cut_weight);
+                ui.horizontal(|ui| colour_pick(ui, &mut s.colour, false, "A line colour of its own"));
+                pattern_combo(ui, (k, "pattern"), &mut s.pattern);
+                ui.horizontal(|ui| {
+                    colour_pick(ui, &mut s.cut_fill, true, "A fill colour behind its cut hatch")
+                });
+                name_combo(ui, (k, "cut_pattern"), &names, &mut s.cut_pattern, "Material's");
+                ui.horizontal(|ui| {
+                    colour_pick(
+                        ui,
+                        &mut s.surface_fill,
+                        true,
+                        "A fill for its surfaces seen from above: roofs in a roof plan, hard landscape areas",
+                    )
                 });
                 ui.end_row();
                 if s != before {
@@ -880,7 +895,7 @@ fn objects_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
         });
     ui.label(
         egui::RichText::new(
-            "As drawn keeps CreaBIM's pens. Styles for one material, surface fills and draw order are set in the pack's file.",
+            "As drawn keeps CreaBIM's pens. Styles for one material, surface patterns and draw order are set in the pack's file.",
         )
         .weak(),
     );
@@ -1010,7 +1025,12 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
         });
         ui.horizontal(|ui| {
             ui.label("Background");
-            changed |= colour_pick(ui, &mut p.fill, "A fill behind the lines; none is white");
+            changed |= colour_pick(
+                ui,
+                &mut p.fill,
+                true,
+                "A fill behind the lines; none is white",
+            );
         });
         let mut remove = None;
         for (j, l) in p.lines.iter_mut().enumerate() {
