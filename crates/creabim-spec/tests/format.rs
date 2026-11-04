@@ -57,6 +57,8 @@ fn the_example_builds_a_small_house_with_sheets() {
     let sheets = creabim_geom::sheet::sheets(&m);
     assert_eq!(sheets.len(), 3);
     assert_eq!(count(&m, |k| matches!(k, ElementKind::Viewport(_))), 9);
+    assert_eq!(count(&m, |k| matches!(k, ElementKind::Tag(_))), 8);
+    assert_eq!(count(&m, |k| matches!(k, ElementKind::Note(_))), 2);
     // the exterior walls are of the layered type, as thick as its layers,
     // and run up to the roof level
     let south = m.iter().find(|e| e.name == "South wall").unwrap();

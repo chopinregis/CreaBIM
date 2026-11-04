@@ -94,6 +94,10 @@ fn covered(model: &Model, e: &Element) -> bool {
             )
         }
         ElementKind::Object(_) => catalogue_key(model, e).is_some(),
+        // a tag's room fields, style and leader end are left out
+        ElementKind::Tag(_) => true,
+        // a note's leader only when it points at a place, not an element
+        ElementKind::Note(n) => n.leader.is_none_or(|l| l.host.is_none()),
         ElementKind::Material(_)
         | ElementKind::Assembly(_)
         | ElementKind::Level(_)
@@ -196,7 +200,10 @@ pub fn export(model: &Model) -> Exported {
             continue;
         }
         match &e.kind {
-            ElementKind::Viewport(_) | ElementKind::Units(_) => {}
+            ElementKind::Viewport(_)
+            | ElementKind::Units(_)
+            | ElementKind::Tag(_)
+            | ElementKind::Note(_) => {}
             _ if object_type_key(e).is_some() => {}
             ElementKind::Sheet(s) => ids.give(e.id, &s.number),
             ElementKind::Grid(g) => ids.give(e.id, &g.label),
@@ -229,7 +236,10 @@ pub fn export(model: &Model) -> Exported {
         rooms: vec![],
         views: vec![],
         sheets: vec![],
+        tags: vec![],
+        notes: vec![],
     };
+    let mut lost_notes = 0;
     let mut lost_view_settings = 0;
     let mut lost_templates = 0;
     let mut lost_joins = 0;
@@ -517,6 +527,27 @@ pub fn export(model: &Model) -> Exported {
                     viewports,
                 })
             }
+            ElementKind::Tag(t) => {
+                lost_notes += usize::from(t.style.is_some() || !t.fields.is_empty());
+                spec.tags.push(f::Tag {
+                    view: ids.get(t.view).unwrap_or_default(),
+                    element: ids.get(t.host).unwrap_or_default(),
+                    offset: t.offset,
+                    elbow: t.elbow,
+                    end: t.end,
+                })
+            }
+            ElementKind::Note(n) => {
+                lost_notes += usize::from(n.style.is_some());
+                spec.notes.push(f::Note {
+                    view: ids.get(n.view).unwrap_or_default(),
+                    at: n.at,
+                    text: n.text.clone(),
+                    leader: n.leader.map(|l| l.local),
+                    elbow: n.elbow,
+                    colour: n.color.map(Colour),
+                })
+            }
             ElementKind::Viewport(_) => {}
             _ => {}
         }
@@ -534,6 +565,12 @@ pub fn export(model: &Model) -> Exported {
     if lost_templates > 0 {
         skipped.push(format!(
             "the title block template of {lost_templates} sheets (they get the built-in one)"
+        ));
+    }
+    if lost_notes > 0 {
+        skipped.push(format!(
+            "the text styles and room fields of {lost_notes} tags and notes \
+             (not in the format yet)"
         ));
     }
     if lost_joins > 0 {

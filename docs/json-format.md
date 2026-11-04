@@ -88,7 +88,8 @@ roof, a plan, a section, a 3D view, a door schedule and one sheet.
 - **The top level** is an object with a `version` (required) and lists:
   `materials`, `assemblies`, `types`, `levels`, `grid_groups`, `grids`,
   `walls`, `openings`, `slabs`, `roofs`, `columns`, `beams`, `stairs`,
-  `railings`, `parts`, `site`, `objects`, `rooms`, `views` and `sheets`.
+  `railings`, `parts`, `site`, `objects`, `rooms`, `views`, `sheets`,
+  `tags` and `notes`.
   Every list may be left out, and the lists may come in any order.
 - **Ids.** Every element has an `id` you choose: any non-empty string,
   unique across the whole file (a wall and a view can't share one). Elements
@@ -192,8 +193,8 @@ These exist in CreaBIM but can't be written in a file yet. A model made
 from a file can have them added in the app, and `export-json` lists any it
 leaves out.
 
-- Annotation: tags, dimensions, spot levels, notes, text styles, and notes
-  on sheets.
+- Annotation: dimensions, spot levels, text styles, a tag's room fields,
+  and note leaders that point at an element (rather than a place).
 - Title block templates (sheets get the built-in title block) and mark
   numbering rules.
 - Per-view settings: visibility (hidden categories and elements), plan
@@ -856,6 +857,31 @@ A drawing sheet, with views placed on it. Its id is its number.
 | `fields` | object of strings |  | Title block fields by name. |
 | `viewports` | array of [Viewport](#viewport) |  |  |
 
+### Tag
+
+A tag in a view, showing an element's mark (a door's, a window's) or a room's name, number and area. It moves with its element.
+
+| Field | Type | | Description |
+|---|---|---|---|
+| `view` | string | required | A view's id. |
+| `element` | string | required | The id of the element it tags. |
+| `offset` | [x, y] | default `[0.0, 0.0]` | Where it sits, from the element's middle, in drawing units. |
+| `elbow` | [x, y] |  | A bend in its leader, from the element's middle. |
+| `end` | [x, y] |  | Where its leader ends, from the element's middle; left out, at the middle. |
+
+### Note
+
+Text in a view (drawing coordinates, in the file's units) or on a sheet (paper millimetres).
+
+| Field | Type | | Description |
+|---|---|---|---|
+| `view` | string | required | A view's id, or a sheet's. |
+| `at` | [x, y] | required | Where its first line starts: its left end, mid-height. |
+| `text` | string | required | Line breaks (`\n`) start new lines. |
+| `leader` | [x, y] |  | A leader from the text to this point, in the same units as `at`. |
+| `elbow` | [x, y] |  | A bend in the leader. |
+| `colour` | colour |  |  |
+
 ### Model
 
 A whole model: the file's top level. Every list may be left out. Ids are chosen by you, are unique across the whole file, and are what elements use to refer to each other (a door names its wall's id, a plan names its level's id).
@@ -886,5 +912,7 @@ A whole model: the file's top level. Every list may be left out. Ids are chosen 
 | `rooms` | array of [Room](#room) |  |  |
 | `views` | array of [View](#view) |  |  |
 | `sheets` | array of [Sheet](#sheet) |  |  |
+| `tags` | array of [Tag](#tag) |  | Tags of doors, windows, rooms and other elements, in views. |
+| `notes` | array of [Note](#note) |  | Text written in a view or on a sheet. |
 
 <!-- reference:end -->

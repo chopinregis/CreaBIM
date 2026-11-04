@@ -112,6 +112,16 @@
         "sheets": {
           "type": "array",
           "items": { "$ref": "#/$defs/Sheet" }
+        },
+        "tags": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Tag" },
+          "description": "Tags of doors, windows, rooms and other elements, in views."
+        },
+        "notes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Note" },
+          "description": "Text written in a view or on a sheet."
         }
       },
       "required": ["version"],
@@ -1245,6 +1255,80 @@
         }
       },
       "required": ["view", "at"],
+      "additionalProperties": false
+    },
+    "Tag": {
+      "type": "object",
+      "description": "A tag in a view, showing an element's mark (a door's, a window's) or a room's name, number and area. It moves with its element.",
+      "properties": {
+        "view": { "type": "string", "description": "A view's id." },
+        "element": { "type": "string", "description": "The id of the element it tags." },
+        "offset": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Where it sits, from the element's middle, in drawing units.",
+          "default": [0.0, 0.0]
+        },
+        "elbow": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "A bend in its leader, from the element's middle."
+        },
+        "end": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Where its leader ends, from the element's middle; left out, at the middle."
+        }
+      },
+      "required": ["view", "element"],
+      "additionalProperties": false
+    },
+    "Note": {
+      "type": "object",
+      "description": "Text in a view (drawing coordinates, in the file's units) or on a sheet (paper millimetres).",
+      "properties": {
+        "view": { "type": "string", "description": "A view's id, or a sheet's." },
+        "at": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Where its first line starts: its left end, mid-height."
+        },
+        "text": { "type": "string", "description": "Line breaks (`\\n`) start new lines." },
+        "leader": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "A leader from the text to this point, in the same units as `at`."
+        },
+        "elbow": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "A bend in the leader."
+        },
+        "colour": {
+          "oneOf": [
+            { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            {
+              "type": "array",
+              "items": { "type": "number", "minimum": 0, "maximum": 1 },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          ]
+        }
+      },
+      "required": ["view", "at", "text"],
       "additionalProperties": false
     }
   }

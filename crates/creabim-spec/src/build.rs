@@ -363,6 +363,12 @@ pub fn build(spec: &f::Model) -> Result<Built, Vec<Problem>> {
     for (i, s) in spec.sheets.iter().enumerate() {
         sheet(&mut c, s, &root.key("sheets").index(i));
     }
+    for (i, t) in spec.tags.iter().enumerate() {
+        tag(&mut c, t, &root.key("tags").index(i));
+    }
+    for (i, n) in spec.notes.iter().enumerate() {
+        note(&mut c, n, &root.key("notes").index(i));
+    }
 
     if !c.errors.is_empty() {
         return Err(c.errors);
@@ -372,6 +378,57 @@ pub fn build(spec: &f::Model) -> Result<Built, Vec<Problem>> {
         model,
         warnings: c.warnings,
     })
+}
+
+const TAGGABLE: &[Tag] = &[
+    Tag::Wall,
+    Tag::Opening,
+    Tag::Slab,
+    Tag::Roof,
+    Tag::Column,
+    Tag::Beam,
+    Tag::Stair,
+    Tag::Railing,
+    Tag::Part,
+    Tag::Site,
+    Tag::Object,
+    Tag::Room,
+];
+
+fn tag(c: &mut Ctx, t: &f::Tag, at: &Path) {
+    let refs = (
+        c.get(&t.view, &[Tag::View], &at.key("view")),
+        c.get(&t.element, TAGGABLE, &at.key("element")),
+    );
+    let (Some(view), Some(host)) = refs else {
+        return;
+    };
+    let mut tag = core::Tag::new(view, host, c.p(t.offset));
+    tag.elbow = t.elbow.map(|p| c.p(p));
+    tag.end = t.end.map(|p| c.p(p));
+    c.commit(
+        "",
+        Transaction::new("Build").insert(Element::new("Tag", ElementKind::Tag(tag))),
+        at,
+    );
+}
+
+fn note(c: &mut Ctx, n: &f::Note, at: &Path) {
+    let Some(view) = c.get(&n.view, &[Tag::View, Tag::Sheet], &at.key("view")) else {
+        return;
+    };
+    // on a sheet, paper millimetres; in a view, drawing units
+    let on_sheet = matches!(c.ids.get(&n.view), Some((_, Tag::Sheet, _)));
+    let p = |c: &Ctx, v: DVec2| if on_sheet { v } else { c.p(v) };
+    let mut note = core::Note::new(view, p(c, n.at), n.text.clone());
+    note.leader = n.leader.map(|l| core::HostPoint::free(p(c, l)));
+    note.elbow = n.elbow.map(|e| p(c, e));
+    note.color = n.colour.map(|col| col.0);
+    c.commit(
+        "",
+        Transaction::new("Build").insert(Element::new("Note", ElementKind::Note(note))),
+        at,
+    );
 }
 
 /// Claim every id up front, so elements may refer to ones listed after

@@ -55,6 +55,10 @@ spec_struct! {
         rooms: Vec<Room>,
         views: Vec<View>,
         sheets: Vec<Sheet>,
+        /// Tags of doors, windows, rooms and other elements, in views.
+        tags: Vec<Tag>,
+        /// Text written in a view or on a sheet.
+        notes: Vec<Note>,
     }
 }
 
@@ -872,6 +876,42 @@ spec_enum! {
         A2 = "A2",
         A3 = "A3",
         A4 = "A4",
+    }
+}
+
+spec_struct! {
+    /// A tag in a view, showing an element's mark (a door's, a window's)
+    /// or a room's name, number and area. It moves with its element.
+    pub struct Tag {
+        /// A view's id.
+        view: String,
+        /// The id of the element it tags.
+        element: String,
+        /// Where it sits, from the element's middle, in drawing units.
+        offset: DVec2 = DVec2::ZERO,
+        /// A bend in its leader, from the element's middle.
+        elbow: Option<DVec2>,
+        /// Where its leader ends, from the element's middle; left out, at
+        /// the middle.
+        end: Option<DVec2>,
+    }
+}
+
+spec_struct! {
+    /// Text in a view (drawing coordinates, in the file's units) or on a
+    /// sheet (paper millimetres).
+    pub struct Note {
+        /// A view's id, or a sheet's.
+        view: String,
+        /// Where its first line starts: its left end, mid-height.
+        at: DVec2,
+        /// Line breaks (`\n`) start new lines.
+        text: String,
+        /// A leader from the text to this point, in the same units as `at`.
+        leader: Option<DVec2>,
+        /// A bend in the leader.
+        elbow: Option<DVec2>,
+        colour: Option<Colour>,
     }
 }
 

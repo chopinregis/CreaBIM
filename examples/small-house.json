@@ -201,6 +201,24 @@
     { "id": "Room Schedule", "kind": "schedule", "category": "rooms" }
   ],
 
+  "tags": [
+    { "view": "Ground Floor Plan", "element": "Front door", "offset": [0, -0.6] },
+    { "view": "Ground Floor Plan", "element": "Bedroom door", "offset": [-0.6, 0] },
+    { "view": "Ground Floor Plan", "element": "Bathroom door", "offset": [-0.6, 0] },
+    { "view": "Ground Floor Plan", "element": "Living window", "offset": [0, -0.7] },
+    { "view": "Ground Floor Plan", "element": "Kitchen window", "offset": [0, 0.7] },
+    { "view": "Ground Floor Plan", "element": "Living" },
+    { "view": "Ground Floor Plan", "element": "Bedroom", "offset": [-0.8, 0.4] },
+    { "view": "Ground Floor Plan", "element": "Bathroom", "offset": [-1.2, 0.5] }
+  ],
+
+  "notes": [
+    { "view": "Ground Floor Plan", "at": [4.6, -1.2], "text": "Oak porch\non concrete steps",
+      "leader": [3.6, -1.0] },
+    { "view": "A101", "at": [30, 60],
+      "text": "Built from examples/small-house.json with creabim build.\nEvery drawing follows the model." }
+  ],
+
   "sheets": [
     { "id": "A101", "name": "Plans", "size": "A2",
       "fields": { "Drawn": "Example script" },
