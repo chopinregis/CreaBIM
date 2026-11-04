@@ -2157,6 +2157,7 @@ impl CreaBimApp {
                     crate::browser::ViewGroup::Views3d => "axis-3d",
                     crate::browser::ViewGroup::Sections => "scissors-line-dashed",
                     crate::browser::ViewGroup::Elevations => "building-2",
+                    crate::browser::ViewGroup::Details => "callout",
                     crate::browser::ViewGroup::Schedules => "table-2",
                 };
                 let mut acts = vec![];

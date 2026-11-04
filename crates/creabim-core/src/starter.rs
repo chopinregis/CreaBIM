@@ -1849,9 +1849,11 @@ fn details(b: &mut Builder) {
     b.commit(tx);
 }
 
+/// A detail view: its name and the corners of its callout box.
+type DetailBox = (&'static str, (f64, f64), (f64, f64));
 /// The details called out from the wall section, and their boxes in its
 /// drawing (metres along the section, and height).
-const DETAIL_BOXES: &[(&str, (f64, f64), (f64, f64))] = &[
+const DETAIL_BOXES: &[DetailBox] = &[
     ("Detail 1 Wall base", (1.85, -0.95), (3.35, 0.45)),
     ("Detail 2 Window", (1.95, 0.5), (3.15, 2.6)),
     ("Detail 3 Eaves", (1.85, 5.2), (3.45, 6.5)),
@@ -2073,7 +2075,7 @@ fn annotate(b: &mut Builder, views: &Views) {
             Some(v(11.8, 11.4)),
         ),
         // the slope arrows give the pitch and the fall
-        (views.roof, v(0.6, 2.2), "SLATE\nnatural slate on battens", None),
+        (views.roof, v(2.4, 3.3), "SLATE\nnatural slate on battens", None),
         (views.roof, v(0.6, 8.8), "SLATE\nnatural slate on battens", None),
         (views.roof, v(12.4, 7.6), "GREEN ROOF\nsedum on EPDM\nfalls 1:60 to the east", None),
         (views.roof, v(4.4, -2.4), "ZINC CANOPY", Some(v(5.6, -0.9))),

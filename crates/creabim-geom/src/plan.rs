@@ -1158,7 +1158,8 @@ pub fn plan_view_with(
                     });
                 }
             }
-            ElementKind::View(v) => {
+            // a callout's detail view is marked by its box, not its line
+            ElementKind::View(v) if v.callout.is_none() => {
                 if let creabim_core::ViewKind::Section {
                     start, end, cut, ..
                 } = &v.kind

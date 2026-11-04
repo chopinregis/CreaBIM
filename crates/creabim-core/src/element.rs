@@ -1826,4 +1826,28 @@ mod tests {
         assert_eq!(o.frame.width, 0.08);
         assert_eq!(o.frame.depth, OpeningFrame::default().depth);
     }
+
+    #[test]
+    fn views_layers_and_junctions_from_older_files_still_read() {
+        // a view saved before callouts reads as no callout, and writes none
+        let v = View::schedule(ScheduleCategory::ALL[0]);
+        let text = serde_json::to_string(&v).unwrap();
+        assert!(!text.contains("callout"));
+        assert_eq!(serde_json::from_str::<View>(&text).unwrap().callout, None);
+        // a layer saved before join priorities takes its function's
+        let l: crate::assembly::Layer =
+            serde_json::from_str(r#"{"function":"Structure","thickness":0.2}"#).unwrap();
+        assert_eq!(l.priority, None);
+        assert_eq!(l.join_priority(), 1);
+        // a junction written with only its two elements joins automatically
+        let (a, b) = (ElementId::new(), ElementId::new());
+        let text = format!(
+            r#"{{"a":{},"b":{}}}"#,
+            serde_json::to_string(&a).unwrap(),
+            serde_json::to_string(&b).unwrap()
+        );
+        let r: crate::joins::JoinRule = serde_json::from_str(&text).unwrap();
+        assert_eq!(r, crate::joins::JoinRule::new(a, b));
+        assert!(r.cleanup && r.is_default());
+    }
 }
