@@ -954,9 +954,10 @@ pub fn plan_view_with(
                 // gaps crossing walls leave follow its joins
                 let at = |u: f64, s: f64| w.start + d * ends.place(w, u, s, false) + n * s;
                 let cut_v = cut_height - w.base_offset;
-                if cut_v <= 0.0 || cut_v >= w.height {
+                let top_v = wall_top_height(model, w);
+                if cut_v <= 0.0 || cut_v >= top_v {
                     // wall entirely below or above the cut: show its outline in projection
-                    if cut_v >= w.height {
+                    if cut_v >= top_v {
                         items.push(PlanItem::Polygon {
                             id: e.id,
                             pen: Pen::Projection,
@@ -1283,6 +1284,26 @@ fn mesh_shade(
         })
     })
     .collect()
+}
+
+/// The height of a wall's top above its base where it is highest. A top
+/// attached to a roof or slab follows their undersides where they are
+/// over it, and keeps the wall's own height elsewhere.
+fn wall_top_height(model: &Model, w: &creabim_core::Wall) -> f64 {
+    let Some(top) = creabim_core::walls::top_profile(model, w) else {
+        return w.height;
+    };
+    let base = creabim_core::walls::base_z(model, w);
+    let mut ts = vec![0.0, 1.0];
+    ts.extend(top.breaks(w.start, w.end));
+    ts.iter()
+        .flat_map(|t| [t - 1e-4, t + 1e-4])
+        .filter(|t| (0.0..=1.0).contains(t))
+        .map(|t| {
+            top.z_at(w.start.lerp(w.end, t))
+                .map_or(w.height, |z| z - base)
+        })
+        .fold(0.0, f64::max)
 }
 
 /// Stairs climbing from a level below up to `level`, seen through the
@@ -2023,6 +2044,65 @@ mod tests {
             })
             .collect();
         footings.len()
+    }
+
+    #[test]
+    fn a_wall_attached_under_the_cut_is_drawn_in_projection() {
+        use creabim_core::{Document, Element, Transaction};
+        let m = creabim_core::sample::sample_house();
+        let (wid, w) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.curtain.is_none() => Some((e.id, w.clone())),
+                _ => None,
+            })
+            .unwrap();
+        let cut = |m: &Model| {
+            plan_view(m, w.level, 1.2).items.iter().any(|it| {
+                it.id() == wid
+                    && matches!(
+                        it,
+                        PlanItem::Polygon { pen: Pen::Cut, .. } | PlanItem::Fill { .. }
+                    )
+            })
+        };
+        assert!(cut(&m), "a full-height wall is cut at 1.2 m");
+        // a slab over the whole wall with its underside at 1 m, and the
+        // wall's top attached to it
+        let (lo, hi) = (w.start.min(w.end), w.start.max(w.end));
+        let pad = DVec2::splat(1.0);
+        let mut slab = creabim_core::Slab::new(
+            w.level,
+            vec![
+                lo - pad,
+                DVec2::new(hi.x + 1.0, lo.y - 1.0),
+                hi + pad,
+                DVec2::new(lo.x - 1.0, hi.y + 1.0),
+            ],
+            0.2,
+        );
+        slab.top_offset = 1.2;
+        let se = Element::new("Low slab", ElementKind::Slab(slab));
+        let sid = se.id;
+        let mut d = Document::from_model(m);
+        d.commit(Transaction::new("slab").insert(se)).unwrap();
+        d.edit(wid, "attach", |e| {
+            if let ElementKind::Wall(w) = &mut e.kind {
+                w.attach_top = vec![sid];
+            }
+        })
+        .unwrap();
+        assert!(!cut(d.model()), "its top is under the cut");
+        assert!(plan_view(d.model(), w.level, 1.2).items.iter().any(|it| {
+            it.id() == wid
+                && matches!(
+                    it,
+                    PlanItem::Polygon {
+                        pen: Pen::Projection,
+                        ..
+                    }
+                )
+        }));
     }
 
     #[test]
