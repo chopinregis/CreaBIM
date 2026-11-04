@@ -421,6 +421,23 @@ pub fn surface_height(flat: f64, points: &[DVec3], p: DVec2) -> f64 {
     sum / weight
 }
 
+/// Is `inner` inside `outer` and clear of its edges (a hole touching
+/// the outline would split the ground)?
+fn clear_inside(inner: &[DVec2], outer: &[DVec2]) -> bool {
+    let near = |p: DVec2, poly: &[DVec2]| {
+        (0..poly.len()).any(|i| {
+            let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
+            let d = b - a;
+            let t = ((p - a).dot(d) / d.length_squared().max(1e-12)).clamp(0.0, 1.0);
+            p.distance(a + d * t) < 1e-3
+        })
+    };
+    inner
+        .iter()
+        .all(|p| crate::polygon::contains(outer, *p) && !near(*p, outer))
+        && outer.iter().all(|p| !near(*p, inner))
+}
+
 /// The hard landscape areas a flat terrain leaves room for: those on its
 /// level lying inside it, whose top is in its depth. Their outlines, as
 /// holes in the ground.
@@ -453,7 +470,7 @@ pub fn ground_holes(model: &Model, terrain: &Site) -> Vec<Vec<DVec2>> {
             }) if *level == terrain.level
                 && *t <= top + 0.1
                 && *t > top - thickness
-                && b.iter().all(|p| crate::polygon::contains(boundary, *p)) =>
+                && clear_inside(b, boundary) =>
             {
                 Some(b.clone())
             }

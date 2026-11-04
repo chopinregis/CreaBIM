@@ -139,7 +139,7 @@ pub fn garden_house() -> Model {
         ))
         .insert(Element::new(
             "Driveway",
-            area(rect((11.5, -14.0), (15.0, 4.0)), 0.15, block, blocks),
+            area(rect((11.5, -13.0), (15.0, 4.0)), 0.15, block, blocks),
         ));
 
     // planting
@@ -160,6 +160,28 @@ pub fn garden_house() -> Model {
         }
         tx = tx.insert(Element::new(name, ElementKind::Site(p)));
     }
+    // views of the fireplace, cut low through the firebox, and of the site
+    let mut fireplace = crate::View::plan(g);
+    fireplace.scale = 50.0;
+    if let crate::ViewKind::Plan { cut_height, .. } = &mut fireplace.kind {
+        *cut_height = 0.5;
+    }
+    let mut chimney_section =
+        crate::View::section(DVec2::new(-3.0, 1.7), DVec2::new(3.0, 1.7), 8.0, true);
+    chimney_section.scale = 50.0;
+    let mut site_section =
+        crate::View::section(DVec2::new(22.0, 11.5), DVec2::new(-9.0, 11.5), 30.0, true);
+    site_section.scale = 200.0;
+    tx = tx
+        .insert(Element::new("Fireplace plan", ElementKind::View(fireplace)))
+        .insert(Element::new(
+            "Chimney section",
+            ElementKind::View(chimney_section),
+        ))
+        .insert(Element::new(
+            "Garden section",
+            ElementKind::View(site_section),
+        ));
     doc.commit(tx).expect("the garden is valid");
 
     // a car on the drive and a person by the front path

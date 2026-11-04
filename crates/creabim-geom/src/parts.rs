@@ -603,7 +603,7 @@ fn site_plan(model: &Model, id: ElementId, s: &Site) -> Vec<PlanItem> {
             for (a, b) in pattern_lines(pattern, &loops) {
                 out.push(PlanItem::Line {
                     id,
-                    pen: Pen::Symbol,
+                    pen: Pen::Fine,
                     a,
                     b,
                 });

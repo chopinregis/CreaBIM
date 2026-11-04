@@ -147,3 +147,20 @@ fn site_elements_draw_in_plan_and_3d() {
         );
     }
 }
+
+#[test]
+fn sections_cut_the_ground_and_the_chimney() {
+    let m = garden_house();
+    let view = id(&m, "Chimney section");
+    let d = creabim_geom::section::view_drawing(&m, view).unwrap();
+    for name in ["Ground", "Chimney stack"] {
+        let of = id(&m, name);
+        // cut, filled
+        let n = d
+            .items
+            .iter()
+            .filter(|i| matches!(i, PlanItem::Fill { id, .. } | PlanItem::Polygon { id, .. } if *id == of))
+            .count();
+        assert!(n > 0, "{name} is cut by the section");
+    }
+}

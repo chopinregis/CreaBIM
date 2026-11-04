@@ -610,6 +610,9 @@ impl CreaBimApp {
                 self.camera.frame(lo, hi, self.aspect);
                 self.status = "Framed the selection.".into();
             }
+            None if !self.selection.is_empty() => {
+                self.status = "The selection isn't shown in this 3D view: its category is hidden here (voids and openings usually are). Show it from the view's visibility to frame it.".into()
+            }
             None => self.status = "Select something to frame it.".into(),
         }
     }
@@ -5018,7 +5021,11 @@ impl CreaBimApp {
                         }
                         draw_hole |= draw;
                     }
-                    if let Some(m) = creabim_core::members::material_mut(k).filter(|_| !layered) {
+                    // a void cuts, so it has no material to show
+                    let void = matches!(k, ElementKind::Part(p) if p.void);
+                    if let Some(m) =
+                        creabim_core::members::material_mut(k).filter(|_| !layered && !void)
+                    {
                         if self.material_combo(ui, m) {
                             label = "Material";
                         }
