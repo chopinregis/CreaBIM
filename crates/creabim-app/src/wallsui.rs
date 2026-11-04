@@ -492,9 +492,18 @@ impl CreaBimApp {
             );
         }
         if !walls.is_empty() {
+            // as in Properties: only when there is a roof or slab overhead
+            let overhead = walls
+                .iter()
+                .any(|(id, _)| !walls::attach_candidates(model, *id).is_empty());
             items.push(
                 Item::new("wall.attach", "Attach top to roof/slab")
-                    .hint("The top follows the underside of the roof or slab above"),
+                    .enabled(overhead)
+                    .hint(if overhead {
+                        "The top follows the underside of the roof or slab above"
+                    } else {
+                        "There is no roof or slab above this wall"
+                    }),
             );
             if walls.iter().any(|(_, w)| !w.attach_top.is_empty()) {
                 items.push(Item::new("wall.detach", "Detach top"));
@@ -584,5 +593,44 @@ impl CreaBimApp {
                     .checked(self.plan.wall_location == *l)
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Whether the right-click menu's attach item can be picked.
+    fn attach_enabled(app: &CreaBimApp) -> bool {
+        app.wall_menu_items().iter().any(|i| {
+            matches!(i, crate::ui_model::Item::Action { id, enabled: true, .. } if id == "wall.attach")
+        })
+    }
+
+    #[test]
+    fn attach_top_is_offered_only_with_a_roof_or_slab_overhead() {
+        let mut app = crate::app::test_app();
+        let model = app.doc.model();
+        let covered = model
+            .iter()
+            .find(|e| {
+                matches!(e.kind, ElementKind::Wall(_))
+                    && !walls::attach_candidates(model, e.id).is_empty()
+            })
+            .map(|e| e.id)
+            .expect("the sample has a wall under its roof");
+        app.selection.only(covered);
+        assert!(attach_enabled(&app));
+        // the same wall far from the house has nothing overhead
+        app.doc
+            .edit(covered, "Move wall", |e| {
+                if let ElementKind::Wall(w) = &mut e.kind {
+                    w.start += DVec2::splat(500.0);
+                    w.end += DVec2::splat(500.0);
+                }
+            })
+            .unwrap();
+        assert!(walls::attach_candidates(app.doc.model(), covered).is_empty());
+        assert!(!attach_enabled(&app));
     }
 }
