@@ -6,7 +6,7 @@
 | --- | --- |
 | Drag with the left button | Orbit round the model |
 | Drag with the right button | Pan |
-| Roll the wheel | Zoom |
+| Roll the wheel | Zoom toward the pointer |
 | `Home` | Frame everything |
 | `.` | Frame the selection |
 

@@ -144,6 +144,23 @@ impl OrbitCamera {
         self.distance = (self.distance * (1.0 - steps * 0.1).clamp(0.5, 1.5)).clamp(0.5, 1500.0);
     }
 
+    /// Zoom toward the point under the pointer (`ndc`, in normalised
+    /// device coordinates), as plans do: the target slides toward where
+    /// the pointer ray meets the plane through the target, so that point
+    /// stays under the pointer.
+    pub fn zoom_at(&mut self, steps: f32, ndc: Vec2, aspect: f32) {
+        let before = self.distance;
+        let (origin, dir) = self.ray(ndc, aspect);
+        let fwd = (self.target - self.eye()).normalize_or_zero();
+        self.zoom(steps);
+        let along = dir.dot(fwd);
+        if along.abs() < 1e-4 {
+            return;
+        }
+        let at = origin + dir * ((self.target - origin).dot(fwd) / along);
+        self.target = at + (self.target - at) * (self.distance / before);
+    }
+
     /// Fit a bounding box in view, for a viewport of the given aspect ratio.
     pub fn frame(&mut self, lo: Vec3, hi: Vec3, aspect: f32) {
         self.target = (lo + hi) / 2.0;
@@ -171,6 +188,24 @@ mod tests {
             "{before} {after}"
         );
         assert!((c.pitch - (0.55 - 0.2)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn zooming_keeps_the_point_under_the_pointer() {
+        for ortho in [false, true] {
+            let mut c = OrbitCamera {
+                ortho,
+                ..Default::default()
+            };
+            let ndc = Vec2::new(0.6, -0.4);
+            let (o, d) = c.ray(ndc, 1.5);
+            let fwd = (c.target - c.eye()).normalize();
+            let p = o + d * ((c.target - o).dot(fwd) / d.dot(fwd));
+            c.zoom_at(3.0, ndc, 1.5);
+            assert!(c.distance < 24.0, "it zoomed in");
+            let after = c.view_proj(1.5).project_point3(p).truncate();
+            assert!((after - ndc).length() < 1e-3, "{ortho}: {after}");
+        }
     }
 
     #[test]
