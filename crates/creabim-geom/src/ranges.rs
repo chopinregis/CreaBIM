@@ -212,7 +212,7 @@ fn from_above(model: &Model, v: &View, level: ElementId, cut: f64) -> PlanView {
                 let p = |k: usize| Vec3::from(s.mesh.positions[t[k] as usize]).as_dvec3();
                 [p(0), p(1), p(2)]
             })
-            .filter(|t| t.iter().all(|p| p.z <= top + 1e-6 && p.z >= bottom - 1e-6))
+            .filter(|t| t.iter().all(|p| p.z <= top - 1e-4 && p.z >= bottom - 1e-6))
             .collect()
     };
     if let Some(sh) = v.look.cues.shadows {
@@ -296,7 +296,6 @@ mod tests {
         let mut m = Model::new();
         let mut t = Transaction::new("t");
         let mut lv = [ElementId::NIL; 4];
-        let mut el = [ElementId::NIL; 4];
         for (i, (name, z)) in [
             ("Site", -0.45),
             ("Floor", 0.0),
@@ -355,8 +354,7 @@ mod tests {
             "Roof 2",
             ElementKind::Slab(slab(lv[3], DVec2::new(2.0, 2.0), DVec2::new(6.0, 6.0))),
         );
-        el = [site.id, wall.id, r1.id, r2.id];
-        let _ = &mut el;
+        let el = [site.id, wall.id, r1.id, r2.id];
         t = t.insert(site).insert(wall).insert(r1).insert(r2);
         t.apply(&mut m).unwrap();
         (m, lv, el)
@@ -443,8 +441,9 @@ mod tests {
                 _ => None,
             })
             .collect();
-        // every level shows, the site wall included
-        for e in el {
+        // every level shows, the site wall included; the house wall is
+        // wholly under roof 1
+        for e in [el[0], el[2], el[3]] {
             assert!(lines.iter().any(|l| l.0 == e), "{e:?}");
         }
         // the house wall is under roof 1 everywhere: no line of it shows

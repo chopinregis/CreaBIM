@@ -2160,6 +2160,7 @@ mod tests {
         let shallow = creabim_core::PlanGraphics {
             range: creabim_core::graphics::PlanRange {
                 view_depth: Some(1.0),
+                ..Default::default()
             },
             ..Default::default()
         };
