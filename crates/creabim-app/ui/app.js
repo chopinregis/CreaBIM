@@ -221,7 +221,7 @@
       `<label class="search">${icon("search")}<input data-key="filter" data-live="1" placeholder="Find views and elements" value="${esc(local.filter)}"></label></div><div class="tree">`;
     let any = false;
     for (const g of S.groups) {
-      const rows = f ? g.rows.filter((r) => r.name.toLowerCase().includes(f)) : g.rows;
+      const rows = f ? g.rows.filter((r) => r.name.toLowerCase().includes(f) || (r.mark && r.mark.toLowerCase().includes(f))) : g.rows;
       if (f && rows.length === 0) continue;
       any = true;
       const open = f ? true : (local.open[g.key] !== undefined ? local.open[g.key] : g.open);

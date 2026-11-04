@@ -2193,9 +2193,16 @@ impl CreaBimApp {
 
     fn left_state(&self) -> Value {
         let model = self.doc.model();
+        // the search finds elements by their marks (D01, W05) too
+        let marks = creabim_core::marks::marks(model);
+        let mark = |e: &Element| match &e.kind {
+            ElementKind::Object(_) => creabim_core::marks::mark_of(model, e.id),
+            _ => marks.get(&e.id).cloned(),
+        };
         let row = |e: &Element, opens: bool| {
             json!({
                 "id": e.id.0.to_string(), "name": e.name, "icon": icon_name(Icon::of(e)),
+                "mark": mark(e),
                 "sel": self.selection.contains(e.id),
                 "active": opens && self.active_view == Some(e.id),
                 "hint": if opens {
@@ -3178,5 +3185,25 @@ mod tests {
             .textures_delta
             .clear();
         assert_eq!(scale, Some((crate::modal::Mode::Scale, false)));
+    }
+
+    #[test]
+    fn browser_rows_carry_marks_for_the_search() {
+        let app = crate::app::test_app();
+        let model = app.doc.model();
+        let door = model
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == creabim_core::OpeningKind::Door))
+            .unwrap();
+        let mark = creabim_core::marks::mark_of(model, door.id).expect("doors are marked");
+        let left = app.left_state();
+        let row = left["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|g| g["rows"].as_array().unwrap())
+            .find(|r| r["id"] == door.id.0.to_string())
+            .unwrap();
+        assert_eq!(row["mark"], mark.as_str());
     }
 }
