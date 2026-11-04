@@ -76,12 +76,14 @@ pub const PAGES: &[(&str, &str, &str)] = &[
     page!("Building the model", "fixtures"),
     page!("Building the model", "rooms"),
     page!("Building the model", "ceilings"),
+    page!("Building the model", "joins"),
     page!("Views and drawings", "views"),
     page!("Views and drawings", "sections"),
     page!("Views and drawings", "view-range"),
     page!("Views and drawings", "graphic-styles"),
     page!("Views and drawings", "visibility"),
     page!("Views and drawings", "crop-boxes"),
+    page!("Views and drawings", "details"),
     page!("Views and drawings", "schedules"),
     page!("Views and drawings", "sheets"),
     page!("Annotation", "dimensions"),
@@ -135,6 +137,7 @@ pub const IMAGES: &[(&str, &[u8])] = &[
     img!("tab-pick"),
     img!("catalogue"),
     img!("object-against-wall"),
+    img!("details"),
 ];
 
 /// A page's text by id.
@@ -238,6 +241,8 @@ pub fn tool_page(t: Tool) -> &'static str {
         Tool::Terrain | Tool::Paving | Tool::Planting => "site",
         Tool::Room | Tool::RoomSeparator => "rooms",
         Tool::Ceiling => "ceilings",
+        Tool::Callout => "details#callouts",
+        Tool::Detail => "details#detail-components",
     }
 }
 
@@ -269,6 +274,8 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
         ElementKind::Object(_) => "furniture",
         ElementKind::Room(_) | ElementKind::RoomSeparator(_) => "rooms",
         ElementKind::Ceiling(_) => "ceilings",
+        ElementKind::Join(_) => "joins",
+        ElementKind::Detail(_) => "details#detail-components",
         ElementKind::Dimension(_) => "dimensions",
         ElementKind::Tag(_) => "tags",
         ElementKind::Note(_) => "notes",
@@ -276,6 +283,7 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
         ElementKind::Sheet(_) | ElementKind::Viewport(_) | ElementKind::SheetTemplate(_) => {
             "sheets"
         }
+        ElementKind::View(v) if v.callout.is_some() => "details#callouts",
         ElementKind::View(v) => match v.kind {
             ViewKind::Section { .. } => "sections",
             ViewKind::Schedule { .. } => "schedules",
@@ -559,7 +567,11 @@ pub const KEYS: &[Binding] = &[
         "Esc",
         "Drop the clicks so far; again to go back to Select",
     ),
-    key(DRAW, "Enter", "Finish an outline or sketch"),
+    key(
+        DRAW,
+        "Enter",
+        "Finish an outline, a sketch or a detail component",
+    ),
     key(
         DRAW,
         "1–4",

@@ -546,6 +546,10 @@ pub struct KindTemplates {
     pub elevation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub axonometric: Option<String>,
+    /// Detail views called out from a plan or section; without one they
+    /// take their parent kind's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 impl KindTemplates {
@@ -556,6 +560,9 @@ impl KindTemplates {
     /// The name for a view of `v`'s kind.
     pub fn of(&self, v: &View) -> Option<&str> {
         use crate::ViewKind as K;
+        if let (Some(_), Some(d)) = (v.callout, self.detail.as_deref()) {
+            return Some(d);
+        }
         match &v.kind {
             K::Plan { .. } if v.graphics.range.from_above => self.plan_from_above.as_deref(),
             K::Plan { .. } => self.plan.as_deref(),
@@ -787,6 +794,12 @@ pub fn make_default(model: &Model, id: ElementId) -> Transaction {
         }
     }
     t
+}
+
+/// For serde: a view's look is left out of its file while it is the default.
+#[allow(clippy::borrowed_box)]
+pub fn boxed_look_is_default(l: &Box<ViewLook>) -> bool {
+    l.is_default()
 }
 
 /// What a view adds to the pack's styles: its template, its own overrides
@@ -1041,6 +1054,29 @@ mod tests {
             assert_eq!(resolved(doc.model(), &v).scale, 50.0);
             assert_eq!(view_weights(doc.model(), &v), LineWeights::for_scale(50.0));
         }
+    }
+
+    #[test]
+    fn detail_views_take_the_detail_template_else_their_parents_kind() {
+        let m = crate::starter::starter_house();
+        let (pid, parent) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) if matches!(v.kind, crate::ViewKind::Plan { .. }) => {
+                    Some((e.id, v.clone()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let detail = View::callout(pid, &parent, glam::DVec2::ZERO, glam::DVec2::ONE, 20.0);
+        let mut d = KindTemplates {
+            plan: Some("Floor plan".into()),
+            ..Default::default()
+        };
+        assert_eq!(d.of(&detail), Some("Floor plan"));
+        d.detail = Some("Detail".into());
+        assert_eq!(d.of(&detail), Some("Detail"));
+        assert_eq!(d.of(&parent), Some("Floor plan"));
     }
 
     #[test]

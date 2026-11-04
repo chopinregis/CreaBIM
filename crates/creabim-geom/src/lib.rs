@@ -11,6 +11,7 @@ pub mod crop;
 pub mod cropbox;
 pub mod curtain;
 pub mod declutter;
+pub mod detail;
 pub mod looks;
 pub mod members;
 pub mod mesh;

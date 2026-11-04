@@ -1,5 +1,5 @@
 //! How the project browser lists views: in groups by kind (floor plans, 3D
-//! views, sections, elevations, schedules), floor plans in the order of
+//! views, sections, elevations, details, schedules), floor plans in the order of
 //! their levels, from the lowest up. A view the user drags to another place
 //! in its group keeps that place (`View::browser_order`); "Sort by level"
 //! (or "Sort automatically") gives the group back its automatic order.
@@ -12,17 +12,29 @@ pub enum ViewGroup {
     Views3d,
     Sections,
     Elevations,
+    Details,
     Schedules,
 }
 
 impl ViewGroup {
-    pub const ALL: [ViewGroup; 5] = [
+    pub const ALL: [ViewGroup; 6] = [
         ViewGroup::Plans,
         ViewGroup::Views3d,
         ViewGroup::Sections,
         ViewGroup::Elevations,
+        ViewGroup::Details,
         ViewGroup::Schedules,
     ];
+
+    /// A view's group: a callout's detail view is in Details, whatever
+    /// it draws.
+    pub fn of_view(v: &creabim_core::View) -> Self {
+        if v.callout.is_some() {
+            ViewGroup::Details
+        } else {
+            Self::of(&v.kind)
+        }
+    }
 
     pub fn of(kind: &ViewKind) -> Self {
         match kind {
@@ -41,6 +53,7 @@ impl ViewGroup {
             ViewGroup::Views3d => "views:3d",
             ViewGroup::Sections => "views:sections",
             ViewGroup::Elevations => "views:elevations",
+            ViewGroup::Details => "views:details",
             ViewGroup::Schedules => "views:schedules",
         }
     }
@@ -55,6 +68,7 @@ impl ViewGroup {
             ViewGroup::Views3d => "3D views",
             ViewGroup::Sections => "Sections",
             ViewGroup::Elevations => "Elevations",
+            ViewGroup::Details => "Details",
             ViewGroup::Schedules => "Schedules",
         }
     }
@@ -88,7 +102,7 @@ pub fn view_groups(model: &Model) -> Vec<(ViewGroup, Vec<ElementId>)> {
             .iter()
             .enumerate()
             .filter_map(|(i, e)| match &e.kind {
-                ElementKind::View(v) if ViewGroup::of(&v.kind) == g => {
+                ElementKind::View(v) if ViewGroup::of_view(v) == g => {
                     let auto = match v.kind {
                         ViewKind::Plan { level, .. } => level_rank(level),
                         _ => 0,
@@ -111,7 +125,7 @@ pub fn view_groups(model: &Model) -> Vec<(ViewGroup, Vec<ElementId>)> {
 /// Does any view of the group have a place set by hand?
 pub fn is_manual(model: &Model, group: ViewGroup) -> bool {
     model.iter().any(|e| match &e.kind {
-        ElementKind::View(v) => ViewGroup::of(&v.kind) == group && v.browser_order.is_some(),
+        ElementKind::View(v) => ViewGroup::of_view(v) == group && v.browser_order.is_some(),
         _ => false,
     })
 }

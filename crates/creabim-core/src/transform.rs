@@ -382,6 +382,8 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         | ElementKind::MarkRules(_)
         | ElementKind::StylePack(_)
         | ElementKind::Cut(_)
+        | ElementKind::Join(_)
+        | ElementKind::Detail(_)
         | ElementKind::ElementType(_)
         | ElementKind::GridGroup(_) => return None,
     }

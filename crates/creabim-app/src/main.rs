@@ -9,6 +9,7 @@ mod browser;
 mod camera;
 mod centres;
 mod commands;
+mod detailtool;
 mod editmode;
 mod files;
 mod handles;

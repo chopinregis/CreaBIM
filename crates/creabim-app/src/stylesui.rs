@@ -1147,6 +1147,7 @@ fn templates_page(
             ("Sections", &mut d.section),
             ("Elevations", &mut d.elevation),
             ("3D views", &mut d.axonometric),
+            ("Detail views", &mut d.detail),
         ] {
             cols[0].horizontal(|ui| {
                 ui.label(text);

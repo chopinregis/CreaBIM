@@ -131,6 +131,8 @@ impl Element {
             // outline to show until it is given one
             ElementKind::Ceiling(c) => vec![c.level],
             ElementKind::Cut(c) => vec![c.target, c.cutter],
+            ElementKind::Join(j) => vec![j.a, j.b],
+            ElementKind::Detail(d) => vec![d.view],
             ElementKind::Guide(g) => g.level.into_iter().collect(),
             ElementKind::Railing(r) => std::iter::once(r.level)
                 .chain(r.stair.map(|s| s.stair))
@@ -173,6 +175,9 @@ impl Element {
             ElementKind::CropBox(_) => "CropBox",
             ElementKind::Sketch(_) => "Sketch",
             ElementKind::Cut(_) => "Cut",
+            // drawing rules and drafting, not building elements
+            ElementKind::Join(_) => "Join",
+            ElementKind::Detail(_) => "DetailItem",
             ElementKind::Guide(_) => "Guide",
             ElementKind::Column(_) => "IfcColumn",
             ElementKind::Beam(_) => "IfcBeam",
@@ -349,6 +354,14 @@ impl Element {
             ElementKind::RoomSeparator(s) => s.validate(),
             ElementKind::Ceiling(c) => c.validate(),
             ElementKind::Sketch(s) => s.check(),
+            ElementKind::Join(j) => {
+                if j.a == j.b {
+                    Err("an element can't join itself".into())
+                } else {
+                    Ok(())
+                }
+            }
+            ElementKind::Detail(d) => d.validate(),
             ElementKind::Cut(c) => {
                 if c.target == c.cutter {
                     Err("an element can't cut itself".into())
@@ -434,6 +447,10 @@ pub enum ElementKind {
     RoomSeparator(crate::room::Separator),
     /// A ceiling (IfcCovering CEILING) over a room or an outline.
     Ceiling(crate::room::Ceiling),
+    /// How two elements join in drawings, set by hand for that junction.
+    Join(crate::joins::JoinRule),
+    /// A detail component drawn in one view: a flashing, a membrane...
+    Detail(crate::detail::DetailItem),
 }
 
 impl ElementKind {
@@ -478,6 +495,8 @@ impl ElementKind {
             ElementKind::Room(_) => "Room",
             ElementKind::RoomSeparator(_) => "RoomSeparator",
             ElementKind::Ceiling(_) => "Ceiling",
+            ElementKind::Join(_) => "Join",
+            ElementKind::Detail(_) => "Detail",
         }
     }
 }
@@ -1368,6 +1387,10 @@ pub struct View {
         skip_serializing_if = "crate::graphics::PlanGraphics::is_default"
     )]
     pub graphics: crate::graphics::PlanGraphics,
+    /// A detail view called out from another view: it shows the part of
+    /// that view inside the callout's box, at its own scale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub callout: Option<Callout>,
     /// How a section or elevation shows each level's head: turned off, or
     /// dragged away from where it would sit. Levels not listed show their
     /// heads where the automatic layout puts them.
@@ -1375,8 +1398,31 @@ pub struct View {
     pub level_heads: BTreeMap<ElementId, LevelHead>,
     /// Its view template, graphic overrides and depth cues, over the
     /// project's style pack.
-    #[serde(default, skip_serializing_if = "crate::styles::ViewLook::is_default")]
-    pub look: crate::styles::ViewLook,
+    #[serde(default, skip_serializing_if = "crate::styles::boxed_look_is_default")]
+    pub look: Box<crate::styles::ViewLook>,
+}
+
+/// Where a detail view comes from: the box `lo`..`hi` (drawing
+/// coordinates, lower-left and upper-right) drawn on `parent`. The detail
+/// is drawn from its parent's plan or section, so it follows the parent's
+/// line and cut; the parent shows the box with the detail's number. The
+/// parent is soft: without it the detail keeps the view it had.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Callout {
+    pub parent: ElementId,
+    pub lo: DVec2,
+    pub hi: DVec2,
+}
+
+impl Callout {
+    /// The box, with its corners in order whichever way it was drawn.
+    pub fn new(parent: ElementId, a: DVec2, b: DVec2) -> Self {
+        Self {
+            parent,
+            lo: a.min(b),
+            hi: a.max(b),
+        }
+    }
 }
 
 /// One level's head in one section or elevation.
@@ -1577,6 +1623,7 @@ impl View {
             room_colours: false,
             ceiling_plan: false,
             graphics: Default::default(),
+            callout: None,
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1600,6 +1647,7 @@ impl View {
             room_colours: false,
             ceiling_plan: false,
             graphics: Default::default(),
+            callout: None,
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1620,6 +1668,7 @@ impl View {
             room_colours: false,
             ceiling_plan: false,
             graphics: Default::default(),
+            callout: None,
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1641,6 +1690,28 @@ impl View {
             room_colours: false,
             ceiling_plan: false,
             graphics: Default::default(),
+            callout: None,
+            level_heads: BTreeMap::new(),
+            look: Default::default(),
+        }
+    }
+
+    /// A detail view of the box `a`..`b` on `parent` (a plan or a
+    /// section), at `scale`: a copy of the parent's view, cropped.
+    pub fn callout(parent_id: ElementId, parent: &View, a: DVec2, b: DVec2, scale: f64) -> Self {
+        Self {
+            kind: parent.kind.clone(),
+            scale,
+            style: ViewStyle::HiddenLine,
+            hidden: parent.hidden.clone(),
+            underlay: Underlay::None,
+            browser_order: None,
+            show_hidden: false,
+            hidden_in_colour: false,
+            room_colours: false,
+            ceiling_plan: parent.ceiling_plan,
+            graphics: parent.graphics.clone(),
+            callout: Some(Callout::new(parent_id, a, b)),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1793,5 +1864,29 @@ mod tests {
         let o: Opening = serde_json::from_str(&partial).unwrap();
         assert_eq!(o.frame.width, 0.08);
         assert_eq!(o.frame.depth, OpeningFrame::default().depth);
+    }
+
+    #[test]
+    fn views_layers_and_junctions_from_older_files_still_read() {
+        // a view saved before callouts reads as no callout, and writes none
+        let v = View::schedule(ScheduleCategory::ALL[0]);
+        let text = serde_json::to_string(&v).unwrap();
+        assert!(!text.contains("callout"));
+        assert_eq!(serde_json::from_str::<View>(&text).unwrap().callout, None);
+        // a layer saved before join priorities takes its function's
+        let l: crate::assembly::Layer =
+            serde_json::from_str(r#"{"function":"Structure","thickness":0.2}"#).unwrap();
+        assert_eq!(l.priority, None);
+        assert_eq!(l.join_priority(), 1);
+        // a junction written with only its two elements joins automatically
+        let (a, b) = (ElementId::new(), ElementId::new());
+        let text = format!(
+            r#"{{"a":{},"b":{}}}"#,
+            serde_json::to_string(&a).unwrap(),
+            serde_json::to_string(&b).unwrap()
+        );
+        let r: crate::joins::JoinRule = serde_json::from_str(&text).unwrap();
+        assert_eq!(r, crate::joins::JoinRule::new(a, b));
+        assert!(r.cleanup && r.is_default());
     }
 }

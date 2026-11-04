@@ -31,15 +31,18 @@ pub struct LayerPart {
     pub material: Option<ElementId>,
     pub function: creabim_core::LayerFunction,
     pub core: bool,
+    /// Its join priority: lower runs through higher where elements meet.
+    pub priority: u8,
 }
 
 impl LayerPart {
-    fn of(b: &assembly::Band) -> Self {
+    pub fn of(b: &assembly::Band) -> Self {
         Self {
             index: b.index,
             material: b.material,
             function: b.function,
             core: b.core,
+            priority: b.priority,
         }
     }
 }
@@ -426,7 +429,9 @@ pub fn build_scene(model: &Model) -> Vec<SceneItem> {
             | ElementKind::CropBox(_)
             | ElementKind::GridGroup(_)
             | ElementKind::Room(_)
-            | ElementKind::RoomSeparator(_) => continue,
+            | ElementKind::RoomSeparator(_)
+            | ElementKind::Join(_)
+            | ElementKind::Detail(_) => continue,
             ElementKind::Column(_)
             | ElementKind::Beam(_)
             | ElementKind::Roof(_)
