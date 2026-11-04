@@ -5148,8 +5148,10 @@ impl CreaBimApp {
 
 impl eframe::App for CreaBimApp {
     /// Keys typed while a web pane had the keyboard reach the views.
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
-        raw_input.events.append(&mut self.shell.keys);
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if self.shell.feed_keys(raw_input) {
+            ctx.request_repaint();
+        }
         self.palette_keys(raw_input);
         // the web bars cover the top and bottom of the window: egui's own
         // drop-downs and windows keep out from under them, opening upwards
