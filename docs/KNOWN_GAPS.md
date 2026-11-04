@@ -2,7 +2,7 @@
 
 This is the one place to look for what CreaBIM doesn't do yet, or does wrong. It gathers the "Known gaps" sections of every milestone README in [docs/evolution](evolution), the review of the starter house on 2026-10-28, and gaps found while working. Each milestone README keeps its own list as it was written, and points here.
 
-Last checked against `main` on 2026-11-04, after the open JSON import (#44). Gaps from work not yet merged are under [Pending pull requests](#pending-pull-requests).
+Last checked against `main` on 2026-11-04, after the open JSON import (#44) and graphic styles and view ranges (#45).
 
 **How to read it**
 
@@ -16,24 +16,24 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44). Gap
 
 | Theme | S | M | L | Open |
 | --- | ---: | ---: | ---: | ---: |
-| [Plans, sections and drawing quality](#plans-sections-and-drawing-quality) | 13 | 7 | 0 | 20 |
+| [Plans, sections and drawing quality](#plans-sections-and-drawing-quality) | 14 | 7 | 0 | 21 |
 | [Rooms and ceilings](#rooms-and-ceilings) | 3 | 2 | 0 | 5 |
 | [Walls, joins and details](#walls-joins-and-details) | 9 | 6 | 0 | 15 |
 | [Openings](#openings-doors-windows-curtain-walls) | 3 | 2 | 0 | 5 |
 | [Roofs, stairs, structure](#roofs-stairs-structure) | 7 | 3 | 2 | 12 |
 | [Furniture, fixtures, parts and site](#furniture-fixtures-parts-and-site) | 11 | 1 | 1 | 13 |
 | [Annotation and marks](#annotation-and-marks) | 15 | 4 | 0 | 19 |
-| [Sheets and schedules](#sheets-and-schedules) | 7 | 3 | 0 | 10 |
+| [Sheets and schedules](#sheets-and-schedules) | 8 | 3 | 0 | 11 |
 | [Editing and manipulation](#editing-and-manipulation) | 22 | 7 | 0 | 29 |
 | [3D view](#3d-view) | 10 | 4 | 0 | 14 |
 | [IFC import and export](#ifc-import-and-export) | 6 | 6 | 2 | 14 |
 | [JSON model format](#json-model-format) | 3 | 5 | 0 | 8 |
 | [DXF, SVG and other exchange](#dxf-svg-and-other-exchange) | 3 | 2 | 1 | 6 |
-| [Interface and help](#interface-and-help) | 11 | 3 | 1 | 15 |
+| [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
-| **Total** | **123** | **57** | **7** | **187** |
+| **Total** | **127** | **58** | **7** | **192** |
 
-Pending pull requests add 8 more (see the end). The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
+The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
 ---
 
@@ -41,10 +41,11 @@ Pending pull requests add 8 more (see the end). The sweep of 2026-11-04 fixed 8 
 
 | Gap | Size | Found in | Checked |
 | --- | --- | --- | --- |
-| The plan and section panes on screen draw with their own fixed pixel widths. The view's line weights reach sheets, PDF and SVG only. | M | drawing-quality | |
-| *Pens by category* covers lines seen below the cut. There is no cut weight, colour or pattern per category, and no line colour per category (walls, furniture, MEP) in a view. PR #45 adds object styles. | M | annotation, drawing-quality | ✓ |
-| The view depth applies only to stairs seen through holes in the floor. Other elements of the level below are not drawn through voids, and there is no top or bottom clip. PR #45 adds view ranges. | M | drawing-quality | |
-| A plan doesn't show the roof of the level below as hidden lines. Roofs are drawn only on their own level's plan. | S | building-elements | ✓ |
+| The plan and section panes on screen draw with CreaBIM's own pens at fixed pixel widths. The view's line weights and graphic styles reach sheets, the sheet view, PDF and SVG only. | M | drawing-quality, styles-ranges | |
+| A plan on its own level's range doesn't show the roof of the level below. It shows only with a view range of *Levels in range* reaching down to it. | S | building-elements | |
+| There is no coarse, medium or fine detail level. | M | styles-ranges | |
+| Sun shadows are cast only on the ground, from from-above plans. They don't fall on lower roofs and aren't drawn in elevations or sections. | M | styles-ranges | |
+| Detail items (filled regions, components) have no category, so they follow pack patterns by hatch name but take no object style or override. | S | styles-ranges | |
 | The label placement pass runs on plans only, not on sections or elevations. | M | drawing-quality | |
 | Dimension text is not moved off other lines; labels keep clear of it instead. | M | drawing-quality, annotation | |
 | In a crowded room, a tag can move a fair way from its door or window (its leader still points back). | S | drawing-quality | |
@@ -174,6 +175,7 @@ Pending pull requests add 8 more (see the end). The sweep of 2026-11-04 fixed 8 
 | Views on a sheet have no alignment guides and can be dragged on top of each other. | S | sheets | |
 | Title blocks can't be imported from PDF or raster files (DXF and SVG only). In the template editor, lines can't be dragged. | S | drafting-tools | |
 | In the schedule, the material and thickness cells of layered walls stay editable, and the values snap back. | S | layered-assemblies | |
+| Distance fade doesn't lighten shaded raster images (3D views placed on sheets). | S | styles-ranges | |
 | Through several scale changes, a viewport's centre can drift by a millimetre or so: its middle is taken from the drawing's extent, which includes symbols and text drawn at a fixed paper size. | S | ui-workflow | |
 
 ## Editing and manipulation
@@ -291,6 +293,9 @@ From the open JSON import (#44). [`docs/json-format.md`](json-format.md) keeps t
 | The 3D type preview is a shaded axonometric drawing that turns as you drag, not the live GPU view. | S | ui-workflow | |
 | In a type's Properties, the class line repeats inside *Settings*. | S | ui-workflow | |
 | *Assign as…* and *Booleans* are not foldable sections in Properties. | S | ui-workflow | |
+| The Graphic styles editor doesn't cover object styles for one material, surface patterns, draw order or transparency, and the Materials window has no pattern picker. These are set in the pack's JSON. | M | styles-ranges | |
+| A view template's overrides and depth cues are edited in the pack file, not in the app. | S | styles-ranges | |
+| Packs carry mark rules, title blocks and text styles by name, but the Graphic styles editor doesn't show them. | S | styles-ranges | |
 | In the narrowest windows (under about 1000 px) the menu row scrolls sideways too, so its right end (the view switcher) is reached by scrolling. | S | sweep | ✓ |
 | The command palette finds actions and elements, but not properties. | S | ui-pass2 | |
 
@@ -305,20 +310,7 @@ From the open JSON import (#44). [`docs/json-format.md`](json-format.md) keeps t
 
 ## Pending pull requests
 
-These come from work that is open as a pull request and not yet on `main`. Move them into the themes above when it merges.
-
-**#45, graphic styles and view ranges** (`claude/styles-ranges`, `docs/evolution/phase1-styles-ranges`). It closes most of the per-category pens and colours, and the view range, above. It reports:
-
-| Gap | Size |
-| --- | --- |
-| The plan and section panes on screen still draw with CreaBIM's own pens. Styles show on sheets, in the sheet view and in PDF and SVG export. | M |
-| Sun shadows are cast only on the ground, from from-above plans. They don't fall on lower roofs and aren't drawn in elevations or sections. | M |
-| Distance fade doesn't lighten shaded raster images (3D views placed on sheets). | S |
-| The style editor doesn't cover object styles for one material, surface patterns, draw order or transparency, and there is no pattern picker in the Materials window. These are set in the pack's JSON. | M |
-| A template's overrides and depth cues are edited in the pack file. | S |
-| There is no coarse, medium or fine detail level. | M |
-| Detail items (filled regions, components) have no category, so they take no object style or override. | S |
-| Packs carry mark rules, title blocks and text styles by name, but the editor doesn't show them. | S |
+None on 2026-11-04. Gaps reported by work that is still a pull request go here until it merges, then into the themes above.
 
 ---
 
@@ -336,6 +328,8 @@ These come from work that is open as a pull request and not yet on `main`. Move 
 - The project browser's search didn't find elements by mark. It finds `D01` or `W05` as well as names (marks-annotation).
 
 **Found fixed by earlier milestones since they were reported** (checked on 2026-11-04):
+
+- **Graphic styles and view ranges (#45):** object styles give each category a projection pen, cut pen, colour, line pattern, cut fill and cut pattern, so there is line colour per category; plans have a view range (its level, *Levels in range* with top, bottom and view depth, or *From above*) with overhead elements dashed (styles-ranges).
 
 - **Plans:** the stair is drawn through its well on the upper floor; cut fills of one material merge, with no squares at footing and wall junctions; line weights step down from cut to hatch; furniture and meshes below the cut are tinted; roof plans have slope arrows; wall openings above the cut are dashed; window reveals in 3D are lined with the wall's finishes, not insulation; labels are moved off lines and each other, with leaders (drawing-quality).
 - **Rooms and ceilings:** there are Room and Ceiling elements, room schedules and tags, areas that follow the walls, and partitions that stop at ceilings; `IfcSpace` and `IfcCovering CEILING` import as rooms and ceilings; fixtures and the sofa no longer stand in doorways, `objects::against_wall` keeps clear of doors and windows, and `creabim check` reports objects in doorways (rooms-ceilings).
