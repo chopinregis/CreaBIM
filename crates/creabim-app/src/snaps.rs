@@ -659,12 +659,10 @@ impl Snapper {
                 if w.level != under || w.curtain.is_some() {
                     continue;
                 }
-                let d = (w.end - w.start).normalize_or_zero().perp();
-                let k = -creabim_core::walls::location_offset(model, w);
-                let (a, b) = (w.start + d * k, w.end + d * k);
+                // a wall's start and end are on its centreline
                 self.add_segment(
-                    a.extend(0.0),
-                    b.extend(0.0),
+                    w.start.extend(0.0),
+                    w.end.extend(0.0),
                     Source::UnderlayCentre,
                     Some(e.id),
                 );

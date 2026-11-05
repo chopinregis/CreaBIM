@@ -4177,7 +4177,10 @@ impl CreaBimApp {
                     draw_hole |= draw;
                 }
                 ElementKind::Opening(o) => {
+                    let old = o.width;
                     if num(ui, "Width", &mut o.width, 0.1, 20.0) {
+                        // about its centre, or from the jamb by a corner
+                        creabim_core::walls::widen_in_place(self.doc.model(), old, o);
                         label = "Opening width"
                     }
                     if num(ui, "Height", &mut o.height, 0.1, 20.0) {
@@ -5151,6 +5154,11 @@ impl CreaBimApp {
                     continue;
                 };
                 if let Some(mut out) = crate::multiedit::apply_to(&e, &edited, other) {
+                    if let (ElementKind::Opening(was), ElementKind::Opening(o)) =
+                        (&other.kind, &mut out.kind)
+                    {
+                        creabim_core::walls::widen_in_place(self.doc.model(), was.width, o);
+                    }
                     let slot = creabim_core::assembly::assembly_slot(&out).flatten();
                     if slot.is_some() {
                         creabim_core::assembly::set_assembly(self.doc.model(), &mut out, slot);
@@ -5158,11 +5166,20 @@ impl CreaBimApp {
                     others.push((other.clone(), out));
                 }
             }
-            let msg = if others.is_empty() {
+            let mut msg = if others.is_empty() {
                 format!("{label}.")
             } else {
                 format!("{label}: {} elements.", others.len() + 1)
             };
+            if let ElementKind::Opening(o) = &edited.kind {
+                let model = self.doc.model();
+                if let Some(w) = creabim_core::walls::opening_crosses_join(model, id, o) {
+                    let name = model.get(w).map_or("another wall", |e| e.name.as_str());
+                    msg = format!(
+                        "{msg} It now runs into {name}, where the walls join: move it along or make it narrower."
+                    );
+                }
+            }
             let r = if others.is_empty() {
                 self.doc.edit_merged(id, label, |e| *e = edited.clone())
             } else {
