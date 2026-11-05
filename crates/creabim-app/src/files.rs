@@ -259,9 +259,30 @@ pub fn pick_open() -> Option<String> {
         .map(|p| p.display().to_string())
 }
 
+/// Show `dir` in the system's file browser.
+pub fn open_folder(dir: &Path) -> Result<(), String> {
+    if cfg!(test) {
+        return Ok(());
+    }
+    let program = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(program)
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("couldn't open {}: {e}", dir.display()))
+}
+
 /// Ask where to save, starting from `current`.
 pub fn pick_save(current: &str, title: &str, ext: &str) -> Option<String> {
-    let p = Path::new(current);
+    // a project not saved yet starts in the folder CreaBIM was started in
+    let abs = std::path::absolute(current).unwrap_or_else(|_| current.into());
+    let p = abs.as_path();
     let mut d = rfd::FileDialog::new()
         .set_title(title)
         .add_filter(ext.to_uppercase(), &[ext]);

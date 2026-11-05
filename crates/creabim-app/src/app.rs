@@ -210,6 +210,10 @@ pub struct CreaBimApp {
     /// last over it rather than the 3D view: what Alt+Z turns X-ray on in.
     rect_2d: Option<Rect>,
     last_in_2d: bool,
+    /// What the status bar said after the last export, and the folder it
+    /// went to: while the message shows, the bar offers to open the folder.
+    last_export: Option<String>,
+    last_export_dir: Option<std::path::PathBuf>,
     /// The crop box whose elements clicks in the 3D view are picking.
     crop_pick: Option<ElementId>,
     /// The Settings window is open.
@@ -298,6 +302,8 @@ impl CreaBimApp {
             rect_3d: None,
             rect_2d: None,
             last_in_2d: false,
+            last_export: None,
+            last_export_dir: None,
             crop_pick: None,
             status: "Loaded the sample house. Orbit with left drag, pan with right drag, zoom with the wheel.".into(),
         }
