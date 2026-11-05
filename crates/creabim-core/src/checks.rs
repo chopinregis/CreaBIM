@@ -206,6 +206,105 @@ pub fn report(model: &Model, clashes: &[Clash]) -> Vec<String> {
         .collect()
 }
 
+/// What a layer moved by hand does where its wall meets another.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LayerFit {
+    /// Held back from the join: a gap that far wide at the corner.
+    Gap(f64),
+    /// Run on past the join: into the other wall's layers that far.
+    Overlap(f64),
+}
+
+/// A wall layer whose end was moved by hand at a join.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LayerIssue {
+    pub wall: ElementId,
+    pub layer: usize,
+    /// The wall's end rather than its start.
+    pub at_end: bool,
+    pub fit: LayerFit,
+}
+
+/// Wall layers moved by hand at an end where the wall meets another: held
+/// back they leave a gap, run on they overlap what they meet. Ends that meet
+/// nothing are left alone, since a layer stopped short or run on there is
+/// only longer or shorter. Edits under 1 mm are ignored.
+pub fn layer_issues(model: &Model) -> Vec<LayerIssue> {
+    let joins = crate::joins::wall_joins(model);
+    let mut out = vec![];
+    for e in model.iter() {
+        let ElementKind::Wall(w) = &e.kind else {
+            continue;
+        };
+        if w.layer_ends.is_empty() {
+            continue;
+        }
+        let ends = joins.get(&e.id);
+        for at_end in [false, true] {
+            let trimmed = ends.is_some_and(|j| {
+                let i = usize::from(at_end);
+                let f = if at_end { j.end } else { j.start };
+                f != [0.0; 2] || j.core[i] != 0.0 || j.core_line[i].is_some()
+            });
+            if !trimmed && crate::joins::corner_partner(model, e.id, at_end).is_none() {
+                continue;
+            }
+            for l in &w.layer_ends {
+                let by = if at_end { l.end } else { l.start };
+                let fit = if by < -1e-3 {
+                    LayerFit::Gap(-by)
+                } else if by > 1e-3 {
+                    LayerFit::Overlap(by)
+                } else {
+                    continue;
+                };
+                out.push(LayerIssue {
+                    wall: e.id,
+                    layer: l.layer,
+                    at_end,
+                    fit,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Each layer issue as a line of a report: "GF South: Plaster, gypsum is
+/// held back 50 mm at its start, leaving a gap".
+pub fn layer_report(model: &Model, issues: &[LayerIssue]) -> Vec<String> {
+    issues
+        .iter()
+        .map(|i| {
+            let e = model.get(i.wall);
+            let wall = e.map_or("?", |e| e.name.as_str());
+            let layer = e
+                .and_then(|e| match &e.kind {
+                    ElementKind::Wall(w) => w.assembly,
+                    _ => None,
+                })
+                .and_then(|a| match &model.get(a)?.kind {
+                    ElementKind::Assembly(a) => a.layers.get(i.layer)?.material,
+                    _ => None,
+                })
+                .and_then(|m| model.get(m))
+                .map_or_else(|| format!("layer {}", i.layer + 1), |m| m.name.clone());
+            let end = if i.at_end { "end" } else { "start" };
+            let mm = |v: f64| (v * 1000.0).round();
+            match i.fit {
+                LayerFit::Gap(v) => format!(
+                    "{wall}: {layer} is held back {} mm at its {end}, leaving a gap",
+                    mm(v)
+                ),
+                LayerFit::Overlap(v) => format!(
+                    "{wall}: {layer} runs {} mm on at its {end}, into the wall it meets",
+                    mm(v)
+                ),
+            }
+        })
+        .collect()
+}
+
 /// The stretches along `wall` (distances from its start) that an object
 /// spanning heights `z` must keep clear of: its doors and windows at those
 /// heights, and their jambs.
@@ -266,6 +365,52 @@ mod tests {
         assert_eq!(clear_spot(5.0, (-0.5, 0.5), &blocked, 6.0), Some(5.0));
         // nowhere to go on a wall the door fills
         assert_eq!(clear_spot(0.5, (-0.5, 0.5), &[(0.0, 1.0)], 1.0), None);
+    }
+
+    #[test]
+    fn layers_moved_at_a_join_are_gaps_or_overlaps_and_free_ends_are_not() {
+        let m = crate::sample::typed_house();
+        let (id, n) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) => {
+                    let a = w.assembly?;
+                    match &m.get(a)?.kind {
+                        ElementKind::Assembly(a) if a.layers.len() > 1 => {
+                            Some((e.id, a.layers.len()))
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(layer_issues(&m).is_empty());
+        let joined = crate::joins::wall_joins(&m)[&id].clone();
+        assert!(joined.start != [0.0; 2] || crate::joins::corner_partner(&m, id, false).is_some());
+        let mut all: Vec<_> = m.iter().cloned().collect();
+        for e in &mut all {
+            if let (true, ElementKind::Wall(w)) = (e.id == id, &mut e.kind) {
+                w.set_layer_ext(0, false, -0.05);
+                w.set_layer_ext(n - 1, false, 0.02);
+            }
+        }
+        let m = Model::from_elements(all).unwrap();
+        let issues = layer_issues(&m);
+        assert_eq!(issues.len(), 2, "{issues:?}");
+        assert!(issues
+            .iter()
+            .any(|i| i.layer == 0 && matches!(i.fit, LayerFit::Gap(v) if (v - 0.05).abs() < 1e-9)));
+        assert!(issues
+            .iter()
+            .any(|i| i.layer == n - 1 && matches!(i.fit, LayerFit::Overlap(_))));
+        let lines = layer_report(&m, &issues);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("held back 50 mm at its start")),
+            "{lines:?}"
+        );
     }
 
     #[test]

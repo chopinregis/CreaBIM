@@ -58,6 +58,22 @@ fn layer_color(f: creabim_core::LayerFunction, plain: [f32; 3]) -> [f32; 3] {
     }
 }
 
+/// The solid of each layer of a layered element, in model coordinates,
+/// air gaps left out: what an export writes as the element's parts.
+/// Empty for an element that isn't layered.
+pub fn layer_parts(
+    model: &Model,
+    e: &Element,
+    joins: &std::collections::HashMap<ElementId, creabim_core::WallEnds>,
+) -> Vec<(LayerPart, TriMesh)> {
+    layer_items(model, e, joins, [0.8; 3])
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|i| !i.is_lining())
+        .filter_map(|i| Some((i.layer?, i.mesh)))
+        .collect()
+}
+
 /// The solid of each layer of a layered element, with its look; air gaps
 /// are left empty. `None` for an element that isn't layered.
 fn layer_items(

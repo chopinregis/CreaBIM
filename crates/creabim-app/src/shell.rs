@@ -798,6 +798,11 @@ impl CreaBimApp {
                         .hint("List and select the furniture and fixtures standing in a doorway, a window or a door's swing"),
                 );
                 items.push(
+                    Item::new("check.layers", "Check layer joins")
+                        .icon("layers")
+                        .hint("List and select the walls with a layer held back from a join (a gap) or run on into the wall it meets (an overlap)"),
+                );
+                items.push(
                     Item::new("level.add", "Level above the top one")
                         .icon("level")
                         .hint("A new level one storey up, with its floor plan"),
@@ -1513,6 +1518,13 @@ impl CreaBimApp {
             }
             "check.doorways" => {
                 let (ids, msg) = crate::roomtool::check_doorways(self.doc.model());
+                if !ids.is_empty() {
+                    self.selection.extend(ids, false);
+                }
+                self.status = msg;
+            }
+            "check.layers" => {
+                let (ids, msg) = crate::roomtool::check_layers(self.doc.model());
                 if !ids.is_empty() {
                     self.selection.extend(ids, false);
                 }

@@ -410,6 +410,10 @@ impl<'a> Importer<'a> {
                     && !e.arg(6).is_null()
                     && product_class(&e.class).is_some_and(|c| !SKIPPED.contains(&c))
                     && !e.class.starts_with("IFCSTRUCTURAL")
+                    // a layer piece of a wall, slab or roof read as itself:
+                    // its layers come from that element's layer set
+                    && !(e.class == "IFCBUILDINGELEMENTPART"
+                        && self.parent.get(id).is_some_and(|p| self.done.contains(p)))
             })
             .map(|(id, _)| *id)
             .collect();

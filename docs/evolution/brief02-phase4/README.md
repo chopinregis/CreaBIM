@@ -22,7 +22,8 @@ The screenshots were taken in the running app on a small L corner cut out of the
 | 1 (3.7) | Slab and roof layer edges: a grip on each edge of each layer, drag or type, reset | **Done** (below). |
 | 1 (3.7) | Corner join presets: Auto, Cores lap and finishes stop, This or the other wall runs through, Mitre every layer, Not joined | **Done** (below). |
 | 1 (3.7) | *Draw by this line* on any layer boundary, without the wall moving | **Done** (below). |
-| 1 (3.7) | Check model warnings for gaps and overlaps; IFC parts where layers differ | Not started. |
+| 1 (3.7) | Check model warnings for gaps and overlaps; IFC parts where layers differ | **Done** (below). |
+| 1 (3.7) | Acceptance: an L corner, core 20 mm past, finishes stopping, in plan, section and 3D, the IFC in a second reader, moved with the edit kept | **Done** (below). |
 | 2–7 | | Not started. |
 
 ## 1. Layer editing
@@ -95,4 +96,31 @@ Any line between two layers can be the wall's location line: the line it is draw
 ![Drawn by the line](15-drawn-by-boundary.png)
 
 ![Location line choices](16-location-boundaries.png)
+
+### Check layer joins
+
+*Create › Check layer joins* lists the walls with a layer moved by hand at an end where the wall meets another: held back, it leaves a gap; run on, it overlaps the wall it meets. It selects them and names each layer in the status bar. A layer stopped short or run on at an end that meets nothing is left alone. `creabim check <model>` prints the same lines and fails when there are any.
+
+![Check layer joins](17-check-layers-menu.png)
+
+![What it found](18-check-layers-result.png)
+
+### IFC parts
+
+Where an element's layers are not all as its layer set puts them (a layer end or edge moved by hand, or cores lapped at a corner), the IFC export also writes each layer as an `IfcBuildingElementPart`: its own solid, named after the element and the layer, with the layer's material, aggregated by the wall, slab or roof. The element keeps its body and its layer set, for software that reads only those. An untouched model has no parts. `tools/validate_ifc.py` (IfcOpenShell) passes on the export, and builds every part's geometry.
+
+The acceptance corner, exported and drawn from IfcOpenShell's own geometry (a second reader, not CreaBIM): the cores lap at the corner, the plaster stops 50 mm short of it, and the block runs 20 mm past the free end.
+
+![IFC parts](19-ifc-parts.png)
+
+Reading the file back into CreaBIM takes each wall's layers from its layer set and skips its parts, so they don't come in twice; the edits they show are not read back yet (in KNOWN_GAPS).
+
+### Acceptance
+
+| Asked | Where |
+| --- | --- |
+| An L corner, the core 20 mm past, the finishes stopping | 03, 04, 13 (*Cores lap, finishes stop*), 19 |
+| Shown in plan, section and 3D | 04, 05, 06, 07 |
+| The IFC opened in a second reader | 19 (IfcOpenShell) |
+| The wall moved afterwards, the edit kept | 08 |
 

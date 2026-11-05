@@ -324,6 +324,32 @@ pub fn check_doorways(model: &Model) -> (Vec<ElementId>, String) {
     )
 }
 
+/// The walls with a layer moved by hand at a join, leaving a gap or
+/// overlapping the wall it meets, and a message listing them.
+pub fn check_layers(model: &Model) -> (Vec<ElementId>, String) {
+    let issues = creabim_core::checks::layer_issues(model);
+    if issues.is_empty() {
+        return (
+            vec![],
+            "No layer leaves a gap or overlaps at a join.".into(),
+        );
+    }
+    let mut ids: Vec<ElementId> = issues.iter().map(|i| i.wall).collect();
+    ids.dedup();
+    let lines = creabim_core::checks::layer_report(model, &issues);
+    (
+        ids,
+        format!(
+            "{} (walls selected): {}.",
+            match issues.len() {
+                1 => "1 layer end leaves a gap or overlap".to_string(),
+                n => format!("{n} layer ends leave a gap or overlap"),
+            },
+            lines.join("; ")
+        ),
+    )
+}
+
 /// A text field with its label; true when it changed.
 fn text(ui: &mut egui::Ui, label: &str, v: &mut String) -> bool {
     ui.horizontal(|ui| {
