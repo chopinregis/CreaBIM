@@ -3,11 +3,45 @@
 //! its parent.
 
 use crate::plan::{Pen, PlanItem};
-use creabim_core::{DetailItem, DetailKind, ElementId, Hatch};
+use creabim_core::{DetailItem, DetailKind, ElementId, Hatch, MembraneLook};
 use glam::DVec2;
 
-/// The linework of a detail component, in its view's drawing coordinates.
-pub fn detail_items(id: ElementId, d: &DetailItem) -> Vec<PlanItem> {
+/// How far off the line it follows a membrane's heavy line lies, in paper
+/// millimetres, and its partner beyond it.
+pub const MEMBRANE_OFFSET: f64 = 2.0;
+pub const MEMBRANE_PARTNER: f64 = 3.5;
+
+/// `pts` moved `by` to their left (right when negative), corners mitred.
+pub fn offset_path(pts: &[DVec2], by: f64) -> Vec<DVec2> {
+    let n = pts.len();
+    let dir = |i: usize| (pts[i + 1] - pts[i]).normalize_or_zero();
+    (0..n)
+        .map(|i| {
+            let before = (i > 0).then(|| dir(i - 1).perp());
+            let after = (i + 1 < n).then(|| dir(i).perp());
+            let m = match (before, after) {
+                (Some(a), Some(b)) => {
+                    let m = (a + b).normalize_or_zero();
+                    let c = m.dot(a);
+                    // a sharp turn is mitred no further than 4 times out
+                    if c.abs() > 0.25 {
+                        m / c
+                    } else {
+                        a
+                    }
+                }
+                (Some(a), None) | (None, Some(a)) => a,
+                (None, None) => DVec2::ZERO,
+            };
+            pts[i] + m * by
+        })
+        .collect()
+}
+
+/// The linework of a detail component, in its view's drawing coordinates;
+/// `mm` is drawing units per paper millimetre (a membrane stands off its
+/// line by paper millimetres), `look` how membranes are drawn.
+pub fn detail_items(id: ElementId, d: &DetailItem, mm: f64, look: MembraneLook) -> Vec<PlanItem> {
     let mut out = Vec::new();
     let line = |out: &mut Vec<PlanItem>, pen: Pen, a: DVec2, b: DVec2| {
         out.push(PlanItem::Line { id, pen, a, b });
@@ -51,8 +85,44 @@ pub fn detail_items(id: ElementId, d: &DetailItem) -> Vec<PlanItem> {
             }
         }
         DetailKind::Membrane => {
-            for &(a, b) in &segs {
-                line(&mut out, Pen::Cut, a, b);
+            // never on the line it follows: a heavy line just off it, on
+            // the side it was clicked, and a partner beyond
+            let pts: Vec<DVec2> = d.points.clone();
+            let side = d.side() * mm;
+            let heavy = offset_path(&pts, side * MEMBRANE_OFFSET);
+            let partner = offset_path(&pts, side * MEMBRANE_PARTNER);
+            for w in heavy.windows(2) {
+                line(&mut out, Pen::Cut, w[0], w[1]);
+            }
+            match look {
+                MembraneLook::Dashed => {
+                    for w in partner.windows(2) {
+                        line(&mut out, Pen::Hidden, w[0], w[1]);
+                    }
+                }
+                MembraneLook::Double => {
+                    for w in partner.windows(2) {
+                        line(&mut out, Pen::Fine, w[0], w[1]);
+                    }
+                }
+                MembraneLook::ZigZag => {
+                    let pitch = 1.5 * mm;
+                    for (h, p) in heavy.windows(2).zip(partner.windows(2)) {
+                        let len = h[0].distance(h[1]);
+                        let steps = ((len / pitch).ceil() as usize).max(1);
+                        let mut prev = h[0];
+                        for k in 1..=steps {
+                            let t = k as f64 / steps as f64;
+                            let q = if k % 2 == 1 {
+                                p[0].lerp(p[1], t)
+                            } else {
+                                h[0].lerp(h[1], t)
+                            };
+                            line(&mut out, Pen::Symbol, prev, q);
+                            prev = q;
+                        }
+                    }
+                }
             }
         }
         DetailKind::Flashing => {
@@ -204,13 +274,47 @@ mod tests {
                 &[(0.0, 0.0), (1.0, 0.0)]
             };
             let d = item(kind, pts);
-            let items = detail_items(ElementId::new(), &d);
+            let items = detail_items(ElementId::new(), &d, 0.01, MembraneLook::default());
             assert!(!items.is_empty(), "{kind:?} draws something");
             let (lo, hi) = crate::plan::PlanView { items }.bounds().unwrap();
             let reach = d.width.max(0.06) + 0.6;
             assert!(lo.y > -reach && hi.y < reach, "{kind:?}: {lo} {hi}");
             assert!(lo.x > -0.2 && hi.x < 1.2, "{kind:?}: {lo} {hi}");
         }
+    }
+
+    #[test]
+    fn a_membrane_never_lies_on_the_line_it_follows() {
+        let mut d = item(DetailKind::Membrane, &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]);
+        // 1:10, a paper millimetre is 10 mm
+        for look in MembraneLook::ALL {
+            let items = detail_items(ElementId::new(), &d, 0.01, look);
+            let lines: Vec<(Pen, DVec2, DVec2)> = items
+                .iter()
+                .filter_map(|i| match i {
+                    PlanItem::Line { pen, a, b, .. } => Some((*pen, *a, *b)),
+                    _ => None,
+                })
+                .collect();
+            // the heavy line is 2 mm on paper to the left, mitred round the corner
+            let heavy: Vec<_> = lines.iter().filter(|l| l.0 == Pen::Cut).collect();
+            assert_eq!(heavy.len(), 2);
+            assert!(heavy[0].1.distance(DVec2::new(0.0, 0.02)) < 1e-9);
+            assert!(heavy[0].2.distance(DVec2::new(0.98, 0.02)) < 1e-9);
+            assert!(
+                lines.iter().all(|l| l.1.y > 1e-6 || l.1.x < 1.0 - 1e-6),
+                "{look:?}"
+            );
+            assert!(
+                lines.iter().any(|l| l.0 != Pen::Cut),
+                "{look:?} has a partner"
+            );
+        }
+        // flipped, it goes the other way
+        d.flip = true;
+        let items = detail_items(ElementId::new(), &d, 0.01, MembraneLook::Dashed);
+        assert!(items.iter().any(|i| matches!(i,
+            PlanItem::Line { pen: Pen::Cut, a, .. } if a.distance(DVec2::new(0.0, -0.02)) < 1e-9)));
     }
 
     #[test]
@@ -222,7 +326,7 @@ mod tests {
             },
             &[(0.0, 0.0), (0.9, 0.0)],
         );
-        let units = detail_items(ElementId::new(), &d)
+        let units = detail_items(ElementId::new(), &d, 0.01, MembraneLook::default())
             .iter()
             .filter(|i| matches!(i, PlanItem::Polygon { .. }))
             .count();

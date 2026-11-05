@@ -56,7 +56,7 @@ pub use constraint::{Constraint, SolveError};
 pub use cropbox::{CropBox, CropScope};
 pub use csg::BoolOp;
 pub use curtain::{CurtainGrid, GridRule, PanelKind};
-pub use detail::{DetailItem, DetailKind};
+pub use detail::{DetailItem, DetailKind, DrawingFrame, MembraneLook};
 pub use document::{Document, Step, StepId};
 pub use editmesh::EditMesh;
 pub use element::{

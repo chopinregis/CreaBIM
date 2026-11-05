@@ -38,6 +38,17 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | 2.10 (2) | Steps | **Done.** The status bar has *Step* (Off, 10, 50 or 100 mm, or Custom…; in imperial projects 1/8", 1/2", 1" or 6"), and the Snap menu lists the same choices. The step in use always shows there and in the tracker. Free points and grip drags round to it, and Alt ignores it for one move. | see PR |
 | 2.14 | Live dimensions | **Partly.** Old → new and the change show while dragging (A3-3), and D hides or shows them. The distance to the nearest neighbour and the "Widened D03 by 300 mm" wording are not done yet. | see PR |
 
+## Phase 2 item 2.5 with A3-7: detail components and plants
+
+| Brief | What | Status | Commit |
+| --- | --- | --- | --- |
+| 3.1 / A3-7 | Grips on detail components | **Done.** A selected component shows a square on each of its points and, on a batt, flashing, blocking or repeating detail, a width bar off the middle of its first stretch (both sides move). A repeating detail has a unit bar at the end of its first unit. A filled region has corner squares and edge bars like a slab's, and Edit mode (double-click, or Enter) adds and removes corners and points. The grips show only in the view the component is drawn in. M, G, R, mirror, Shift+D and Ctrl+D work on components in plans and sections, each laid back on its view's paper, and the pill shows the length, width or unit as it changes. Properties shows the length (with the point count) and the width. | see PR |
+| A3-7 | Finishing a path | **Done.** Enter, a double-click or a right-click finishes a path. Esc, or picking another tool, keeps a path that has enough points ("Membrane kept with its 2 points. Ctrl+Z takes it away."), and drops it only when it has too few. The hint says how many points there are and "Enter to finish". | see PR |
+| A3-7 | Membrane look | **Done.** A membrane is a heavy line 2 mm on paper off the line it follows, so it never draws over that line, with a thin dashed partner 3.5 mm off. It goes on the side of the line the pointer was on when the points were clicked; Space while drawing, or *On the other side* in Properties, swaps it. The style pack (Annotation › Membranes in details) chooses the partner: dashed (the default), a double line or a zig-zag. Membranes already in a project move off their line by the same 2 mm. | see PR |
+| 3.2 | Grips on plants | **Done.** A selected tree or shrub has a canopy bar at the edge of its crown in plan (dragging it changes the canopy's width, both sides), and a height bar at its top in 3D and sections. | see PR |
+| 3.3 | Callout boxes | **Partly.** A selected callout shows, on the view it was called out from, a square on each corner of its box and a bar on each edge. Dragging one resizes the box and the detail view follows; a ringed callout (on a section) stays round. Its body moves the box with G or M, no longer the line its view was cut on. The pill shows the box's width or height as it changes. *Not yet:* the linked *Open in 3D* crop box for callouts, sections, elevations and plans. | see PR |
+| 3.4 | Fill room preview | Not yet. | |
+
 ## Addendum A3: the review of main 889c32c
 
 | A3 | What | Status | Commit |
@@ -82,6 +93,13 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | [26-footings-shown-while-the-tool-is-on.png](26-footings-shown-while-the-tool-is-on.png) | The Ground Floor plan with the Footing tool on: the level's footings dashed and tinted, and a wall that already has one says so. |
 | [27-show-in-foundation-plan.png](27-show-in-foundation-plan.png) | After placing: *Show in Foundation plan* in the status bar. |
 | [28-foundation-plan-opened.png](28-foundation-plan-opened.png) | It opens the Foundation plan with the new footing selected. |
+| [29-detail-region-grips.png](29-detail-region-grips.png) | 3.1: the perimeter insulation (a filled region) in Detail 1 Wall base. Before, selected but no grips; after, corner squares and edge bars. |
+| [30-membrane-off-its-line.png](30-membrane-off-its-line.png) | A3-7: a membrane drawn along the slab's top. Before, it lay on the slab's line and couldn't be seen; after, a heavy line just above it with its dashed partner. The DPC under the wall is drawn the same way. |
+| [31-esc-or-right-click-keeps-the-path.png](31-esc-or-right-click-keeps-the-path.png) | A right-click finished the batt's path, and the status bar says so. |
+| [32-batt-width-grip.png](32-batt-width-grip.png) | A batt selected, then its width bar dragged: "Width 100 → 190 +90". |
+| [33-detail-moves-with-g.png](33-detail-moves-with-g.png) | G on a detail component: before, "can't be moved this way"; after, it moves. |
+| [34-plant-canopy-grip.png](34-plant-canopy-grip.png) | 3.2: a tree in the garden sample. Before, no grips; after, its canopy bar dragged, "Canopy 6000 → 8450 +2450". |
+| [35-callout-box-grips.png](35-callout-box-grips.png) | 3.3: Detail 2 Window's ring in Section C-C. Before, selected without grips; after, its top edge dragged ("Width 1200 → 2700": it stays round), then let go. |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 

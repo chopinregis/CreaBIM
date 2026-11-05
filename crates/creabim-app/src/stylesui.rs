@@ -878,6 +878,22 @@ fn marks_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
         })
         .weak(),
     );
+    crate::props::section(ui, "Membranes in details");
+    crate::props::Combo::new("Drawn as")
+        .selected_text(pack.membranes.label())
+        .show_ui(ui, |ui| {
+            for m in creabim_core::MembraneLook::ALL {
+                changed |= ui
+                    .selectable_value(&mut pack.membranes, m, m.label())
+                    .changed();
+            }
+        });
+    ui.label(
+        egui::RichText::new(
+            "A heavy line 2 mm on paper off the line it follows, on the side it was clicked, so it never hides that line; its partner lies beyond it.",
+        )
+        .weak(),
+    );
     changed
 }
 

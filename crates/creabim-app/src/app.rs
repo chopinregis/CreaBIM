@@ -2163,6 +2163,7 @@ impl CreaBimApp {
                 grab_body: &grab_body,
                 grab_snap: &grab_snap,
                 body_normal: DVec3::Z,
+                view: None,
             };
             let mut status = None;
             let edit = self.plan.edit.is_some() && self.plan.edit == self.selection.active;
@@ -3490,6 +3491,8 @@ impl CreaBimApp {
                     .on_hover_text(t.hint())
                     .clicked()
                 {
+                    // a detail path being drawn is kept, not dropped
+                    crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
                     self.plan.tool = t;
                     self.plan.cancel();
                 }

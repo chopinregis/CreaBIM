@@ -1161,6 +1161,8 @@ impl CreaBimApp {
             }
             "tool" => {
                 if let Some(t) = index.and_then(|i| Tool::ALL.get(i)) {
+                    // a detail path being drawn is kept, not dropped
+                    crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
                     self.plan.tool = *t;
                     self.plan.cancel();
                     self.status = t.hint().into();

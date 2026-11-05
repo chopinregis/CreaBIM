@@ -23,6 +23,11 @@ pub struct DetailSettings {
     pub width: f64,
     /// Points clicked so far, and the view they are in.
     pub path: Vec<DVec2>,
+    /// Where each point was clicked from its snapped spot: which side of
+    /// the line the pointer was on, for a membrane's side.
+    pub off: Vec<DVec2>,
+    /// Space while drawing a membrane puts it on the other side.
+    pub swap: bool,
     pub view: Option<ElementId>,
     /// Scale of the next detail view, 1:`callout_scale`.
     pub callout_scale: f64,
@@ -34,6 +39,8 @@ impl Default for DetailSettings {
             kind: DetailKind::Batt,
             width: DetailKind::Batt.default_width(),
             path: vec![],
+            off: vec![],
+            swap: false,
             view: None,
             callout_scale: 10.0,
         }
@@ -44,6 +51,30 @@ impl Default for DetailSettings {
 pub const CALLOUT_SCALES: [f64; 4] = [2.0, 5.0, 10.0, 20.0];
 
 impl DetailSettings {
+    /// Was the path clicked from the right of the way it runs? A membrane
+    /// then lies on that side.
+    pub fn clicked_right(&self) -> bool {
+        self.swap != self.voted_right()
+    }
+
+    fn voted_right(&self) -> bool {
+        let n = self.path.len();
+        if n < 2 {
+            return false;
+        }
+        let vote: f64 = (0..n.min(self.off.len()))
+            .map(|i| {
+                let (a, b) = if i + 1 < n {
+                    (self.path[i], self.path[i + 1])
+                } else {
+                    (self.path[i - 1], self.path[i])
+                };
+                self.off[i].dot((b - a).normalize_or_zero().perp())
+            })
+            .sum();
+        vote < -1e-9
+    }
+
     /// Pick what the Detail tool draws, at its usual width.
     pub fn pick(&mut self, kind: DetailKind) {
         self.kind = kind;
@@ -116,12 +147,14 @@ pub fn detail_click(
     doc: &mut Document,
     view: ElementId,
     p: DVec2,
+    raw: DVec2,
     state: &mut PlanState,
     selection: &mut Selection,
 ) -> Result<(), ModelError> {
     let d = &mut state.details;
     if d.view != Some(view) {
         d.path.clear();
+        d.off.clear();
         d.view = Some(view);
     }
     let near = |a: DVec2| a.distance(p) < 0.004_f64.max(view_scale(doc.model(), view) * 0.0015);
@@ -129,20 +162,74 @@ pub fn detail_click(
         (Some(first), _) if d.kind.is_area() && d.path.len() >= 3 && near(*first) => true,
         (_, Some(last)) if near(*last) => true,
         _ => {
+            if d.path.is_empty() {
+                d.swap = false;
+            }
             d.path.push(p);
+            d.off.truncate(d.path.len() - 1);
+            d.off.resize(d.path.len() - 1, DVec2::ZERO);
+            d.off.push(raw - p);
             matches!(d.kind, DetailKind::BreakLine) && d.path.len() == 2
         }
     };
     if done {
         return finish(doc, state, selection);
     }
-    state.status = Some(match (d.kind.is_area(), d.path.len()) {
-        (true, n) if n >= 3 => "Click the next corner, or the first to close the region.".into(),
-        (true, _) => "Click the region's next corner.".into(),
-        (false, 1) => "Click the next point.".into(),
-        _ => "Click the next point, or the last one again (Enter) to finish.".into(),
-    });
+    state.status = Some(path_hint(d.kind, d.path.len()));
     Ok(())
+}
+
+/// What the status bar says while a path is drawn: how many points it has
+/// and how to finish it.
+pub fn path_hint(kind: DetailKind, n: usize) -> String {
+    let points = if n == 1 {
+        "1 point".to_string()
+    } else {
+        format!("{n} points")
+    };
+    let label = kind.label();
+    match (kind.is_area(), n) {
+        (true, n) if n >= 3 => format!(
+            "{label}: {points}. Enter to finish (or click the first corner); double-click or right-click also finish."
+        ),
+        (true, _) => format!("{label}: {points}. Click the next corner."),
+        (false, 1) => format!("{label}: {points}. Click the next point."),
+        _ if matches!(kind, DetailKind::Membrane) => format!(
+            "{label}: {points}. Enter to finish; double-click or right-click also finish. Esc keeps it. Space puts it on the other side."
+        ),
+        _ => format!(
+            "{label}: {points}. Enter to finish; double-click or right-click also finish. Esc keeps it."
+        ),
+    }
+}
+
+/// Has the path enough points to make its component?
+pub fn finishable(state: &PlanState) -> bool {
+    let d = &state.details;
+    let need = if d.kind.is_area() { 3 } else { 2 };
+    d.view.is_some() && d.path.len() >= need
+}
+
+/// Esc, a right-click or another tool while a path is drawn: one that can
+/// be made is kept, never dropped without a word. True when it was.
+pub fn keep(doc: &mut Document, state: &mut PlanState, selection: &mut Selection) -> bool {
+    if !finishable(state) {
+        return false;
+    }
+    let n = state.details.path.len();
+    let label = state.details.kind.label();
+    match finish(doc, state, selection) {
+        Ok(()) => {
+            state.status = Some(format!(
+                "{label} kept with its {n} points. Ctrl+Z takes it away."
+            ));
+            true
+        }
+        Err(e) => {
+            state.status = Some(e.to_string());
+            false
+        }
+    }
 }
 
 fn view_scale(model: &Model, view: ElementId) -> f64 {
@@ -167,8 +254,13 @@ pub fn finish(
         ));
         return Ok(());
     }
+    d.path = path;
+    let flip = d.clicked_right();
+    let path = std::mem::take(&mut d.path);
+    d.off.clear();
     let mut item = DetailItem::new(view, d.kind, path);
     item.width = d.width;
+    item.flip = flip && matches!(d.kind, DetailKind::Membrane);
     let label = d.kind.label();
     let e = Element::new(label, ElementKind::Detail(item));
     selection.only(e.id);
@@ -179,7 +271,9 @@ pub fn finish(
 }
 
 /// The Callout box or the Detail path being drawn, under the pointer.
+#[allow(clippy::too_many_arguments)]
 pub fn preview(
+    model: &Model,
     painter: &egui::Painter,
     xf: &Xf,
     tool: crate::planview::Tool,
@@ -203,9 +297,15 @@ pub fn preview(
             }
             let mut pts = d.path.clone();
             pts.extend(hover);
+            // the side as it will be with the pointer's point added
+            let mut next = d.clone();
+            next.path = pts.clone();
+            next.off.resize(pts.len(), DVec2::ZERO);
             let mut item = DetailItem::new(view, d.kind, pts);
             item.width = d.width;
-            for it in creabim_geom::detail::detail_items(ElementId::new(), &item) {
+            item.flip = next.clicked_right();
+            let look = creabim_core::styles::active_pack(model).membranes;
+            for it in creabim_geom::detail::detail_items(ElementId::new(), &item, mm, look) {
                 crate::planview::draw_item(painter, xf, &it, true, mm);
             }
         }
@@ -243,6 +343,13 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
                 label = "Detail width";
             }
         });
+    }
+    if matches!(d.kind, DetailKind::Membrane)
+        && crate::props::switch(ui, &mut d.flip, "On the other side")
+            .on_hover_text("A membrane lies just off the line it follows, on the side it was clicked. This puts it on the other side.")
+            .changed()
+    {
+        label = "Membrane side";
     }
     match &mut d.kind {
         DetailKind::Repeat { module, joint } => {
@@ -378,7 +485,7 @@ mod tests {
         let mut sel = Selection::default();
         let p = DVec2::new;
         for q in [p(0.0, 0.0), p(1.0, 0.0), p(1.0, 0.5), p(1.0, 0.5)] {
-            detail_click(&mut doc, section, q, &mut state, &mut sel).unwrap();
+            detail_click(&mut doc, section, q, q, &mut state, &mut sel).unwrap();
         }
         let items: Vec<&DetailItem> = doc
             .model()
@@ -392,5 +499,55 @@ mod tests {
         assert_eq!(items[0].points.len(), 3);
         assert_eq!(items[0].view, section);
         assert!(state.details.path.is_empty());
+    }
+
+    #[test]
+    fn a_membrane_lies_on_the_side_it_was_clicked_and_esc_keeps_it() {
+        let (mut doc, section) = doc_with_section();
+        let mut state = PlanState::default();
+        state.tool = Tool::Detail;
+        state.details.pick(DetailKind::Membrane);
+        let mut sel = Selection::default();
+        let p = DVec2::new;
+        // clicked just below a level line drawn left to right: its right
+        for q in [p(0.0, 0.0), p(2.0, 0.0)] {
+            detail_click(
+                &mut doc,
+                section,
+                q,
+                q - p(0.0, 0.003),
+                &mut state,
+                &mut sel,
+            )
+            .unwrap();
+        }
+        assert!(state
+            .status
+            .as_deref()
+            .unwrap()
+            .contains("2 points. Enter to finish"));
+        // Esc (or another tool) keeps it
+        assert!(keep(&mut doc, &mut state, &mut sel));
+        let d = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Detail(d) => Some(d.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert!(d.flip);
+        assert_eq!(d.points.len(), 2);
+        // one point is not enough to keep
+        detail_click(
+            &mut doc,
+            section,
+            p(0.0, 1.0),
+            p(0.0, 1.0),
+            &mut state,
+            &mut sel,
+        )
+        .unwrap();
+        assert!(!keep(&mut doc, &mut state, &mut sel));
     }
 }

@@ -282,6 +282,17 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
                 }
             }
         },
+        // a detail view moves its box on its parent; what it looks at follows
+        ElementKind::View(v) if v.callout.is_some() => {
+            let c = v.callout.as_mut()?;
+            if !matches!(t, Xform::Move(_)) {
+                return None;
+            }
+            let frame = crate::DrawingFrame::of(model, c.parent)?;
+            let by = frame.to_drawing(t.point3(frame.to_model(c.lo))) - c.lo;
+            c.lo += by;
+            c.hi += by;
+        }
         ElementKind::View(v) => match &mut v.kind {
             ViewKind::Section { start, end, .. } if t.is_rigid() && t.keeps_upright() => {
                 *start = t.point2(*start);
@@ -361,6 +372,22 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         | ElementKind::Footing(_)
         | ElementKind::Part(_)
         | ElementKind::Site(_) => crate::members::transform(model, &mut out.kind, t)?,
+        // drafting stays on its view's paper: moved, turned, mirrored or
+        // scaled in the model, then laid back on the drawing
+        ElementKind::Detail(d) => {
+            let frame = crate::DrawingFrame::of(model, d.view)?;
+            for p in &mut d.points {
+                *p = frame.to_drawing(t.point3(frame.to_model(*p)));
+            }
+            if let Xform::Scale { factor, .. } = t {
+                d.width *= factor.abs();
+                if let crate::DetailKind::Repeat { module, joint } = &mut d.kind {
+                    *module *= factor.abs();
+                    *joint *= factor.abs();
+                }
+            }
+            d.validate().ok()?;
+        }
         // a crop box stays square to the axes: it only moves
         ElementKind::CropBox(c) => match t {
             Xform::Move(d) => {
@@ -383,7 +410,6 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         | ElementKind::StylePack(_)
         | ElementKind::Cut(_)
         | ElementKind::Join(_)
-        | ElementKind::Detail(_)
         | ElementKind::ElementType(_)
         | ElementKind::GridGroup(_) => return None,
     }
@@ -419,6 +445,10 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
             pts.iter().copied().sum::<DVec3>() / pts.len().max(1) as f64
                 + DVec3::Z * elevation(s.level)
         }
+        ElementKind::View(v) if v.callout.is_some() => {
+            let c = v.callout?;
+            crate::DrawingFrame::of(model, c.parent)?.to_model((c.lo + c.hi) / 2.0)
+        }
         ElementKind::View(v) => match &v.kind {
             ViewKind::Section { start, end, .. } => ((*start + *end) / 2.0).extend(0.0),
             _ => return None,
@@ -429,6 +459,10 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
         ElementKind::Object(o) => o.position.extend(
             crate::objects::base_z(model, e).unwrap_or(elevation(Some(o.level)) + o.offset),
         ),
+        ElementKind::Detail(d) => {
+            let frame = crate::DrawingFrame::of(model, d.view)?;
+            frame.to_model(mean(&d.points))
+        }
         _ => return crate::members::pivot(model, e),
     })
 }
@@ -453,6 +487,7 @@ pub fn duplicate(model: &Model, id: ElementId) -> Vec<Element> {
             | ElementKind::Room(_)
             | ElementKind::RoomSeparator(_)
             | ElementKind::Ceiling(_)
+            | ElementKind::Detail(_)
     ) && !crate::members::is_member(&e.kind)
     {
         return vec![];
@@ -913,5 +948,55 @@ mod tests {
         let (c, dropped) = fresh_copies(&empty, &[door]);
         assert!(c.is_empty());
         assert_eq!(dropped, 1);
+    }
+
+    #[test]
+    fn a_detail_moves_turns_and_mirrors_on_its_own_paper() {
+        use crate::{DetailItem, DetailKind, View};
+        let mut m = Model::new();
+        let section = Element::new(
+            "Section",
+            ElementKind::View(View::section(DVec2::ZERO, DVec2::new(0.0, 5.0), 3.0, true)),
+        );
+        let sid = section.id;
+        let p = DVec2::new;
+        let d = Element::new(
+            "Batt",
+            ElementKind::Detail(DetailItem::new(
+                sid,
+                DetailKind::Batt,
+                vec![p(1.0, 0.5), p(2.0, 0.5)],
+            )),
+        );
+        let did = d.id;
+        m.insert(section).unwrap();
+        m.insert(d).unwrap();
+        let points = |e: Element| match e.kind {
+            ElementKind::Detail(d) => d.points,
+            _ => panic!(),
+        };
+        // the section runs up +Y: along it is the drawing's x, up is y
+        let c = pivot(&m, did).unwrap();
+        assert!(c.distance(DVec3::new(0.0, 1.5, 0.5)) < 1e-9);
+        let moved = transformed(
+            &m,
+            m.get(did).unwrap(),
+            &Xform::Move(DVec3::new(0.0, 0.5, 0.25)),
+        );
+        let pts = points(moved.unwrap());
+        assert!(pts[0].distance(p(1.5, 0.75)) < 1e-9);
+        assert!(pts[1].distance(p(2.5, 0.75)) < 1e-9);
+        // a move across the paper changes nothing on it
+        let across = transformed(&m, m.get(did).unwrap(), &Xform::Move(DVec3::X));
+        assert!(points(across.unwrap())[0].distance(p(1.0, 0.5)) < 1e-9);
+        // mirrored about its middle, end for end
+        let mirror = Xform::Stretch {
+            center: c,
+            factor: DVec3::new(1.0, -1.0, 1.0),
+        };
+        let pts = points(transformed(&m, m.get(did).unwrap(), &mirror).unwrap());
+        assert!(pts[0].distance(p(2.0, 0.5)) < 1e-9);
+        // and a copy is a detail too
+        assert_eq!(duplicate(&m, did).len(), 1);
     }
 }
