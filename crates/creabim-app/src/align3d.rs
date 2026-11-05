@@ -797,7 +797,7 @@ mod tests {
     /// The face of `id` a ray from `o` along `d` hits, as the 3D window
     /// picks it.
     fn face(doc: &Document, id: ElementId, o: DVec3, d: DVec3) -> FacePick {
-        let scene = creabim_geom::build_scene(doc.model());
+        let scene = (*creabim_geom::shared_scene(doc.model())).clone();
         face_pick(doc.model(), &scene, o, d, Some(id)).expect("a face there")
     }
 
@@ -902,7 +902,8 @@ mod tests {
 
     /// The box `id`'s 3D shape fills.
     fn bounds(doc: &Document, id: ElementId) -> (DVec3, DVec3) {
-        creabim_geom::build_scene(doc.model())
+        (*creabim_geom::shared_scene(doc.model()))
+            .clone()
             .iter()
             .filter(|s| s.id == id)
             .filter_map(|s| s.mesh.bounds())
@@ -1215,7 +1216,7 @@ mod tests {
         // looking straight down, 100 pixels a metre
         let project = |p: DVec3| Some(Pos2::new(p.x as f32 * 100.0, p.y as f32 * 100.0));
         let under_at = |doc: &Document, id: ElementId, x: f64, y: f64| {
-            let scene = creabim_geom::build_scene(doc.model());
+            let scene = (*creabim_geom::shared_scene(doc.model())).clone();
             let f = face(doc, id, DVec3::new(x, y, 50.0), -DVec3::Z);
             let pointer = Pos2::new(x as f32 * 100.0, y as f32 * 100.0);
             let (centres, centre) = centres_under(doc.model(), &scene, Some(&f), pointer, &project);
@@ -1268,7 +1269,7 @@ mod tests {
         let ElementKind::Wall(host) = doc.model().get(o.host).unwrap().kind.clone() else {
             panic!("hosted by a wall")
         };
-        let scene = creabim_geom::build_scene(doc.model());
+        let scene = (*creabim_geom::shared_scene(doc.model())).clone();
         let across = crate::centres::of(doc.model(), &scene, id)
             .into_iter()
             .find(|c| c.normal.z.abs() < 0.1)

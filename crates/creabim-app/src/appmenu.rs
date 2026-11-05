@@ -8,7 +8,7 @@ use creabim_core::{LengthUnit, Units};
 
 /// Where a manual update check looks: the project's releases page. Nothing
 /// is fetched in the background; the page opens in the browser when asked.
-pub(crate) const RELEASES: &str = "https://github.com/kingbenoitbrice-fun/CreaBIM/releases";
+pub(crate) const RELEASES: &str = "https://github.com/chopinregis/CreaBIM/releases";
 
 /// One way to start a project in the New project window.
 pub(crate) struct Start {

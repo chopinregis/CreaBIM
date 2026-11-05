@@ -1319,6 +1319,62 @@ fn tri_normal(pts: &[DVec3], t: &[u32; 3]) -> DVec3 {
     (b - a).cross(c - a).normalize_or_zero()
 }
 
+thread_local! {
+    /// Feature edges by mesh content, kept while the meshes are in use.
+    static EDGES: std::cell::RefCell<EdgeMemo> = Default::default();
+}
+
+/// A mesh's feature edges, shared.
+pub type Edges = std::rc::Rc<Vec<(DVec3, DVec3)>>;
+
+#[derive(Default)]
+struct EdgeMemo {
+    /// Edges by mesh fingerprint, with the round each was last used in.
+    edges: HashMap<u64, (Edges, u64)>,
+    round: u64,
+}
+
+fn fingerprint(mesh: &creabim_geom::mesh::TriMesh) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    mesh.indices.hash(&mut h);
+    for p in &mesh.positions {
+        for c in p {
+            c.to_bits().hash(&mut h);
+        }
+    }
+    h.finish()
+}
+
+/// Start a round of [`feature_edges_cached`] calls (one 3D rebuild):
+/// edges not asked for in the round before are dropped.
+pub fn begin_edge_round() {
+    EDGES.with(|m| {
+        let mut m = m.borrow_mut();
+        let keep = m.round;
+        m.edges.retain(|_, (_, used)| *used >= keep);
+        m.round += 1;
+    });
+}
+
+/// [`feature_edges`], worked out once per mesh while the mesh stays the
+/// same: a selection change or an edit to one element doesn't find the
+/// edges of every other element again (32 ms for the starter house).
+pub fn feature_edges_cached(mesh: &creabim_geom::mesh::TriMesh) -> Edges {
+    let key = fingerprint(mesh);
+    EDGES.with(|m| {
+        let mut m = m.borrow_mut();
+        let round = m.round;
+        if let Some((e, used)) = m.edges.get_mut(&key) {
+            *used = round;
+            return e.clone();
+        }
+        let e = std::rc::Rc::new(feature_edges(mesh));
+        m.edges.insert(key, (e.clone(), round));
+        e
+    })
+}
+
 /// The creases and open edges of a triangle mesh: where neighbouring faces
 /// meet at more than about 20°, or where a face has no neighbour.
 pub fn feature_edges(mesh: &creabim_geom::mesh::TriMesh) -> Vec<(DVec3, DVec3)> {

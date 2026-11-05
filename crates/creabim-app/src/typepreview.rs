@@ -259,7 +259,7 @@ impl CreaBimApp {
             return;
         }
         // frame them in 3D, and in the plan shown if they are on it
-        let scene = build_scene(self.doc.model());
+        let scene = (*creabim_geom::shared_scene(self.doc.model())).clone();
         let bounds = scene
             .iter()
             .filter(|s| ids.contains(&s.id))

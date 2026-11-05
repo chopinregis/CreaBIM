@@ -17,7 +17,7 @@ use creabim_core::{
     Sheet, Transaction, Underlay, View, ViewKind, ViewStyle, Workplane,
 };
 use creabim_geom::sheet::{self as sheets, PlacedView, SheetInfo};
-use creabim_geom::{build_scene, pick, plan::Pen, section::Drawing, PlanItem, SceneItem};
+use creabim_geom::{pick, plan::Pen, section::Drawing, PlanItem, SceneItem};
 use eframe::egui::{self, Color32, Rect, Sense, Vec2};
 use eframe::egui_wgpu;
 use glam::{DVec2, DVec3, Vec2 as GVec2, Vec3 as GVec3};
@@ -731,7 +731,7 @@ impl CreaBimApp {
 
     /// Fit the 3D view round the whole model.
     fn frame_3d(&mut self) {
-        let scene = build_scene(self.doc.model());
+        let scene = (*creabim_geom::shared_scene(self.doc.model())).clone();
         let bounds = scene
             .iter()
             .filter_map(|s| s.mesh.bounds())
@@ -1359,11 +1359,12 @@ impl CreaBimApp {
             return;
         }
         self.geometry_key = Some(key);
-        self.scene = build_scene(self.doc.model());
+        self.scene = (*creabim_geom::shared_scene(self.doc.model())).clone();
         let left_out = self.hidden_in_3d();
         self.scene
             .retain(|i| !self.hidden.contains(&i.id) && !left_out.contains(&i.id));
         let cut_edges = self.crop_scene_3d();
+        snaps::begin_edge_round();
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
@@ -1403,14 +1404,14 @@ impl CreaBimApp {
                 } else {
                     &mut ghost_lines
                 };
-                for (a, b) in snaps::feature_edges(&item.mesh) {
+                for &(a, b) in snaps::feature_edges_cached(&item.mesh).iter() {
                     out.push((a, b, c));
                 }
                 continue;
             }
             if mode.edges() && !xrayed {
                 let c = if selected { highlight } else { edge_colour };
-                for (a, b) in snaps::feature_edges(&item.mesh) {
+                for &(a, b) in snaps::feature_edges_cached(&item.mesh).iter() {
                     ghost_lines.push((a, b, c));
                 }
             }
@@ -1470,7 +1471,7 @@ impl CreaBimApp {
                 item.surface
             };
             if xrayed {
-                for (a, b) in snaps::feature_edges(&item.mesh) {
+                for &(a, b) in snaps::feature_edges_cached(&item.mesh).iter() {
                     ghost_lines.push((a, b, XRAY_EDGE));
                 }
             }

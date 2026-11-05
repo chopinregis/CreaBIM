@@ -27,7 +27,7 @@ roof, a plan, a section, a 3D view, a door schedule and one sheet.
 
 ```json
 {
-  "$schema": "https://github.com/kingbenoitbrice-fun/CreaBIM/blob/main/docs/creabim-model.schema.json",
+  "$schema": "https://github.com/chopinregis/CreaBIM/blob/main/docs/creabim-model.schema.json",
   "version": 1,
   "units": "m",
   "materials": [

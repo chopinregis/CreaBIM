@@ -105,14 +105,31 @@ pub fn section_view_with(
     scale: f64,
     reveal: bool,
 ) -> Drawing {
-    let frame = SectionFrame::new(start, end, depth);
     let scene = crate::scene::drawn_scene(model);
+    section_view_in(model, &scene, start, end, depth, cut, style, scale, reveal)
+}
+
+/// [`section_view_with`] from a scene already built (the shared one,
+/// less what the view hides).
+#[allow(clippy::too_many_arguments)]
+pub fn section_view_in(
+    model: &Model,
+    scene: &[SceneItem],
+    start: DVec2,
+    end: DVec2,
+    depth: f64,
+    cut: bool,
+    style: ViewStyle,
+    scale: f64,
+    reveal: bool,
+) -> Drawing {
+    let frame = SectionFrame::new(start, end, depth);
     let mut items = Vec::new();
 
     let project = |p: DVec3| frame.project(p);
     let revealed = reveal.then(|| revealable(model));
     let (lines, image) = hidden_lines(
-        &scene,
+        scene,
         &project,
         frame.depth,
         Some((0.0, frame.length)),
@@ -131,7 +148,7 @@ pub fn section_view_with(
     // Cut fill, drawn over the projection; layered elements layer by layer.
     let mut layers = vec![];
     if cut {
-        for s in &scene {
+        for s in scene {
             for loop_ in cut_loops(s, &frame) {
                 let pts: Vec<DVec2> = loop_.iter().map(|p| DVec2::new(p.x, p.y)).collect();
                 let (x0, x1) = (-1e-6, frame.length + 1e-6);
@@ -410,8 +427,21 @@ pub fn axonometric_view_with(
     reveal: bool,
     crop: &[creabim_core::CropBox],
 ) -> Drawing {
+    let scene = crate::scene::drawn_scene(model);
+    axonometric_view_in(model, scene, azimuth, altitude, style, reveal, crop)
+}
+
+/// [`axonometric_view_with`] from a scene already built.
+pub fn axonometric_view_in(
+    model: &Model,
+    mut scene: Vec<SceneItem>,
+    azimuth: f64,
+    altitude: f64,
+    style: ViewStyle,
+    reveal: bool,
+    crop: &[creabim_core::CropBox],
+) -> Drawing {
     let frame = AxoFrame::new(model, azimuth, altitude);
-    let mut scene = crate::scene::drawn_scene(model);
     crate::cropbox::crop_scene(model, &mut scene, crop);
     let project = |p: DVec3| frame.project(p);
     let revealed = reveal.then(|| revealable(model));
@@ -626,6 +656,16 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     let mut hidden = v.hidden.hidden_set(model);
     // a section never hides its own drawing, even with section marks off
     hidden.remove(&view);
+    // sections and 3D drawings start from the scene shared by every view
+    // of this revision, less what the view hides
+    let full = model;
+    let scene = || -> Vec<SceneItem> {
+        crate::scene::shared_scene(full)
+            .iter()
+            .filter(|i| !i.ghost && !i.is_lining() && !hidden.contains(&i.id))
+            .cloned()
+            .collect()
+    };
     let filtered;
     let model = if hidden.is_empty() {
         model
@@ -689,8 +729,17 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             depth,
             cut,
         } => {
-            let mut d =
-                section_view_with(model, *start, *end, *depth, *cut, style, v.scale, reveal);
+            let mut d = section_view_in(
+                model,
+                &scene(),
+                *start,
+                *end,
+                *depth,
+                *cut,
+                style,
+                v.scale,
+                reveal,
+            );
             // rooms washed behind the cut, from floor to ceiling
             if v.room_colours && *cut {
                 let mut rooms = crate::rooms::section_items(model, *start, *end);
@@ -701,7 +750,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         }
         creabim_core::ViewKind::Axonometric { azimuth, altitude } => {
             let crop = crate::cropbox::active(model, Some(view));
-            axonometric_view_with(model, *azimuth, *altitude, style, reveal, &crop)
+            axonometric_view_in(model, scene(), *azimuth, *altitude, style, reveal, &crop)
         }
         creabim_core::ViewKind::Schedule { category, by_type } => {
             let table = crate::schedule::schedule_by(model, *category, *by_type);
