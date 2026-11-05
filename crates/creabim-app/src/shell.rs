@@ -533,6 +533,7 @@ impl CreaBimApp {
                 }
                 items
             }
+            "step" => self.step_items(),
             "snaps" => {
                 let mut s = self.plan.snap;
                 let mut items = vec![
@@ -569,6 +570,11 @@ impl CreaBimApp {
                             .enabled(self.plan.snap.on),
                     );
                 }
+                items.push(Item::Separator);
+                items.push(Item::sub(
+                    format!("Step: {}", self.plan.snap.step_label()),
+                    self.step_items(),
+                ));
                 items
             }
             key => self
@@ -1052,6 +1058,68 @@ impl CreaBimApp {
         ]
     }
 
+    /// The Step choices: Off, three in the project's units, and Custom.
+    pub(super) fn step_items(&self) -> Vec<Item> {
+        let s = self.plan.snap;
+        let steps: &[u32] = if crate::units::get().is_imperial() {
+            &crate::snaps::STEPS_IMPERIAL
+        } else {
+            &crate::snaps::STEPS_METRIC
+        };
+        let mut items = vec![Item::new("step.off", "Off").checked(!s.increment)];
+        for um in steps {
+            items.push(
+                Item::new(format!("step:{um}"), crate::units::len(*um as f64 / 1e6))
+                    .checked(s.increment && s.step_um == *um),
+            );
+        }
+        let custom = s.increment && !steps.contains(&s.step_um);
+        items.push(
+            Item::new("step.custom", "Custom…")
+                .checked(custom)
+                .hint("Type any step: 25 mm, 1/4\", 2 cm"),
+        );
+        items
+    }
+
+    /// Open the Foundation plan, or make one first: a level 600 mm below the
+    /// lowest, its plan showing the level above as underlay (A3-1).
+    pub(super) fn show_foundation_plan(&mut self) {
+        self.plan.footing_placed = false;
+        if let Some(v) = crate::memberstool::foundation_plan(self.doc.model()) {
+            self.active_view = Some(v);
+            self.status = "Foundation plan: the footings, under the floor above.".into();
+            return;
+        }
+        let lowest = creabim_core::levels::sorted(self.doc.model())
+            .first()
+            .map_or(0.0, |(_, _, l)| l.elevation);
+        let level = Element::new(
+            "Foundation",
+            ElementKind::Level(creabim_core::Level {
+                elevation: lowest - 0.6,
+                height: 0.6,
+            }),
+        );
+        let mut view = creabim_core::View::plan(level.id);
+        view.underlay = creabim_core::Underlay::Above;
+        let view = Element::new("Foundation plan", ElementKind::View(view));
+        let plan = view.id;
+        let tx = creabim_core::Transaction::new("Make a Foundation plan")
+            .insert(level)
+            .insert(view);
+        match self.doc.commit(tx) {
+            Ok(()) => {
+                self.active_view = Some(plan);
+                self.status = format!(
+                    "Made a Foundation plan at {}, with the floor above as underlay.",
+                    crate::units::elevation(lowest - 0.6)
+                );
+            }
+            Err(e) => self.status = format!("Couldn't make a Foundation plan: {e}"),
+        }
+    }
+
     /// Run an action picked in a menu, a toolbar or the project browser.
     pub(super) fn run_action(&mut self, ctx: &egui::Context, id: &str) {
         let (head, arg) = id.split_once(':').unwrap_or((id, ""));
@@ -1183,6 +1251,24 @@ impl CreaBimApp {
                 }
             }
             "snap.on" => self.plan.snap.on = !self.plan.snap.on,
+            "step.off" => {
+                self.plan.snap.increment = false;
+                self.status = "Step off: free points and drags go where the pointer is.".into();
+            }
+            "step.custom" => {
+                self.plan.step_prompt =
+                    Some(crate::units::len(self.plan.snap.step_um as f64 / 1e6));
+            }
+            "step" => {
+                if let Some(um) = index.and_then(|i| u32::try_from(i).ok()) {
+                    self.plan.snap.increment = true;
+                    self.plan.snap.step_um = um;
+                    self.status = format!(
+                        "Step {}: points and drags round to it. Alt ignores it for a move.",
+                        self.plan.snap.step_label()
+                    );
+                }
+            }
             "snap.all" | "snap.none" => {
                 let on = head == "snap.all";
                 self.plan
@@ -1334,6 +1420,7 @@ impl CreaBimApp {
             "export.glb" | "export.fcstd" | "export.ifcx" | "export.ifc4" | "export.pdf"
             | "export.svg" => self.export(head),
             "export.folder" => self.open_export_folder(),
+            "footing.foundation" => self.show_foundation_plan(),
             "placement" => {
                 self.placement = match index {
                     Some(1) => PlanPlacement::Window,
@@ -2424,6 +2511,8 @@ impl CreaBimApp {
                 {"kind": "toggle", "id": "snap.on", "label": "Snap", "on": self.plan.snap.on, "icon": "magnet",
                  "hint": "Object snaps on or off (F3). Hold Alt while picking to suspend them."},
                 {"kind": "menu", "key": "snaps", "label": "", "value": snaps, "hint": "Which snaps are on"},
+                {"kind": "menu", "key": "step", "label": "Step", "value": self.plan.snap.step_label(),
+                 "hint": "What points and drags round to. Alt while dragging ignores it for one move."},
                 {"kind": "sep"},
                 {"kind": "menu", "key": "workplane", "label": "Workplane", "value": workplane, "icon": "square-dashed",
                  "hint": "Where sketches and guides drawn in 3D go"},
@@ -2440,6 +2529,18 @@ impl CreaBimApp {
             if let Some(c) = state["controls"].as_array_mut() {
                 c.insert(0, json!({"kind": "menu", "key": "keeponly", "label": "Keep only", "value": "…", "icon": "square-dashed-mouse-pointer",
                     "hint": "Keep only one kind of what the box took: the walls, the doors…"}));
+            }
+        }
+        // right after a footing went on a host, the plan that shows it
+        if self.plan.footing_placed && self.status.contains(" footing placed under ") {
+            let label = if crate::memberstool::foundation_plan(self.doc.model()).is_some() {
+                "Show in Foundation plan"
+            } else {
+                "Make a Foundation plan"
+            };
+            if let Some(c) = state["controls"].as_array_mut() {
+                c.insert(0, json!({"kind": "button", "id": "footing.foundation", "label": label, "icon": "footing",
+                    "hint": "Open the plan where footings are drawn, with the floor above as its underlay"}));
             }
         }
         // right after an export, the way to the file it wrote
@@ -3184,6 +3285,7 @@ fn new_path(name: &str) -> String {
 /// egui's spacing and type, roomier than its defaults.
 pub(super) fn style(ctx: &egui::Context, theme: Theme) {
     let p = theme.palette();
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("theme.palette"), p));
     let mode = if p.dark {
         egui::Theme::Dark
     } else {

@@ -349,7 +349,8 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
                     (mid + n * w.thickness / 2.0).extend(z0 + w.height / 2.0),
                     n.extend(0.0),
                 ),
-                // off the other face, clear of the thickness grip
+                // no grip of its own on screen: a drag of the wall's body
+                // slides it (see interact); kept here for that drag
                 line(
                     HandleKind::WallSlide,
                     (mid - n * (w.thickness / 2.0 + 0.3)).extend(z0 + w.height / 2.0),
@@ -1195,8 +1196,113 @@ fn note(painter: &Painter, at: Pos2, text: &str, color: Color32) {
     painter.galley(pos, galley, color);
 }
 
-/// How long a let-go grip's value shows, seconds.
-const FLASH: f64 = 1.5;
+/// Under this many pixels across on screen, a wall shows its thickness
+/// grip only when the pointer comes near its face.
+const THIN_PX: f32 = 14.0;
+
+/// How thick wall `id` is on screen, in pixels.
+fn wall_px(model: &Model, id: ElementId, input: &PaneInput) -> Option<f32> {
+    let ElementKind::Wall(w) = &model.get(id)?.kind else {
+        return None;
+    };
+    let z = elevation(model, Some(w.level)) + w.base_offset;
+    let mid = (w.start + w.end) / 2.0;
+    let n = w.direction().perp() * w.thickness / 2.0;
+    let a = (input.project)((mid + n).extend(z))?;
+    let b = (input.project)((mid - n).extend(z))?;
+    Some(a.distance(b))
+}
+
+/// How long a let-go grip's value shows, seconds: about one, the last
+/// third fading.
+const FLASH: f64 = 1.3;
+
+/// The values a grip can change on an element, by name, in metres.
+pub fn values(e: &Element) -> Vec<(&'static str, f64)> {
+    match &e.kind {
+        ElementKind::Wall(w) => vec![
+            ("Length", w.length()),
+            ("Height", w.height),
+            ("Thickness", w.thickness),
+        ],
+        ElementKind::Opening(o) => vec![
+            ("Width", o.width),
+            ("Height", o.height),
+            ("Sill", o.sill),
+            ("Offset", o.offset),
+        ],
+        ElementKind::View(v) => match v.kind {
+            ViewKind::Section {
+                start, end, depth, ..
+            } => vec![("Length", start.distance(end)), ("Depth", depth)],
+            _ => vec![],
+        },
+        ElementKind::Slab(s) => vec![("Thickness", s.thickness), ("Top", s.top_offset)],
+        ElementKind::Column(c) => c.height.map(|h| vec![("Height", h)]).unwrap_or_default(),
+        ElementKind::Beam(b) => vec![("Length", b.start.distance(b.end))],
+        _ => vec![],
+    }
+}
+
+/// A length's number alone, in the project's units: `7200`, `3'-6"`.
+fn bare(metres: f64) -> String {
+    let s = crate::units::len(metres);
+    let unit = format!(" {}", crate::units::symbol());
+    s.strip_suffix(&unit).map(str::to_string).unwrap_or(s)
+}
+
+/// The one value a drag is changing, as the pill shows it: its name, then
+/// "old → ", then the new value and the change, which the pill draws in
+/// the accent. `None` when nothing named has changed.
+pub fn changing(old: &Element, new: &Element) -> Option<(String, String)> {
+    let (a, b) = (values(old), values(new));
+    let (name, was, now) = a
+        .iter()
+        .zip(&b)
+        .filter(|((n, _), (m, _))| n == m)
+        .map(|((n, x), (_, y))| (*n, *x, *y))
+        .filter(|(_, x, y)| (y - x).abs() > 1e-6)
+        .max_by(|p, q| (p.2 - p.1).abs().total_cmp(&(q.2 - q.1).abs()))?;
+    let d = now - was;
+    let sign = if d >= 0.0 { "+" } else { "−" };
+    Some((
+        format!("{name} {} → ", bare(was)),
+        format!("{} {sign}{}", bare(now), bare(d.abs())),
+    ))
+}
+
+/// How far an element moved between `old` and `new`, by a point of its
+/// own (a wall's start, a column's base, ...), so the pill says the
+/// rounded distance the model took, not the pointer's.
+fn moved_by(old: Option<&Element>, new: Option<&Element>) -> Option<f64> {
+    let point = |e: &Element| match &e.kind {
+        ElementKind::Wall(w) => Some(w.start),
+        ElementKind::Column(c) => Some(c.position),
+        ElementKind::Beam(b) => Some(b.start),
+        _ => None,
+    };
+    Some(point(old?)?.distance(point(new?)?))
+}
+
+/// Are live dimensions (the pill while dragging) on? D switches them.
+pub fn live_on(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(egui::Id::new("grip.live")))
+        .unwrap_or(true)
+}
+
+/// D, outside a text field: live dimensions off or on. True when it
+/// switched them.
+pub fn toggle_live(ctx: &egui::Context) -> bool {
+    if ctx.egui_wants_keyboard_input() {
+        return false;
+    }
+    let pressed = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::D));
+    if pressed {
+        let on = !live_on(ctx);
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("grip.live"), on));
+    }
+    pressed
+}
 
 /// The four states of a grip, the same on every element.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1213,10 +1319,48 @@ enum GripState {
 /// The colours grips and their pills take from the theme.
 struct GripLook {
     accent: Color32,
-    /// A pill's ground and its text: dark ink in light themes, light in
-    /// dark ones.
+    /// A picked corner's outer ring.
     ink: Color32,
     paper: Color32,
+    pill: PillLook,
+}
+
+/// A value pill's colours: a soft raised surface with a line round it,
+/// the theme's text, and the changing number in the theme's accent, made
+/// legible (4.5:1) on that surface.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PillLook {
+    pub ground: Color32,
+    pub line: Color32,
+    pub text: Color32,
+    pub number: Color32,
+}
+
+impl PillLook {
+    pub fn of(p: &crate::theme::Palette) -> Self {
+        Self {
+            ground: p.raise,
+            line: p.edge,
+            text: crate::theme::legible(
+                p.text,
+                p.raise,
+                if p.dark {
+                    Color32::WHITE
+                } else {
+                    Color32::BLACK
+                },
+            ),
+            number: crate::theme::legible(
+                p.accent,
+                p.raise,
+                if p.dark {
+                    Color32::WHITE
+                } else {
+                    Color32::BLACK
+                },
+            ),
+        }
+    }
 }
 
 impl GripLook {
@@ -1226,6 +1370,7 @@ impl GripLook {
             accent: ACCENT,
             ink: v.strong_text_color(),
             paper: v.panel_fill,
+            pill: PillLook::of(&crate::theme::Palette::of(ctx)),
         }
     }
 }
@@ -1310,10 +1455,54 @@ fn draw_plus(painter: &Painter, c: Pos2, state: GripState, look: &GripLook) {
     painter.line_segment([c - Vec2::Y * (r - 2.5), c + Vec2::Y * (r - 2.5)], s);
 }
 
-/// A small pill centred under `at`, in the theme's ink.
+/// A pill with its top-left corner at `at`, in a pill's look: a hint by
+/// the pointer.
+pub fn plain_pill(painter: &Painter, at: Pos2, text: &str, p: &PillLook) {
+    let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(11.5), p.text);
+    let size = galley.size() + Vec2::new(14.0, 6.0);
+    let mut rect = Rect::from_min_size(at, size);
+    let clip = painter.clip_rect().shrink(4.0);
+    rect = rect.translate(Vec2::new(
+        (clip.right() - rect.right()).min(0.0),
+        (clip.bottom() - rect.bottom()).min(0.0),
+    ));
+    painter.rect(
+        rect,
+        6.0,
+        p.ground,
+        Stroke::new(1.0, p.line),
+        egui::StrokeKind::Inside,
+    );
+    painter.galley(rect.min + Vec2::new(7.0, 3.0), galley, p.text);
+}
+
+/// A small pill centred under `at`: `text` in the theme's text colour,
+/// then `number` in the accent.
 fn pill(painter: &Painter, at: Pos2, text: &str, look: &GripLook, alpha: f32) {
+    pill_value(painter, at, text, "", look, alpha);
+}
+
+/// A value pill: "Length 6600 → " then "7200 +600" in the accent, on the
+/// theme's raised surface with a 1 px line, 11.5 px, 6 px corners.
+fn pill_value(painter: &Painter, at: Pos2, text: &str, number: &str, look: &GripLook, alpha: f32) {
+    let p = look.pill;
     let font = egui::FontId::proportional(11.5);
-    let galley = painter.layout_no_wrap(text.to_owned(), font, look.paper.gamma_multiply(alpha));
+    // the UI font has no arrow: "old → new" draws its arrow as a stroke
+    let (text, arrow) = match text.strip_suffix(" → ") {
+        Some(t) => (t, true),
+        None => (text, false),
+    };
+    let gap = if arrow { 18.0 } else { 0.0 };
+    let mut job = egui::text::LayoutJob::default();
+    let fmt = |c: Color32| egui::TextFormat {
+        font_id: font.clone(),
+        color: c.gamma_multiply(alpha),
+        ..Default::default()
+    };
+    job.append(text, 0.0, fmt(p.text));
+    let first = painter.layout_job(job.clone()).size().x;
+    job.append(number, gap, fmt(p.number));
+    let galley = painter.layout_job(job);
     let size = galley.size() + Vec2::new(14.0, 6.0);
     let mut rect = Rect::from_center_size(at + Vec2::new(0.0, size.y / 2.0), size);
     let clip = painter.clip_rect().shrink(4.0);
@@ -1321,8 +1510,23 @@ fn pill(painter: &Painter, at: Pos2, text: &str, look: &GripLook, alpha: f32) {
         (clip.left() - rect.left()).max(0.0) + (clip.right() - rect.right()).min(0.0),
         (clip.top() - rect.top()).max(0.0) + (clip.bottom() - rect.bottom()).min(0.0),
     ));
-    painter.rect_filled(rect, size.y / 2.0, look.ink.gamma_multiply(alpha * 0.94));
-    painter.galley(rect.min + Vec2::new(7.0, 3.0), galley, look.paper);
+    painter.rect(
+        rect,
+        6.0,
+        p.ground.gamma_multiply(alpha),
+        Stroke::new(1.0, p.line.gamma_multiply(alpha)),
+        egui::StrokeKind::Inside,
+    );
+    let y = rect.center().y;
+    painter.galley(rect.min + Vec2::new(7.0, 3.0), galley, p.text);
+    if arrow {
+        let x0 = rect.min.x + 7.0 + first + 4.0;
+        let (a, b) = (Pos2::new(x0, y), Pos2::new(x0 + gap - 8.0, y));
+        let s = Stroke::new(1.2, p.text.gamma_multiply(alpha));
+        painter.line_segment([a, b], s);
+        painter.line_segment([b, b + Vec2::new(-3.0, -3.0)], s);
+        painter.line_segment([b, b + Vec2::new(-3.0, 3.0)], s);
+    }
 }
 
 /// The two-way pointer for a grip that moves along screen direction `d`.
@@ -1697,6 +1901,13 @@ pub fn interact(
         return false;
     };
     grips.reset(Some(id));
+    if toggle_live(painter.ctx()) {
+        *status = Some(if live_on(painter.ctx()) {
+            "Live dimensions on: a drag shows the value it changes. D hides them.".into()
+        } else {
+            "Live dimensions off. D shows them again.".into()
+        });
+    }
     if !edit {
         grips.clear();
     }
@@ -1706,6 +1917,8 @@ pub fn interact(
         .into_iter()
         .map(|h| in_section(h, input.look))
         .filter(|h| h.constraint.usable(input.look))
+        // grips sit on the element: a wall slides by its body
+        .filter(|h| h.kind != HandleKind::WallSlide)
         .collect();
     let screen = |h: &Handle| screen_at(h, input);
     let nearest = |p: Pos2| {
@@ -1780,6 +1993,15 @@ pub fn interact(
                 .map(|v| v.rot90()),
             Constraint::Plane { .. } => None,
         });
+        // a wall too thin on screen for its face grip shows it only when
+        // the pointer comes near the face
+        if h.kind == HandleKind::WallFace
+            && state == GripState::Rest
+            && wall_px(doc.model(), id, input).is_some_and(|px| px < THIN_PX)
+            && pointer.is_none_or(|p| p.distance(c) > 14.0)
+        {
+            continue;
+        }
         let filled = edit && matches!(h.kind, HandleKind::Vertex { .. });
         draw_grip(painter, c, bar, state, filled, picked, &look);
         if state == GripState::Hover {
@@ -1799,15 +2021,26 @@ pub fn interact(
         }
     }
     // a let-go grip's new value, for a second
-    let flash_id = egui::Id::new("grip.flash");
-    if let Some((text, at, t0)) = ctx.data(|d| d.get_temp::<(String, Pos2, f64)>(flash_id)) {
+    // only in the pane it was dragged in
+    let flash_id = egui::Id::new("grip.flash").with(response.id);
+    if let Some((text, number, at, t0)) =
+        ctx.data(|d| d.get_temp::<(String, String, Pos2, f64)>(flash_id))
+    {
         let age = ctx.input(|i| i.time) - t0;
         if age < FLASH {
-            let fade = (1.0 - (age / FLASH).powi(3)) as f32;
-            pill(painter, at + Vec2::new(0.0, -34.0), &text, &look, fade);
+            // steady for a second, then gone in the last third
+            let fade = ((FLASH - age) / (FLASH * 0.3)).clamp(0.0, 1.0) as f32;
+            pill_value(
+                painter,
+                at + Vec2::new(0.0, -34.0),
+                &text,
+                &number,
+                &look,
+                fade,
+            );
             ctx.request_repaint();
         } else {
-            ctx.data_mut(|d| d.remove::<(String, Pos2, f64)>(flash_id));
+            ctx.data_mut(|d| d.remove::<(String, String, Pos2, f64)>(flash_id));
         }
     }
     if let (Some(k), Some(p)) = (hot, pointer) {
@@ -2056,6 +2289,17 @@ pub fn interact(
                 );
                 (input.grab_body)(press, id).filter(|_| movable).map(|p| {
                     let p = (input.grab_snap)(press, id).unwrap_or(p);
+                    // a wall's body slides it square to itself, its joined
+                    // walls stretching; Shift frees the direction
+                    if let (Some(ElementKind::Wall(w)), false) =
+                        (element.as_ref().map(|e| &e.kind), shift)
+                    {
+                        let c = Constraint::Line {
+                            point: p,
+                            dir: w.direction().perp().extend(0.0),
+                        };
+                        return (Some(HandleKind::WallSlide), c, p);
+                    }
                     let c = match element.as_ref().map(|e| &e.kind) {
                         // a grid line slides square to itself
                         Some(ElementKind::Grid(g)) => Constraint::Line {
@@ -2146,16 +2390,35 @@ pub fn interact(
         let kind = d.kind;
         let applied = d.edit.applied();
         if applied {
-            *status = doc.undo_label().map(|l| format!("{l}. Ctrl+Z to undo."));
-            // the new value, by the grip for a second
-            let value = doc
-                .model()
-                .get(id)
+            // the full summary in the status bar; by the grip, for a
+            // second, only the value that changed
+            let now = doc.model().get(id).cloned();
+            let summary = now
+                .as_ref()
                 .map(|e| readout(std::slice::from_ref(e)))
                 .filter(|v| !v.is_empty());
-            if let (Some(v), Some(at)) = (value, (input.project)(d.last)) {
+            *status = doc.undo_label().map(|l| match &summary {
+                Some(s) => format!("{l}: {s}. Ctrl+Z to undo."),
+                None => format!("{l}. Ctrl+Z to undo."),
+            });
+            let change = match (d.kind, d.edit.originals().first(), &now) {
+                (None | Some(HandleKind::WallSlide), old, new) => Some((
+                    "Moved ".to_string(),
+                    bare(moved_by(old, new.as_ref()).unwrap_or((d.last - d.grab).length())),
+                )),
+                (Some(_), Some(old), Some(new)) => changing(old, new),
+                _ => None,
+            };
+            if let (Some((text, number)), Some(at), true) =
+                (change, (input.project)(d.last), live_on(&ctx))
+            {
                 let t = ctx.input(|i| i.time);
-                ctx.data_mut(|m| m.insert_temp(egui::Id::new("grip.flash"), (v, at, t)));
+                ctx.data_mut(|m| {
+                    m.insert_temp(
+                        egui::Id::new("grip.flash").with(response.id),
+                        (text, number, at, t),
+                    )
+                });
             }
         }
         let press = d.press;
@@ -2287,11 +2550,24 @@ fn follow(
 ) {
     let model = doc.model().clone();
     let result = match d.kind {
-        Some(k) => apply(&model, d.edit.originals(), &d.joined, k, d.grab, now, 0.05),
+        Some(k) => apply(
+            &model,
+            d.edit.originals(),
+            &d.joined,
+            k,
+            d.grab,
+            now,
+            crate::snaps::current_step(),
+        ),
         None => {
             let delta = now - d.grab;
             let delta = if grid {
-                (delta / 0.05).round() * 0.05
+                let s = crate::snaps::current_step();
+                if s > 0.0 {
+                    (delta / s).round() * s
+                } else {
+                    delta
+                }
             } else {
                 delta
             };
@@ -2339,6 +2615,29 @@ fn follow(
             if let (true, Some(k), Some(p), Some(e)) = (outline, d.kind, pointer, changed.first()) {
                 note(painter, p, &live_lengths(&model, e, k, d.grab, now), ACCENT);
             }
+            // the live pill: only the value that's changing, by the grip
+            let ctx = painter.ctx();
+            if live_on(ctx) && !outline {
+                let change = match (d.kind, d.edit.originals().first(), changed.first()) {
+                    (None | Some(HandleKind::WallSlide), old, new) => Some((
+                        "Moved ".to_string(),
+                        bare(moved_by(old, new).unwrap_or((now - d.grab).length())),
+                    )),
+                    (Some(_), Some(old), Some(new)) => changing(old, new),
+                    _ => None,
+                };
+                if let (Some((text, number)), Some(at)) = (change, (input.project)(now)) {
+                    let look = GripLook::of(ctx);
+                    pill_value(
+                        painter,
+                        at + Vec2::new(0.0, -34.0),
+                        &text,
+                        &number,
+                        &look,
+                        1.0,
+                    );
+                }
+            }
             *status = Some(said);
             if let Err(e) = d.edit.update(doc, changed) {
                 *status = Some(format!("Can't go there: {e}"));
@@ -2348,8 +2647,15 @@ fn follow(
             // the broken shape in red, never kept: the last good one stays
             if let (true, Some(k), Some(orig)) = (outline, d.kind, d.edit.originals().first()) {
                 let mut broken = orig.clone();
-                if crate::editmode::reshape_unchecked(&model, &mut broken, k, d.grab, now, 0.05)
-                    .is_ok()
+                if crate::editmode::reshape_unchecked(
+                    &model,
+                    &mut broken,
+                    k,
+                    d.grab,
+                    now,
+                    crate::snaps::current_step(),
+                )
+                .is_ok()
                 {
                     draw_rings(
                         &model,
@@ -2469,6 +2775,12 @@ fn typed_length(
 mod tests {
     use super::*;
     use creabim_core::sample::sample_house;
+
+    /// How far a wall's location line sits off its centreline.
+    fn walls_offset(m: &Model, w: &creabim_core::Wall) -> f64 {
+        let (a, _) = walls::location_line(m, w);
+        (a - w.start).dot(w.direction().perp()).abs()
+    }
 
     fn wall_with_door(m: &Model) -> (ElementId, ElementId) {
         m.iter()
@@ -2902,6 +3214,60 @@ mod tests {
             .unwrap_or_else(|| panic!("no {kind:?}"));
         let (orig, joined) = originals(m, id, kind);
         apply(m, &orig, &joined, kind, h.at, to(&h), 0.05).unwrap()[0].clone()
+    }
+
+    #[test]
+    fn a_drags_pill_shows_only_the_value_that_changes() {
+        let m = sample_house();
+        let (id, _) = wall_with_door(&m);
+        let old = m.get(id).unwrap().clone();
+        let mut new = old.clone();
+        let ElementKind::Wall(w) = &mut new.kind else {
+            panic!()
+        };
+        let len = w.length();
+        let dir = w.direction();
+        w.end += dir * 0.6;
+        let (text, number) = changing(&old, &new).unwrap();
+        assert_eq!(text, format!("Length {} → ", bare(len)));
+        assert_eq!(number, format!("{} +600", bare(len + 0.6)));
+        // nothing named changed: no pill
+        assert!(changing(&old, &old).is_none());
+    }
+
+    #[test]
+    fn value_pills_are_legible_in_every_theme() {
+        for t in crate::theme::Theme::ALL {
+            let p = PillLook::of(&t.palette());
+            for (what, c) in [("text", p.text), ("number", p.number)] {
+                let r = crate::theme::contrast_ratio(c, p.ground);
+                assert!(r >= 4.5, "{}: the pill's {what} is {r:.2}:1", t.id());
+            }
+            assert_ne!(p.ground, p.text);
+        }
+    }
+
+    #[test]
+    fn a_wall_shows_no_floating_slide_grip() {
+        // the slide grip is kept for the body drag, but the grips drawn
+        // all sit on the wall: none off its faces
+        let m = sample_house();
+        let (id, _) = wall_with_door(&m);
+        let ElementKind::Wall(w) = &m.get(id).unwrap().kind else {
+            panic!()
+        };
+        let n = w.direction().perp();
+        for h in handles(&m, id, None) {
+            if h.kind == HandleKind::WallSlide {
+                continue;
+            }
+            let off = (h.at.truncate() - w.start).dot(n).abs();
+            assert!(
+                off <= w.thickness / 2.0 + 1e-6 + walls_offset(&m, w),
+                "{:?} sits {off} off the wall",
+                h.kind
+            );
+        }
     }
 
     #[test]

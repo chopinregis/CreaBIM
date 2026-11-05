@@ -118,8 +118,30 @@ pub struct SnapSettings {
     /// Temporary guide lines from points and edges the pointer rests on,
     /// and where they cross.
     pub references: bool,
-    /// Round free points to a 5 cm step.
+    /// Round free points, and grip drags, to the step.
     pub increment: bool,
+    /// The step, in micrometres (whole millimetres and eighth inches both
+    /// fit): 50 mm unless set in the Snap menu.
+    pub step_um: u32,
+}
+
+/// The steps the Snap menu offers, in micrometres: metric, then imperial.
+pub const STEPS_METRIC: [u32; 3] = [10_000, 50_000, 100_000];
+pub const STEPS_IMPERIAL: [u32; 4] = [3_175, 12_700, 25_400, 152_400];
+
+thread_local! {
+    static STEP: std::cell::Cell<f64> = const { std::cell::Cell::new(0.05) };
+}
+
+/// The step grip drags and free points round to this frame, metres (0
+/// when it is off or Alt is held). The app sets it once a frame.
+pub fn current_step() -> f64 {
+    STEP.with(|s| s.get())
+}
+
+/// Use this step from now on (see [`current_step`]).
+pub fn set_current_step(step: f64) {
+    STEP.with(|s| s.set(step));
 }
 
 impl Default for SnapSettings {
@@ -145,6 +167,7 @@ impl SnapSettings {
         tracking: true,
         references: true,
         increment: true,
+        step_um: 50_000,
     };
 
     /// These settings as they apply this frame: holding Alt turns them all
@@ -204,12 +227,29 @@ impl SnapSettings {
     }
 
     /// The increment free points round to, 0 for none.
-    fn step(&self, grid: f64) -> f64 {
+    fn step(&self, _grid: f64) -> f64 {
         if self.allows(SnapKind::Grid) {
-            grid
+            self.step_len()
         } else {
             0.0
         }
+    }
+
+    /// The step, metres, or 0 when it is off.
+    pub fn step_len(&self) -> f64 {
+        if self.increment {
+            self.step_um as f64 / 1e6
+        } else {
+            0.0
+        }
+    }
+
+    /// The step as the status bar says it: "50 mm", "1/2\"", "Off".
+    pub fn step_label(&self) -> String {
+        if !self.increment || self.step_um == 0 {
+            return "Off".into();
+        }
+        crate::units::len(self.step_um as f64 / 1e6)
     }
 
     /// Each switch with its label, in the order the snap bar lists them.
@@ -226,7 +266,7 @@ impl SnapSettings {
             ("Guides", &mut self.guides),
             ("X/Y axis tracking", &mut self.axis),
             ("Alignment with the shape's points", &mut self.tracking),
-            ("5 cm increment", &mut self.increment),
+            ("Round to the step", &mut self.increment),
             (
                 "Guide lines from rested points and edges",
                 &mut self.references,

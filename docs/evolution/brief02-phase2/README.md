@@ -30,10 +30,22 @@ Reference screenshots for the first part of Phase 2 of *CreaBIM brief 02: consol
 
 The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/assets/logo), with a README of their uses and rules.
 
+## Phase 2 item 2.3: the tracker and steps
+
+| Brief | What | Status | Commit |
+| --- | --- | --- | --- |
+| 2.10 (1) | Tracker | **Done for lines drawn in plans.** While a wall, beam, grid line, section, elevation, railing, footing or room separator is being drawn, a pill by the pointer shows its Length, its Angle and the step. Typing fills Length; Tab moves to Angle; Enter places the point and the chain goes on; Backspace takes a character back and Esc clears what was typed. A field left empty follows the pointer. Grip drags already took Tab or a digit for a length. *Partly:* Move, Rotate and Copy don't show Δx / Δy in the pill yet, and slab and region edges don't use it. | see PR |
+| 2.10 (2) | Steps | **Done.** The status bar has *Step* (Off, 10, 50 or 100 mm, or Custom…; in imperial projects 1/8", 1/2", 1" or 6"), and the Snap menu lists the same choices. The step in use always shows there and in the tracker. Free points and grip drags round to it, and Alt ignores it for one move. | see PR |
+| 2.14 | Live dimensions | **Partly.** Old → new and the change show while dragging (A3-3), and D hides or shows them. The distance to the nearest neighbour and the "Widened D03 by 300 mm" wording are not done yet. | see PR |
+
 ## Addendum A3: the review of main 889c32c
 
 | A3 | What | Status | Commit |
 | --- | --- | --- | --- |
+| 1 | Footing visibility | **Mostly done.** While the Footing tool is on, any plan shows its level's footings dashed, with a light tint in the accent. The hint line starts "Showing footings while the tool is on". Before the click, the pill says what a click makes ("Strip 600 × 300 under FF East", or that the wall already has one). After placing, the footing is selected, and a selected footing is always drawn, even below the view's range. The status says "Strip footing placed under FF East", and the status bar offers *Show in Foundation plan*. In a project without one it offers *Make a Foundation plan*, which adds a level 600 mm below the lowest with a plan that shows the floor above as its underlay. *Not yet:* the x-ray outline of a selected footing in 3D, and the per-view "Footings in this plan: Hidden / Dashed / Shown" choice. | see PR |
+| 2 | Host picking | **Done.** `walls_at` measures across the wall's whole thickness about its centreline, whatever line the wall was drawn on (a test checks every wall of the starter house). Before the first click, the Footing, Door, Window and Opening tools let the wall (or, for a pad, the column) under the pointer win. It is highlighted, and the snap marks and guide lines stay away from it. Tab goes through overlapping hosts ("1/2 · Tab"), and the click goes on the host shown. Where there is no host, and once a free strip has its first point, snaps work as before. *Not yet:* Railing on a stair, Tag, and Attach top use their own picking still. | see PR |
+| 3 | Value pills | **Done.** While a grip is dragged, a pill by the grip shows only the value that is changing: "Length 5000 → 5707 +707", or "Moved 750" for a slide or a move. On release it stays about a second, then fades. It shows only in the pane the drag is in. It sits on the theme's raised surface with a 1 px line round it, 11.5 px type and 6 px corners, in the theme's text colour with the changing number in the accent. A test checks both are at least 4.5:1 in all seven themes. The full summary (length, height, thickness) goes to the status bar. D hides or shows the pills. | see PR |
+| 4 | Slide grip | **Done.** The grip that floated 300 mm off a wall's face is gone, so every grip sits on the wall. Dragging the wall's body slides it square to itself and its joined walls stretch. Shift frees the direction, and Tab types the distance. A wall under 14 px across on screen shows its thickness grip only when the pointer comes near its face. | see PR |
 | 5 | Marker highlight | **Done.** Hovering a view mark, text, tag or dimension traces the mark itself in the hover colour at 1.5 times its line weight: bubble, wedge, line and text. There are no boxes round them. Selected, it is traced the same way in the accent, with its grips (the section line's end square and its depth, the move square on a room tag, whose dashed box is gone). The pick area is as generous as before but not drawn. A marker's text now has the extent of its own size on paper, so it fits inside the bubble (before, a 3 mm number counted as 3 m across). A selected note on a sheet is traced too, not framed. | see PR |
 | 6 | Icons | **Done.** All 75 icons in the approved set are copied verbatim from `ui/approved/icons_final.json` (and `icons_actions.json`, the same 14 action icons) into `ui/icons.js`. The test `icons_js_matches_the_approved_set_verbatim` in `webui.rs` fails if one drifts, naming it. To change an icon, change the JSON first, with the owner's OK. | see PR |
 
@@ -60,6 +72,16 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | [16-marker-hover-before-after.png](16-marker-hover-before-after.png) | A3-5: hovering an elevation mark. Before, two nested boxes far bigger than the bubble; after, the bubble, wedge and line themselves in blue. |
 | [17-tag-hover-before-after.png](17-tag-hover-before-after.png) | Hovering a window tag: before boxed, after the tag itself traced. |
 | [18-marker-selected-before-after.png](18-marker-selected-before-after.png) | The mark selected: traced in the accent, with its end square and its depth. |
+| [19-no-floating-slide-grip.png](19-no-floating-slide-grip.png) | A3-4: before, a slide grip off the kitchen wall's face; after, the grips on the wall, and the wall slid 750 mm by its body, the north wall stretching with it. |
+| [20-live-value-pill.png](20-live-value-pill.png) | A3-3: dragging the wall's end. Before, nothing until release; after, "Length 5000 → 5707 +707" by the grip. |
+| [21-full-summary-in-the-status-bar.png](21-full-summary-in-the-status-bar.png) | On release, the status bar has the full summary. |
+| [22-tracker-length-and-angle.png](22-tracker-length-and-angle.png) | 2.10: drawing a wall, 3000, Tab, 90 typed into the tracker; Enter places it, 3000 mm long and straight up. |
+| [23-step-in-the-status-bar.png](23-step-in-the-status-bar.png) | *Step* in the status bar, with its choices. |
+| [24-footing-tool-host-wins.png](24-footing-tool-host-wins.png) | A3-2: the Footing tool over the First Floor's east wall. Before, an *Intersection* snap and guide lines; after, the wall highlighted and "Strip 600 × 300 under FF East". |
+| [25-footing-placed-and-shown.png](25-footing-placed-and-shown.png) | A3-1: before, the click started a free strip and nothing showed; after, the footing is placed under the wall, selected and drawn. |
+| [26-footings-shown-while-the-tool-is-on.png](26-footings-shown-while-the-tool-is-on.png) | The Ground Floor plan with the Footing tool on: the level's footings dashed and tinted, and a wall that already has one says so. |
+| [27-show-in-foundation-plan.png](27-show-in-foundation-plan.png) | After placing: *Show in Foundation plan* in the status bar. |
+| [28-foundation-plan-opened.png](28-foundation-plan-opened.png) | It opens the Foundation plan with the new footing selected. |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 

@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **58** | **7** | **192** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 5 | 17 | 7 | 29 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 5 | 15 | 7 | 27 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -48,11 +48,11 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 2.1 | No Model / Annotate / View / Manage tabs, and labelled tools that wrap; "· 1 selected" isn't shown by the file name; view controls sit in the options row. (The application menu and the file name at the right landed in Phase 1.) | 2 | M | MU01-08…11 |
 | 2.6 | No view areas: the 3D view has a floating toolbar, view controls are duplicated in the options row, narrow areas squeeze their buttons, the hint line is drawn over the plan. No workspaces, no `/` isolate, Ctrl+Space or Ctrl+PgUp/PgDn. | 3 | L | MU02-02…05 |
 | 2.7 | Edit outline and Delete are text buttons at the bottom of Properties. An element action bar under the name: own actions tinted, then Duplicate, Select similar, Hide, Isolate, Frame, ⋯, Delete in red. | 2 | M | MU05 |
-| 2.10 | No tracker (Length / Angle with Tab while drawing or dragging), no Step in the Snap menu, no temporary dimensions that drive, no padlock. | 2 (tracker, steps), 3 (temporary dimensions) | M–L | MU09 |
+| 2.10 | The tracker shows Length and Angle while a line is drawn in a plan, but Move, Rotate and Copy show no Δx / Δy in it, and slab and region edges don't use it. No temporary dimensions that drive, no padlock. | 2 (tracker), 3 (temporary dimensions) | M–L | MU09 |
 | 2.11 | Room tags: Stacked (the default) and Inline (the first tag) are drawn; the Number badge and Boxed layouts are not yet. Tags don't yet keep level in rotated views. | 2 | M | MU09 |
 | 2.12 | View markers: Classic (the default) and the first markers are drawn; the Minimal and Bold families are not yet. A single click on a bubble doesn't open its view (a double-click on the selected mark does). | 2 | M | MU09 |
 | 2.13 | Choices have no pictures or live previews; personal settings and the style pack are not kept apart; no marker or tag designer; style packs can't be exported and imported with custom styles. | 3 | M–L | MU10 |
-| 2.14 | Grips have their four states, but there are no live dimensions while dragging (old → new ± change, gap to the nearest neighbour), no "Widened D03 by 300 mm" wording in the status bar, and the grip accent doesn't follow a personal setting. | 2 | M | MU11, MU12 |
+| 2.14 | Grips have their four states and a live pill (old → new ± change, A3-3), but no gap to the nearest neighbour while dragging, no "Widened D03 by 300 mm" wording in the status bar, and the grip accent doesn't follow a personal setting. | 2 | M | MU11, MU12 |
 | 3.1 | Detail components can be selected but have no grips. | 2 | M | MU01-01 |
 | 3.2 | Plants have no grips (canopy radius in plan; canopy and height in 3D). | 2 | S | MU01-04 |
 | 3.3 | A callout's box can't be resized with grips; views have no linked "Open in 3D" crop box. | 2 | M | MU01-07 |
@@ -67,10 +67,8 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 5.4 | No profile library for beams and columns as sweep presets. | 4 | L | B01 |
 | 5.5 | No curved walls. | 4 | L | B01 |
 | 5.6 | Stairs: no "Cut a well for this stair", headroom check, short-landing or re-flow warnings. Roofs: no overhang per edge, no offer to attach the walls under a new roof. No Check model panel (openings across joins, beams or footings in slabs, missing wells). | 4 | M | RR |
-| A3-1 | Footings can't be seen while placing them: an ordinary floor plan shows none, even with the Footing tool on; no preview, no "Make a Foundation plan" link, no per-view choice for footings. | 2 | M | MU13_01, MU13_05 |
-| A3-2 | Host tools (Footing, Door, Window, Railing, Tag, Attach top) don't pick their host before the first click: snaps and guides win over the wall, and Tab doesn't cycle overlapping hosts; `wall_at` ignores the location line. | 2 | M | MU13_02 |
-| A3-3 | Value pills while dragging show the full summary instead of the changing value alone, stay too long, and show in panes the drag isn't in; D doesn't toggle live dimensions. | 2 | S | MU13_07 |
-| A3-4 | A wall's slide grip floats 300 mm off its face; sliding by the wall's body, Shift to free the direction and Tab for the distance are missing. | 2 | S | MU13_07 |
+| A3-1 | A selected footing has no x-ray outline in 3D, and plans have no "Footings in this plan: Hidden / Dashed / Shown" choice. (Footings show while the tool is on, and a selected one always shows.) | 2 | S | MU13_01, MU13_05 |
+| A3-2 | Railing on a stair, Tag and Attach top don't yet let their host win over snaps before the first click. (Footing, Door, Window and Opening do.) | 2 | S | MU13_02 |
 | A3-7 | Membrane paths can't be finished by Enter, double-click or right-click; Esc loses them; the membrane draws exactly over the line it follows. (Detail component grips are 3.1.) | 2 | M | MU13_08 |
 | 6 | Release basics: Windows installer and portable zip, a file-format version in `.creabim`, README limits, issue templates, the Terrace House sample, CONTRIBUTING. | R | M | RR |
 
@@ -375,6 +373,12 @@ Gaps reported by work that is still a pull request go here until it merges, then
 
 - Every toolbar and action icon is copied verbatim from the approved set (`ui/approved/icons_final.json` and `icons_actions.json`): Section is the scissors with the dashed line, Grid the straight four-line grid, Shaft has no level lines, Roof is the approved tipi, and Door, Paving, Level, Spot level and Footing are as drawn. A test compares `ui/icons.js` with the JSON, so they can't drift again (A3-6).
 - Hovering a view mark, text, tag or dimension traces the mark itself, 1.5 times heavier, instead of boxing it; selected, it is traced in the accent with its grips, and a room tag loses its dashed box. A marker's text has the extent of its paper size, so it fits its bubble (A3-5).
+- A grip's drag shows a pill by the grip with only the value changing ("Length 5000 → 5707 +707"), in that pane only, themed and legible in every theme; it fades about a second after release, the full summary goes to the status bar, and D hides or shows it (A3-3).
+- No slide grip floats off a wall: the wall's body slides it, joined walls stretching; Shift frees it, Tab types the distance; a wall too thin on screen shows its thickness grip only near its face (A3-4).
+- The tracker: while a line tool draws in a plan, Length and Angle can be typed (Tab between them, Enter places), and the step shows beside them (2.10).
+- *Step* in the status bar and the Snap menu: Off, 10, 50, 100 mm or Custom (imperial: 1/8", 1/2", 1", 6"); free points and grip drags round to it, and Alt ignores it (2.10).
+- While the Footing tool is on, plans show their level's footings dashed and tinted; a selected footing always shows; after placing, the status bar offers *Show in Foundation plan* or *Make a Foundation plan* (A3-1, most of it).
+- The Footing, Door, Window and Opening tools let the wall or column under the pointer win over snaps and guide lines before the first click, with a preview of what a click makes; Tab goes through overlapping hosts; walls are hit across their whole thickness (A3-2, most of it).
 
 **In Brief 02, addendum A2 (2026-11-05):** the logo, the weaver and its nest, is the brand mark in the top bar, the window and taskbar icon, the Windows .exe icon (not yet tried on a Windows build), the lockup in About, and the full mark in New project and the README. The `.creabim` file icon comes with the installer.
 
