@@ -56,6 +56,66 @@ pub fn offset_of(model: &Model, wall: &Wall, line: LocationLine) -> f64 {
         }
         LocationLine::CoreExterior => core_span(model, wall).0,
         LocationLine::CoreInterior => core_span(model, wall).1,
+        LocationLine::Boundary(k) => boundary_offset(model, wall, k as usize).unwrap_or(0.0),
+    }
+}
+
+/// Where the line between layer `k - 1` and layer `k` (from the exterior)
+/// lies across `wall`, from its centreline; `None` past its layers or for
+/// a wall without them.
+pub fn boundary_offset(model: &Model, wall: &Wall, k: usize) -> Option<f64> {
+    let a = wall.assembly.and_then(|a| match &model.get(a)?.kind {
+        crate::ElementKind::Assembly(a) => Some(a),
+        _ => None,
+    })?;
+    let bands = crate::assembly::wall_bands(a, wall);
+    let t = wall.thickness / 2.0;
+    let ext = if wall.flip { t } else { -t };
+    match k {
+        0 => Some(ext),
+        k if k == bands.len() => Some(-ext),
+        k if k < bands.len() => Some(if wall.flip { bands[k].s1 } else { bands[k].s0 }),
+        _ => None,
+    }
+}
+
+/// The lines between a layered wall's layers, exterior face first: each
+/// with what it lies between ("Render / Insulation").
+pub fn layer_boundaries(model: &Model, wall: &Wall) -> Vec<(LocationLine, String)> {
+    let Some(a) = wall.assembly.and_then(|a| match &model.get(a)?.kind {
+        crate::ElementKind::Assembly(a) => Some(a),
+        _ => None,
+    }) else {
+        return vec![];
+    };
+    let name = |i: usize| {
+        a.layers
+            .get(i)
+            .and_then(|l| l.material)
+            .and_then(|m| model.get(m))
+            .map_or_else(|| format!("layer {}", i + 1), |m| m.name.clone())
+    };
+    let n = a.layers.len();
+    (0..=n)
+        .map(|k| {
+            let text = match k {
+                0 => format!("Outside of {}", name(0)),
+                k if k == n => format!("Inside of {}", name(n - 1)),
+                k => format!("{} / {}", name(k - 1), name(k)),
+            };
+            (LocationLine::Boundary(k.min(255) as u8), text)
+        })
+        .collect()
+}
+
+/// What wall `wall`'s location line is, in words.
+pub fn location_label(model: &Model, wall: &Wall) -> String {
+    match wall.location {
+        LocationLine::Boundary(_) => layer_boundaries(model, wall)
+            .into_iter()
+            .find(|(l, _)| *l == wall.location)
+            .map_or("A layer boundary".into(), |(_, t)| t),
+        l => l.label().into(),
     }
 }
 

@@ -624,6 +624,14 @@ fn location(l: core::LocationLine) -> f::Location {
         core::LocationLine::InteriorFace => f::Location::InteriorFace,
         core::LocationLine::CoreExterior => f::Location::CoreExterior,
         core::LocationLine::CoreInterior => f::Location::CoreInterior,
+        core::LocationLine::Boundary(_) => f::Location::LayerBoundary,
+    }
+}
+
+fn boundary(l: core::LocationLine) -> Option<u32> {
+    match l {
+        core::LocationLine::Boundary(k) => Some(u32::from(k)),
+        _ => None,
     }
 }
 
@@ -646,6 +654,7 @@ fn element_type(e: &Element, id: &str, t: &core::ElementType, ids: &Ids) -> f::T
         assembly: None,
         material: ids.of(t.material()),
         location: None,
+        boundary: None,
         height: None,
         width: None,
         sill: None,
@@ -659,6 +668,7 @@ fn element_type(e: &Element, id: &str, t: &core::ElementType, ids: &Ids) -> f::T
             out.thickness = Some(w.thickness);
             out.assembly = ids.of(w.assembly);
             out.location = (!w.location.is_centre()).then(|| location(w.location));
+            out.boundary = boundary(w.location);
             out.height = w.height;
             out.screen = w.screen.as_ref().map(|s| f::Screen {
                 unit: s.unit,
@@ -753,6 +763,7 @@ fn wall(model: &Model, e: &Element, id: &str, w: &core::Wall, ids: &Ids) -> f::W
         assembly: ids.of(w.assembly).filter(|_| own(e, Param::Assembly)),
         location: (own(e, Param::Location) && !(w.location.is_centre() && !typed))
             .then(|| location(w.location)),
+        boundary: boundary(w.location).filter(|_| own(e, Param::Location)),
         flip: w.flip,
         attach_top: w.attach_top.iter().filter_map(|a| ids.get(*a)).collect(),
     }

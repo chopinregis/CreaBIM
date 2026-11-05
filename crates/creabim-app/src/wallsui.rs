@@ -50,12 +50,26 @@ pub(super) fn wall_fields(
     let mut label = "";
     ui.horizontal(|ui| {
         crate::app::helpui::combo(ui, "Location line")
-            .selected_text(w.location.label())
+            .selected_text(walls::location_label(model, w))
             .width(ui.available_width().min(130.0))
             .show_ui(ui, |ui| {
                 for l in LocationLine::ALL {
                     if ui.selectable_value(&mut w.location, l, l.label()).changed() {
                         label = "Wall location line"
+                    }
+                }
+                let lines = walls::layer_boundaries(model, w);
+                if !lines.is_empty() {
+                    ui.separator();
+                    ui.weak("By a layer boundary");
+                    for (l, name) in lines {
+                        if ui
+                            .selectable_value(&mut w.location, l, name)
+                            .on_hover_text("Draw and dimension the wall on this line between layers. The wall stays where it is.")
+                            .changed()
+                        {
+                            label = "Wall location line"
+                        }
                     }
                 }
             })

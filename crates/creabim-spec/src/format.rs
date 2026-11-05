@@ -220,6 +220,9 @@ spec_struct! {
         material: Option<String>,
         /// A wall type's location line.
         location: Option<Location>,
+        /// With location `layer-boundary`: which boundary, counted from
+        /// the exterior face (0) to the interior face (the layer count).
+        boundary: Option<u32>,
         /// A wall type's height for new walls; a door or window's height.
         height: Option<f64>,
         width: Option<f64>,
@@ -279,6 +282,8 @@ spec_enum! {
         InteriorFace = "interior-face",
         CoreExterior = "core-exterior",
         CoreInterior = "core-interior",
+        /// One of the boundaries between layers, named by `boundary`.
+        LayerBoundary = "layer-boundary",
     }
 }
 
@@ -376,6 +381,9 @@ spec_struct! {
         material: Option<String>,
         assembly: Option<String>,
         location: Option<Location>,
+        /// With location `layer-boundary`: which boundary, counted from
+        /// the exterior face (0) to the interior face (the layer count).
+        boundary: Option<u32>,
         /// The exterior face on the left instead of the right.
         flip: bool = false,
         /// Roofs and slabs (ids) the top follows the underside of.

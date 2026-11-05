@@ -955,6 +955,10 @@ pub enum LocationLine {
     InteriorFace,
     CoreExterior,
     CoreInterior,
+    /// The line between layer `k - 1` and layer `k`, counted from the
+    /// exterior: 0 is the exterior face, the layer count the interior
+    /// face (3.7, *Draw by this line*).
+    Boundary(u8),
 }
 
 impl LocationLine {
@@ -979,6 +983,7 @@ impl LocationLine {
             LocationLine::InteriorFace => "Interior face",
             LocationLine::CoreExterior => "Core exterior face",
             LocationLine::CoreInterior => "Core interior face",
+            LocationLine::Boundary(_) => "A layer boundary",
         }
     }
 }

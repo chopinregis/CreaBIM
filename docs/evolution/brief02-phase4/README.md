@@ -21,7 +21,7 @@ The screenshots were taken in the running app on a small L corner cut out of the
 | 1 (3.7) | Wall layer ends: grips in Layers, drag or type, a dot on edited ends, reset one or all, kept through move, stretch and retype | **Done** (below). |
 | 1 (3.7) | Slab and roof layer edges: a grip on each edge of each layer, drag or type, reset | **Done** (below). |
 | 1 (3.7) | Corner join presets: Auto, Cores lap and finishes stop, This or the other wall runs through, Mitre every layer, Not joined | **Done** (below). |
-| 1 (3.7) | *Draw by this line* on any layer boundary | Not started. |
+| 1 (3.7) | *Draw by this line* on any layer boundary, without the wall moving | **Done** (below). |
 | 1 (3.7) | Check model warnings for gaps and overlaps; IFC parts where layers differ | Not started. |
 | 2–7 | | Not started. |
 
@@ -77,3 +77,22 @@ Each edit is kept on the slab or roof (`layer_edges` in the file) as a distance 
 - A layer run on by hand into the wall it meets overlaps that wall's layers, and the plan draws one over the other.
 - While a grip is dragged, the preview is drawn without the joins of the walls around it.
 - Grips of thin layers sit close together in plan at small scales: zoom in, or use the 3D view, where they are stepped up the end face.
+
+### Corner join presets
+
+Where a wall's end meets one other wall at a corner, right-click the wall near that end and pick *Corner join*, or use the row for that end at the top of *Properties › Junctions*. *Cores lap, finishes stop* is the corner the brief asks for: the finishes meet on the mitre, the stronger wall's core runs on to the far face of the other's core, and the other's core stops square against it. The preset is kept with the two walls, so it stays when either moves, and layer ends moved by hand are offsets from where the preset puts them.
+
+![Corner join menu](12-corner-menu.png)
+
+![Each preset](13-corner-presets.png)
+
+### Draw by this line
+
+Any line between two layers can be the wall's location line: the line it is drawn and dimensioned by, and that stays put when the wall gets thicker or its layers change. In Layers, right-click a layer's end grip and pick *Draw by its exterior face* or *Draw by its interior face*. *Properties › Location line* also lists every boundary by the layers it lies between. Only the location line changes: the wall does not move. The choice is saved in the file (`"location": "layer-boundary"` with `"boundary"`, counted from the exterior face) and written to IFC as the location line `LayerBoundary`.
+
+![Draw by menu](14-draw-by-menu.png)
+
+![Drawn by the line](15-drawn-by-boundary.png)
+
+![Location line choices](16-location-boundaries.png)
+

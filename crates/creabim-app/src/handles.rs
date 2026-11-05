@@ -556,6 +556,27 @@ fn edge_handles(model: &Model, e: &Element) -> Vec<Handle> {
 /// Put the layer end or edge of grip `which` of `id` back where its join
 /// or the element's own edge puts it, or with `None` every layer's, as
 /// one undo step.
+/// Draw wall `id` by the line between its layers `k - 1` and `k`, from
+/// the exterior: only its location line changes, the wall stays put.
+pub fn draw_by_boundary(doc: &mut Document, id: ElementId, k: u8) -> Result<String, String> {
+    let e = doc.model().get(id).ok_or("it is gone")?.clone();
+    let mut after = e.clone();
+    let ElementKind::Wall(w) = &mut after.kind else {
+        return Err("only walls have a location line".into());
+    };
+    let line = creabim_core::LocationLine::Boundary(k);
+    if w.location == line {
+        return Err("The wall is drawn by that line already.".into());
+    }
+    w.location = line;
+    let text = creabim_core::walls::location_label(doc.model(), w);
+    doc.commit(creabim_core::Transaction::new("Wall location line").replace(e, after))
+        .map_err(|e| e.to_string())?;
+    Ok(format!(
+        "The wall is drawn by {text} now. It stays where it is; new widths and layers keep that line put."
+    ))
+}
+
 pub fn reset_layer_ends(
     doc: &mut Document,
     id: ElementId,
@@ -2374,6 +2395,7 @@ fn grip_menu(
         Finish,
         ResetLayer(HandleKind),
         ResetLayers,
+        DrawBy(u8),
     }
     let edited_layers = match &e.kind {
         ElementKind::Wall(w) => !w.layer_ends.is_empty(),
@@ -2442,6 +2464,19 @@ fn grip_menu(
                         };
                         item(ui, moved, text, Act::ResetLayer(k));
                         item(ui, edited_layers, "Reset all layers", Act::ResetLayers);
+                        if let (HandleKind::LayerEnd { layer, .. }, ElementKind::Wall(w)) =
+                            (k, &e.kind)
+                        {
+                            ui.separator();
+                            let at = |b: usize| {
+                                let l = creabim_core::LocationLine::Boundary(b.min(255) as u8);
+                                (w.location != l, b.min(255) as u8)
+                            };
+                            let (on, b) = at(layer);
+                            item(ui, on, "Draw by its exterior face", Act::DrawBy(b));
+                            let (on, b) = at(layer + 1);
+                            item(ui, on, "Draw by its interior face", Act::DrawBy(b));
+                        }
                         ui.separator();
                         item(ui, true, "Finish editing   Esc", Act::Finish);
                     }
@@ -2508,6 +2543,7 @@ fn grip_menu(
         }
         Act::ResetLayer(k) => reset_layer_ends(doc, id, Some(k)),
         Act::ResetLayers => reset_layer_ends(doc, id, None),
+        Act::DrawBy(k) => draw_by_boundary(doc, id, k),
     };
     Some(r.unwrap_or_else(|e| e))
 }
@@ -3498,6 +3534,34 @@ mod tests {
                     .flatten()
             })
             .expect("a layered wall")
+    }
+
+    #[test]
+    fn drawing_by_a_layer_boundary_keeps_the_wall_where_it_is() {
+        let m = creabim_core::sample::typed_house();
+        let (id, core) = layered_wall(&m);
+        let mut doc = Document::from_model(m);
+        let w = |doc: &Document| match &doc.model().get(id).unwrap().kind {
+            ElementKind::Wall(w) => w.clone(),
+            _ => unreachable!(),
+        };
+        let before = w(&doc);
+        let k = (core + 1) as u8;
+        let text = draw_by_boundary(&mut doc, id, k).unwrap();
+        let after = w(&doc);
+        assert_eq!(after.location, creabim_core::LocationLine::Boundary(k));
+        assert_eq!((after.start, after.end), (before.start, before.end));
+        assert!(text.contains("stays where it is"), "{text}");
+        // the line drawn by is that boundary, on the core's interior face
+        let off = creabim_core::walls::offset_of(doc.model(), &after, after.location);
+        let want = creabim_core::walls::boundary_offset(doc.model(), &after, k as usize).unwrap();
+        assert!((off - want).abs() < 1e-9);
+        assert!(off.abs() < after.thickness / 2.0);
+        let core_in = creabim_core::LocationLine::CoreInterior;
+        let core_in = creabim_core::walls::offset_of(doc.model(), &after, core_in);
+        assert!((off - core_in).abs() < 1e-9, "{off} vs {core_in}");
+        // asking again says so
+        assert!(draw_by_boundary(&mut doc, id, k).is_err());
     }
 
     #[test]

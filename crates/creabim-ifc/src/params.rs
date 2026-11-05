@@ -179,6 +179,7 @@ fn location_label(l: LocationLine) -> &'static str {
         LocationLine::InteriorFace => "InteriorFace",
         LocationLine::CoreExterior => "CoreExterior",
         LocationLine::CoreInterior => "CoreInterior",
+        LocationLine::Boundary(_) => "LayerBoundary",
     }
 }
 

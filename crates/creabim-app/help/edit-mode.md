@@ -18,7 +18,7 @@ On a layered wall, press `Tab` in Edit mode for **Layers**: the wall's own grips
 |---|---|
 | Drag a layer grip along the wall | The layer runs on past its join, or is held back; press `Tab` to type how far |
 | Rest on a grip | It names its layer and end, and how far it was moved |
-| Right-click a grip | *Reset layer end*, *Reset all layers* |
+| Right-click a grip | *Reset layer end*, *Reset all layers*; on a wall, *Draw by its exterior face* or *interior face*: that line between layers becomes the wall's location line, and the wall stays where it is |
 
 On a layered slab or roof, Layers puts a grip on each edge of each layer instead: drag it square to the edge to push that layer out past the element's edge or pull it in, such as roof slates run on past the fascia. In plan each layer's grip is drawn a step further out, since they would sit on one another.
 
