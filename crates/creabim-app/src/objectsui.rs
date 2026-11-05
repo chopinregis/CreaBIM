@@ -614,12 +614,29 @@ impl CreaBimApp {
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         let current = self.plan.objects.current.as_ref().map(|c| c.key.clone());
-        // as wide as five pictures, or what the views leave
-        let width = (area.width() - 120.0).clamp(420.0, 5.0 * (THUMB as f32 + 26.0));
+        // over the other pane than the one things are placed in, so the
+        // plan (or the 3D view) stays clear to click in; with one view
+        // shown, against its right edge
+        let other = if self.last_in_2d {
+            self.rect_3d
+        } else {
+            self.rect_2d
+        };
+        let thumb = THUMB as f32 + 26.0;
+        let (width, pos) = match other {
+            Some(r) if r.width() > 3.0 * thumb => {
+                let w = (r.width() - 24.0).min(5.0 * thumb);
+                (w, egui::pos2(r.max.x - w - 12.0, r.min.y + 12.0))
+            }
+            _ => {
+                let w = 3.0 * thumb + 24.0;
+                (w, egui::pos2(area.max.x - w - 16.0, area.min.y + 64.0))
+            }
+        };
         egui::Window::new("Catalogue")
             .resizable(true)
             .open(&mut open)
-            .default_pos(area.min + Vec2::new(40.0, 64.0))
+            .default_pos(pos)
             .constrain_to(area)
             .default_size([width, (area.height() - 90.0).clamp(360.0, 640.0)])
             .collapsible(false)

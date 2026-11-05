@@ -152,6 +152,8 @@ pub fn click(
                 let mut b = Beam::new(level, a, p);
                 b.width = set.beam_width;
                 b.depth = set.beam_depth;
+                // under the slab above, not inside it
+                b.top_offset = creabim_core::members::beam_top_offset(doc.model(), level, a, p);
                 state.pending = Some(p);
                 state.status =
                     Some("Beam added. Click on to chain another; Esc or right-click ends.".into());

@@ -163,19 +163,59 @@ impl CreaBimApp {
                 .enabled(tags)
                 .hint("Tags of the same kind (door tags, window tags…) in the same view"),
         ];
-        let cats = categories_of(model, &ids);
-        if cats.len() > 1 {
+        let only = self.keep_only_items();
+        if !only.is_empty() {
             items.push(Item::Separator);
             items.push(Item::Header("Keep only".into()));
-            for (c, n) in cats {
-                let i = Category::ALL.iter().position(|k| *k == c).unwrap_or(0);
-                items.push(Item::new(
-                    format!("similar:only.{i}"),
-                    format!("{} ({n})", c.label()),
-                ));
-            }
+            items.extend(only);
         }
         vec![Item::sub("Select similar", items).icon("square-dashed-mouse-pointer")]
+    }
+
+    /// One item per kind of element selected, each keeping only that kind;
+    /// none when there is only one kind.
+    pub(super) fn keep_only_items(&self) -> Vec<Item> {
+        let model = self.doc.model();
+        let cats = categories_of(model, &self.selection.all());
+        if cats.len() < 2 {
+            return vec![];
+        }
+        cats.into_iter()
+            .map(|(c, n)| {
+                let i = Category::ALL.iter().position(|k| *k == c).unwrap_or(0);
+                Item::new(format!("similar:only.{i}"), format!("{} ({n})", c.label()))
+            })
+            .collect()
+    }
+
+    /// Right after a box selection: say what it took and, when it took
+    /// several kinds, offer Keep only… in the status bar.
+    pub(super) fn after_box_selection(&mut self) {
+        let ids = self.selection.all();
+        let cats = categories_of(self.doc.model(), &ids);
+        if cats.len() < 2 {
+            self.boxed = None;
+            return;
+        }
+        let kinds: Vec<String> = cats
+            .iter()
+            .take(4)
+            .map(|(c, n)| format!("{n} {}", c.label().to_lowercase()))
+            .collect();
+        let more = if cats.len() > 4 { " and more" } else { "" };
+        self.status = format!(
+            "{} selected: {}{more}. Keep only… narrows it to one kind.",
+            ids.len(),
+            kinds.join(", ")
+        );
+        self.boxed = Some(ids);
+    }
+
+    /// Is the selection still what the last box took?
+    pub(super) fn offers_keep_only(&self) -> bool {
+        self.boxed
+            .as_ref()
+            .is_some_and(|b| *b == self.selection.all())
     }
 
     /// Run a Select similar action; false when `head` isn't one.
@@ -263,6 +303,40 @@ mod tests {
 
     fn count(app: &CreaBimApp, f: impl Fn(&ElementKind) -> bool) -> usize {
         app.doc.model().iter().filter(|e| f(&e.kind)).count()
+    }
+
+    #[test]
+    fn a_box_that_takes_several_kinds_offers_keep_only() {
+        let mut app = app();
+        let ids: Vec<ElementId> = app
+            .doc
+            .model()
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Wall(_) | ElementKind::Opening(_)))
+            .map(|e| e.id)
+            .collect();
+        app.selection.extend(ids, false);
+        app.plan.boxed = true;
+        let ctx = egui::Context::default();
+        app.after_box_selection();
+        assert!(app.status.contains("Keep only"), "{}", app.status);
+        let offered = |app: &CreaBimApp| {
+            app.status_state()["controls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["key"] == "keeponly")
+        };
+        assert!(offered(&app));
+        let items = app.menu_items("keeponly");
+        let Some(Item::Action { id, .. }) = items.first() else {
+            panic!("{items:?}")
+        };
+        let id = id.clone();
+        app.run_action(&ctx, &id);
+        assert!(!offered(&app));
+        let kinds = categories_of(app.doc.model(), &app.selection.all());
+        assert_eq!(kinds.len(), 1);
     }
 
     #[test]

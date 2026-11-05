@@ -352,6 +352,7 @@ impl CreaBimApp {
             "menu:Help" => self.help_menu(),
             "menu:Create" => self.create_menu(),
             "underlay" => self.underlay_items(),
+            "keeponly" => self.keep_only_items(),
             "render3d" => self.render_items(),
             "viewstyle" => self.view_style_items(),
             "wall.location" => self.wall_location_items(),
@@ -1332,6 +1333,7 @@ impl CreaBimApp {
             }
             "export.glb" | "export.fcstd" | "export.ifcx" | "export.ifc4" | "export.pdf"
             | "export.svg" => self.export(head),
+            "export.folder" => self.open_export_folder(),
             "placement" => {
                 self.placement = match index {
                     Some(1) => PlanPlacement::Window,
@@ -1391,7 +1393,7 @@ impl CreaBimApp {
             "layout.stacked" => self.layout.stacked = true,
             "layout.swap" => self.layout.swapped = !self.layout.swapped,
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
-            "frame" => self.frame_all(),
+            "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
             "nav.orbitsel" => self.orbit_selection = !self.orbit_selection,
             "nav.ortho" => self.camera.ortho = !self.camera.ortho,
@@ -1496,15 +1498,69 @@ impl CreaBimApp {
         );
     }
 
-    fn export(&mut self, what: &str) {
+    pub(super) fn export(&mut self, what: &str) {
+        self.export_inner(what);
+        // what was exported can be found from the status bar
+        if self.status.starts_with("Exported ") {
+            self.last_export = Some(self.status.clone());
+        }
+    }
+
+    /// Where to write an export: asked with the system's save window, which
+    /// starts next to the project with `default`'s name.
+    fn export_to(&mut self, default: String) -> Option<String> {
+        let out = if cfg!(test) {
+            Some(default)
+        } else {
+            Self::ask_export(default)
+        }?;
+        self.last_export_dir = std::path::absolute(&out)
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+        Some(out)
+    }
+
+    fn ask_export(default: String) -> Option<String> {
+        let ext = std::path::Path::new(&default)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_string();
+        let full = std::path::absolute(&default)
+            .map(|p| p.display().to_string())
+            .unwrap_or(default);
+        let asked = std::time::Instant::now();
+        let picked = crate::files::pick_save(&full, "Export", &ext);
+        // a save window that closes at once never opened (no file picker
+        // on this system): write next to the project as before
+        if picked.is_none() && asked.elapsed() < std::time::Duration::from_millis(300) {
+            return Some(full);
+        }
+        picked
+    }
+
+    /// Open the folder the last export went to, in the system's file browser.
+    pub(super) fn open_export_folder(&mut self) {
+        let Some(dir) = self.last_export_dir.clone() else {
+            return;
+        };
+        let r = crate::files::open_folder(&dir);
+        self.report(r, format!("Opened {}.", dir.display()));
+    }
+
+    fn export_inner(&mut self, what: &str) {
         match what {
             "export.glb" => {
-                let out = with_extension(&self.path, "glb");
+                let Some(out) = self.export_to(with_extension(&self.path, "glb")) else {
+                    return;
+                };
                 let r = std::fs::write(&out, creabim_exchange::gltf::export_glb(self.doc.model()));
                 self.report(r, format!("Exported {out}. In Blender: File > Import > glTF, or use the CreaBIM add-on."));
             }
             "export.fcstd" => {
-                let out = with_extension(&self.path, "FCStd");
+                let Some(out) = self.export_to(with_extension(&self.path, "FCStd")) else {
+                    return;
+                };
                 let r =
                     creabim_exchange::freecad::export_fcstd(self.doc.model(), &stem(&self.path))
                         .map_err(|e| e.to_string())
@@ -1512,12 +1568,16 @@ impl CreaBimApp {
                 self.report(r, format!("Exported {out}"));
             }
             "export.ifcx" => {
-                let out = with_extension(&self.path, "ifcx");
+                let Some(out) = self.export_to(with_extension(&self.path, "ifcx")) else {
+                    return;
+                };
                 let r = std::fs::write(&out, creabim_ifc::export_ifcx(self.doc.model()));
                 self.report(r, format!("Exported {out}"));
             }
             "export.ifc4" => {
-                let out = with_extension(&self.path, "ifc");
+                let Some(out) = self.export_to(with_extension(&self.path, "ifc")) else {
+                    return;
+                };
                 let opts = creabim_ifc::ExportOptions {
                     project_name: stem(&self.path),
                     ..Default::default()
@@ -1526,7 +1586,9 @@ impl CreaBimApp {
                 self.report(r, format!("Exported {out}"));
             }
             "export.pdf" => {
-                let out = with_extension(&self.path, "pdf");
+                let Some(out) = self.export_to(with_extension(&self.path, "pdf")) else {
+                    return;
+                };
                 if sheets::sheets(self.doc.model()).is_empty() {
                     self.status = "There are no sheets to export yet.".into();
                 } else {
@@ -1541,7 +1603,11 @@ impl CreaBimApp {
                     let number = sheets::sheet_of(self.doc.model(), sheet)
                         .map(|s| s.number.clone())
                         .unwrap_or_default();
-                    let out = with_extension(&self.path, &format!("{number}.svg"));
+                    let Some(out) =
+                        self.export_to(with_extension(&self.path, &format!("{number}.svg")))
+                    else {
+                        return;
+                    };
                     if let Some(svg) =
                         sheets::sheet_svg(self.doc.model(), sheet, &self.sheet_info())
                     {
@@ -1556,7 +1622,11 @@ impl CreaBimApp {
                         .map(|e| e.name.replace(' ', "-"))
                         .unwrap_or_default();
                     let scale = self.view(view).map_or(100.0, |v| v.scale);
-                    let out = with_extension(&self.path, &format!("{name}.svg"));
+                    let Some(out) =
+                        self.export_to(with_extension(&self.path, &format!("{name}.svg")))
+                    else {
+                        return;
+                    };
                     if let Some(d) = self.drawing(view) {
                         let r = std::fs::write(&out, d.to_svg(scale));
                         self.report(r, format!("Exported {out} at 1:{scale:.0}"));
@@ -1899,7 +1969,7 @@ impl CreaBimApp {
                     n => format!("Under {n} selected"),
                 },
                 "icon": "footing",
-                "hint": "Put footings under the selected walls and columns that have none: a strip under each wall, a pad under each column, in one undo step. Select them first, or drag a box over them with this tool.",
+                "hint": "Put footings under the selected walls and columns that have none: a strip under each wall, a pad under each column, in one undo step. Partitions thinner than 150 mm are left out unless only they are picked. Select them first, or drag a box over them with this tool.",
             }));
         }
         options.extend(
@@ -2333,7 +2403,7 @@ impl CreaBimApp {
         })
     }
 
-    fn status_state(&self) -> Value {
+    pub(super) fn status_state(&self) -> Value {
         let mut s = self.plan.snap;
         let n = s.switches().iter().filter(|(_, v)| **v).count();
         let total = s.switches().len();
@@ -2346,7 +2416,7 @@ impl CreaBimApp {
             Some((_, name)) => name.clone(),
             None => "Level".into(),
         };
-        json!({
+        let mut state = json!({
             "theme": self.theme(),
             "popup": self.popup_key(),
             "message": self.status,
@@ -2364,7 +2434,22 @@ impl CreaBimApp {
                 {"kind": "sep"},
                 {"kind": "meta", "label": format!("{} elements", self.element_count())},
             ],
-        })
+        });
+        // right after a box took several kinds, a way to keep one of them
+        if self.offers_keep_only() {
+            if let Some(c) = state["controls"].as_array_mut() {
+                c.insert(0, json!({"kind": "menu", "key": "keeponly", "label": "Keep only", "value": "…", "icon": "square-dashed-mouse-pointer",
+                    "hint": "Keep only one kind of what the box took: the walls, the doors…"}));
+            }
+        }
+        // right after an export, the way to the file it wrote
+        if self.last_export.as_deref() == Some(self.status.as_str()) {
+            if let Some(c) = state["controls"].as_array_mut() {
+                c.insert(0, json!({"kind": "button", "id": "export.folder", "label": "Open the folder", "icon": "folder-open",
+                    "hint": "Show the exported file in the system's file browser"}));
+            }
+        }
+        state
     }
 
     fn theme(&self) -> &'static str {

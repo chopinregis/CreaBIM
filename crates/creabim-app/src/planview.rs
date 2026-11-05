@@ -404,6 +404,9 @@ pub struct PlanState {
     /// Walls or columns a box dragged with the Footing tool took: the app
     /// puts footings under them all, in one step.
     pub want_footings: Vec<ElementId>,
+    /// A box selection just made: the app offers Keep only… while the
+    /// selection is still what the box took.
+    pub boxed: bool,
     /// Elements shown as if selected without being so (a type's instances,
     /// from its Show in model), and whether the rest is drawn faint.
     pub spotlight: Vec<ElementId>,
@@ -419,6 +422,9 @@ pub struct PlanState {
     /// on, that temporary guide lines run from. They stay while you work,
     /// until rested on again, cleared (Esc with nothing to cancel), or kept.
     pub refs: HashMap<ElementId, Vec<snaps::Reference>>,
+    /// When each view's references were last picked or followed: they go
+    /// after [`REF_FADE`] seconds unused, so none linger until Esc.
+    refs_used: HashMap<ElementId, f64>,
     /// What the pointer is resting on for a reference: since when, and
     /// whether that rest has already picked (or dropped) it.
     ref_rest: Option<(snaps::Reference, f64, bool)>,
@@ -513,6 +519,8 @@ impl Default for PlanState {
             objects: Default::default(),
             want_catalogue: false,
             want_footings: vec![],
+            refs_used: HashMap::new(),
+            boxed: false,
             spotlight: vec![],
             spotlight_ghost: false,
             chain: (None, vec![]),
@@ -860,7 +868,7 @@ pub fn show(
         _ => vec![],
     };
     if matches!(kind, PaneKind::Plan { .. } | PaneKind::Section { .. }) {
-        refresh_snaps(state, view, doc.model().revision(), plan, &exclude);
+        refresh_snaps(state, doc.model(), view, plan, &exclude);
     }
     let pane_project = |p: DVec3| Some(xf.to_screen(p.truncate()));
     // a line starts from the tool's first click, or the sketch's last corner
@@ -936,6 +944,14 @@ pub fn show(
         click_is_not_a_rest(state, tool, response.clicked(), under, now);
         if let Some(msg) = rest_reference(state, view, under, now, q) {
             state.status = Some(msg);
+        }
+        // guide lines last while they are used: a snap following one, or
+        // a shape being drawn from them; otherwise they go after a while
+        let following = tracked.as_ref().is_some_and(|t| !t.guides.is_empty());
+        fade_references(state, view, now, following || drawing_from.is_some());
+        if state.refs.get(&view).is_some_and(|r| !r.is_empty()) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(REF_FADE / 4.0));
         }
     } else {
         // a point snapped to and rested on while drawing is tracked too
@@ -1358,6 +1374,7 @@ pub fn show(
                     state.want_footings = hosts;
                 } else {
                     selection.extend(ids, shift);
+                    state.boxed = true;
                 }
                 state.boxsel = None;
             }
@@ -3191,11 +3208,12 @@ pub fn joined_with(doc: &Document, id: ElementId) -> Vec<ElementId> {
 /// which changes the model every frame.
 fn refresh_snaps(
     state: &mut PlanState,
+    model: &creabim_core::Model,
     view: ElementId,
-    revision: u64,
     plan: &Drawing,
     exclude: &[ElementId],
 ) {
+    let revision = model.revision();
     let dragging = state.grip.is_some()
         || state
             .modal
@@ -3208,11 +3226,11 @@ fn refresh_snaps(
     if !fresh {
         state.snaps.insert(
             view,
-            (
-                revision,
-                exclude.to_vec(),
-                Snapper::from_drawing(&plan.items, exclude),
-            ),
+            (revision, exclude.to_vec(), {
+                let mut s = Snapper::from_drawing(&plan.items, exclude);
+                s.add_underlay_centres(model, view);
+                s
+            }),
         );
     }
 }
@@ -4495,7 +4513,11 @@ pub fn hit_all(items: &[PlanItem], p: DVec2, tol: f64, mm: f64) -> Vec<ElementId
                 radius,
                 pen,
                 ..
-            } if *pen != Pen::Underlay && (p.distance(*center) - radius).abs() < tol => found(*id),
+            } if !matches!(pen, Pen::Underlay | Pen::Hidden)
+                && (p.distance(*center) - radius).abs() < tol =>
+            {
+                found(*id)
+            }
             // view marks and grid ends: their arrow or their bubble
             PlanItem::Polygon {
                 id,
@@ -4524,10 +4546,12 @@ pub fn hit_all(items: &[PlanItem], p: DVec2, tol: f64, mm: f64) -> Vec<ElementId
     }
     for it in items.iter().rev() {
         match it {
-            PlanItem::Line { id, a, b, pen } if *pen != Pen::Underlay && near_line(*a, *b) => {
+            PlanItem::Line { id, a, b, pen }
+                if !matches!(pen, Pen::Underlay | Pen::Hidden) && near_line(*a, *b) =>
+            {
                 found(*id)
             }
-            PlanItem::Polygon { id, points, .. } => {
+            PlanItem::Polygon { id, points, pen } if *pen != Pen::Hidden => {
                 let n = points.len();
                 if (0..n).any(|i| near_line(points[i], points[(i + 1) % n])) {
                     found(*id);
@@ -4535,6 +4559,99 @@ pub fn hit_all(items: &[PlanItem], p: DVec2, tol: f64, mm: f64) -> Vec<ElementId
             }
             _ => {}
         }
+    }
+    // what is in the cut wins over what is drawn dashed below or above it:
+    // a click in a door's opening takes the door, not the footing under it
+    let mut boxes: Vec<(ElementId, DVec2, DVec2)> = vec![];
+    for it in items {
+        let (id, pts): (ElementId, Vec<DVec2>) = match it {
+            PlanItem::Line {
+                id,
+                pen: Pen::Symbol,
+                a,
+                b,
+            } => (*id, vec![*a, *b]),
+            PlanItem::Arc {
+                id,
+                pen: Pen::Symbol,
+                center,
+                radius,
+                start,
+                end,
+            } => (
+                *id,
+                (0..=8)
+                    .map(|i| {
+                        let t = start + (end - start) * i as f64 / 8.0;
+                        *center + DVec2::from_angle(t) * *radius
+                    })
+                    .collect(),
+            ),
+            _ => continue,
+        };
+        let lo = pts.iter().fold(DVec2::splat(f64::MAX), |m, q| m.min(*q));
+        let hi = pts.iter().fold(DVec2::splat(f64::MIN), |m, q| m.max(*q));
+        match boxes.iter_mut().find(|b| b.0 == id) {
+            Some(b) => {
+                b.1 = b.1.min(lo);
+                b.2 = b.2.max(hi);
+            }
+            None => boxes.push((id, lo, hi)),
+        }
+    }
+    let below = |id: &ElementId| {
+        items.iter().all(|it| match it {
+            PlanItem::Line { id: i, pen, .. }
+            | PlanItem::Arc { id: i, pen, .. }
+            | PlanItem::Polygon { id: i, pen, .. } => i != id || *pen == Pen::Hidden,
+            _ => true,
+        })
+    };
+    let mut hidden: Vec<ElementId> = vec![];
+    for it in items.iter().rev() {
+        let hit = match it {
+            PlanItem::Line {
+                id,
+                pen: Pen::Hidden,
+                a,
+                b,
+            } if near_line(*a, *b) => Some(*id),
+            PlanItem::Arc {
+                id,
+                pen: Pen::Hidden,
+                center,
+                radius,
+                ..
+            } if (p.distance(*center) - radius).abs() < tol => Some(*id),
+            PlanItem::Polygon {
+                id,
+                pen: Pen::Hidden,
+                points,
+            } if {
+                let n = points.len();
+                (0..n).any(|i| near_line(points[i], points[(i + 1) % n]))
+            } =>
+            {
+                Some(*id)
+            }
+            _ => None,
+        };
+        if let Some(id) = hit {
+            if !hidden.contains(&id) {
+                hidden.push(id);
+            }
+        }
+    }
+    if hidden.iter().any(below) {
+        for (id, lo, hi) in &boxes {
+            let (lo, hi) = (*lo - DVec2::splat(tol), *hi + DVec2::splat(tol));
+            if p.cmpge(lo).all() && p.cmple(hi).all() {
+                found(*id);
+            }
+        }
+    }
+    for id in hidden {
+        found(id);
     }
     // rooms last: a click inside one that finds nothing else picks it
     for it in items.iter().rev() {
@@ -4724,9 +4841,28 @@ fn rest_reference(
     if refs.len() > snaps::MAX_REFERENCES {
         refs.remove(0);
     }
+    state.refs_used.insert(view, now);
     Some(format!(
-        "Guide lines from this {what}: where they cross snaps. Rest on it again to drop them, K keeps one, Esc clears them all."
+        "Guide lines from this {what}: where they cross snaps. They go when not used for a few seconds; K keeps one."
     ))
+}
+
+/// Seconds a view's guide lines last with nothing using them.
+pub const REF_FADE: f64 = 6.0;
+
+/// Drop a view's references once nothing has used them for [`REF_FADE`].
+fn fade_references(state: &mut PlanState, view: ElementId, now: f64, used: bool) {
+    if state.refs.get(&view).is_none_or(|r| r.is_empty()) {
+        state.refs_used.remove(&view);
+        return;
+    }
+    let last = state.refs_used.entry(view).or_insert(now);
+    if used {
+        *last = now;
+    } else if now - *last > REF_FADE {
+        state.refs.remove(&view);
+        state.refs_used.remove(&view);
+    }
 }
 
 /// While drawing, a point snapped to and rested on for a moment joins the
@@ -4769,6 +4905,27 @@ fn rest_on(
 #[cfg(test)]
 mod tests {
     #[test]
+    fn guide_lines_go_when_nothing_uses_them() {
+        let view = ElementId::new();
+        let edge = snaps::Reference::Edge {
+            a: DVec3::ZERO,
+            b: DVec3::X,
+            arc: None,
+        };
+        let mut state = PlanState::default();
+        rest_reference(&mut state, view, Some(edge), 0.0, false);
+        assert!(rest_reference(&mut state, view, Some(edge), 1.0, false).is_some());
+        fade_references(&mut state, view, 2.0, false);
+        assert_eq!(state.refs[&view].len(), 1);
+        // a snap following them keeps them
+        fade_references(&mut state, view, 6.5, true);
+        fade_references(&mut state, view, 10.0, false);
+        assert_eq!(state.refs[&view].len(), 1);
+        fade_references(&mut state, view, 6.5 + REF_FADE + 0.1, false);
+        assert!(!state.refs.contains_key(&view));
+    }
+
+    #[test]
     fn resting_after_an_align_click_keeps_its_message() {
         let view = ElementId::new();
         let edge = snaps::Reference::Edge {
@@ -4795,6 +4952,40 @@ mod tests {
 
     use super::*;
     use creabim_core::{EditMesh, FreeMesh};
+
+    #[test]
+    fn a_click_in_a_doors_opening_takes_the_door_not_the_footing_below() {
+        let (door, footing) = (ElementId::new(), ElementId::new());
+        let items = vec![
+            PlanItem::Line {
+                id: footing,
+                pen: Pen::Hidden,
+                a: DVec2::new(-3.0, 0.0),
+                b: DVec2::new(3.0, 0.0),
+            },
+            PlanItem::Line {
+                id: door,
+                pen: Pen::Symbol,
+                a: DVec2::new(0.0, 0.0),
+                b: DVec2::new(0.0, 0.9),
+            },
+            PlanItem::Arc {
+                id: door,
+                pen: Pen::Symbol,
+                center: DVec2::ZERO,
+                radius: 0.9,
+                start: 0.0,
+                end: std::f64::consts::FRAC_PI_2,
+            },
+        ];
+        let hits = hit_all(&items, DVec2::new(0.45, 0.0), 0.05, 0.05);
+        assert_eq!(hits, [door, footing]);
+        // away from the door the footing is still picked
+        assert_eq!(
+            hit_test(&items, DVec2::new(2.0, 0.0), 0.05, 0.05),
+            Some(footing)
+        );
+    }
 
     #[test]
     fn tools_draw_new_elements_as_their_type() {

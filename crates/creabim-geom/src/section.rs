@@ -662,11 +662,24 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             crate::plan::category_pens(model, &mut rooms, &v.graphics);
             rooms.append(&mut d.items);
             d.items = rooms;
-            // another level traced underneath, drawn first so it stays below
+            // another level traced underneath, under the linework but
+            // (over the fills, so a footing's or a slab's doesn't hide it)
             if let Some(under) = v.underlay.level(model, *level) {
-                let mut items = crate::plan::underlay_items(model, under, *cut_height);
-                items.append(&mut d.items);
-                d.items = items;
+                let items = crate::plan::underlay_items(model, under, *cut_height);
+                let at = d
+                    .items
+                    .iter()
+                    .rposition(|it| {
+                        matches!(
+                            it,
+                            PlanItem::Fill { .. }
+                                | PlanItem::Tint { .. }
+                                | PlanItem::Shade { .. }
+                                | PlanItem::Room { .. }
+                        )
+                    })
+                    .map_or(0, |i| i + 1);
+                d.items.splice(at..at, items);
             }
             d
         }

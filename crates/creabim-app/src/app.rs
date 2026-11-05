@@ -210,6 +210,13 @@ pub struct CreaBimApp {
     /// last over it rather than the 3D view: what Alt+Z turns X-ray on in.
     rect_2d: Option<Rect>,
     last_in_2d: bool,
+    /// What the status bar said after the last export, and the folder it
+    /// went to: while the message shows, the bar offers to open the folder.
+    last_export: Option<String>,
+    /// What a box selection took, while it is still the selection: the
+    /// status bar offers Keep only… for it.
+    boxed: Option<Vec<ElementId>>,
+    last_export_dir: Option<std::path::PathBuf>,
     /// The crop box whose elements clicks in the 3D view are picking.
     crop_pick: Option<ElementId>,
     /// The Settings window is open.
@@ -298,6 +305,9 @@ impl CreaBimApp {
             rect_3d: None,
             rect_2d: None,
             last_in_2d: false,
+            last_export: None,
+            boxed: None,
+            last_export_dir: None,
             crop_pick: None,
             status: "Loaded the sample house. Orbit with left drag, pan with right drag, zoom with the wheel.".into(),
         }
@@ -661,7 +671,22 @@ impl CreaBimApp {
         }
     }
 
-    fn frame_all(&mut self) {
+    /// Frame all in one pane only: the drawing (Home over it) or the 3D
+    /// view (Home over it, or its toolbar), leaving the other where it is.
+    fn frame_pane(&mut self, in_2d: bool) {
+        if in_2d && self.rect_2d.is_some() {
+            if let Some(v) = self.active_view {
+                self.plan.cameras.remove(&v);
+            }
+            self.status = "Framed the drawing.".into();
+        } else {
+            self.frame_3d();
+            self.status = "Framed the 3D view.".into();
+        }
+    }
+
+    /// Fit the 3D view round the whole model.
+    fn frame_3d(&mut self) {
         let scene = build_scene(self.doc.model());
         let bounds = scene
             .iter()
@@ -670,6 +695,11 @@ impl CreaBimApp {
         if let Some((lo, hi)) = bounds {
             self.camera.frame(lo, hi, self.aspect);
         }
+    }
+
+    /// Every view framed afresh, as when a project opens.
+    fn frame_all(&mut self) {
+        self.frame_3d();
         self.plan.cameras.clear();
     }
 
@@ -919,18 +949,21 @@ impl CreaBimApp {
         }
         if self.plan.modal.is_none() {
             if home {
-                self.frame_all();
+                self.frame_pane(self.last_in_2d);
             }
             if frame_sel {
                 self.frame_selection();
             }
         }
+        // in a text field, Ctrl+A and the letter keys are the field's own
+        let typing = ctx.egui_wants_keyboard_input();
         let (all, none, hide, isolate, show, events) = ctx.input(|i| {
             let (cmd, alt, shift) = (i.modifiers.command, i.modifiers.alt, i.modifiers.shift);
-            let h = i.key_pressed(egui::Key::H);
+            let h = !typing && i.key_pressed(egui::Key::H);
+            let a = !typing && i.key_pressed(egui::Key::A);
             (
-                cmd && !shift && i.key_pressed(egui::Key::A),
-                alt && i.key_pressed(egui::Key::A),
+                cmd && !shift && a,
+                alt && a,
                 h && !cmd && !alt && !shift,
                 h && shift && !cmd && !alt,
                 h && alt,
@@ -957,7 +990,7 @@ impl CreaBimApp {
         // in the project
         let similar = ctx.input(|i| {
             let m = i.modifiers;
-            (m.shift && !m.alt && i.key_pressed(egui::Key::A)).then_some(m.command)
+            (!typing && m.shift && !m.alt && i.key_pressed(egui::Key::A)).then_some(m.command)
         });
         if let Some(project) = similar.filter(|_| self.plan.tool == Tool::Select) {
             self.shell.context_3d = !self.last_in_2d;
@@ -2071,6 +2104,7 @@ impl CreaBimApp {
                     self.face = None;
                     self.box_3d = None;
                     self.status = format!("{} selected.", self.selection.len());
+                    self.plan.boxed = true;
                 }
                 return;
             }
@@ -4177,7 +4211,10 @@ impl CreaBimApp {
                     draw_hole |= draw;
                 }
                 ElementKind::Opening(o) => {
+                    let old = o.width;
                     if num(ui, "Width", &mut o.width, 0.1, 20.0) {
+                        // about its centre, or from the jamb by a corner
+                        creabim_core::walls::widen_in_place(self.doc.model(), old, o);
                         label = "Opening width"
                     }
                     if num(ui, "Height", &mut o.height, 0.1, 20.0) {
@@ -5151,6 +5188,11 @@ impl CreaBimApp {
                     continue;
                 };
                 if let Some(mut out) = crate::multiedit::apply_to(&e, &edited, other) {
+                    if let (ElementKind::Opening(was), ElementKind::Opening(o)) =
+                        (&other.kind, &mut out.kind)
+                    {
+                        creabim_core::walls::widen_in_place(self.doc.model(), was.width, o);
+                    }
                     let slot = creabim_core::assembly::assembly_slot(&out).flatten();
                     if slot.is_some() {
                         creabim_core::assembly::set_assembly(self.doc.model(), &mut out, slot);
@@ -5158,11 +5200,20 @@ impl CreaBimApp {
                     others.push((other.clone(), out));
                 }
             }
-            let msg = if others.is_empty() {
+            let mut msg = if others.is_empty() {
                 format!("{label}.")
             } else {
                 format!("{label}: {} elements.", others.len() + 1)
             };
+            if let ElementKind::Opening(o) = &edited.kind {
+                let model = self.doc.model();
+                if let Some(w) = creabim_core::walls::opening_crosses_join(model, id, o) {
+                    let name = model.get(w).map_or("another wall", |e| e.name.as_str());
+                    msg = format!(
+                        "{msg} It now runs into {name}, where the walls join: move it along or make it narrower."
+                    );
+                }
+            }
             let r = if others.is_empty() {
                 self.doc.edit_merged(id, label, |e| *e = edited.clone())
             } else {
@@ -5423,6 +5474,10 @@ impl eframe::App for CreaBimApp {
         }
         if std::mem::take(&mut self.plan.want_catalogue) {
             self.catalogue.open = true;
+        }
+        // a box selection that took more than one kind: Keep only… is offered
+        if std::mem::take(&mut self.plan.boxed) {
+            self.after_box_selection();
         }
         // a box dragged with the Footing tool: footings under all it took
         let hosts = std::mem::take(&mut self.plan.want_footings);

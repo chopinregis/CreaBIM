@@ -409,6 +409,73 @@ pub fn flip_facing(o: &mut Opening) {
     o.flip_facing = !o.flip_facing;
 }
 
+/// How close to a wall's end an opening's jamb has to be for that jamb to
+/// stay put when the opening is widened.
+pub const NEAR_END: f64 = 0.5;
+
+/// An opening made `o.width` wide from `old_width`, moved so it grows about
+/// its centre, or from the jamb nearest a wall end when that one is within
+/// [`NEAR_END`] of it, and kept inside its wall.
+pub fn widen_in_place(model: &Model, old_width: f64, o: &mut Opening) {
+    let d = o.width - old_width;
+    if d.abs() < 1e-9 {
+        return;
+    }
+    let Some(ElementKind::Wall(w)) = model.get(o.host).map(|e| &e.kind) else {
+        return;
+    };
+    let len = w.length();
+    let (left, right) = (o.offset, len - (o.offset + old_width));
+    if left <= right && left < NEAR_END {
+        // the jamb by the start stays
+    } else if right < left && right < NEAR_END {
+        o.offset -= d;
+    } else {
+        o.offset -= d / 2.0;
+    }
+    o.offset = o.offset.clamp(0.0, (len - o.width).max(0.0));
+}
+
+/// Another wall on the host's level that an opening runs into: where two
+/// walls join, a door or window there cuts through the other wall too.
+pub fn opening_crosses_join(model: &Model, id: ElementId, o: &Opening) -> Option<ElementId> {
+    let Some(ElementKind::Wall(w)) = model.get(o.host).map(|e| &e.kind) else {
+        return None;
+    };
+    let along = w.direction();
+    let n = 24;
+    let span: Vec<DVec2> = (0..=n)
+        .map(|i| w.start + along * (o.offset + o.width * i as f64 / n as f64))
+        .collect();
+    let dist = |p: DVec2, a: DVec2, b: DVec2| {
+        let ab = b - a;
+        let t = ((p - a).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+        p.distance(a + ab * t)
+    };
+    model.iter().find_map(|e| match &e.kind {
+        ElementKind::Wall(v)
+            if e.id != o.host && e.id != id && v.level == w.level && v.curtain.is_none() =>
+        {
+            let (a, b) = (v.start, v.end);
+            // a wall running through the opening, or one ending at the
+            // host's face (a T or an L join) within the opening's width
+            let through = span
+                .iter()
+                .any(|p| dist(*p, a, b) < v.thickness / 2.0 - 1e-3);
+            let ends_here = [a, b].into_iter().any(|end| {
+                let d = end - w.start;
+                let at = d.dot(along);
+                let across = d.dot(along.perp()).abs();
+                across <= w.thickness / 2.0 + 0.02
+                    && at > o.offset - v.thickness / 2.0 + 1e-3
+                    && at < o.offset + o.width + v.thickness / 2.0 - 1e-3
+            });
+            (through || ends_here).then_some(e.id)
+        }
+        _ => None,
+    })
+}
+
 /// Split wall `id` in two at the point of it nearest `at`: it keeps the
 /// part from its start, a new wall the rest; the doors and windows past
 /// the split move to the new one. Refused at an end, or through an
@@ -723,5 +790,98 @@ mod tests {
             panic!()
         };
         assert!((a.length() + b.length() - len).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod widen_tests {
+    use super::*;
+    use crate::{Element, Level, OpeningKind};
+
+    fn wall_and_door(offset: f64) -> (Model, ElementId, Opening) {
+        let mut m = Model::default();
+        let l = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let a = Element::new(
+            "A",
+            ElementKind::Wall(Wall::new(l.id, DVec2::ZERO, DVec2::new(6.0, 0.0), 0.2, 2.7)),
+        );
+        // a wall meeting A at a T, at x = 4
+        let b = Element::new(
+            "B",
+            ElementKind::Wall(Wall::new(
+                l.id,
+                DVec2::new(4.0, 0.0),
+                DVec2::new(4.0, 3.0),
+                0.2,
+                2.7,
+            )),
+        );
+        let host = a.id;
+        Transaction::new("setup")
+            .insert(l)
+            .insert(a)
+            .insert(b)
+            .apply(&mut m)
+            .unwrap();
+        let o = Opening {
+            host,
+            kind: OpeningKind::Door,
+            offset,
+            sill: 0.0,
+            width: 0.9,
+            height: 2.1,
+            material: None,
+            frame: Default::default(),
+            flip_hand: false,
+            flip_facing: false,
+        };
+        (m, host, o)
+    }
+
+    #[test]
+    fn a_door_widens_about_its_centre_or_from_the_jamb_by_a_corner() {
+        let (m, _, mut o) = wall_and_door(1.5);
+        o.width = 1.2;
+        widen_in_place(&m, 0.9, &mut o);
+        assert!((o.offset - 1.35).abs() < 1e-9);
+        // by the wall's start its jamb there stays
+        let (m, _, mut o) = wall_and_door(0.2);
+        o.width = 1.2;
+        widen_in_place(&m, 0.9, &mut o);
+        assert!((o.offset - 0.2).abs() < 1e-9);
+        // by its end the other jamb stays
+        let (m, _, mut o) = wall_and_door(4.9);
+        o.width = 1.2;
+        widen_in_place(&m, 0.9, &mut o);
+        assert!((o.offset + o.width - 5.8).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_door_widened_into_a_join_is_found() {
+        let (m, _, mut o) = wall_and_door(2.9);
+        assert!(opening_crosses_join(&m, ElementId::new(), &o).is_none());
+        o.width = 1.5;
+        widen_in_place(&m, 0.9, &mut o);
+        assert!(opening_crosses_join(&m, ElementId::new(), &o).is_some());
+        // a wall that stops at the host's face counts too
+        let (mut m, _, o) = wall_and_door(3.5);
+        let b = m.iter().find(|e| e.name == "B").unwrap().clone();
+        let mut b2 = b.clone();
+        if let ElementKind::Wall(w) = &mut b2.kind {
+            w.start = DVec2::new(4.0, 0.1);
+        }
+        Transaction::new("T at the face")
+            .replace(b, b2)
+            .apply(&mut m)
+            .unwrap();
+        assert!(opening_crosses_join(&m, ElementId::new(), &o).is_some());
+        let (m, _, o) = wall_and_door(1.0);
+        assert!(opening_crosses_join(&m, ElementId::new(), &o).is_none());
     }
 }

@@ -303,6 +303,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn after_an_export_the_status_bar_offers_its_folder() {
+        let mut app = test_app();
+        let dir = std::env::temp_dir().join(format!("creabim-export-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        app.path = dir.join("house.creabim").display().to_string();
+        app.export("export.ifcx");
+        assert!(app.status.starts_with("Exported "), "{}", app.status);
+        assert!(dir.join("house.ifcx").exists());
+        let has = |app: &CreaBimApp| {
+            app.status_state()["controls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["id"] == "export.folder")
+        };
+        assert!(has(&app));
+        assert_eq!(
+            app.last_export_dir
+                .as_deref()
+                .map(|d| d.canonicalize().unwrap()),
+            Some(dir.canonicalize().unwrap())
+        );
+        // once the bar says something else, the button goes
+        app.status = "Moved.".into();
+        assert!(!has(&app));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn frame_all_reframes_only_the_pane_it_is_asked_in() {
+        let mut app = test_app();
+        let (a, b) = (ElementId::new(), ElementId::new());
+        app.active_view = Some(a);
+        app.rect_2d = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(400.0, 300.0),
+        ));
+        app.plan.cameras.insert(a, (glam::DVec2::ZERO, 3.0));
+        app.plan.cameras.insert(b, (glam::DVec2::ZERO, 3.0));
+        app.camera.distance = 1234.0;
+        app.frame_pane(true);
+        assert!(!app.plan.cameras.contains_key(&a));
+        assert!(app.plan.cameras.contains_key(&b));
+        assert_eq!(app.camera.distance, 1234.0);
+        app.plan.cameras.insert(a, (glam::DVec2::ZERO, 3.0));
+        app.frame_pane(false);
+        assert_ne!(app.camera.distance, 1234.0);
+        assert!(app.plan.cameras.contains_key(&a));
+    }
+
+    #[test]
     fn the_units_switch_changes_the_project_units_in_one_undo() {
         let mut app = test_app();
         assert_eq!(app.doc.model().units().length, LengthUnit::Millimetres);

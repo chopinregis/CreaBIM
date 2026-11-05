@@ -836,7 +836,8 @@ mod tests {
                 panic!()
             };
             assert_eq!(ft.level, f);
-            assert!((ft.top(doc.model()) - 3.0).abs() < 1e-9);
+            // it keeps its place under the slab
+            assert!((ft.top(doc.model()) - (3.0 - ft.below)).abs() < 1e-9);
         }
     }
 

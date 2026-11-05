@@ -366,7 +366,14 @@ pub fn under(
         let Some(e) = model.get(*id) else { continue };
         let (name, f) = match &e.kind {
             ElementKind::Wall(w) if w.curtain.is_none() => {
-                ("Strip footing", Footing::under_wall(*id, w))
+                let mut f = Footing::under_wall(*id, w);
+                // its top at the underside of a ground slab the wall stands in
+                let base = crate::walls::base_z(model, w);
+                if let Some(d) = crate::members::slab_depth_at(model, (w.start + w.end) / 2.0, base)
+                {
+                    f.below = d;
+                }
+                ("Strip footing", f)
             }
             ElementKind::Column(c) => ("Pad footing", Footing::under_column(*id, c)),
             _ => continue,
@@ -565,5 +572,43 @@ mod tests {
             panic!()
         };
         assert_eq!((s.width, s.thickness), (0.9, 0.4));
+    }
+}
+
+#[cfg(test)]
+mod slab_tests {
+    use super::*;
+
+    #[test]
+    fn a_strip_footing_starts_under_the_slab_its_wall_stands_in() {
+        let m = crate::sample::sample_house();
+        let walls: Vec<ElementId> = m
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::Wall(w) if w.curtain.is_none()))
+            .map(|e| e.id)
+            .collect();
+        let mut checked = 0;
+        for id in walls {
+            let ElementKind::Wall(w) = &m.get(id).unwrap().kind else {
+                continue;
+            };
+            let base = crate::walls::base_z(&m, w);
+            let Some(d) = crate::members::slab_depth_at(&m, (w.start + w.end) / 2.0, base) else {
+                continue;
+            };
+            let mut m2 = m.clone();
+            for f in footings_under(&m2, id) {
+                let _ = m2.remove(f);
+            }
+            let (tx, ids) = under(&m2, &[id], &|_| {});
+            let mut doc = crate::Document::from_model(m2);
+            doc.commit(tx).unwrap();
+            let ElementKind::Footing(f) = &doc.model().get(ids[0]).unwrap().kind else {
+                unreachable!()
+            };
+            assert!((f.top(doc.model()) - (base - d)).abs() < 1e-6);
+            checked += 1;
+        }
+        assert!(checked > 0, "some wall stands in a slab");
     }
 }
