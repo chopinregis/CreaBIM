@@ -190,6 +190,8 @@ pub struct Settings {
     pub areas: Option<crate::areas::Node>,
     /// Layouts saved with *Save current layout*.
     pub workspaces: Vec<crate::areas::Workspace>,
+    /// How grips look (brief 02, 2.13): a personal choice.
+    pub grips: crate::handles::GripStyle,
 }
 
 impl Default for Settings {
@@ -214,6 +216,7 @@ impl Default for Settings {
             workspace: "Drawing".into(),
             areas: None,
             workspaces: vec![],
+            grips: Default::default(),
         }
     }
 }

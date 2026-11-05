@@ -782,6 +782,8 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
             size,
             align,
             mm: 1.0,
+            rgb: None,
+            bold: false,
         })
     };
     text(

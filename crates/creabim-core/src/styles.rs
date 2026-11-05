@@ -537,6 +537,12 @@ pub struct StylePack {
     /// so a project never mixes them.
     #[serde(default, skip_serializing_if = "MarkerFamily::is_default")]
     pub markers: MarkerFamily,
+    /// One of `marker_styles` by name, drawn instead of the family.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker_style: Option<String>,
+    /// The pack's own marker styles, mixed in the marker designer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub marker_styles: Vec<NamedMarkerStyle>,
     /// How membranes are drawn in details.
     #[serde(default, skip_serializing_if = "crate::MembraneLook::is_default")]
     pub membranes: crate::MembraneLook,
@@ -549,12 +555,22 @@ pub enum RoomTagStyle {
     /// small and last.
     #[default]
     Stacked,
+    /// The number in a small rounded outline on top, the name, then the
+    /// area.
+    NumberBadge,
+    /// A box with the name, and a split footer: the number and the area.
+    Boxed,
     /// The tag as it was first drawn: the number and the area on one line.
     Inline,
 }
 
 impl RoomTagStyle {
-    pub const ALL: [RoomTagStyle; 2] = [RoomTagStyle::Stacked, RoomTagStyle::Inline];
+    pub const ALL: [RoomTagStyle; 4] = [
+        RoomTagStyle::Stacked,
+        RoomTagStyle::NumberBadge,
+        RoomTagStyle::Boxed,
+        RoomTagStyle::Inline,
+    ];
 
     pub fn is_default(&self) -> bool {
         *self == Self::default()
@@ -563,6 +579,8 @@ impl RoomTagStyle {
     pub fn label(self) -> &'static str {
         match self {
             RoomTagStyle::Stacked => "Stacked",
+            RoomTagStyle::NumberBadge => "Number badge",
+            RoomTagStyle::Boxed => "Boxed",
             RoomTagStyle::Inline => "Inline",
         }
     }
@@ -576,12 +594,23 @@ pub enum MarkerFamily {
     /// the way the view looks, heavy line ends and a dash-dot line.
     #[default]
     Classic,
+    /// No bubbles: a small arrow, the number in semibold and the sheet
+    /// after it; callouts a thin solid box with a dark label tab.
+    Minimal,
+    /// Filled dark heads with white text and an accent wedge; callouts a
+    /// heavy box with the bubble on its edge.
+    Bold,
     /// The marks as they were first drawn.
     Plain,
 }
 
 impl MarkerFamily {
-    pub const ALL: [MarkerFamily; 2] = [MarkerFamily::Classic, MarkerFamily::Plain];
+    pub const ALL: [MarkerFamily; 4] = [
+        MarkerFamily::Classic,
+        MarkerFamily::Minimal,
+        MarkerFamily::Bold,
+        MarkerFamily::Plain,
+    ];
 
     pub fn is_default(&self) -> bool {
         *self == Self::default()
@@ -590,9 +619,159 @@ impl MarkerFamily {
     pub fn label(self) -> &'static str {
         match self {
             MarkerFamily::Classic => "Classic",
+            MarkerFamily::Minimal => "Minimal",
+            MarkerFamily::Bold => "Bold",
             MarkerFamily::Plain => "Plain (first markers)",
         }
     }
+
+    /// The parts it is drawn with; none for the first markers, drawn as
+    /// they always were.
+    pub fn parts(self) -> Option<MarkerParts> {
+        use MarkerColour as C;
+        Some(match self {
+            MarkerFamily::Classic => MarkerParts::default(),
+            MarkerFamily::Minimal => MarkerParts {
+                head: MarkerHead::TextOnly,
+                fill: MarkerFill::Outline,
+                text: MarkerText::Inline,
+                pointer: MarkerPointer::SmallArrow,
+                line: MarkerLine::Thin,
+                edge: CalloutEdge::SolidThin,
+                colour: C::Ink,
+            },
+            MarkerFamily::Bold => MarkerParts {
+                head: MarkerHead::Circle,
+                fill: MarkerFill::Filled,
+                text: MarkerText::Split,
+                pointer: MarkerPointer::AccentWedge,
+                line: MarkerLine::EndsOnly,
+                edge: CalloutEdge::Solid2,
+                colour: C::Ink,
+            },
+            MarkerFamily::Plain => return None,
+        })
+    }
+}
+
+/// A marker's head: what holds the view's number and sheet.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkerHead {
+    #[default]
+    Circle,
+    RoundedBox,
+    TextOnly,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkerFill {
+    #[default]
+    Outline,
+    /// Filled in the colour, with white text.
+    Filled,
+}
+
+/// How the number and the sheet are written.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkerText {
+    /// The number over the sheet, split by a line.
+    #[default]
+    Split,
+    /// "A · A301" on one line.
+    Inline,
+}
+
+/// What points the way the view looks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkerPointer {
+    #[default]
+    Wedge,
+    SmallArrow,
+    /// A wedge in the accent colour.
+    AccentWedge,
+}
+
+/// A section's line.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkerLine {
+    /// Heavy ends and a dash-dot line between them.
+    #[default]
+    FullHeavyEnds,
+    /// A thin dash-dot line end to end.
+    Thin,
+    /// Short heavy ends and nothing between.
+    EndsOnly,
+}
+
+/// A callout's box or circle.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CalloutEdge {
+    #[default]
+    Dashed,
+    SolidThin,
+    /// A heavy solid edge, about 2 px on screen.
+    Solid2,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkerColour {
+    #[default]
+    Ink,
+    Accent,
+    /// Annotation blue.
+    Blue,
+}
+
+impl MarkerColour {
+    pub const ALL: [MarkerColour; 3] =
+        [MarkerColour::Ink, MarkerColour::Accent, MarkerColour::Blue];
+
+    /// sRGB, 0..1.
+    pub fn rgb(self) -> [f32; 3] {
+        match self {
+            MarkerColour::Ink => [0.17, 0.19, 0.16],
+            MarkerColour::Accent => ACCENT_RGB,
+            MarkerColour::Blue => [0.13, 0.27, 0.58],
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            MarkerColour::Ink => "Ink",
+            MarkerColour::Accent => "Accent",
+            MarkerColour::Blue => "Annotation blue",
+        }
+    }
+}
+
+/// The sage accent (#4F6B4C), sRGB 0..1.
+pub const ACCENT_RGB: [f32; 3] = [0.31, 0.42, 0.30];
+
+/// The parts every view mark is drawn with: sections, elevations,
+/// callouts and detail callouts. The default is the Classic family.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarkerParts {
+    #[serde(default)]
+    pub head: MarkerHead,
+    #[serde(default)]
+    pub fill: MarkerFill,
+    #[serde(default)]
+    pub text: MarkerText,
+    #[serde(default)]
+    pub pointer: MarkerPointer,
+    #[serde(default)]
+    pub line: MarkerLine,
+    #[serde(default)]
+    pub edge: CalloutEdge,
+    #[serde(default)]
+    pub colour: MarkerColour,
+}
+
+/// A marker style of the pack's own, by name.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NamedMarkerStyle {
+    pub name: String,
+    pub parts: MarkerParts,
 }
 
 /// A template name for each kind of view.
@@ -690,6 +869,32 @@ impl StylePack {
             r.validate()?;
         }
         Ok(())
+    }
+
+    /// The parts the pack's view marks are drawn with: its own style when
+    /// it names one, else its family's; none for the first markers.
+    pub fn marker_parts(&self) -> Option<MarkerParts> {
+        if let Some(own) = self
+            .marker_style
+            .as_ref()
+            .and_then(|n| self.marker_styles.iter().find(|s| &s.name == n))
+        {
+            return Some(own.parts);
+        }
+        self.markers.parts()
+    }
+
+    /// What the pack's markers are called: its own style's name, or the
+    /// family's.
+    pub fn marker_label(&self) -> String {
+        match self
+            .marker_style
+            .as_ref()
+            .filter(|n| self.marker_styles.iter().any(|s| &s.name == *n))
+        {
+            Some(n) => n.clone(),
+            None => self.markers.label().to_string(),
+        }
     }
 
     /// The pens a drawing at 1:`scale` takes.
@@ -987,6 +1192,31 @@ pub fn set_template(model: &Model, views: &[ElementId], name: Option<&str>) -> T
 mod tests {
     use super::*;
     use crate::Document;
+
+    #[test]
+    fn own_marker_styles_travel_with_the_pack() {
+        let mut pack = StylePack::shipped().remove(0);
+        let parts = MarkerParts {
+            head: MarkerHead::RoundedBox,
+            fill: MarkerFill::Filled,
+            colour: MarkerColour::Accent,
+            ..MarkerParts::default()
+        };
+        pack.marker_styles.push(NamedMarkerStyle {
+            name: "Rounded green".into(),
+            parts,
+        });
+        pack.marker_style = Some("Rounded green".into());
+        let text = serde_json::to_string(&pack).unwrap();
+        let back: StylePack = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.marker_parts(), Some(parts));
+        assert_eq!(back.marker_label(), "Rounded green");
+        // a pack saved before the designer still reads
+        let mut old: serde_json::Value =
+            serde_json::to_value(StylePack::shipped().remove(0)).unwrap();
+        old.as_object_mut().unwrap().remove("marker_styles");
+        assert!(serde_json::from_value::<StylePack>(old).is_ok());
+    }
 
     #[test]
     fn shipped_packs_read_and_differ() {

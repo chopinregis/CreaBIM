@@ -214,6 +214,7 @@ impl CreaBimApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let settings = crate::files::Settings::load();
         let theme = crate::theme::Theme::from_id(&settings.theme).unwrap_or_default();
+        crate::handles::set_grip_style(settings.grips);
         shell::style(&cc.egui_ctx, theme);
         let viewport = cc
             .wgpu_render_state

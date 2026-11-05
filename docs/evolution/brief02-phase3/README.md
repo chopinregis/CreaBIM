@@ -8,7 +8,7 @@ Reference screenshots for Phase 3 of *CreaBIM brief 02: consolidated* (2026-11-0
 | --- | --- | --- |
 | 3.1 (2.6) | View areas and workspaces | **Done, with small gaps** (below). |
 | 3.2 (2.10, part 3) | Temporary dimensions that drive, with the padlock | **Done in plans, with gaps** (below). |
-| 3.3 (2.13) | Choices with pictures, personal settings, style packs, the marker and tag designer, style pack export and import | Not started. |
+| 3.3 (2.11–2.13) | Choices with pictures, personal settings, style packs, the marker and tag designer, style pack export and import | **Partly done** (below): pictures, live preview and the marker designer are in; the tag designer is not. |
 | 3.4 (4.2) | View cube | Not started. |
 
 ## 3.1 View areas and workspaces
@@ -90,6 +90,50 @@ Select one wall, grid line, door, window or column in a plan. Blue dimensions sh
 - The padlock is drawn in the plan, not from the icon set; it needs the owner's look at it.
 - Lockable pairs are grid lines, walls and columns; a door's gaps can be typed but not locked.
 - The new value doesn't fade in after Enter.
+
+## 3.3 Choices with pictures, and your own styles
+
+*Graphic styles › Tags and marks* no longer offers two drop-down lists. Every choice is a row with a small picture of what it draws, a name and one line on what it is. **Rest the pointer on a row and the drawings show it straight away**; move off and they go back; click to keep it. A preview is never an undo step.
+
+**Room tags** come in four layouts, all drawn now: *Stacked* (the default: name, area, then the number small), *Number badge* (the number in a small outline on top), *Boxed* (a box with the name, and a footer split between number and area) and *Inline* (the first tag).
+
+**View markers** come in four families, all drawn now: *Classic* (split bubble, solid wedge), *Minimal* (no bubble, a small arrow and set type), *Bold* (filled heads, an accent wedge) and *Plain* (the first markers). They change section marks, elevation marks and callouts together.
+
+**The marker designer** (*+ New style from …*) mixes a marker from its parts: head (circle, rounded box, text only), fill (outline, filled), text (split, or inline *A · A301*), pointer (wedge, small arrow, accent wedge), line (full with heavy ends, thin, ends only), callout edge (dashed, solid thin, solid 2 px) and colour (ink, the accent, annotation blue). A preview of a section, an elevation, a rectangular and a round callout follows each change. *Save as style* adds it under **Your styles**, with *Edit…* and *Delete*, and the project draws with it.
+
+**Your own styles belong to the style pack.** *Save pack as…* writes them into the pack file and *Load pack…* brings them into another project, so an office's markers travel with its pack.
+
+**Personal settings stay yours.** *Settings* keeps *Appearance (yours)*, now with the theme and the **grip style**, apart from *This project*. Grips come as *Quiet* (the default: squares at corners, bars on edges), *Edges are the handles* (almost nothing at rest; an edge shows its bar under the pointer and drags) or *One grip shape* (the same small circle everywhere). Resting on one previews it on the selection; the choice goes with you, not with the project, and never changes anyone's drawings.
+
+![Tags and marks, with pictures](56-tags-and-marks.png)
+
+![Resting on Bold shows it on the plan](57-preview-on-plan.png)
+
+![The marker designer](58-marker-designer.png)
+
+![Your own style on the plan, with Boxed room tags](59-your-style-on-plan.png)
+
+![Boxed room tags, closer](59b-boxed-tags-close.png)
+
+![The grip choice in Settings](60-grip-choice.png)
+
+![Quiet grips, then one grip shape](61-grips-quiet-and-one-shape.png)
+
+### Still to do in 3.3
+
+- There is no room tag designer yet: the four layouts are presets.
+- Pictures and live previews are in *Tags and marks* and the grip choice only; pens, patterns, object styles and view templates are still plain lists.
+- A marker's colour applies to its fills and text; its lines stay ink.
+- Zoomed far out on screen, text is drawn at least 7 px high, so a Boxed tag's footer can run into its divider; on paper it fits.
+- The grip accent colour is not a personal setting yet.
+
+## 3.3 How to test
+
+1. *Manage › Graphic styles › Tags and marks*. Rest the pointer on *Bold*: the plan's marks turn bold. Move off: they go back, and Ctrl+Z has nothing new to undo.
+2. Click *Boxed* under Room tags: every room tag in the plan becomes a box.
+3. *+ New style from Classic…*: pick Rounded box, Filled, Small arrow and the green swatch, name it and *Save as style*. It shows under *Your styles* and on the plan.
+4. *Save pack as…*, open another project and *Load pack…*: the style comes along.
+5. *CreaBIM › Settings…*, select a wall, rest on *One grip shape*, then click it. Restart: it is still your choice.
 
 ## How to test 3.2
 

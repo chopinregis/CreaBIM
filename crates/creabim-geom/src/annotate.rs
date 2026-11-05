@@ -441,6 +441,135 @@ pub fn room_tag_items(
             }
             items
         }
+        RoomTagStyle::NumberBadge | RoomTagStyle::Boxed => {
+            let value = |f: RoomField| {
+                let shown = fields.is_empty() || fields.contains(&f);
+                Some(f.value(model, room)).filter(|v| shown && !v.is_empty())
+            };
+            let (name, number, area) = (
+                value(RoomField::Name),
+                value(RoomField::Number),
+                value(RoomField::Area),
+            );
+            let mut bold = look;
+            bold.bold = true;
+            let mut small = look;
+            small.size *= 0.72;
+            let mut mid = look;
+            mid.size *= 0.9;
+            let pen = crate::plan::Pen::Symbol;
+            let rect = |lo: DVec2, hi: DVec2| PlanItem::Polygon {
+                id,
+                pen,
+                points: vec![lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)],
+            };
+            let mut items = vec![];
+            if style == RoomTagStyle::NumberBadge {
+                // the number in a small outline on top, the name, the area
+                let step = look.size * 1.45 * mm;
+                let rows = [number.is_some(), name.is_some(), area.is_some()]
+                    .iter()
+                    .filter(|r| **r)
+                    .count();
+                let mut y = at.y + step * (rows.saturating_sub(1)) as f64 / 2.0;
+                if let Some(n) = number {
+                    let w = small.width(&n) * mm + 1.6 * mm;
+                    let h = small.size * 1.5 * mm;
+                    let c = DVec2::new(at.x, y);
+                    items.push(PlanItem::Polygon {
+                        id,
+                        pen,
+                        points: (0..20)
+                            .map(|i| {
+                                // a stadium round the number
+                                let t = i as f64 / 20.0 * std::f64::consts::TAU;
+                                let (cx, cy) = (t.cos(), t.sin());
+                                let half = (w - h).max(0.0) / 2.0;
+                                c + DVec2::new(cx * h / 2.0 + half * cx.signum(), cy * h / 2.0)
+                            })
+                            .collect(),
+                    });
+                    items.push(room_tag_item(id, n, c, small, mm));
+                    y -= step;
+                }
+                if let Some(n) = name {
+                    items.push(room_tag_item(
+                        id,
+                        n.to_uppercase(),
+                        DVec2::new(at.x, y),
+                        bold,
+                        mm,
+                    ));
+                    y -= step;
+                }
+                if let Some(a) = area {
+                    items.push(room_tag_item(id, a, DVec2::new(at.x, y), mid, mm));
+                }
+            } else {
+                // a box: the name, and a footer with the number and area
+                let pad = 1.2 * mm;
+                let top = name
+                    .as_ref()
+                    .map_or(0.0, |n| bold.width(&n.to_uppercase()) * mm);
+                // text drawn on screen runs a little wider than the
+                // estimate, so the footer leaves room and a divider
+                let foot_gap = 2.0 * pad;
+                let nw = number.as_ref().map_or(0.0, |n| small.width(n) * mm * 1.15);
+                let aw = area.as_ref().map_or(0.0, |a| mid.width(a) * mm * 1.15);
+                let foot = nw + aw + foot_gap;
+                let w = top.max(foot) + 2.0 * pad;
+                let h_top = look.size * 1.6 * mm;
+                let h_foot = look.size * 1.4 * mm;
+                let lo = DVec2::new(at.x - w / 2.0, at.y - (h_top + h_foot) / 2.0);
+                let hi = DVec2::new(at.x + w / 2.0, at.y + (h_top + h_foot) / 2.0);
+                let split = hi.y - h_top;
+                items.push(rect(lo, hi));
+                items.push(PlanItem::Line {
+                    id,
+                    pen,
+                    a: DVec2::new(lo.x, split),
+                    b: DVec2::new(hi.x, split),
+                });
+                if let Some(n) = name {
+                    items.push(room_tag_item(
+                        id,
+                        n.to_uppercase(),
+                        DVec2::new(at.x, split + h_top / 2.0),
+                        bold,
+                        mm,
+                    ));
+                }
+                let fy = lo.y + h_foot / 2.0;
+                if number.is_some() && area.is_some() {
+                    let x = lo.x + 2.0 * pad + nw;
+                    items.push(PlanItem::Line {
+                        id,
+                        pen,
+                        a: DVec2::new(x, lo.y),
+                        b: DVec2::new(x, split),
+                    });
+                }
+                if let Some(n) = number {
+                    items.push(room_tag_item(
+                        id,
+                        n,
+                        DVec2::new(lo.x + pad + nw / 2.0, fy),
+                        small,
+                        mm,
+                    ));
+                }
+                if let Some(a) = area {
+                    items.push(room_tag_item(
+                        id,
+                        a,
+                        DVec2::new(hi.x - pad - aw / 2.0, fy),
+                        mid,
+                        mm,
+                    ));
+                }
+            }
+            items
+        }
     };
     if outside {
         // a leader from the tag back to its room
@@ -657,8 +786,8 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
             ElementKind::View(v) => {
                 if let Some(c) = v.callout.filter(|c| c.parent == view_id) {
                     let mm = view.scale / 1000.0;
-                    match creabim_core::styles::active_pack(model).markers {
-                        creabim_core::styles::MarkerFamily::Classic => {
+                    match creabim_core::styles::active_pack(model).marker_parts() {
+                        Some(parts) => {
                             // a detail called out of a section is ringed
                             let round = matches!(view.kind, ViewKind::Section { .. });
                             out.extend(crate::markers::callout(
@@ -668,10 +797,11 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                                 c.lo,
                                 c.hi,
                                 round,
+                                &parts,
                                 mm,
                             ));
                         }
-                        creabim_core::styles::MarkerFamily::Plain => {
+                        None => {
                             out.extend(crate::detail::callout_items(e.id, &e.name, c.lo, c.hi, mm))
                         }
                     }

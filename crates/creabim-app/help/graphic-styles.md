@@ -49,6 +49,14 @@ A view template is a named bundle: scale, style, the categories its views leave 
 - *Views without a template take* names the template a view of each kind gets from the pack when it has none of its own.
 - Views name their template, so loading another pack with templates of the same names restyles them.
 
+## Tags and marks
+
+The *Tags and marks* page sets how every room tag and view marker in the project is drawn. Each choice is a row with a picture: rest the pointer on one to see it on the drawings, move off to go back, and click to keep it.
+
+- **Room tags:** *Stacked* (name, area, then the number small), *Number badge* (the number in a small outline on top), *Boxed* (a box with the name over the number and area) or *Inline* (number and area on one line).
+- **View markers:** *Classic*, *Minimal*, *Bold* or *Plain*, for section marks, elevation marks and callouts together.
+- **Your own markers:** *+ New style from …* opens the marker designer. Pick a head, fill, text, pointer, line, callout edge and colour, watch the preview, name it and *Save as style*. It is listed under *Your styles*, with *Edit…* and *Delete*. Your styles are part of the style pack, so *Save pack as…* and *Load pack…* carry them to other projects.
+
 ## Overrides
 
 A view can change how a category or one element draws in it only, over the object styles.

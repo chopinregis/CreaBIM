@@ -3746,6 +3746,8 @@ pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bo
             text,
             size,
             align,
+            rgb,
+            bold,
             ..
         } => {
             let px = text_px(*size);
@@ -3755,13 +3757,19 @@ pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bo
                     paper::Anchor::Middle => egui::Align2::CENTER_CENTER,
                     paper::Anchor::End => egui::Align2::RIGHT_CENTER,
                 };
-                painter.text(
-                    xf.to_screen(*at),
-                    align,
-                    text,
-                    egui::FontId::proportional(px),
-                    ink,
-                );
+                let colour = match rgb {
+                    Some([r, g, b]) => {
+                        Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+                    }
+                    None => ink,
+                };
+                let at = xf.to_screen(*at);
+                let font = egui::FontId::proportional(px);
+                painter.text(at, align, text, font.clone(), colour);
+                if *bold {
+                    // a second pass a hair to the right reads as semibold
+                    painter.text(at + Vec2::new(px / 28.0, 0.0), align, text, font, colour);
+                }
             }
         }
         PlanItem::Dimension {

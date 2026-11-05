@@ -213,6 +213,8 @@ impl CreaBimApp {
         let mut theme = self.shell.theme;
         let mut unit = self.doc.model().units().length;
         let mut keys = false;
+        let mut grips = self.shell.settings.grips;
+        let mut grip_hover = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         egui::Window::new("Settings")
             .open(&mut open)
@@ -233,6 +235,28 @@ impl CreaBimApp {
                             }
                         });
                 });
+                ui.label("Grips");
+                for g in crate::handles::GripStyle::ALL {
+                    let note = match g {
+                        crate::handles::GripStyle::Quiet => "Default. Squares at corners, bars on edges",
+                        crate::handles::GripStyle::Edges => "Almost nothing at rest; edges drag",
+                        crate::handles::GripStyle::OneShape => "The same small circle everywhere",
+                    };
+                    let r = crate::choices::choice_row(ui, grips == g, g.label(), note, |p, r| {
+                        crate::choices::paint_grips(p, r, g)
+                    });
+                    if r.clicked() {
+                        grips = g;
+                    } else if r.hovered() {
+                        grip_hover = Some(g);
+                    }
+                }
+                ui.label(
+                    egui::RichText::new(
+                        "Yours alone: it never changes anyone's drawings, and goes with you, not with the project.",
+                    )
+                    .weak(),
+                );
                 crate::props::section(ui, "This project");
                 crate::props::row(ui, "Units", |ui| {
                     egui::ComboBox::from_id_salt("settings.units")
@@ -248,6 +272,13 @@ impl CreaBimApp {
                 keys = ui.button("Keyboard shortcuts…").clicked();
             });
         self.settings_open = open;
+        // resting on a grip look shows it at once; leaving puts yours back
+        crate::handles::set_grip_style(grip_hover.filter(|_| open).unwrap_or(grips));
+        if grips != self.shell.settings.grips {
+            self.shell.settings.grips = grips;
+            self.shell.settings.store();
+            self.status = format!("Grips: {}.", grips.label());
+        }
         if theme != self.shell.theme {
             self.set_theme(ctx, theme);
         }

@@ -9,6 +9,7 @@ mod boxsel;
 mod browser;
 mod camera;
 mod centres;
+mod choices;
 mod commands;
 mod detailtool;
 mod editmode;

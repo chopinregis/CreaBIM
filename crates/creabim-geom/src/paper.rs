@@ -277,8 +277,22 @@ pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, l
                 text,
                 size,
                 align,
+                rgb,
+                bold,
                 ..
-            } => canvas.text(to(*at), *size, text, *align),
+            } => {
+                if rgb.is_some() || *bold {
+                    let look = TextLook {
+                        size: *size,
+                        rgb: *rgb,
+                        bold: *bold,
+                        ..TextLook::default()
+                    };
+                    canvas.styled_text(to(*at), text, *align, 0.0, &look);
+                } else {
+                    canvas.text(to(*at), *size, text, *align)
+                }
+            }
             PlanItem::Dimension {
                 a,
                 b,

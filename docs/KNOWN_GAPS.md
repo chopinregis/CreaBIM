@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **57** | **7** | **191** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 4 | 11 | 6 | 21 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 6 | 9 | 6 | 21 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -47,10 +47,10 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 0 | The waiting branches `claude/demo-player`, `claude/starter-house-polish` and `claude/backlog` were never pushed. Their multi-select Properties edits and `creabim-app <file>` were rebuilt in Phase 1; category names still wrap mid-word in the visibility list. | 1 | S | B01 |
 | 2.6 | View areas and workspaces are in. Still to do: saved workspaces live in the user's settings, not in the project; only one area can show the 3D view; a number control (such as *Cut height*) that doesn't fit an area header has no place in its ⋯ menu; a sheet has no *Open in area ▾* (double-click opens it in place); a corner join always closes the area dragged into. | 3 | S | MU02-02…05 |
 | 2.10 | The tracker shows Length and Angle while a line is drawn in a plan, but Move, Rotate and Copy show no Δx / Δy in it, and slab and region edges don't use it. Temporary dimensions and the padlock work in plans; levels have none in sections yet, walls measure centreline to centreline only, a door measures to its wall's centreline end, only walls exactly on a grid line follow it, a door's gap can't be locked, and the padlock glyph is not from the icon set. | 2 (tracker), 3 (temporary dimensions) | M |
-| 2.11 | Room tags: Stacked (the default) and Inline (the first tag) are drawn; the Number badge and Boxed layouts are not yet. Tags don't yet keep level in rotated views. | 2 | M | MU09 |
-| 2.12 | View markers: Classic (the default) and the first markers are drawn; the Minimal and Bold families are not yet. A single click on a bubble doesn't open its view (a double-click on the selected mark does). | 2 | M | MU09 |
-| 2.13 | Choices have no pictures or live previews; personal settings and the style pack are not kept apart; no marker or tag designer; style packs can't be exported and imported with custom styles. | 3 | M–L | MU10 |
-| 2.14 | Grips have their four states and a live pill (old → new ± change, A3-3), but no gap to the nearest neighbour while dragging, no "Widened D03 by 300 mm" wording in the status bar, and the grip accent doesn't follow a personal setting. | 2 | M | MU11, MU12 |
+| 2.11 | Room tags: the four layouts are drawn, but there is no room tag designer, and tags don't yet keep level in rotated views. | 2 | S | MU09 |
+| 2.12 | View markers: the four families and your own mixes are drawn. A marker's colour applies to fills and text, not lines. A single click on a bubble doesn't open its view (a double-click on the selected mark does). | 2 | S | MU09 |
+| 2.13 | Choices with pictures and live previews are in *Tags and marks* and the grip choice only; pens, patterns, object styles and view templates are still plain lists. No room tag designer. | 3 | M | MU10 |
+| 2.14 | Grips have their four states and a live pill (old → new ± change, A3-3), but no gap to the nearest neighbour while dragging, no "Widened D03 by 300 mm" wording in the status bar, and the grip accent colour isn't a personal setting (the grip style is). | 2 | M | MU11, MU12 |
 | 3.3 | Views have no linked "Open in 3D" crop box (callouts, sections, elevations, plans). (A callout's box resizes and moves with grips.) | 2 | M | MU01-07 |
 | 3.5 | Only Sketch draws on the active workplane; void, extrusion, sweep, slab, opening and detail region draw in plan XY. | 4 | L | MU01-12 |
 | 3.6 | No edge offset in 3D (offset edge, offset all, insert point). | 4 | M–L | B01-7 |
@@ -347,6 +347,14 @@ Gaps reported by work that is still a pull request go here until it merges, then
 ---
 
 ## Recently fixed
+
+**In Brief 02, Phase 3, choices with pictures and your own styles (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase3](evolution/brief02-phase3)**):**
+
+- *Tags and marks* shows every choice as a row with a picture; resting on one shows it on the drawings until the pointer leaves, and a click keeps it (2.13).
+- Room tags have all four layouts: Stacked, Number badge, Boxed and Inline (2.11).
+- View markers have all four families: Classic, Minimal, Bold and Plain (2.12).
+- A marker designer mixes head, fill, text, pointer, line, callout edge and colour, with a preview, and saves the mix under *Your styles* in the style pack, so *Save pack as…* and *Load pack…* carry it (2.13).
+- Settings keeps your appearance apart from the project's, and the grip style (Quiet, Edges are the handles, One grip shape) is a personal choice with a preview (2.13, 2.14 in part).
 
 **In Brief 02, Phase 3, temporary dimensions (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase3](evolution/brief02-phase3)**):**
 
