@@ -185,6 +185,13 @@ pub struct Settings {
     pub props_open: std::collections::BTreeMap<String, bool>,
     /// The tab the tools row shows: Model, Annotate, View or Manage.
     pub tools_tab: usize,
+    /// The workspace last picked, by name, and the areas as they were left.
+    pub workspace: String,
+    pub areas: Option<crate::areas::Node>,
+    /// Layouts saved with *Save current layout*.
+    pub workspaces: Vec<crate::areas::Workspace>,
+    /// How grips look (brief 02, 2.13): a personal choice.
+    pub grips: crate::handles::GripStyle,
 }
 
 impl Default for Settings {
@@ -206,6 +213,10 @@ impl Default for Settings {
             help_width: 400.0,
             props_open: Default::default(),
             tools_tab: 0,
+            workspace: "Drawing".into(),
+            areas: None,
+            workspaces: vec![],
+            grips: Default::default(),
         }
     }
 }

@@ -4,10 +4,12 @@ mod align3d;
 mod aligntool;
 mod annotate;
 mod app;
+mod areas;
 mod boxsel;
 mod browser;
 mod camera;
 mod centres;
+mod choices;
 mod commands;
 mod detailtool;
 mod editmode;
@@ -36,12 +38,14 @@ mod sketch;
 mod slabtool;
 mod snaps;
 mod svgicon;
+mod tempdims;
 mod textures;
 mod theme;
 mod tooltabs;
 mod tracker;
 mod ui_model;
 mod units;
+mod viewcube;
 mod webui;
 
 /// The window's and the taskbar's icon: the app tile, sage.

@@ -728,11 +728,11 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         lay_out_level_heads(&mut d.items, &v.level_heads, v.scale);
     }
     // section and elevation marks in the project's family
-    if matches!(kind, creabim_core::ViewKind::Plan { .. })
-        && creabim_core::styles::active_pack(model).markers
-            == creabim_core::styles::MarkerFamily::Classic
-    {
-        crate::markers::restyle_sections(model, &mut d.items, v.scale / 1000.0);
+    if let (creabim_core::ViewKind::Plan { .. }, Some(parts)) = (
+        &kind,
+        creabim_core::styles::active_pack(model).marker_parts(),
+    ) {
+        crate::markers::restyle_sections(model, &mut d.items, &parts, v.scale / 1000.0);
     }
     d.items.extend(crate::annotate::annotations(model, view, v));
     if !hidden.is_empty() {

@@ -26,6 +26,12 @@ fn all() -> &'static HashMap<String, Vec<Line>> {
     })
 }
 
+/// `name` as the icon set holds it, for as long as the app runs ("" when
+/// the set has no such icon).
+pub fn named(name: &str) -> &'static str {
+    all().get_key_value(name).map_or("", |(k, _)| k.as_str())
+}
+
 /// Does the icon set have `name`?
 #[cfg(test)]
 pub fn has(name: &str) -> bool {

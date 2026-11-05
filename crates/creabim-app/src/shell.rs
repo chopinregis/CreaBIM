@@ -203,7 +203,7 @@ fn tool_group(t: Tool) -> u8 {
     }
 }
 
-fn icon_name(i: Icon) -> &'static str {
+pub(super) fn icon_name(i: Icon) -> &'static str {
     match i {
         Icon::Storey => "layers-3",
         Icon::Grid => "grid-lines",
@@ -346,6 +346,9 @@ impl CreaBimApp {
 
     /// The items of a menu or dropdown, by its key.
     pub(super) fn menu_items(&self, key: &str) -> Vec<Item> {
+        if let Some(items) = self.area_menu(key) {
+            return items;
+        }
         match key {
             "menu:CreaBIM" => self.app_menu(),
             "units.menu" => self.unit_items(),
@@ -940,19 +943,7 @@ impl CreaBimApp {
         let place = |p: PlanPlacement, i: u8, label: &str| {
             Item::new(format!("placement:{i}"), label).checked(self.placement == p)
         };
-        let layout = vec![
-            Item::new("layout.single", "One view at a time")
-                .checked(self.shell.settings.single_view)
-                .icon("square")
-                .hint("Show the 3D view or the drawing, with tabs to switch, instead of both"),
-            Item::new("layout.split", "Split: 3D and drawing")
-                .checked(!self.shell.settings.single_view)
-                .icon("columns-2"),
-            Item::Separator,
-            Item::new("layout.side", "Side by side").checked(!self.layout.stacked),
-            Item::new("layout.stacked", "One above the other").checked(self.layout.stacked),
-            Item::new("layout.swap", "2D view first").checked(self.layout.swapped),
-        ];
+        let layout = self.area_menu("workspaces").unwrap_or_default();
         let now = ground_spacing(self.shell.settings.ground_grid_spacing);
         let custom = !GROUND_SPACINGS.iter().any(|s| (now - s).abs() < 1e-9);
         let mut ground = vec![Item::new("ground.grid", "Show the ground grid")
@@ -1012,7 +1003,7 @@ impl CreaBimApp {
             place(PlanPlacement::Window, 1, "In its own window"),
             place(PlanPlacement::Overlay, 2, "Overlaid in the 3D workspace"),
             place(PlanPlacement::Hidden, 3, "Hidden"),
-            Item::sub("Docked layout", layout).icon("columns-2"),
+            Item::sub("Workspace", layout).icon("workspace"),
             Item::new("plan3d", "Show the 2D view in 3D space").checked(self.plan_in_3d),
             Item::sub("Underlay", self.underlay_items())
                 .icon("layers")
@@ -1142,6 +1133,9 @@ impl CreaBimApp {
                 .find(|e| e.id.0.to_string() == arg)
                 .map(|e| e.id)
         };
+        if self.area_action(head, arg) {
+            return;
+        }
         match head {
             "cmd" => {
                 if let Some(c) = Command::ALL.into_iter().find(|c| format!("{c:?}") == arg) {
@@ -1199,11 +1193,6 @@ impl CreaBimApp {
             "view" => {
                 if let Some(v) = by_uuid(self) {
                     self.active_view = Some(v);
-                    // with one view at a time, picking a drawing shows it
-                    if self.shell.settings.single_view {
-                        self.shell.settings.single_shows_3d = false;
-                        self.shell.settings.store();
-                    }
                 }
             }
             "place" => {
@@ -1448,12 +1437,6 @@ impl CreaBimApp {
                     _ => PlanPlacement::Docked,
                 }
             }
-            "layout.single" | "layout.split" => self.set_single_view(head == "layout.single"),
-            "layout.toggle" => self.set_single_view(!self.shell.settings.single_view),
-            "single.3d" | "single.2d" => {
-                self.shell.settings.single_shows_3d = head == "single.3d";
-                self.shell.settings.store();
-            }
             "ground.grid" => {
                 let s = &mut self.shell.settings;
                 s.ground_grid = !s.ground_grid;
@@ -1495,9 +1478,6 @@ impl CreaBimApp {
                     self.status = format!("Ground grid every {v} m.");
                 }
             }
-            "layout.side" => self.layout.stacked = false,
-            "layout.stacked" => self.layout.stacked = true,
-            "layout.swap" => self.layout.swapped = !self.layout.swapped,
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
@@ -1756,7 +1736,7 @@ impl CreaBimApp {
         }
     }
 
-    fn set_view_number(&mut self, value: f64) {
+    pub(super) fn set_view_number(&mut self, value: f64) {
         let Some(id) = self.active_view else { return };
         let Some(mut v) = self.view(id).cloned() else {
             return;
@@ -1947,22 +1927,6 @@ impl CreaBimApp {
                 };
             }
             _ => {}
-        }
-    }
-
-    fn active_view_label(&self) -> String {
-        let Some(id) = self.active_view else {
-            return "No view".into();
-        };
-        let name = self
-            .doc
-            .model()
-            .get(id)
-            .map(|e| e.name.clone())
-            .unwrap_or_default();
-        match sheets::sheet_of(self.doc.model(), id) {
-            Some(s) => format!("{} {name}", s.number),
-            None => name,
         }
     }
 
@@ -2262,17 +2226,9 @@ impl CreaBimApp {
             },
             "app": {"key": "menu:CreaBIM", "label": "CreaBIM"},
             "right": [{
-                "kind": "toggle", "id": "layout.toggle", "label": "",
-                "on": self.shell.settings.single_view,
-                "icon": if self.shell.settings.single_view { "square" } else { "columns-2" },
-                "hint": if self.shell.settings.single_view {
-                    "One view at a time: click to show the 3D view and the drawing side by side"
-                } else {
-                    "3D view and drawing side by side: click to show one view at a time"
-                },
-            }, {
-                "kind": "menu", "key": "views", "label": "", "value": self.active_view_label(),
-                "icon": "map", "big": true, "hint": "The view or sheet the 2D pane shows",
+                "kind": "menu", "key": "workspaces", "label": "", "value": self.areas.workspace,
+                "icon": "workspace", "big": true,
+                "hint": "Workspace: named layouts of view areas (Ctrl+PgUp and Ctrl+PgDn step through them)",
             }],
             "tabs": tabs,
             "tools": tools,
@@ -2291,7 +2247,12 @@ impl CreaBimApp {
         ctx: &egui::Context,
     ) -> (Value, Vec<Value>, Vec<Value>, usize) {
         let (tool_head, mut tool_options) = self.tool_strip(ctx);
-        let mut options = self.view_options();
+        // docked, each area's header has its view's controls
+        let mut options = if self.placement == PlanPlacement::Docked {
+            vec![]
+        } else {
+            self.view_options()
+        };
         // lengths show and take the project's units; what is typed is read here
         for o in tool_options.iter_mut().chain(options.iter_mut()) {
             if o["kind"] == "number" && o["unit"] == "m" {
@@ -2308,7 +2269,7 @@ impl CreaBimApp {
     }
 
     /// The active view's settings, at the right of the tool options strip.
-    fn view_options(&self) -> Vec<Value> {
+    pub(super) fn view_options(&self) -> Vec<Value> {
         let mut options = vec![];
         if let Some((label, value, unit, _)) = self.view_number() {
             let (step, min, max) = if unit == "°" {
@@ -2561,6 +2522,8 @@ impl CreaBimApp {
             "theme": self.theme(),
             "popup": self.popup_key(),
             "message": self.status,
+            // what the drawing under the pointer does, after the message
+            "hint": self.plan.hint.filter(|h| *h != self.status),
             "controls": [
                 {"kind": "toggle", "id": "snap.on", "label": "Snap", "on": self.plan.snap.on, "icon": "magnet",
                  "hint": "Object snaps on or off (F3). Hold Alt while picking to suspend them."},
@@ -2900,11 +2863,6 @@ impl CreaBimApp {
                     self.selection.only(id);
                     if opens {
                         self.active_view = Some(id);
-                        // with one view at a time, opening a drawing shows it
-                        if self.shell.settings.single_view && self.shell.settings.single_shows_3d {
-                            self.shell.settings.single_shows_3d = false;
-                            self.shell.settings.store();
-                        }
                     }
                 }
                 self.face = None;
@@ -3058,6 +3016,8 @@ impl CreaBimApp {
         // drawn last frame)
         let nav = self
             .rect_3d
+            // docked, the 3D area's header has these
+            .filter(|_| self.placement != PlanPlacement::Docked)
             .filter(|r| r.width() > 320.0 && r.height() > 120.0)
             .map(|r| {
                 // as wide as it needs, or as the view when that is narrower
@@ -3195,76 +3155,36 @@ impl CreaBimApp {
         true
     }
 
-    /// Show one view at a time, or the 3D view and the drawing side by side.
-    fn set_single_view(&mut self, on: bool) {
-        if on && self.placement != PlanPlacement::Docked {
-            self.placement = PlanPlacement::Docked;
+    /// Open the menu `key` under `r` (a button drawn by egui), or close it
+    /// when it is open already.
+    pub(super) fn toggle_popup(&mut self, key: &str, r: egui::Rect) {
+        if self.shell.web.is_none() {
+            return;
         }
-        self.shell.settings.single_view = on;
-        self.shell.settings.store();
-        self.status = if on {
-            "One view at a time: the tabs above the view switch between the 3D view and the drawing.".into()
+        if self.shell.popup.as_ref().is_some_and(|p| p.key == key) {
+            self.shell.popup = None;
+            return;
+        }
+        let n = self.menu_items(key).len() as f32;
+        // a menu that would run off the views' right edge ends under its button
+        let right = self
+            .areas
+            .rects
+            .iter()
+            .map(|a| a.right())
+            .fold(r.right(), f32::max);
+        let x = if r.left() + 240.0 > right {
+            r.right() - 240.0
         } else {
-            "The 3D view and the drawing side by side.".into()
+            r.left()
         };
-    }
-
-    /// The tabs over the single view: the 3D view, the drawing (its tab
-    /// opens the list of views when it is already showing), and a way back
-    /// to the split.
-    pub(super) fn view_tabs(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
-        let p = self.shell.theme.palette();
-        ui.painter().rect_filled(rect, 0.0, p.panel);
-        ui.painter().line_segment(
-            [rect.left_bottom(), rect.right_bottom()],
-            egui::Stroke::new(1.0, p.border),
-        );
-        let mut child = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(rect.shrink2(egui::vec2(8.0, 3.0)))
-                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-        );
-        let three = self.shell.settings.single_shows_3d;
-        let mut pick = None;
-        if child
-            .selectable_label(three, "3D view")
-            .on_hover_text("The model in 3D")
-            .clicked()
-        {
-            pick = Some(true);
-        }
-        let drawing = format!("{}  ⏷", self.active_view_label());
-        let r = child.selectable_label(!three, drawing).on_hover_text(
-            "The plan, section, sheet or schedule. Click again for the list of views.",
-        );
-        if r.clicked() {
-            if !three && self.shell.web.is_some() {
-                self.shell.popup = Some(Popup {
-                    key: "views".into(),
-                    at: r.rect.left_bottom() + egui::vec2(0.0, 4.0),
-                    up: None,
-                    above: Some(r.rect.top() - 4.0),
-                    size: egui::vec2(260.0, 300.0),
-                });
-            }
-            pick = Some(false);
-        }
-        child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui
-                .button("Split")
-                .on_hover_text("Show the 3D view and the drawing side by side")
-                .clicked()
-            {
-                pick = None;
-                self.set_single_view(false);
-            }
+        self.shell.popup = Some(Popup {
+            key: key.into(),
+            at: egui::pos2(x, r.bottom() + 4.0),
+            up: None,
+            above: Some(r.top() - 4.0),
+            size: egui::vec2(240.0, 12.0 + 29.0 * n),
         });
-        if let Some(t) = pick {
-            if t != three {
-                self.shell.settings.single_shows_3d = t;
-                self.shell.settings.store();
-            }
-        }
     }
 
     /// Open the right-click menu a view asked for this frame.

@@ -721,6 +721,10 @@ pub struct Dimension {
     /// none is just the elevation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
+    /// Locked with the padlock: the spacing (metres) it keeps between its
+    /// two hosts. Moving one moves the other (see [`crate::holds`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held: Option<f64>,
 }
 
 impl Dimension {
@@ -737,6 +741,7 @@ impl Dimension {
             color: None,
             axis: DimAxis::Aligned,
             pattern: None,
+            held: None,
         }
     }
 

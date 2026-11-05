@@ -557,8 +557,9 @@ fn callout_is_round(model: &Model, parent: ElementId) -> bool {
     matches!(
         model.get(parent).map(|e| &e.kind),
         Some(ElementKind::View(v)) if matches!(v.kind, ViewKind::Section { .. })
-    ) && creabim_core::styles::active_pack(model).markers
-        == creabim_core::styles::MarkerFamily::Classic
+    ) && creabim_core::styles::active_pack(model)
+        .marker_parts()
+        .is_some()
 }
 
 /// The corners of a callout's box, `lo` first and counter-clockwise.
@@ -1640,6 +1641,46 @@ impl GripLook {
 
 /// A grip at `c`: a square, or a bar across `bar` (a screen direction;
 /// `Some(None)` is a bar seen end on, drawn as a dot).
+/// How grips are drawn: a personal setting (brief 02, 2.13).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum GripStyle {
+    /// Squares at corners and ends, short bars on edges.
+    #[default]
+    Quiet,
+    /// Almost nothing at rest: dots at corners; an edge's bar shows under
+    /// the pointer.
+    Edges,
+    /// The same small circle everywhere.
+    OneShape,
+}
+
+impl GripStyle {
+    pub const ALL: [GripStyle; 3] = [GripStyle::Quiet, GripStyle::Edges, GripStyle::OneShape];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            GripStyle::Quiet => "Quiet",
+            GripStyle::Edges => "Edges are the handles",
+            GripStyle::OneShape => "One grip shape",
+        }
+    }
+}
+
+static GRIP_STYLE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Draw grips this way from now on.
+pub fn set_grip_style(s: GripStyle) {
+    GRIP_STYLE.store(s as u8, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn grip_style() -> GripStyle {
+    match GRIP_STYLE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => GripStyle::Edges,
+        2 => GripStyle::OneShape,
+        _ => GripStyle::Quiet,
+    }
+}
+
 fn draw_grip(
     painter: &Painter,
     c: Pos2,
@@ -1666,6 +1707,36 @@ fn draw_grip(
     } else {
         Color32::WHITE.gamma_multiply(alpha)
     };
+    match grip_style() {
+        GripStyle::Quiet => {}
+        GripStyle::Edges => {
+            match bar {
+                // an edge shows only under the pointer, long and heavy
+                Some(Some(dir)) => {
+                    if matches!(state, GripState::Hover | GripState::Held) {
+                        let len = 14.0;
+                        painter
+                            .line_segment([c - dir * len, c + dir * len], Stroke::new(4.0, accent));
+                    }
+                }
+                _ => {
+                    let r = if filled || picked { 3.5 } else { 2.5 } + grow;
+                    painter.circle_filled(c, r, accent);
+                }
+            }
+            return;
+        }
+        GripStyle::OneShape => {
+            let r = 4.0 + grow;
+            let fill = if filled || picked || state == GripState::Held {
+                accent
+            } else {
+                Color32::WHITE.gamma_multiply(alpha)
+            };
+            painter.circle(c, r, fill, Stroke::new(1.5, accent));
+            return;
+        }
+    }
     match bar {
         Some(Some(dir)) => {
             // a short rounded bar across the way it moves

@@ -301,7 +301,7 @@
   // ---- status pane ----
 
   function drawStatus() {
-    root.innerHTML = `<div class="status"><div class="msg"><span class="pulse"></span><span title="${esc(S.message)}">${esc(S.message)}</span></div>` +
+    root.innerHTML = `<div class="status"><div class="msg"><span class="pulse"></span><span title="${esc(S.message)}">${esc(S.message)}</span>${S.hint ? `<span class="hint" title="${esc(S.hint)}">${esc(S.hint)}</span>` : ""}</div>` +
       S.controls.map(control).join("") + `</div>`;
   }
 

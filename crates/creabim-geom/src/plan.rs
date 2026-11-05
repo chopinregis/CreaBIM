@@ -604,6 +604,10 @@ pub enum PlanItem {
         size: f64,
         align: crate::paper::Anchor,
         mm: f64,
+        /// sRGB 0..1; none is the view's ink.
+        rgb: Option<[f32; 3]>,
+        /// Semibold.
+        bold: bool,
     },
     /// A dimension from `a` to `b`, its line `offset` to the left. A
     /// horizontal or vertical one measures from `a` to `b` square across,

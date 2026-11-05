@@ -32,7 +32,15 @@ pub(super) struct StylesUi {
     /// The pattern and template picked in their lists.
     pattern: usize,
     template: usize,
+    /// The marker designer.
+    designer: crate::choices::Designer,
+    /// While an option is previewed on the plan, the pack as it was.
+    preview_base: Option<StylePack>,
 }
+
+/// The undo label of a previewed option, taken back when the pointer
+/// leaves it.
+const PREVIEW: &str = "Preview style";
 
 /// The categories object styles are set for: those with linework.
 pub(super) const STYLED: [Category; 20] = [
@@ -649,8 +657,15 @@ impl CreaBimApp {
             return;
         }
         let mut open = true;
-        let (id, before) = self.edited_pack();
+        let (id, in_model) = self.edited_pack();
+        // while an option is previewed, the window shows the pack as it was
+        let before = self
+            .gstyles
+            .preview_base
+            .clone()
+            .unwrap_or(in_model.clone());
         let mut pack = before.clone();
+        let mut hover: Option<StylePack> = None;
         let mut action: Option<&'static str> = None;
         let mut label = "Graphic styles";
         let mut make_default = None;
@@ -751,9 +766,12 @@ impl CreaBimApp {
                         }
                     }
                     Page::Marks => {
-                        if marks_page(ui, &mut pack) {
+                        let (changed, h) =
+                            crate::choices::marks_page(ui, &mut pack, &mut self.gstyles.designer);
+                        if changed {
                             label = "Tags and marks";
                         }
+                        hover = h;
                     }
                     Page::Templates => {
                         if templates_page(ui, &mut pack, &mut self.gstyles.template, &views, &mut give_template) {
@@ -764,7 +782,21 @@ impl CreaBimApp {
             });
         self.gstyles.open = open;
         if pack != before {
+            self.end_preview();
+            let (id, _) = self.edited_pack();
             self.commit_pack(id, pack.clone(), label);
+        } else if let Some(mut h) = hover.filter(|_| open) {
+            h.default = in_model.default;
+            // the option under the pointer, shown on the plan until it leaves
+            if h != in_model {
+                if self.gstyles.preview_base.is_none() {
+                    self.gstyles.preview_base = Some(before.clone());
+                }
+                self.commit_pack(id, h, PREVIEW);
+                self.status = "Previewing on the drawings: click to keep it.".into();
+            }
+        } else {
+            self.end_preview();
         }
         if let Some(p) = make_default {
             let tx = styles::make_default(self.doc.model(), p);
@@ -788,6 +820,18 @@ impl CreaBimApp {
             Some("save") => self.save_style_pack(&pack),
             Some("load") => self.load_style_pack(),
             _ => {}
+        }
+    }
+
+    /// Take back an option previewed on the plan.
+    fn end_preview(&mut self) {
+        if self.gstyles.preview_base.take().is_some() {
+            // a first preview adds the project's pack, and the next ones
+            // edit it: each its own step
+            while self.doc.undo_label() == Some(PREVIEW) {
+                self.doc.discard_last();
+            }
+            self.status.clear();
         }
     }
 
@@ -836,67 +880,6 @@ impl CreaBimApp {
 }
 
 /// The object styles, a row per category. True when one changed.
-/// How the project's room tags and view marks are drawn: one choice for
-/// the whole project, so every tag and mark follows it.
-fn marks_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
-    let mut changed = false;
-    crate::props::section(ui, "Room tags");
-    crate::props::Combo::new("Layout")
-        .selected_text(pack.room_tags.label())
-        .show_ui(ui, |ui| {
-            for s in styles::RoomTagStyle::ALL {
-                changed |= ui
-                    .selectable_value(&mut pack.room_tags, s, s.label())
-                    .changed();
-            }
-        });
-    ui.label(
-        egui::RichText::new(match pack.room_tags {
-            styles::RoomTagStyle::Stacked => {
-                "The name in capitals, the area below it, the number small and last."
-            }
-            styles::RoomTagStyle::Inline => "The number and the area on one line.",
-        })
-        .weak(),
-    );
-    crate::props::section(ui, "View markers");
-    crate::props::Combo::new("Family")
-        .selected_text(pack.markers.label())
-        .show_ui(ui, |ui| {
-            for f in styles::MarkerFamily::ALL {
-                changed |= ui
-                    .selectable_value(&mut pack.markers, f, f.label())
-                    .changed();
-            }
-        });
-    ui.label(
-        egui::RichText::new(match pack.markers {
-            styles::MarkerFamily::Classic => {
-                "A split bubble, the view's number over its sheet, and a solid wedge the way the view looks. Callouts are dashed rounded boxes."
-            }
-            styles::MarkerFamily::Plain => "The first markers: a small arrow and the view's letter.",
-        })
-        .weak(),
-    );
-    crate::props::section(ui, "Membranes in details");
-    crate::props::Combo::new("Drawn as")
-        .selected_text(pack.membranes.label())
-        .show_ui(ui, |ui| {
-            for m in creabim_core::MembraneLook::ALL {
-                changed |= ui
-                    .selectable_value(&mut pack.membranes, m, m.label())
-                    .changed();
-            }
-        });
-    ui.label(
-        egui::RichText::new(
-            "A heavy line 2 mm on paper off the line it follows, on the side it was clicked, so it never hides that line; its partner lies beyond it.",
-        )
-        .weak(),
-    );
-    changed
-}
-
 fn objects_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
     let mut changed = false;
     let names = pack.pattern_names();

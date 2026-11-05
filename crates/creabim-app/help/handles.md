@@ -7,6 +7,10 @@ A selected element shows small handles you can drag to change it directly, in 3D
 
 Grips snap to what they land on, and the readout shows the new value. Every drag is one undo step.
 
+## Your grip style
+
+*CreaBIM › Settings… › Grips* changes how grips look, for you only: *Quiet* (squares at corners, bars on edges), *Edges are the handles* (almost nothing at rest; an edge shows its bar under the pointer) or *One grip shape* (the same small circle everywhere). Rest on one to see it on the selection. It never changes anyone's drawings, and it goes with you from project to project.
+
 ## Turning, sliding and sizing
 
 - A selected **object** (furniture or a fixture) has a square grip in front of it: drag it round to turn the object about its middle, in steps of 5°. The arrow beside it turns it round to face the other way.
