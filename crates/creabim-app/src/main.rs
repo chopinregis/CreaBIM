@@ -12,6 +12,7 @@ mod commands;
 mod detailtool;
 mod editmode;
 mod files;
+mod fillpreview;
 mod handles;
 mod help;
 mod hoverpick;

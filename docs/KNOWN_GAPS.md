@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **57** | **7** | **191** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 4 | 13 | 7 | 24 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 3 | 13 | 7 | 23 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -54,7 +54,6 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 2.13 | Choices have no pictures or live previews; personal settings and the style pack are not kept apart; no marker or tag designer; style packs can't be exported and imported with custom styles. | 3 | M–L | MU10 |
 | 2.14 | Grips have their four states and a live pill (old → new ± change, A3-3), but no gap to the nearest neighbour while dragging, no "Widened D03 by 300 mm" wording in the status bar, and the grip accent doesn't follow a personal setting. | 2 | M | MU11, MU12 |
 | 3.3 | Views have no linked "Open in 3D" crop box (callouts, sections, elevations, plans). (A callout's box resizes and moves with grips.) | 2 | M | MU01-07 |
-| 3.4 | *Fill room* shows no boundary preview and no red gap when walls don't close. | 2 | S | MU01-06 |
 | 3.5 | Only Sketch draws on the active workplane; void, extrusion, sweep, slab, opening and detail region draw in plan XY. | 4 | L | MU01-12 |
 | 3.6 | No edge offset in 3D (offset edge, offset all, insert point). | 4 | M–L | B01-7 |
 | 3.7 | Layers can't be edited by hand: no layer-end handles in plan or section, no corner join presets, no "Draw by this line", no IFC parts where layers differ. | 4 | L | MU08-01 |
@@ -101,7 +100,7 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 
 | Gap | Size | Found in | Checked |
 | --- | --- | --- | --- |
-| The Slab tool's *Fill room* shows no preview before the click, and fills to wall centrelines rather than inner faces (the Room tool fills to inner faces). | S | workflow | ✓ |
+| The Slab tool's *Fill room* fills to wall centrelines rather than inner faces (the Room tool fills to inner faces); its preview shows which. | S | workflow | ✓ |
 | Rooms in sections are coloured only when *Colour rooms* is on. There are no room tags in sections or elevations. | M | rooms-ceilings | |
 | An `IfcSpace` from another program keeps the outline of its body. It doesn't follow the walls until it is placed again with the Room tool. | M | rooms-ceilings | |
 | A ceiling is drawn only in ceiling plans, sections and 3D. Selecting one in a floor plan doesn't highlight it there. | S | rooms-ceilings | |
@@ -380,6 +379,7 @@ Gaps reported by work that is still a pull request go here until it merges, then
 - A membrane draws 2 mm on paper off the line it follows, on the side it was clicked, with a dashed partner; the style pack can make it a double line or a zig-zag (A3-7).
 - Plants have a canopy grip in plan and a height grip in 3D and sections (3.2).
 - A callout's box has corner and edge grips on its parent view, and its detail view follows; a ringed callout stays round; G and M move the box, not its view's cut line (3.3, most of it).
+- *Fill room* (Room, Ceiling, Slab) shows the space a click fills and its area under the pointer, and the gaps in red where walls don't close it (3.4).
 
 **In Brief 02, addendum A2 (2026-11-05):** the logo, the weaver and its nest, is the brand mark in the top bar, the window and taskbar icon, the Windows .exe icon (not yet tried on a Windows build), the lockup in About, and the full mark in New project and the README. The `.creabim` file icon comes with the installer.
 

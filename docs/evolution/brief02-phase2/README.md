@@ -47,7 +47,7 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | A3-7 | Membrane look | **Done.** A membrane is a heavy line 2 mm on paper off the line it follows, so it never draws over that line, with a thin dashed partner 3.5 mm off. It goes on the side of the line the pointer was on when the points were clicked; Space while drawing, or *On the other side* in Properties, swaps it. The style pack (Annotation › Membranes in details) chooses the partner: dashed (the default), a double line or a zig-zag. Membranes already in a project move off their line by the same 2 mm. | see PR |
 | 3.2 | Grips on plants | **Done.** A selected tree or shrub has a canopy bar at the edge of its crown in plan (dragging it changes the canopy's width, both sides), and a height bar at its top in 3D and sections. | see PR |
 | 3.3 | Callout boxes | **Partly.** A selected callout shows, on the view it was called out from, a square on each corner of its box and a bar on each edge. Dragging one resizes the box and the detail view follows; a ringed callout (on a section) stays round. Its body moves the box with G or M, no longer the line its view was cut on. The pill shows the box's width or height as it changes. *Not yet:* the linked *Open in 3D* crop box for callouts, sections, elevations and plans. | see PR |
-| 3.4 | Fill room preview | Not yet. | |
+| 3.4 | Fill room preview | **Done.** With the Room, Ceiling or Slab tool in *Fill room* (3), the space a click would fill is tinted and outlined under the pointer, with "Room 21.60 m² · click to add" by it (a slab's to the walls' centre lines, as it fills). Over a room that is already there it says so. Where the walls and room separators don't close the space, the gaps are drawn in red, wall end to wall end (or to the nearest face), and the pill says "Not closed: draw its outline (1, 2, 4)"; a click says the same in the status bar. | see PR |
 
 ## Addendum A3: the review of main 889c32c
 
@@ -100,6 +100,8 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | [33-detail-moves-with-g.png](33-detail-moves-with-g.png) | G on a detail component: before, "can't be moved this way"; after, it moves. |
 | [34-plant-canopy-grip.png](34-plant-canopy-grip.png) | 3.2: a tree in the garden sample. Before, no grips; after, its canopy bar dragged, "Canopy 6000 → 8450 +2450". |
 | [35-callout-box-grips.png](35-callout-box-grips.png) | 3.3: Detail 2 Window's ring in Section C-C. Before, selected without grips; after, its top edge dragged ("Width 1200 → 2700": it stays round), then let go. |
+| [36-fill-room-preview.png](36-fill-room-preview.png) | 3.4: the Room tool in *Fill room* over the simple house's east room. Before, nothing until the click; after, the room it would make and its area. |
+| [37-fill-room-not-closed.png](37-fill-room-not-closed.png) | The west wall deleted: before, nothing shows why a click fails; after, the gap in red and "Not closed: draw its outline (1, 2, 4)". |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 

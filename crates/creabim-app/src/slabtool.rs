@@ -349,7 +349,7 @@ pub fn click(
             }
             let Some(outline) = creabim_core::room_outline(doc.model(), level, p) else {
                 state.status = Some(
-                    "That spot isn't closed in by walls on this level, so there's no room to fill. Click inside a room, or draw a polygon (1).".into(),
+                    "Not closed: the walls here leave a gap (shown in red), so there's no room to fill. Close it, or draw the outline (1 Polygon, 2 Rectangle, 4 From sketch).".into(),
                 );
                 return Ok(());
             };

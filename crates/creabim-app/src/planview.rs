@@ -472,6 +472,8 @@ pub struct PlanState {
     /// A footing was just placed on a host: the status bar offers the
     /// Foundation plan.
     pub footing_placed: bool,
+    /// What a Fill room click would fill, under the pointer.
+    pub fill_look: Option<crate::fillpreview::Cached>,
 }
 
 impl PlanState {
@@ -557,6 +559,7 @@ impl Default for PlanState {
             host_pick: None,
             host_cycle: 0,
             footing_placed: false,
+            fill_look: None,
         }
     }
 }
@@ -1855,6 +1858,17 @@ pub fn show(
         }
     }
 
+    // Fill room: what a click would fill, or where the walls are open
+    if let (PaneKind::Plan { level }, Some(p), Some(at), true) = (
+        kind,
+        hover_world,
+        response.hover_pos(),
+        crate::fillpreview::on(state),
+    ) {
+        let look = crate::fillpreview::cached(&mut state.fill_look, doc, level, tool, p).clone();
+        let units = doc.model().units();
+        crate::fillpreview::draw(&painter, &xf, &look, at, &units, tool);
+    }
     // the host a click would go on, and what it would make there
     if let (Some(h), Some(at)) = (host, response.hover_pos()) {
         if hovered != Some(h) {
@@ -4762,7 +4776,7 @@ fn slab_at(slabs: &[(ElementId, Vec<DVec2>)], p: DVec2) -> Option<ElementId> {
         .map(|(id, _)| *id)
 }
 
-fn fill_polygon(painter: &egui::Painter, xf: &Xf, points: &[DVec2], fill: Color32) {
+pub fn fill_polygon(painter: &egui::Painter, xf: &Xf, points: &[DVec2], fill: Color32) {
     let mut mesh = egui::Mesh::default();
     for p in points {
         mesh.colored_vertex(xf.to_screen(*p), fill);
