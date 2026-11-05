@@ -794,6 +794,32 @@ pub fn posts_along(path: &[DVec3], spacing: f64) -> Vec<DVec3> {
 }
 
 /// The elevation of a level, 0 when it is missing.
+/// How far below height `z` the underside of a slab at plan point `at`
+/// lies, for a slab that `z` is inside of (its top at or above `z`, its
+/// underside below). None when no slab there holds `z`.
+pub fn slab_depth_at(model: &Model, at: DVec2, z: f64) -> Option<f64> {
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Slab(s) => Some(s),
+            _ => None,
+        })
+        .filter_map(|s| {
+            let top = s.top(elevation(model, s.level));
+            let bottom = top - s.thickness;
+            (top >= z - 1e-3 && bottom < z - 1e-3 && crate::polygon::contains(&s.outline(), at))
+                .then_some(z - bottom)
+        })
+        .fold(None, |m: Option<f64>, d| Some(m.map_or(d, |m| m.max(d))))
+}
+
+/// Where a new beam on `level` from `a` to `b` hangs: its top at the
+/// underside of the slab above, so it never sits inside it.
+pub fn beam_top_offset(model: &Model, level: ElementId, a: DVec2, b: DVec2) -> f64 {
+    let top = elevation(model, level) + storey_height(model, level);
+    slab_depth_at(model, (a + b) / 2.0, top).unwrap_or(0.0)
+}
+
 pub fn elevation(model: &Model, level: ElementId) -> f64 {
     model.level(level).map_or(0.0, |l| l.elevation)
 }
@@ -1784,5 +1810,39 @@ mod tests {
         // 3 m in three bays, 1 m in one, plus the end
         assert_eq!(posts.len(), 5);
         assert!(posts.contains(&DVec3::new(3.0, 0.0, 0.0)));
+    }
+}
+
+#[cfg(test)]
+mod default_height_tests {
+    use super::*;
+
+    #[test]
+    fn a_new_beam_hangs_under_the_slab_above_and_a_footing_under_the_ground_slab() {
+        let m = crate::starter::starter_house();
+        let level = |n: &str| {
+            m.iter()
+                .find(|e| e.name == n && matches!(e.kind, ElementKind::Level(_)))
+                .unwrap()
+                .id
+        };
+        let (gf, ff) = (level("Ground Floor"), level("First Floor"));
+        // under the first floor slab, the depth of that slab
+        let slab = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Slab(s) if s.level == ff => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap();
+        let c = slab.outline().iter().copied().sum::<DVec2>() / slab.outline().len() as f64;
+        let off = beam_top_offset(&m, gf, c - DVec2::X, c + DVec2::X);
+        assert!(
+            (off - (slab.thickness - slab.top_offset)).abs() < 1e-6,
+            "{off}"
+        );
+        // far outside the house, nothing to hang under
+        let far = DVec2::splat(500.0);
+        assert_eq!(beam_top_offset(&m, gf, far, far + DVec2::X), 0.0);
     }
 }

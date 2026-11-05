@@ -1899,7 +1899,7 @@ impl CreaBimApp {
                     n => format!("Under {n} selected"),
                 },
                 "icon": "footing",
-                "hint": "Put footings under the selected walls and columns that have none: a strip under each wall, a pad under each column, in one undo step. Select them first, or drag a box over them with this tool.",
+                "hint": "Put footings under the selected walls and columns that have none: a strip under each wall, a pad under each column, in one undo step. Partitions thinner than 150 mm are left out unless only they are picked. Select them first, or drag a box over them with this tool.",
             }));
         }
         options.extend(

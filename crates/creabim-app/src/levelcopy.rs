@@ -141,7 +141,7 @@ impl CreaBimApp {
     /// strip under each wall, a pad under each column, of the Footing
     /// tool's types when it has them.
     pub(super) fn footings_under_selection(&mut self) {
-        let ids = self.selection.all();
+        let (ids, skipped) = bearing_only(self.doc.model(), self.selection.all());
         let (tx, new) = footings_under(self.doc.model(), &self.plan, &ids);
         if new.is_empty() {
             let model = self.doc.model();
@@ -168,18 +168,33 @@ impl CreaBimApp {
             self.selection.clear();
             self.selection.extend(new.clone(), false);
         }
-        self.report(r, footings_placed(new.len()));
+        let mut said = footings_placed(new.len());
+        if skipped > 0 {
+            said = format!(
+                "{said} {skipped} {} left out: select only {} to put footings under {} too.",
+                if skipped == 1 {
+                    "partition was"
+                } else {
+                    "partitions were"
+                },
+                if skipped == 1 { "it" } else { "them" },
+                if skipped == 1 { "it" } else { "them" },
+            );
+        }
+        self.report(r, said);
     }
 
     /// The selected walls and columns a footing can go under that have
     /// none yet.
     pub(super) fn footing_hosts(&self) -> Vec<ElementId> {
         let model = self.doc.model();
-        self.selection
+        let ids = self
+            .selection
             .all()
             .into_iter()
             .filter(|id| footing_host(model, *id))
-            .collect()
+            .collect();
+        bearing_only(model, ids).0
     }
 
     fn level_names(&self, ids: &[ElementId]) -> String {
@@ -385,6 +400,38 @@ pub(crate) fn footing_host(model: &creabim_core::Model, id: ElementId) -> bool {
     fits && creabim_core::footing::footings_under(model, id).is_empty()
 }
 
+/// Is `id` a partition: a wall thinner than 150 mm, the kind that stands
+/// on the slab rather than on a footing of its own.
+pub(crate) fn is_partition(model: &creabim_core::Model, id: ElementId) -> bool {
+    matches!(
+        model.get(id).map(|e| &e.kind),
+        Some(ElementKind::Wall(w)) if w.curtain.is_none() && w.thickness < 0.15 - 1e-6
+    )
+}
+
+/// `ids` without their partitions, and how many were left out. When every
+/// wall picked is a partition, they are kept: picking only partitions is
+/// asking for footings under them.
+pub(crate) fn bearing_only(
+    model: &creabim_core::Model,
+    ids: Vec<ElementId>,
+) -> (Vec<ElementId>, usize) {
+    let (thin, rest): (Vec<_>, Vec<_>) = ids.into_iter().partition(|id| is_partition(model, *id));
+    let bearing = rest.iter().any(|id| {
+        matches!(
+            model.get(*id).map(|e| &e.kind),
+            Some(ElementKind::Wall(_) | ElementKind::Column(_))
+        )
+    });
+    if !bearing {
+        let mut all = rest;
+        all.extend(thin);
+        return (all, 0);
+    }
+    let n = thin.iter().filter(|id| footing_host(model, **id)).count();
+    (rest, n)
+}
+
 /// Footings under those of `ids` that can take one, of the Footing tool's
 /// type when it has one, else as wide as its bar says: one undo step.
 /// Returns the edit and the new footings.
@@ -449,6 +496,40 @@ mod tests {
             .filter(|e| matches!(&e.kind, ElementKind::Wall(w) if w.level == l))
             .map(|e| e.id)
             .collect()
+    }
+
+    #[test]
+    fn under_selected_leaves_out_partitions_unless_only_they_are_picked() {
+        let mut app = CreaBimApp::blank(None);
+        app.load_model(creabim_core::sample::sample_house());
+        let g = level(&app, "Ground Floor");
+        let model = app.doc.model();
+        let walls = walls_on(&app, g);
+        let thin: Vec<_> = walls
+            .iter()
+            .copied()
+            .filter(|id| is_partition(model, *id))
+            .collect();
+        let thick: Vec<_> = walls
+            .iter()
+            .copied()
+            .filter(|id| !is_partition(model, *id) && footing_host(model, *id))
+            .collect();
+        assert!(!thin.is_empty() && !thick.is_empty());
+        let fresh = thin.iter().filter(|id| footing_host(model, **id)).count();
+        app.selection.clear();
+        app.selection.extend(walls.clone(), false);
+        assert_eq!(app.footing_hosts().len(), thick.len());
+        assert!(fresh > 0);
+        app.footings_under_selection();
+        assert!(app.status.contains("left out"), "{}", app.status);
+        for id in &thin {
+            assert!(creabim_core::footing::footings_under(app.doc.model(), *id).is_empty());
+        }
+        // picking the partitions alone puts footings under them
+        app.selection.clear();
+        app.selection.extend(thin.clone(), false);
+        assert_eq!(app.footing_hosts().len(), fresh);
     }
 
     #[test]
@@ -542,7 +623,11 @@ mod tests {
             .iter()
             .filter(|e| matches!(e.kind, ElementKind::Footing(_)))
             .count();
-        assert_eq!(footings, walls.len());
+        let thin = walls
+            .iter()
+            .filter(|id| is_partition(app.doc.model(), **id))
+            .count();
+        assert_eq!(footings, walls.len() - thin);
         // they show dashed in the ground floor plan, below the cut
         let plan = creabim_geom::plan_view(app.doc.model(), g, 1.2);
         assert!(plan.items.iter().any(|it| matches!(it,
