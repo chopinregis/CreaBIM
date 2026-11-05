@@ -457,9 +457,20 @@ pub fn opening_crosses_join(model: &Model, id: ElementId, o: &Opening) -> Option
             if e.id != o.host && e.id != id && v.level == w.level && v.curtain.is_none() =>
         {
             let (a, b) = (v.start, v.end);
-            span.iter()
-                .any(|p| dist(*p, a, b) < v.thickness / 2.0 - 1e-3)
-                .then_some(e.id)
+            // a wall running through the opening, or one ending at the
+            // host's face (a T or an L join) within the opening's width
+            let through = span
+                .iter()
+                .any(|p| dist(*p, a, b) < v.thickness / 2.0 - 1e-3);
+            let ends_here = [a, b].into_iter().any(|end| {
+                let d = end - w.start;
+                let at = d.dot(along);
+                let across = d.dot(along.perp()).abs();
+                across <= w.thickness / 2.0 + 0.02
+                    && at > o.offset - v.thickness / 2.0 + 1e-3
+                    && at < o.offset + o.width + v.thickness / 2.0 - 1e-3
+            });
+            (through || ends_here).then_some(e.id)
         }
         _ => None,
     })
@@ -858,5 +869,19 @@ mod widen_tests {
         o.width = 1.5;
         widen_in_place(&m, 0.9, &mut o);
         assert!(opening_crosses_join(&m, ElementId::new(), &o).is_some());
+        // a wall that stops at the host's face counts too
+        let (mut m, _, o) = wall_and_door(3.5);
+        let b = m.iter().find(|e| e.name == "B").unwrap().clone();
+        let mut b2 = b.clone();
+        if let ElementKind::Wall(w) = &mut b2.kind {
+            w.start = DVec2::new(4.0, 0.1);
+        }
+        Transaction::new("T at the face")
+            .replace(b, b2)
+            .apply(&mut m)
+            .unwrap();
+        assert!(opening_crosses_join(&m, ElementId::new(), &o).is_some());
+        let (m, _, o) = wall_and_door(1.0);
+        assert!(opening_crosses_join(&m, ElementId::new(), &o).is_none());
     }
 }

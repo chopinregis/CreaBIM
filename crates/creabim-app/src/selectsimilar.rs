@@ -202,7 +202,7 @@ impl CreaBimApp {
             .take(4)
             .map(|(c, n)| format!("{n} {}", c.label().to_lowercase()))
             .collect();
-        let more = if cats.len() > 4 { ", …" } else { "" };
+        let more = if cats.len() > 4 { " and more" } else { "" };
         self.status = format!(
             "{} selected: {}{more}. Keep only… narrows it to one kind.",
             ids.len(),
