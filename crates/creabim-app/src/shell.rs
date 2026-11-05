@@ -1529,7 +1529,14 @@ impl CreaBimApp {
         let full = std::path::absolute(&default)
             .map(|p| p.display().to_string())
             .unwrap_or(default);
-        crate::files::pick_save(&full, "Export", &ext)
+        let asked = std::time::Instant::now();
+        let picked = crate::files::pick_save(&full, "Export", &ext);
+        // a save window that closes at once never opened (no file picker
+        // on this system): write next to the project as before
+        if picked.is_none() && asked.elapsed() < std::time::Duration::from_millis(300) {
+            return Some(full);
+        }
+        picked
     }
 
     /// Open the folder the last export went to, in the system's file browser.

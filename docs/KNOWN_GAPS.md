@@ -344,7 +344,9 @@ From the open JSON import (#44). [`docs/json-format.md`](json-format.md) keeps t
 
 ## Pending pull requests
 
-None on 2026-11-04. Gaps reported by work that is still a pull request go here until it merges, then into the themes above.
+Gaps reported by work that is still a pull request go here until it merges, then into the themes above.
+
+- **Brief 02, Phase 2, first-hour fixes:** an export holds the window until it is written. In a debug build the starter house's 13 sheets take about a minute as PDF. A partition is judged by its thickness alone (under 150 mm), since walls have no load-bearing flag yet.
 
 ---
 
