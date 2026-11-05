@@ -33,6 +33,29 @@ impl CreaBimApp {
                     self.status = editmode::enter(self.doc.model(), id, &mut self.plan.edit);
                 }
             }
+            Some(handles::GripRequest::OffsetEdge(ring, i)) => {
+                self.plan.armed = Some((crate::modal::Mode::Grip, false));
+                self.plan.armed_grip = Some(handles::HandleKind::Edge { ring, i });
+                self.status = "Offset edge: move the pointer to push the edge out or pull it in, or type a distance.".into();
+            }
+            Some(handles::GripRequest::OffsetAll) => {
+                self.plan.armed = Some((crate::modal::Mode::Offset, false));
+                self.plan.in_place = true;
+                self.status = "Offset all: move the pointer out or in, or type a distance.".into();
+            }
+            Some(handles::GripRequest::InsertPoint(ring, i, at)) => {
+                if let Some(id) = self.selection.active {
+                    match editmode::add_corner(&mut self.doc, id, ring, i, Some(at)) {
+                        Ok(_) => {
+                            self.plan.armed = Some((crate::modal::Mode::Grip, false));
+                            self.plan.armed_grip =
+                                Some(handles::HandleKind::Vertex { ring, i: i + 1 });
+                            self.status = "Point inserted: move it with the pointer and click, or type a distance. Esc leaves it where it is.".into();
+                        }
+                        Err(e) => self.status = e,
+                    }
+                }
+            }
             None => {}
         }
         let Some(id) = self.plan.edit else {

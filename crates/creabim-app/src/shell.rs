@@ -1956,13 +1956,14 @@ impl CreaBimApp {
         let opt = |id: String, label: &str, on: bool, hint: &str| json!({"id": id, "label": label, "on": on, "hint": hint});
         let mut options = vec![];
         if let Some(m) = &self.plan.modal {
-            let verb = format!("{:?}", m.mode);
+            let verb = m.mode.verb();
             let icon = match m.mode {
                 crate::modal::Mode::Move => "move",
                 crate::modal::Mode::Rotate => "rotate-cw",
                 crate::modal::Mode::Scale => "scaling",
                 crate::modal::Mode::Mirror => "flip-horizontal-2",
                 crate::modal::Mode::Offset => "copy-plus",
+                crate::modal::Mode::Grip => "spline",
             };
             return (json!({"label": verb, "icon": icon}), options);
         }

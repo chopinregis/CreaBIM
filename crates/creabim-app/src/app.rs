@@ -2020,6 +2020,10 @@ impl CreaBimApp {
                     crate::modal::Flow::Tool
                 };
                 let mode = keys.or(self.plan.armed);
+                let extras = (
+                    self.plan.armed_grip.take(),
+                    std::mem::take(&mut self.plan.in_place),
+                );
                 self.plan.cancel();
                 self.plan.armed = None;
                 let ids = self.selection.all();
@@ -2037,7 +2041,9 @@ impl CreaBimApp {
                         flow,
                         self.plan.move_target,
                         self.workplane.as_ref().map(|w| w.0),
-                    ) {
+                    )
+                    .and_then(|(m, t)| Ok((planview::with_extras(&mut self.doc, m, extras)?, t)))
+                    {
                         Ok((m, targets)) => {
                             if targets != ids {
                                 self.selection.extend(targets, false);

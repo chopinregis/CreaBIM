@@ -1632,7 +1632,29 @@ pub struct GripSel {
     pub typing: bool,
     /// What the app should do next with Edit mode.
     pub request: Option<GripRequest>,
+    /// The small palette on the outline edge under the pointer (3.6).
+    palette: Option<EdgePalette>,
 }
+
+/// The palette on a selected element's outline edge: Offset edge, Offset
+/// all, Insert point.
+#[derive(Clone, Copy, Debug)]
+struct EdgePalette {
+    pane: egui::Id,
+    ring: Ring,
+    i: usize,
+    /// The model point the pointer was at on the edge.
+    at: DVec3,
+    /// Where it shows, on screen.
+    pos: Pos2,
+    /// When the pointer came to the edge (seconds): it shows after a rest.
+    since: f64,
+    /// Where it was drawn last frame, to keep it while the pointer is on it.
+    rect: Option<Rect>,
+}
+
+/// How long (seconds) the pointer rests on an edge before its palette shows.
+const PALETTE_REST: f64 = 0.35;
 
 /// Something only the app can do, asked for from a grip.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1641,6 +1663,14 @@ pub enum GripRequest {
     Finish,
     /// Open the selected element in Edit mode.
     Enter,
+    /// From the edge palette: push edge `i` of outline `ring` out or in,
+    /// following the pointer.
+    OffsetEdge(Ring, usize),
+    /// From the edge palette: offset the whole outline, in place.
+    OffsetAll,
+    /// From the edge palette: a corner on edge `i` of `ring` at this
+    /// point, then moved with the pointer.
+    InsertPoint(Ring, usize, DVec3),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1686,6 +1716,7 @@ impl GripSel {
         if self.id != id {
             self.clear();
             self.last_tap = None;
+            self.palette = None;
             self.id = id;
         }
     }
@@ -2283,6 +2314,134 @@ fn edge_at(model: &Model, e: &Element, input: &PaneInput, p: Pos2) -> Option<(Ri
     best.map(|(_, r, i, at)| (r, i, at))
 }
 
+/// The edge palette (3.6) of selected element `e` in this pane: after the
+/// pointer rests on an edge of its outline, three choices by the pointer,
+/// which ask the app through `sel.request`. It stays while the pointer is
+/// on it. `corner`: a corner grip is under the pointer, which wins.
+/// Returns a status line when it shows.
+fn edge_palette(
+    model: &Model,
+    e: &Element,
+    ctx: &egui::Context,
+    response: &egui::Response,
+    input: &PaneInput,
+    sel: &mut GripSel,
+    corner: bool,
+) -> Option<String> {
+    let pane = response.id;
+    // the palette covers the pane, so the pane itself no longer hovers
+    let pointer = ctx.input(|i| i.pointer.hover_pos());
+    let now = ctx.input(|i| i.time);
+    let mine = sel.palette.filter(|p| p.pane == pane);
+    let on_palette = |p: &EdgePalette| {
+        p.rect
+            .zip(pointer)
+            .is_some_and(|(r, at)| r.expand(10.0).contains(at))
+    };
+    match mine {
+        Some(p) if on_palette(&p) => {}
+        _ => {
+            let edge = pointer
+                .filter(|p| response.rect.contains(*p) && !corner)
+                .and_then(|p| Some((p, edge_at(model, e, input, p)?)));
+            sel.palette = match (edge, mine) {
+                (Some((_, (ring, i, _))), Some(p)) if p.ring == ring && p.i == i => Some(p),
+                (Some((pos, (ring, i, at))), _) => Some(EdgePalette {
+                    pane,
+                    ring,
+                    i,
+                    at,
+                    pos,
+                    since: now,
+                    rect: None,
+                }),
+                // another pane's stays for that pane
+                (None, None) => sel.palette.filter(|p| p.pane != pane),
+                (None, Some(_)) => None,
+            };
+        }
+    }
+    let mut p = sel.palette.filter(|p| p.pane == pane)?;
+    if now - p.since < PALETTE_REST {
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(PALETTE_REST));
+        return None;
+    }
+    let info = crate::editmode::ring_of(model, e, p.ring);
+    let shown = handles_in(model, e.id, None, true);
+    let can_edge = shown.iter().any(|h| {
+        h.kind
+            == HandleKind::Edge {
+                ring: p.ring,
+                i: p.i,
+            }
+    });
+    let normal = info.as_ref().map_or(DVec3::Z, |r| r.normal);
+    let can_all = creabim_core::offset::offset(e, 0.1, normal).is_some();
+    let can_insert = info.as_ref().is_some_and(|r| r.reshapes);
+    let mut asked = None;
+    let area = egui::Area::new(egui::Id::new(("edge-palette", pane)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(p.pos + Vec2::new(14.0, 14.0))
+        .show(ctx, |ui| {
+            egui::Frame::menu(ui.style()).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let mut item = |ui: &mut egui::Ui, on: bool, text: &str, tip: &str, r| {
+                        let b = ui
+                            .add_enabled(on, egui::Button::new(text).small())
+                            .on_hover_text(tip)
+                            .on_disabled_hover_text(tip);
+                        if b.clicked() {
+                            asked = Some(r);
+                        }
+                    };
+                    item(
+                        ui,
+                        can_edge,
+                        "Offset edge",
+                        "Push this edge out or pull it in, square to itself: move the pointer (it snaps) or type a distance",
+                        GripRequest::OffsetEdge(p.ring, p.i),
+                    );
+                    item(
+                        ui,
+                        can_all,
+                        "Offset all",
+                        "Grow or shrink the whole outline by one distance: the pointer's side, or a typed distance",
+                        GripRequest::OffsetAll,
+                    );
+                    item(
+                        ui,
+                        can_insert,
+                        "Insert point",
+                        "Add a corner here on the edge, then move it with the pointer or by a typed distance",
+                        GripRequest::InsertPoint(p.ring, p.i, p.at),
+                    );
+                });
+            });
+        });
+    p.rect = Some(area.response.rect);
+    sel.palette = Some(p);
+    if let Some(r) = asked {
+        sel.request = Some(r);
+        sel.palette = None;
+        // typed distances go to the edit that starts, not to the button
+        crate::modal::unfocus_soon(ctx);
+    }
+    // the edge it is for, traced
+    if let Some(r) = info {
+        let n = r.corners.len();
+        if n >= 2 {
+            let (a, b) = (r.corners[p.i % n], r.corners[(p.i + 1) % n]);
+            if let (Some(a), Some(b)) = ((input.project)(a), (input.project)(b)) {
+                response
+                    .ctx
+                    .layer_painter(response.layer_id)
+                    .line_segment([a, b], Stroke::new(3.0, ACCENT.gamma_multiply(0.6)));
+            }
+        }
+    }
+    Some("Edge: Offset edge pushes it square to itself, Offset all grows the outline, Insert point adds a corner. Or drag its grip.".into())
+}
+
 /// In Edit mode, the outlines being edited, traced so a hole inside a
 /// slab or a shaft inside walls reads clearly; picked holes filled. A
 /// `broken` shape is drawn red over them.
@@ -2806,6 +2965,16 @@ pub fn interact(
                 tip,
                 Color32::from_gray(40),
             );
+        }
+    }
+
+    // the palette on the outline edge under the pointer
+    if drag.is_none() && !grips.busy() && !elsewhere {
+        if let Some(e) = &element {
+            let corner = matches!(hot, Some(HandleKind::Vertex { .. }));
+            if let Some(s) = edge_palette(doc.model(), e, &ctx, response, input, grips, corner) {
+                *status = Some(s);
+            }
         }
     }
 
