@@ -657,6 +657,10 @@ impl CreaBimApp {
 
     /// Orbit the 3D view by a pointer drag, about the selection when asked.
     fn orbit_3d(&mut self, d: Vec2) {
+        if self.cube.grabbing() {
+            // the drag started on the view cube, which turns the view itself
+            return;
+        }
         let d = GVec2::new(d.x, d.y);
         match self.selection_bounds().filter(|_| self.orbit_selection) {
             Some((lo, hi)) => self.camera.orbit_around((lo + hi) / 2.0, d),
@@ -679,15 +683,21 @@ impl CreaBimApp {
     }
 
     /// The view cube in the 3D view's corner: a click turns the view, a
-    /// drag on it orbits.
+    /// drag on it orbits, and a drag on its zoom or pan button zooms or
+    /// pans.
     fn view_cube(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        use crate::viewcube::{said, target_of};
+        use crate::viewcube::{said, target_of, Nav};
         let accent = crate::theme::Palette::of(ui.ctx()).accent;
-        let (pick, drag) = self
+        let (pick, nav) = self
             .cube
             .ui(ui, rect, &self.camera, accent, self.camera.ortho);
-        if let Some(d) = drag {
-            self.camera.orbit(GVec2::new(d.x, d.y));
+        match nav {
+            Some(Nav::Orbit(d)) => self.camera.orbit(GVec2::new(d.x, d.y)),
+            // the view moves with the pointer, as a right-button drag does
+            Some(Nav::Pan(d)) => self.camera.pan(GVec2::new(d.x, d.y), rect.height()),
+            // up zooms in
+            Some(Nav::Zoom(d)) => self.camera.zoom(-d.y / 150.0),
+            None => {}
         }
         let Some(pick) = pick else {
             return;
@@ -2256,7 +2266,10 @@ impl CreaBimApp {
             return;
         }
 
-        if response.clicked() {
+        let on_cube = response
+            .interact_pointer_pos()
+            .is_some_and(|p| self.cube.covers(p));
+        if response.clicked() && !on_cube {
             if let Some(p) = response.interact_pointer_pos() {
                 // sketch lines first: they have no surface to hit
                 let near_sketch = self.sketch_near(p, &project);

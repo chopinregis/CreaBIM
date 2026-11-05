@@ -81,9 +81,11 @@ Select one wall, grid line, door, window or column in a plan. Blue dimensions sh
 
 ![The padlock holding](55-padlock-holds.png)
 
-**Telling a held dimension.** A dimension that holds its spacing shows a small blue padlock just after its value, whether or not anything is selected. It is drawn on screen only; sheets and PDFs print it as an ordinary dimension. Selecting either end shows the same value with a closed padlock, which a click opens.
+**Telling a held dimension.** A dimension that holds its spacing has a small padlock just after its value. Left alone it is a faint grey ghost, so it stays out of the drawing's way; when the dimension or either of its ends is selected it shows strongly, filled in blue. It is drawn on screen only: sheets, PDFs and exports print the dimension as an ordinary one.
 
-![A held dimension, selected and not](67-held-dimension-mark.png)
+![Left alone, then selected](68-held-padlock-ghost.png)
+
+![An end selected, then the dimension selected](67-held-dimension-mark.png)
 
 ### Still to do in 3.2
 
@@ -146,6 +148,8 @@ The 3D view has a **view cube** in its top right corner.
 - **Compass ring.** N, E, S and W sit on a ring on the ground under the cube; a click looks from that side. N is red. Letters behind the cube are hidden by it.
 - **Face names printed on the faces.** The names are drawn on the faces themselves, so in an oblique view they turn and foreshorten with their face, as if painted there. They are never mirrored, and *Top* and *Bottom* turn to read left to right from wherever you look. A face seen almost edge-on fades its name.
 - **A column of round buttons** beside the cube, all the same size:
+  - **Zoom** (the magnifier): drag up to zoom in, down to zoom out;
+  - **Pan** (the four arrows): drag to move the view;
   - **Home** frames everything from the three-quarter view;
   - **Turn left** and **Turn right** turn the view 90° round the vertical (from a corner view, to the next corner);
   - **Perspective or orthographic** switches the projection. Its icon shows the current one: a grid going away into the distance for perspective, a square grid for orthographic. The header's *Projection* button does the same.
@@ -168,6 +172,12 @@ The 3D view has a **view cube** in its top right corner.
 
 ![Three-quarter view, perspective and orthographic](65-perspective-and-ortho-iso.png)
 
+**Pan and zoom by dragging**, as Blender's buttons beside its gizmo work. A drag that starts on the cube or its buttons belongs to them, so it never also orbits or picks in the view.
+
+![The cube with its six buttons](69-view-cube-pan-zoom.png)
+
+![Dragging Pan, then Zoom](70-pan-and-zoom-drags.png)
+
 ![Front, perspective and orthographic](66-perspective-and-ortho-front.png)
 
 ### Still to do in 3.4
@@ -181,8 +191,8 @@ The 3D view has a **view cube** in its top right corner.
 
 1. Open the starter house. Rest the pointer on the cube's *Front*; it lights up with a tip. Click it: the view turns to the south side.
 2. Click *Top*: the plan from above, north up. Click the house to go back.
-3. Click the corner where *Top*, *Left* and *Front* meet, then *Turn right* (the third round button): the view goes from the south-west corner to the north-west one.
-4. Click the fourth round button: the view switches to orthographic and its icon becomes a square grid; click again for perspective.
+3. Click the corner where *Top*, *Left* and *Front* meet, then *Turn right* (the fifth round button): the view goes from the south-west corner to the north-west one.
+4. Drag the magnifier up and down, and the four arrows about. Then click the last round button: the view switches to orthographic and its icon becomes a square grid; click again for perspective.
 5. Click *S* on the ring, then drag the cube to orbit.
 
 ## How to test 3.2
@@ -190,7 +200,7 @@ The 3D view has a **view cube** in its top right corner.
 1. Select grid B in the ground floor plan. Click its value to grid A, type `3600` and press Enter. Grid B moves, and the wall on it goes with it. Ctrl+Z puts it back.
 2. Select a wall and type a spacing to the wall beside it; joined walls stretch to stay joined.
 3. Select grid B again and click the padlock beside the A–B value. Select grid A and drag it: grid B follows.
-4. Select nothing: the A–B dimension shows a small blue padlock by its value.
+4. Select nothing: the A–B dimension shows a faint padlock by its value. Click the dimension: the padlock shows strongly.
 5. Select grid B, click the closed padlock to let it go, and drag grid A again: B stays.
 
 ## How to test 3.1

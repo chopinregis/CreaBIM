@@ -818,7 +818,9 @@ pub fn show(
         }
     }
     // a dimension that holds its spacing shows a small closed padlock by
-    // its value, on screen only: paper prints it as any dimension
+    // its value, on screen only: paper prints it as any dimension. Left
+    // alone it is a faint ghost; selected, or with an end selected, it
+    // shows strongly
     for item in &plan.items {
         if let PlanItem::Dimension {
             id,
@@ -831,11 +833,17 @@ pub fn show(
             ..
         } = item
         {
-            let held = matches!(
-                doc.model().get(*id).map(|e| &e.kind),
-                Some(ElementKind::Dimension(d)) if d.held.is_some()
-            );
-            if held {
+            let current = match doc.model().get(*id).map(|e| &e.kind) {
+                Some(ElementKind::Dimension(d)) if d.held.is_some() => Some(
+                    selection.contains(*id)
+                        || [d.a.host, d.b.host]
+                            .into_iter()
+                            .flatten()
+                            .any(|h| selection.contains(h)),
+                ),
+                _ => None,
+            };
+            if let Some(current) = current {
                 let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
                 let px = crate::annotate::text_px(look, mm, &xf);
                 let half = paper::text_width(text, look.size) * mm * xf.scale as f64 / 2.0;
@@ -843,7 +851,7 @@ pub fn show(
                 let at = xf.to_screen(g.text_at);
                 let dir = Vec2::new(along.x as f32, -along.y as f32);
                 let spot = at + dir * (half as f32 + px * 0.9);
-                crate::tempdims::held_mark(&painter, spot, px.clamp(9.0, 16.0));
+                crate::tempdims::held_mark(&painter, spot, px.clamp(9.0, 16.0), current);
             }
         }
     }
