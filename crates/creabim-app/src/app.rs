@@ -661,7 +661,22 @@ impl CreaBimApp {
         }
     }
 
-    fn frame_all(&mut self) {
+    /// Frame all in one pane only: the drawing (Home over it) or the 3D
+    /// view (Home over it, or its toolbar), leaving the other where it is.
+    fn frame_pane(&mut self, in_2d: bool) {
+        if in_2d && self.rect_2d.is_some() {
+            if let Some(v) = self.active_view {
+                self.plan.cameras.remove(&v);
+            }
+            self.status = "Framed the drawing.".into();
+        } else {
+            self.frame_3d();
+            self.status = "Framed the 3D view.".into();
+        }
+    }
+
+    /// Fit the 3D view round the whole model.
+    fn frame_3d(&mut self) {
         let scene = build_scene(self.doc.model());
         let bounds = scene
             .iter()
@@ -670,6 +685,11 @@ impl CreaBimApp {
         if let Some((lo, hi)) = bounds {
             self.camera.frame(lo, hi, self.aspect);
         }
+    }
+
+    /// Every view framed afresh, as when a project opens.
+    fn frame_all(&mut self) {
+        self.frame_3d();
         self.plan.cameras.clear();
     }
 
@@ -919,7 +939,7 @@ impl CreaBimApp {
         }
         if self.plan.modal.is_none() {
             if home {
-                self.frame_all();
+                self.frame_pane(self.last_in_2d);
             }
             if frame_sel {
                 self.frame_selection();

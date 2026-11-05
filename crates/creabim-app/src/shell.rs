@@ -1391,7 +1391,7 @@ impl CreaBimApp {
             "layout.stacked" => self.layout.stacked = true,
             "layout.swap" => self.layout.swapped = !self.layout.swapped,
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
-            "frame" => self.frame_all(),
+            "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
             "nav.orbitsel" => self.orbit_selection = !self.orbit_selection,
             "nav.ortho" => self.camera.ortho = !self.camera.ortho,

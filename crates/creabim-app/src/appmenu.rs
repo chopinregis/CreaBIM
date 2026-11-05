@@ -303,6 +303,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn frame_all_reframes_only_the_pane_it_is_asked_in() {
+        let mut app = test_app();
+        let (a, b) = (ElementId::new(), ElementId::new());
+        app.active_view = Some(a);
+        app.rect_2d = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(400.0, 300.0),
+        ));
+        app.plan.cameras.insert(a, (glam::DVec2::ZERO, 3.0));
+        app.plan.cameras.insert(b, (glam::DVec2::ZERO, 3.0));
+        app.camera.distance = 1234.0;
+        app.frame_pane(true);
+        assert!(!app.plan.cameras.contains_key(&a));
+        assert!(app.plan.cameras.contains_key(&b));
+        assert_eq!(app.camera.distance, 1234.0);
+        app.plan.cameras.insert(a, (glam::DVec2::ZERO, 3.0));
+        app.frame_pane(false);
+        assert_ne!(app.camera.distance, 1234.0);
+        assert!(app.plan.cameras.contains_key(&a));
+    }
+
+    #[test]
     fn the_units_switch_changes_the_project_units_in_one_undo() {
         let mut app = test_app();
         assert_eq!(app.doc.model().units().length, LengthUnit::Millimetres);
