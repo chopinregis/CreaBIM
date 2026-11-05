@@ -46,6 +46,10 @@ pub enum SnapKind {
     /// Where a temporary guide crosses another guide, an edge or an
     /// alignment.
     GuideCross,
+    /// On a face of a wall (or any line) of the level traced underneath.
+    UnderlayFace,
+    /// On the centreline of a wall of the level traced underneath.
+    UnderlayCentre,
     /// No object snap: the point under the pointer, rounded to the
     /// increment when that is on.
     Grid,
@@ -69,6 +73,8 @@ impl SnapKind {
             SnapKind::AlignedCross => "Aligned both ways",
             SnapKind::OnTempGuide => "On guide line",
             SnapKind::GuideCross => "Guide intersection",
+            SnapKind::UnderlayFace => "Underlay face",
+            SnapKind::UnderlayCentre => "Underlay centreline",
             SnapKind::Grid => "",
         }
     }
@@ -176,7 +182,9 @@ impl SnapSettings {
                 SnapKind::Quadrant => self.quadrant,
                 SnapKind::Intersection => self.intersection,
                 SnapKind::Perpendicular => self.perpendicular,
-                SnapKind::OnEdge => self.nearest,
+                SnapKind::OnEdge | SnapKind::UnderlayFace | SnapKind::UnderlayCentre => {
+                    self.nearest
+                }
                 SnapKind::Guide => self.guides,
                 SnapKind::OnGridLine => self.grid_lines,
                 SnapKind::AxisX | SnapKind::AxisY => self.axis,
@@ -189,7 +197,7 @@ impl SnapSettings {
     /// Is geometry from this source wanted at all?
     fn takes(&self, src: Source) -> bool {
         match src {
-            Source::Edge => true,
+            Source::Edge | Source::Underlay | Source::UnderlayCentre => true,
             Source::Guide => self.guides,
             Source::GridLine => self.grid_lines,
         }
@@ -369,6 +377,10 @@ pub enum Source {
     Guide,
     /// A grid line, or a level line in a section.
     GridLine,
+    /// A line of the level traced underneath.
+    Underlay,
+    /// A wall centreline of the level traced underneath: never drawn.
+    UnderlayCentre,
 }
 
 impl Source {
@@ -377,6 +389,8 @@ impl Source {
             Source::Edge => SnapKind::OnEdge,
             Source::Guide => SnapKind::Guide,
             Source::GridLine => SnapKind::OnGridLine,
+            Source::Underlay => SnapKind::UnderlayFace,
+            Source::UnderlayCentre => SnapKind::UnderlayCentre,
         }
     }
 }
@@ -573,6 +587,7 @@ impl Snapper {
                     let src = match pen {
                         Pen::Guide => Source::Guide,
                         Pen::Grid => Source::GridLine,
+                        Pen::Underlay => Source::Underlay,
                         _ => Source::Edge,
                     };
                     s.add_segment(p3(*a), p3(*b), src, Some(id))
@@ -627,6 +642,36 @@ impl Snapper {
     }
 
     /// Every guide in the model, for the 3D view, `reach` metres each way.
+    /// The centrelines of the walls of the level a plan traces underneath,
+    /// so a wall drawn over one can follow its face or its middle.
+    pub fn add_underlay_centres(&mut self, model: &creabim_core::Model, view: ElementId) {
+        let Some(creabim_core::ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+            return;
+        };
+        let creabim_core::ViewKind::Plan { level, .. } = v.kind else {
+            return;
+        };
+        let Some(under) = v.underlay.level(model, level) else {
+            return;
+        };
+        for e in model.iter() {
+            if let creabim_core::ElementKind::Wall(w) = &e.kind {
+                if w.level != under || w.curtain.is_some() {
+                    continue;
+                }
+                let d = (w.end - w.start).normalize_or_zero().perp();
+                let k = -creabim_core::walls::location_offset(model, w);
+                let (a, b) = (w.start + d * k, w.end + d * k);
+                self.add_segment(
+                    a.extend(0.0),
+                    b.extend(0.0),
+                    Source::UnderlayCentre,
+                    Some(e.id),
+                );
+            }
+        }
+    }
+
     pub fn add_guides(&mut self, model: &creabim_core::Model, reach: f64) {
         for e in model.iter() {
             if let creabim_core::ElementKind::Guide(g) = &e.kind {
@@ -1330,6 +1375,7 @@ fn marker(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) -> Option
         SnapKind::AxisY => Color32::from_rgb(40, 160, 60),
         SnapKind::Aligned | SnapKind::AlignedCross => TRACK,
         SnapKind::OnTempGuide | SnapKind::GuideCross => GUIDE,
+        SnapKind::UnderlayFace | SnapKind::UnderlayCentre => Color32::from_rgb(20, 140, 150),
         SnapKind::Grid => return None,
     };
     let s = Stroke::new(2.0, c);
@@ -1399,6 +1445,22 @@ fn marker(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) -> Option
                 ));
             }
             painter.circle_filled(at, 3.0, c);
+        }
+        // a face: a ring with a bar on one side; a centreline: a ring
+        // with a line through its middle
+        SnapKind::UnderlayFace => {
+            painter.circle_stroke(at, r * 0.7, s);
+            painter.line_segment([at + egui::vec2(-r, r), at + egui::vec2(r, r)], s);
+        }
+        SnapKind::UnderlayCentre => {
+            painter.circle_stroke(at, r * 0.7, s);
+            painter.line_segment(
+                [
+                    at + egui::vec2(-r * 1.4, 0.0),
+                    at + egui::vec2(r * 1.4, 0.0),
+                ],
+                s,
+            );
         }
         SnapKind::Grid => {}
     }
@@ -2151,6 +2213,49 @@ mod tests {
             .unwrap()
             .id;
         (model, id, plan)
+    }
+
+    #[test]
+    fn a_plan_over_an_underlay_snaps_to_its_faces_and_centrelines() {
+        let mut model = creabim_core::sample::sample_house();
+        let mut levels: Vec<_> = model.levels().map(|(e, l)| (e.id, l.elevation)).collect();
+        levels.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let (ground, first) = (levels[0].0, levels[1].0);
+        let wall = Element::new(
+            "Far wall",
+            ElementKind::Wall(creabim_core::Wall::new(
+                ground,
+                DVec2::new(50.0, 0.0),
+                DVec2::new(55.0, 0.0),
+                0.3,
+                2.7,
+            )),
+        );
+        let mut tx = Transaction::new("Add").insert(wall);
+        let plan = model
+            .iter()
+            .find(|e| {
+                matches!(&e.kind, ElementKind::View(v)
+                    if matches!(v.kind, creabim_core::ViewKind::Plan { level, .. } if level == first))
+            })
+            .unwrap()
+            .clone();
+        let mut traced = plan.clone();
+        if let ElementKind::View(v) = &mut traced.kind {
+            v.underlay = creabim_core::Underlay::Below;
+        }
+        tx = tx.replace(plan.clone(), traced);
+        tx.apply(&mut model).unwrap();
+        let drawing = creabim_geom::section::view_drawing(&model, plan.id).unwrap();
+        let mut s = Snapper::from_drawing(&drawing.items, &[]);
+        s.add_underlay_centres(&model, plan.id);
+        let face = s.snap(&ALL, at(52.3, 0.16), &flat, None, None).unwrap();
+        assert_eq!(face.kind, SnapKind::UnderlayFace);
+        assert!((face.p.y - 0.15).abs() < 1e-9);
+        let centre = s.snap(&ALL, at(52.3, 0.01), &flat, None, None).unwrap();
+        assert_eq!(centre.kind, SnapKind::UnderlayCentre);
+        assert!(centre.p.y.abs() < 1e-9);
+        assert_eq!(centre.kind.label(), "Underlay centreline");
     }
 
     #[test]

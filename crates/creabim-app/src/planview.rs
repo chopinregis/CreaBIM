@@ -860,7 +860,7 @@ pub fn show(
         _ => vec![],
     };
     if matches!(kind, PaneKind::Plan { .. } | PaneKind::Section { .. }) {
-        refresh_snaps(state, view, doc.model().revision(), plan, &exclude);
+        refresh_snaps(state, doc.model(), view, plan, &exclude);
     }
     let pane_project = |p: DVec3| Some(xf.to_screen(p.truncate()));
     // a line starts from the tool's first click, or the sketch's last corner
@@ -3191,11 +3191,12 @@ pub fn joined_with(doc: &Document, id: ElementId) -> Vec<ElementId> {
 /// which changes the model every frame.
 fn refresh_snaps(
     state: &mut PlanState,
+    model: &creabim_core::Model,
     view: ElementId,
-    revision: u64,
     plan: &Drawing,
     exclude: &[ElementId],
 ) {
+    let revision = model.revision();
     let dragging = state.grip.is_some()
         || state
             .modal
@@ -3208,11 +3209,11 @@ fn refresh_snaps(
     if !fresh {
         state.snaps.insert(
             view,
-            (
-                revision,
-                exclude.to_vec(),
-                Snapper::from_drawing(&plan.items, exclude),
-            ),
+            (revision, exclude.to_vec(), {
+                let mut s = Snapper::from_drawing(&plan.items, exclude);
+                s.add_underlay_centres(model, view);
+                s
+            }),
         );
     }
 }
@@ -4923,7 +4924,10 @@ mod tests {
         let hits = hit_all(&items, DVec2::new(0.45, 0.0), 0.05, 0.05);
         assert_eq!(hits, [door, footing]);
         // away from the door the footing is still picked
-        assert_eq!(hit_test(&items, DVec2::new(2.0, 0.0), 0.05, 0.05), Some(footing));
+        assert_eq!(
+            hit_test(&items, DVec2::new(2.0, 0.0), 0.05, 0.05),
+            Some(footing)
+        );
     }
 
     #[test]
