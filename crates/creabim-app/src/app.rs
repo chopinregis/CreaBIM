@@ -955,12 +955,15 @@ impl CreaBimApp {
                 self.frame_selection();
             }
         }
+        // in a text field, Ctrl+A and the letter keys are the field's own
+        let typing = ctx.egui_wants_keyboard_input();
         let (all, none, hide, isolate, show, events) = ctx.input(|i| {
             let (cmd, alt, shift) = (i.modifiers.command, i.modifiers.alt, i.modifiers.shift);
-            let h = i.key_pressed(egui::Key::H);
+            let h = !typing && i.key_pressed(egui::Key::H);
+            let a = !typing && i.key_pressed(egui::Key::A);
             (
-                cmd && !shift && i.key_pressed(egui::Key::A),
-                alt && i.key_pressed(egui::Key::A),
+                cmd && !shift && a,
+                alt && a,
                 h && !cmd && !alt && !shift,
                 h && shift && !cmd && !alt,
                 h && alt,
@@ -987,7 +990,7 @@ impl CreaBimApp {
         // in the project
         let similar = ctx.input(|i| {
             let m = i.modifiers;
-            (m.shift && !m.alt && i.key_pressed(egui::Key::A)).then_some(m.command)
+            (!typing && m.shift && !m.alt && i.key_pressed(egui::Key::A)).then_some(m.command)
         });
         if let Some(project) = similar.filter(|_| self.plan.tool == Tool::Select) {
             self.shell.context_3d = !self.last_in_2d;

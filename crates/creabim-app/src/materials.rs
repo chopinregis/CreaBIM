@@ -901,7 +901,14 @@ impl CreaBimApp {
                 self.selection.extend(users.iter().copied(), false);
                 self.status = format!("Selected {} element{}.", users.len(), plural_s(users.len()));
             }
-            Ask::Assign(m) => self.assign_material(m),
+            Ask::Assign(m) => {
+                // once assigned, the window is done with: the model shows
+                let any = !self.assignable().is_empty();
+                self.assign_material(m);
+                if any {
+                    self.mat.open = false;
+                }
+            }
             Ask::AddLibrary(entries) => {
                 self.add_library(&entries);
                 self.mat.tab = MatTab::Library;
