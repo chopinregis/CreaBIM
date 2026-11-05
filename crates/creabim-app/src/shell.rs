@@ -352,6 +352,7 @@ impl CreaBimApp {
             "menu:Help" => self.help_menu(),
             "menu:Create" => self.create_menu(),
             "underlay" => self.underlay_items(),
+            "keeponly" => self.keep_only_items(),
             "render3d" => self.render_items(),
             "viewstyle" => self.view_style_items(),
             "wall.location" => self.wall_location_items(),
@@ -2427,6 +2428,13 @@ impl CreaBimApp {
                 {"kind": "meta", "label": format!("{} elements", self.element_count())},
             ],
         });
+        // right after a box took several kinds, a way to keep one of them
+        if self.offers_keep_only() {
+            if let Some(c) = state["controls"].as_array_mut() {
+                c.insert(0, json!({"kind": "menu", "key": "keeponly", "label": "Keep only", "value": "…", "icon": "square-dashed-mouse-pointer",
+                    "hint": "Keep only one kind of what the box took: the walls, the doors…"}));
+            }
+        }
         // right after an export, the way to the file it wrote
         if self.last_export.as_deref() == Some(self.status.as_str()) {
             if let Some(c) = state["controls"].as_array_mut() {

@@ -213,6 +213,9 @@ pub struct CreaBimApp {
     /// What the status bar said after the last export, and the folder it
     /// went to: while the message shows, the bar offers to open the folder.
     last_export: Option<String>,
+    /// What a box selection took, while it is still the selection: the
+    /// status bar offers Keep only… for it.
+    boxed: Option<Vec<ElementId>>,
     last_export_dir: Option<std::path::PathBuf>,
     /// The crop box whose elements clicks in the 3D view are picking.
     crop_pick: Option<ElementId>,
@@ -303,6 +306,7 @@ impl CreaBimApp {
             rect_2d: None,
             last_in_2d: false,
             last_export: None,
+            boxed: None,
             last_export_dir: None,
             crop_pick: None,
             status: "Loaded the sample house. Orbit with left drag, pan with right drag, zoom with the wheel.".into(),
@@ -2097,6 +2101,7 @@ impl CreaBimApp {
                     self.face = None;
                     self.box_3d = None;
                     self.status = format!("{} selected.", self.selection.len());
+                    self.plan.boxed = true;
                 }
                 return;
             }
@@ -5466,6 +5471,10 @@ impl eframe::App for CreaBimApp {
         }
         if std::mem::take(&mut self.plan.want_catalogue) {
             self.catalogue.open = true;
+        }
+        // a box selection that took more than one kind: Keep only… is offered
+        if std::mem::take(&mut self.plan.boxed) {
+            self.after_box_selection();
         }
         // a box dragged with the Footing tool: footings under all it took
         let hosts = std::mem::take(&mut self.plan.want_footings);

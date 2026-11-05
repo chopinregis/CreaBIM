@@ -404,6 +404,9 @@ pub struct PlanState {
     /// Walls or columns a box dragged with the Footing tool took: the app
     /// puts footings under them all, in one step.
     pub want_footings: Vec<ElementId>,
+    /// A box selection just made: the app offers Keep only… while the
+    /// selection is still what the box took.
+    pub boxed: bool,
     /// Elements shown as if selected without being so (a type's instances,
     /// from its Show in model), and whether the rest is drawn faint.
     pub spotlight: Vec<ElementId>,
@@ -513,6 +516,7 @@ impl Default for PlanState {
             objects: Default::default(),
             want_catalogue: false,
             want_footings: vec![],
+            boxed: false,
             spotlight: vec![],
             spotlight_ghost: false,
             chain: (None, vec![]),
@@ -1358,6 +1362,7 @@ pub fn show(
                     state.want_footings = hosts;
                 } else {
                     selection.extend(ids, shift);
+                    state.boxed = true;
                 }
                 state.boxsel = None;
             }
