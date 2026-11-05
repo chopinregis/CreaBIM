@@ -61,13 +61,13 @@ With the workplane on a face, Move slides along the face and Rotate turns about 
 
 *Edit › Mirror* (or the right-click menu) flips the selection across a line. Click two points on the line. It makes a copy; press `Ctrl` to flip the original instead.
 
-- `Shift` keeps the line along the axes, `Ctrl` while placing snaps it to 15° steps, and a typed angle, then `Enter`, sets it.
+- `Shift` keeps the line to 15° steps from the axes, and a typed angle, then `Enter`, sets it.
 - With the workplane on a face, the line lies on the face, and a part on the face is flipped across it and still stands out of the face.
 - Walls keep their outside out. Objects and columns move and turn to match, but keep their own shape.
 
 ## Offset
 
-*Edit › Offset* makes a copy a set distance to one side. Move the pointer to the side you want and click, or type a distance and press `Enter`; `Ctrl` snaps to 50 mm.
+*Edit › Offset* makes a copy a set distance to one side. Move the pointer to the side you want and click, or type a distance and press `Enter`; `Shift` rounds to 50 mm. `Ctrl` changes the original instead of making a copy.
 
 A closed outline (slab, roof, ceiling, shaft, extrusion) grows outwards or shrinks inwards. A line (wall, beam, grid, room separator, strip footing, railing) moves sideways. A sketch, an extrusion drawn on a face or a sweep offsets on its own plane.
 

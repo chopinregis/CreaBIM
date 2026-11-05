@@ -29,7 +29,9 @@ The screenshots were taken in the running app on a small L corner cut out of the
 | 2 (3.5) | Slab on a level face; wall opening drawn on a wall face | **Done** (below). |
 | 2 (3.5) | Room outline and detail region on a face | Not started: a detail region is drawn in its section or detail view already, and a room follows its walls. |
 | 2 | Align, mirror, offset, move, rotate on the face | **Done** (below): new Mirror and Offset commands, in plan and on a face; Move, Rotate and Align follow a face workplane; push/pull on an extrusion drawn on a face. |
-| 3–7 | | Not started. |
+| 3 (3.6) | Edge palette on a selected element's outline edge, in 3D and plan: Offset edge, Offset all, Insert point | **Done** (below). |
+| 3 (3.6) | Drag with snaps, or type a distance | **Done** (below). |
+| 4–7 | | Not started. |
 
 ## 1. Layer editing
 
@@ -153,8 +155,8 @@ Edit mode moves an extrusion's or sweep's corners on its own plane. Move and rot
 
 Two new commands sit in the Edit menu, the right-click menu and the modify bar: **Mirror** and **Offset**. Both make a copy by default; Ctrl turns the copy off, so the original changes instead.
 
-- **Mirror**: click two points for the mirror line. With a workplane on a face, the line lies on that face and the selection flips across it, so a part on a wall still stands out of the wall afterwards. Shift keeps the line along the plane's axes, Ctrl snaps it to 15° steps, and a typed angle sets it. In plan, it mirrors across a line in the level. Walls keep their outside out, and columns and objects are turned to match.
-- **Offset**: the side of the pointer and its distance from the original set the offset; type a distance and press Enter, and Ctrl snaps to 50 mm. Walls, beams, grids, room separators, strip footings, railings, slabs, roofs, ceilings, shafts and extrusions offset in plan; a sketch, an extrusion drawn on a face and a sweep offset on their own plane. A closed outline grows or shrinks; a line moves sideways.
+- **Mirror**: click two points for the mirror line. With a workplane on a face, the line lies on that face and the selection flips across it, so a part on a wall still stands out of the wall afterwards. Shift keeps the line to 15° steps from the plane's axes, and a typed angle sets it. In plan, it mirrors across a line in the level. Walls keep their outside out, and columns and objects are turned to match.
+- **Offset**: the side of the pointer and its distance from the original set the offset; type a distance and press Enter, and Shift rounds to 50 mm. Walls, beams, grids, room separators, strip footings, railings, slabs, roofs, ceilings, shafts and extrusions offset in plan; a sketch, an extrusion drawn on a face and a sweep offset on their own plane. A closed outline grows or shrinks; a line moves sideways.
 - **Move** with a workplane on a face slides along the face. **Rotate** turns about the face's normal, by the pointer or by typed degrees.
 - **Align** with a workplane on a face turns the part on that face, so its edge runs parallel to the reference edge.
 - **Push/pull** now works on an extrusion drawn on a face: its outer face makes it deeper or shallower square to the face, and a side face makes it wider.
@@ -189,3 +191,50 @@ Two new commands sit in the Edit menu, the right-click menu and the modify bar: 
 - An object (furniture, fixture) mirrored keeps its own shape: only its position and facing are mirrored. An asymmetric column is not mirrored either, only turned.
 - Mirror and Offset reuse two existing icons for now; new icons wait for the owner's OK.
 - Thin grey slivers can show in the 3D view while a workplane sits on a face.
+
+## 3. Edge offset in 3D and 2D
+
+Select an element with an outline: a slab, roof, shaft, site, railing path, sketch, detail region, or an extrusion or sweep. Let the pointer rest on one of the outline's edges, in the 3D view or in a plan or section, and a small palette opens beside the pointer with three choices:
+
+- **Offset edge** pushes that edge out or pulls it in, square to itself. The neighbouring edges stretch to follow. This is the edge's grip, but driven from where it is, so nothing needs pressing and holding.
+- **Offset all** grows or shrinks the whole outline by one distance, in place. It is the Offset command with the copy off, and Ctrl makes a copy instead.
+- **Insert point** adds a corner on the edge where the pointer was, then moves it.
+
+Each choice follows the pointer with the usual snaps (ends, middles, axes, grid lines). Typing a distance and pressing Enter sends it that far the way the pointer went, a click places it, and Esc stops. Insert point is two undo steps: the corner, then its move. Esc leaves the new corner on the edge. The palette stays open while the pointer is on it, and a corner grip under the pointer wins over it.
+
+![Edge palette in plan](30-edge-palette-plan.png)
+
+![Offset edge](31-offset-edge-preview.png)
+
+![Offset edge placed](32-offset-edge-placed.png)
+
+![Offset all](33-offset-all-preview.png)
+
+![Offset all placed](34-offset-all-placed.png)
+
+![Insert point](35-insert-point-preview.png)
+
+![Insert point placed](36-insert-point-placed.png)
+
+![Edge palette in 3D](37-edge-palette-3d.png)
+
+![Offset edge in 3D](38-offset-edge-3d-preview.png)
+
+![Offset edge in 3D, placed](39-offset-edge-3d-placed.png)
+
+Also in this round: Mirror and Offset no longer use Ctrl for two things. Ctrl only switches the copy. Shift now keeps the mirror line to 15° steps and rounds an offset to 50 mm.
+
+### Acceptance
+
+| Check | Result |
+| --- | --- |
+| Hover a slab edge in plan and in 3D: the palette shows | Pass (30, 37). |
+| Offset edge by a typed 600 mm: only that edge moves, and the area grows by edge × 0.6 | Pass (31, 32, 38, 39; test `the_edge_palette_offsets_an_edge_offsets_all_and_moves_an_inserted_point`). |
+| Offset all by 300 mm in place: no copy, every edge out | Pass (33, 34; same test). |
+| Insert point, then 500 mm out with snaps | Pass (35, 36; same test). |
+
+**Gaps still open** (in [KNOWN_GAPS](../../KNOWN_GAPS.md)):
+
+- A wall has no outline edges here. Its faces push and pull with Move › Face, and its ends with their grips.
+- The palette uses words, not icons. Icons wait for the owner's OK.
+

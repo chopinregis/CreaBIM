@@ -373,6 +373,11 @@ pub struct PlanState {
     /// A move, rotate or scale picked from a button or menu, started by the
     /// next view the pointer is over: (mode, copy first).
     pub armed: Option<(Mode, bool)>,
+    /// With [`Mode::Grip`] armed: the grip it drives (from the edge palette).
+    pub armed_grip: Option<crate::handles::HandleKind>,
+    /// With [`Mode::Offset`] armed: change the original, no copy (the edge
+    /// palette's *Offset all*).
+    pub in_place: bool,
     /// Commands picked from a view's right-click menu, run by the app, with
     /// the model point the menu was opened at.
     pub commands: Vec<(Command, Option<DVec3>)>,
@@ -524,6 +529,8 @@ impl Default for PlanState {
             move_target: modal::Target::default(),
             cursor: None,
             armed: None,
+            armed_grip: None,
+            in_place: false,
             commands: vec![],
             menu_at: None,
             web_menus: false,
@@ -3201,6 +3208,7 @@ fn keyboard_edits(
     let mode = keys.or(state.armed)?;
     let grab = response.hover_pos()?;
     state.armed = None;
+    let extras = (state.armed_grip.take(), std::mem::take(&mut state.in_place));
     state.cancel();
     let ids = selection.all();
     match start_modal(
@@ -3216,7 +3224,9 @@ fn keyboard_edits(
         flow,
         state.move_target,
         None,
-    ) {
+    )
+    .and_then(|(m, copies)| Ok((with_extras(doc, m, extras)?, copies)))
+    {
         Ok((m, copies)) => {
             if copies != ids {
                 selection.extend(copies, false);
@@ -3227,6 +3237,22 @@ fn keyboard_edits(
         Err(e) => state.status = Some(e),
     }
     Some(None)
+}
+
+/// What the edge palette asked of an armed edit: the grip [`Mode::Grip`]
+/// drives, and whether an offset changes the original.
+pub fn with_extras(
+    doc: &mut Document,
+    mut m: Modal,
+    (grip, in_place): (Option<crate::handles::HandleKind>, bool),
+) -> Result<Modal, String> {
+    if let Some(k) = grip {
+        m = m.with_grip(doc, k)?;
+    }
+    if in_place {
+        m.set_copy(doc, false);
+    }
+    Ok(m)
 }
 
 /// What to do first, as a running edit begins.

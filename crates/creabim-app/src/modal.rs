@@ -15,7 +15,7 @@
 //! click it is pushed or pulled along its normal, SketchUp style, the
 //! element's own parameters following (see `creabim_core::pushpull`).
 
-use crate::handles::SnapFn;
+use crate::handles::{Constraint, HandleKind, SnapFn};
 use crate::snaps::{Snap, SnapKind};
 use creabim_core::{
     pushpull::{self, FaceRef},
@@ -111,16 +111,21 @@ pub enum Mode {
     Mirror,
     /// Offset a line or an outline by a distance, to the pointer's side.
     Offset,
+    /// One grip of one element, following the pointer from where it is:
+    /// an outline's edge offset, or a corner just inserted (from the edge
+    /// palette). Set up with [`Modal::with_grip`].
+    Grip,
 }
 
 impl Mode {
-    fn verb(self) -> &'static str {
+    pub fn verb(self) -> &'static str {
         match self {
             Mode::Move => "Move",
             Mode::Rotate => "Rotate",
             Mode::Scale => "Scale",
             Mode::Mirror => "Mirror",
             Mode::Offset => "Offset",
+            Mode::Grip => "Edit",
         }
     }
 
@@ -285,6 +290,17 @@ impl Events {
         right: bool,
         ctrl_before: &mut bool,
     ) -> Self {
+        let unfocus = egui::Id::new("modal.unfocus");
+        if ctx
+            .data_mut(|d| d.remove_temp::<bool>(unfocus))
+            .unwrap_or(false)
+        {
+            ctx.memory_mut(|m| {
+                if let Some(id) = m.focused() {
+                    m.surrender_focus(id);
+                }
+            });
+        }
         let typing = ctx.egui_wants_keyboard_input();
         let mut ev = ctx.input(|i| Events {
             pointer,
@@ -312,6 +328,12 @@ impl Events {
         *ctrl_before = ev.ctrl;
         ev
     }
+}
+
+/// Let go of the keyboard focus as the next edit reads its keys: a button
+/// that started it keeps the focus otherwise, and typed values go to it.
+pub fn unfocus_soon(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("modal.unfocus"), true));
 }
 
 /// An element changed as an edit changes it, or `None` when it can't be.
@@ -455,6 +477,16 @@ pub struct Modal {
     /// The workplane in 3D: Rotate turns about its normal, Move slides on
     /// it, Mirror and Offset work on it.
     plane: Option<Workplane>,
+    /// The grip a [`Mode::Grip`] edit drives.
+    grip: Option<GripRun>,
+}
+
+/// The grip a [`Mode::Grip`] edit drives, and the walls joined to it.
+#[derive(Debug)]
+struct GripRun {
+    kind: HandleKind,
+    constraint: Constraint,
+    joined: Vec<(usize, bool)>,
 }
 
 pub enum Outcome {
@@ -600,6 +632,7 @@ impl Modal {
             hover: None,
             push: None,
             plane,
+            grip: None,
         };
         if let (Some(f), ElementKind::FreeMesh(m)) = (face, &first.kind) {
             if f < m.mesh.faces.len() {
@@ -619,7 +652,7 @@ impl Modal {
         let [across, _] = plane_axes(space, plane);
         let tilted = tilted(space, plane);
         let probe = |c: DVec3| match mode {
-            Mode::Move | Mode::Mirror | Mode::Offset => Xform::Move(DVec3::X),
+            Mode::Move | Mode::Mirror | Mode::Offset | Mode::Grip => Xform::Move(DVec3::X),
             Mode::Rotate => match space {
                 Space::Section { .. } => Xform::Tilt {
                     center: c,
@@ -715,7 +748,10 @@ impl Modal {
     /// Take clicks as the Move or Rotate tool does: a base point first.
     pub fn with_flow(mut self, flow: Flow) -> Self {
         self.flow = flow;
-        if flow == Flow::Tool && self.uses_points() && self.mode != Mode::Offset {
+        if flow == Flow::Tool
+            && self.uses_points()
+            && !matches!(self.mode, Mode::Offset | Mode::Grip)
+        {
             self.stage = Stage::Base;
         }
         self
@@ -790,7 +826,7 @@ impl Modal {
             Mode::Move => true,
             Mode::Rotate => self.flow == Flow::Tool && self.face.is_none(),
             Mode::Scale => false,
-            Mode::Mirror | Mode::Offset => true,
+            Mode::Mirror | Mode::Offset | Mode::Grip => true,
         }
     }
 
@@ -1147,6 +1183,7 @@ impl Modal {
         match self.mode {
             Mode::Mirror => return self.step_mirror(doc, ev, map),
             Mode::Offset => return self.step_offset(doc, ev, map),
+            Mode::Grip => return self.step_grip(doc, ev, map),
             _ => {}
         }
         let skipped = self.skipped_note();
@@ -1347,7 +1384,10 @@ impl Modal {
     /// Esc or right-click: take back the last click, or stop. `None` while
     /// the edit goes on.
     fn back(&mut self, doc: &mut Document) -> Option<Outcome> {
-        if self.flow == Flow::Keys || !self.uses_points() || self.mode == Mode::Offset {
+        if self.flow == Flow::Keys
+            || !self.uses_points()
+            || matches!(self.mode, Mode::Offset | Mode::Grip)
+        {
             return Some(self.finish(doc));
         }
         match self.stage {
@@ -1418,7 +1458,7 @@ impl Modal {
             Mode::Move => "X, Y or Z keeps to an axis",
             Mode::Rotate => "X or Y tilts about that axis",
             Mode::Scale => "X, Y or Z scales along one axis",
-            Mode::Mirror | Mode::Offset => "",
+            Mode::Mirror | Mode::Offset | Mode::Grip => "",
         };
         Outcome::Running(format!(
             "{}{skipped}   ·   {keys}, type a value, click or Enter to finish, Esc to cancel{}",
@@ -1468,7 +1508,7 @@ impl Modal {
                         let faces = self.works_on == Target::Face && self.can_take_faces();
                         let axes: &[Axis] = match (self.mode, self.face.is_some()) {
                             _ if faces => &[],
-                            (Mode::Mirror | Mode::Offset, _) => &[],
+                            (Mode::Mirror | Mode::Offset | Mode::Grip, _) => &[],
                             (Mode::Rotate, true) => &[],
                             _ => &Axis::ALL,
                         };
@@ -1492,7 +1532,7 @@ impl Modal {
                             ui.separator();
                         }
                         ui.label(match self.mode {
-                            Mode::Move | Mode::Offset => "Distance",
+                            Mode::Move | Mode::Offset | Mode::Grip => "Distance",
                             Mode::Rotate | Mode::Mirror => "Angle",
                             Mode::Scale => "Factor",
                         });
@@ -1664,7 +1704,7 @@ impl Modal {
                     }
                 }
             }
-            Mode::Mirror | Mode::Offset => return None,
+            Mode::Mirror | Mode::Offset | Mode::Grip => return None,
             Mode::Scale => {
                 let factor = match typed {
                     Some(v) if v != 0.0 => v,
@@ -1815,15 +1855,10 @@ impl Modal {
         self.snap = snap;
         let [u, v] = self.pane_axes();
         let mut d = target.map_or(DVec3::ZERO, flat);
-        if self.ortho {
-            d = if d.dot(u).abs() >= d.dot(v).abs() {
-                u * d.dot(u)
-            } else {
-                v * d.dot(v)
-            };
-        }
         let mut deg = d.dot(v).atan2(d.dot(u)).to_degrees();
-        if ev.ctrl && !snap.is_some_and(|s| s.kind.is_point()) {
+        // Shift keeps the line to 15° steps from the plane's axes (Ctrl
+        // is the copy's)
+        if self.ortho {
             deg = (deg / 15.0).round() * 15.0;
         }
         let typed = self.typed.trim().parse::<f64>().ok();
@@ -1831,7 +1866,7 @@ impl Modal {
             deg = a;
         }
         let len = d.length().max(1.0);
-        if typed.is_some() || ev.ctrl {
+        if typed.is_some() || self.ortho {
             let r = deg.to_radians();
             d = (u * r.cos() + v * r.sin()) * len;
         }
@@ -1870,7 +1905,7 @@ impl Modal {
             format!("  [typed {}°]", self.typed)
         };
         Outcome::Running(format!(
-            "{}{typed}{skipped}   ·   click the line's second point, type its angle + Enter, Shift keeps it square, {copy}, Esc steps back",
+            "{}{typed}{skipped}   ·   click the line's second point, type its angle + Enter, Shift keeps it to 15° steps, {copy}, Esc steps back",
             self.shown
         ))
     }
@@ -1895,7 +1930,8 @@ impl Modal {
             (Some(t), Some(s)) if s < 0.0 => -t,
             (Some(t), _) => t,
             (None, Some(s)) => {
-                let step = if ev.ctrl { 0.05 } else { 0.01 };
+                // Shift rounds to 50 mm (Ctrl is the copy's)
+                let step = if ev.shift { 0.05 } else { 0.01 };
                 (s / step).round() * step
             }
             (None, None) => 0.0,
@@ -1938,7 +1974,144 @@ impl Modal {
             format!("  [typed {}]", self.typed)
         };
         Outcome::Running(format!(
-            "{}{typed}{skipped}   ·   click to place, type a distance + Enter, Ctrl snaps to 50 mm, {copy}, Esc stops",
+            "{}{typed}{skipped}   ·   click to place, type a distance + Enter, Shift rounds to 50 mm, {copy}, Esc stops",
+            self.shown
+        ))
+    }
+
+    /// Drive grip `kind` of the one element being edited from the pointer,
+    /// for [`Mode::Grip`]: it follows from where the grip is now, at once.
+    pub fn with_grip(mut self, doc: &Document, kind: HandleKind) -> Result<Self, String> {
+        let model = doc.model();
+        let id = self
+            .edit
+            .originals()
+            .last()
+            .map(|e| e.id)
+            .ok_or("Select something first.")?;
+        let h = crate::handles::handles_in(model, id, None, true)
+            .into_iter()
+            .find(|h| h.kind == kind)
+            .ok_or("That grip isn't there any more.")?;
+        let (originals, joined) = crate::handles::originals(model, id, kind);
+        let name = originals.first().map_or(String::new(), |e| e.name.clone());
+        let what = match kind {
+            HandleKind::Edge { .. } => "Offset an edge of",
+            _ => "Move the new corner of",
+        };
+        self.mode = Mode::Grip;
+        self.edit = LiveEdit::new(format!("{what} {name}"), originals);
+        self.copy = false;
+        self.copies = None;
+        self.base = Some(h.at);
+        self.base_at = Some(self.grab);
+        self.pivot = h.at;
+        self.stage = Stage::Follow;
+        self.grip = Some(GripRun {
+            kind,
+            constraint: h.constraint,
+            joined,
+        });
+        Ok(self)
+    }
+
+    /// [`Mode::Grip`]: the grip goes where the pointer is on its line (an
+    /// edge, square to itself) or its plane (a corner), snapped; a typed
+    /// distance goes the way the pointer went.
+    fn step_grip(&mut self, doc: &mut Document, ev: &Events, map: &PaneMap) -> Outcome {
+        let (Some(base), Some(g)) = (self.base, self.grip.as_ref()) else {
+            return Outcome::Cancelled("Nothing to edit.".into());
+        };
+        let still = self
+            .base_at
+            .is_some_and(|b| b.distance(self.pointer) < STILL);
+        let snap = (map.snap)(self.pointer, Some(base));
+        self.snap = snap.map(|s| s.1);
+        let on_plane = |p: DVec3, n: DVec3| p - n * (p - base).dot(n);
+        let pointer = match g.constraint {
+            // an edge in a level outline runs across the level; one in an
+            // upright outline on the plane facing the viewer
+            Constraint::Line { dir, .. } => {
+                let axis = (dir.z.abs() > 0.5).then_some(Axis::Z);
+                snap.map(|s| s.0)
+                    .or_else(|| (map.to_model)(self.pointer, axis, base))
+            }
+            Constraint::Plane { normal, .. } => snap
+                .map(|s| s.0)
+                .or_else(|| (map.to_model)(self.pointer, None, base))
+                .map(|p| on_plane(p, normal)),
+        };
+        let mut now = match g.constraint {
+            Constraint::Line { dir, .. } => pointer.map(|p| base + dir * (p - base).dot(dir)),
+            Constraint::Plane { .. } => pointer,
+        }
+        .filter(|_| !still)
+        .unwrap_or(base);
+        let way = match g.constraint {
+            Constraint::Line { dir, .. } => {
+                if (now - base).dot(dir) < 0.0 {
+                    -dir
+                } else {
+                    dir
+                }
+            }
+            Constraint::Plane { normal, .. } => {
+                let d = on_plane(pointer.unwrap_or(base), normal) - base;
+                if d.length() > 1e-9 {
+                    d.normalize()
+                } else {
+                    // nowhere yet: along the plane's first axis
+                    normal.any_orthonormal_vector()
+                }
+            }
+        };
+        if let Some(len) = parse_length(&self.typed) {
+            now = base + way * len;
+        }
+        self.delta = now - base;
+        self.target = Some(now);
+        let result = if self.delta.length() < 1e-9 {
+            self.edit.cancel(doc);
+            Ok(())
+        } else {
+            crate::handles::apply(
+                doc.model(),
+                self.edit.originals(),
+                &g.joined,
+                g.kind,
+                base,
+                now,
+                0.0,
+            )
+            .and_then(|changed| self.edit.update(doc, changed).map_err(|e| e.to_string()))
+        };
+        let label = self.edit.label().to_string();
+        self.shown = match (&result, g.kind) {
+            (Err(e), _) => format!("Can't go there: {e}"),
+            (Ok(()), HandleKind::Edge { .. }) => {
+                let s = match g.constraint {
+                    Constraint::Line { dir, .. } => self.delta.dot(dir),
+                    Constraint::Plane { .. } => self.delta.length(),
+                };
+                let way = if s < 0.0 { " in" } else { " out" };
+                format!("{label}: {}{way}", crate::units::len(s.abs()))
+            }
+            (Ok(()), _) => format!("{label}: {}", crate::units::len(self.delta.length())),
+        };
+        if ev.click || ev.enter || self.ask == Some(true) {
+            self.ask = None;
+            if result.is_err() {
+                return Outcome::Running(self.shown.clone());
+            }
+            return Outcome::Done(format!("{}. Ctrl+Z to undo.", self.shown));
+        }
+        let typed = if self.typed.is_empty() {
+            String::new()
+        } else {
+            format!("  [typed {}]", self.typed)
+        };
+        Outcome::Running(format!(
+            "{}{typed}   ·   move the pointer (it snaps) and click, or type a distance + Enter; Esc stops",
             self.shown
         ))
     }
@@ -2315,6 +2488,118 @@ mod tests {
             "{:?}",
             copy.start
         );
+    }
+
+    fn first_slab(doc: &Document) -> (ElementId, creabim_core::Slab) {
+        doc.model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Slab(s) if s.boundary.len() >= 4 && s.holes.is_empty() => {
+                    Some((e.id, s.clone()))
+                }
+                _ => None,
+            })
+            .unwrap()
+    }
+
+    fn slab(doc: &Document, id: ElementId) -> creabim_core::Slab {
+        match &doc.model().get(id).unwrap().kind {
+            ElementKind::Slab(s) => s.clone(),
+            _ => unreachable!(),
+        }
+    }
+
+    /// Edge `i` of `s`: its middle, length and the way out of the outline.
+    fn edge_out(s: &creabim_core::Slab, i: usize) -> (DVec2, f64, DVec2) {
+        let n = s.boundary.len();
+        let (a, b) = (s.boundary[i], s.boundary[(i + 1) % n]);
+        let d = (b - a).normalize();
+        let ccw = creabim_core::polygon::signed_area2(&s.boundary) > 0.0;
+        let out = if ccw { -d.perp() } else { d.perp() };
+        ((a + b) / 2.0, a.distance(b), out)
+    }
+
+    #[test]
+    fn the_edge_palette_offsets_an_edge_offsets_all_and_moves_an_inserted_point() {
+        use crate::handles::{HandleKind, Ring};
+        let mut doc = Document::from_model(sample_house());
+        let (id, s0) = first_slab(&doc);
+        let count = doc.model().iter().count();
+        let (mid, len, out) = edge_out(&s0, 0);
+        let typed = |p: DVec2, text: &str| Events {
+            pointer: Some(at(p.x, p.y)),
+            text: text.into(),
+            ..Default::default()
+        };
+        // Offset edge: the pointer outside, then a typed 600 mm
+        let mut m = tool(&doc, Mode::Grip, id)
+            .with_grip(
+                &doc,
+                HandleKind::Edge {
+                    ring: Ring::Outline,
+                    i: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(m.stage(), Stage::Follow);
+        let p = mid + out * 2.0;
+        with_map(&[], |map| {
+            m.step(&mut doc, &pointer(at(p.x, p.y)), map);
+            m.step(&mut doc, &typed(p, "600mm"), map);
+            assert!(matches!(
+                m.step(&mut doc, &click(at(p.x, p.y)), map),
+                Outcome::Done(_)
+            ));
+        });
+        let s1 = slab(&doc, id);
+        assert!(
+            (s1.area() - s0.area() - len * 0.6).abs() < 1e-6,
+            "{} -> {}",
+            s0.area(),
+            s1.area()
+        );
+        // Offset all, in place: no copy, every edge 300 mm out
+        let mut m = tool(&doc, Mode::Offset, id);
+        m.set_copy(&mut doc, false);
+        let (mid, _, out) = edge_out(&s1, 1);
+        let p = mid + out * 1.0;
+        with_map(&[], |map| {
+            m.step(&mut doc, &pointer(at(p.x, p.y)), map);
+            m.step(&mut doc, &typed(p, "300mm"), map);
+            assert!(matches!(
+                m.step(&mut doc, &click(at(p.x, p.y)), map),
+                Outcome::Done(_)
+            ));
+        });
+        assert_eq!(doc.model().iter().count(), count, "no copy made");
+        let s2 = slab(&doc, id);
+        assert!(s2.area() > s1.area() + 0.3 * 4.0, "{}", s2.area());
+        // Insert point: a corner in edge 0's middle, then 500 mm out
+        crate::editmode::add_corner(&mut doc, id, Ring::Outline, 0, None).unwrap();
+        let s3 = slab(&doc, id);
+        assert_eq!(s3.boundary.len(), s2.boundary.len() + 1);
+        let c = s3.boundary[1];
+        let mut m = tool(&doc, Mode::Grip, id)
+            .with_grip(
+                &doc,
+                HandleKind::Vertex {
+                    ring: Ring::Outline,
+                    i: 1,
+                },
+            )
+            .unwrap();
+        let (_, _, out) = edge_out(&s2, 0);
+        let p = c + out * 3.0;
+        with_map(&[], |map| {
+            m.step(&mut doc, &pointer(at(p.x, p.y)), map);
+            m.step(&mut doc, &typed(p, "500mm"), map);
+            assert!(matches!(
+                m.step(&mut doc, &click(at(p.x, p.y)), map),
+                Outcome::Done(_)
+            ));
+        });
+        let moved = slab(&doc, id).boundary[1];
+        assert!(moved.distance(c + out * 0.5) < 1e-6, "{moved:?} from {c:?}");
     }
 
     #[test]

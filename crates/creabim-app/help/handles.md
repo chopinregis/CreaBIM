@@ -29,6 +29,16 @@ Slabs, roofs, shafts, sketches and railing paths all show the same grips on thei
 
 Rest the pointer on any grip for a tip saying what it does. During a drag, press `Tab` to type a length.
 
+## The edge palette
+
+Rest the pointer on an edge of a selected element's outline, in the 3D view or a plan, and a small palette opens by the pointer:
+
+- **Offset edge** pushes the edge out or pulls it in, square to itself.
+- **Offset all** grows or shrinks the whole outline by one distance, in place. Press `Ctrl` to make a copy instead.
+- **Insert point** adds a corner there, then moves it.
+
+Each follows the pointer with snaps. Type a distance and press `Enter` to send it that far the way the pointer went, click to place it, or press `Esc` to stop.
+
 ## Shafts
 
 A selected shaft has a square grip on each corner, a round one on each edge and round grips for its base and its top, in every plan, section and 3D view it passes through.
