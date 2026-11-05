@@ -418,6 +418,25 @@ fn layout(
 }
 
 /// A small padlock, closed or open.
+/// The mark by a dimension that holds its spacing: a small closed padlock
+/// in the temporary dimensions' blue, `size` pixels high, centred on `c`.
+pub fn held_mark(painter: &Painter, c: Pos2, size: f32) {
+    let k = size / 14.0;
+    let blue = Color32::from_rgb(40, 110, 220);
+    let body = Rect::from_center_size(c + Vec2::new(0.0, 2.0 * k), Vec2::new(9.0 * k, 7.0 * k));
+    let top = c.y - 5.5 * k;
+    let pts = vec![
+        Pos2::new(body.left() + 1.8 * k, body.top()),
+        Pos2::new(body.left() + 1.8 * k, top + 2.0 * k),
+        Pos2::new(c.x - 1.0 * k, top),
+        Pos2::new(c.x + 1.0 * k, top),
+        Pos2::new(body.right() - 1.8 * k, top + 2.0 * k),
+        Pos2::new(body.right() - 1.8 * k, body.top()),
+    ];
+    painter.add(egui::Shape::line(pts, Stroke::new(1.3 * k.max(0.8), blue)));
+    painter.rect_filled(body, 1.5 * k, blue);
+}
+
 fn draw_lock(painter: &Painter, r: Rect, closed: bool, color: Color32, ground: Color32) {
     let c = r.center();
     let body = Rect::from_center_size(c + Vec2::new(0.0, 2.5), Vec2::new(10.0, 7.5));

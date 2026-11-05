@@ -683,13 +683,25 @@ impl CreaBimApp {
     fn view_cube(&mut self, ui: &mut egui::Ui, rect: Rect) {
         use crate::viewcube::{said, target_of};
         let accent = crate::theme::Palette::of(ui.ctx()).accent;
-        let (pick, drag) = self.cube.ui(ui, rect, &self.camera, accent);
+        let (pick, drag) = self
+            .cube
+            .ui(ui, rect, &self.camera, accent, self.camera.ortho);
         if let Some(d) = drag {
             self.camera.orbit(GVec2::new(d.x, d.y));
         }
         let Some(pick) = pick else {
             return;
         };
+        if pick == crate::viewcube::Pick::Projection {
+            self.camera.ortho = !self.camera.ortho;
+            self.status = if self.camera.ortho {
+                "Orthographic: parallel lines stay parallel.".into()
+            } else {
+                "Perspective.".into()
+            };
+            ui.ctx().request_repaint();
+            return;
+        }
         let now = ui.input(|i| i.time);
         let to = match target_of(pick, &self.camera) {
             Some(to) => to,

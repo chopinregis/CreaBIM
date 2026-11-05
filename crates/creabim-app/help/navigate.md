@@ -18,8 +18,7 @@ The cube in the top right corner of the 3D view turns the view for you:
 
 - Click a **face** (*Top*, *Front*, *Right*…), an **edge** or a **corner** to look from there. The view turns smoothly and the status bar says where you are looking from, for example *Looking from the top, front, left (south-west)*.
 - Click **N**, **E**, **S** or **W** on the ring under it to look from that side.
-- The two **arrows** above it turn the view a quarter round, from a corner to the next corner.
-- The **house** frames everything from the three-quarter view, as `Home` does.
+- The round buttons beside it: the **house** frames everything from the three-quarter view, as `Home` does; the two **turn** buttons turn the view a quarter round, from a corner to the next corner; the **grid** switches between perspective (a grid going away) and orthographic (a square grid).
 - Drag the cube to orbit.
 
 *Front* is the south face: the cube is named from north, which is up in plans, so *Front* shows what the south elevation shows.

@@ -1,7 +1,8 @@
 //! The view cube in the corner of the 3D view: 26 hot zones (six faces,
 //! twelve edges, eight corners), each turning the view to look from
-//! there; a compass ring under it; two arrows that turn the view a
-//! quarter round; and a home button that frames everything.
+//! there; a compass ring under it; and a column of round buttons beside
+//! it: home (frame everything), a quarter turn each way, and perspective
+//! or orthographic.
 //!
 //! The faces are named from the project's north (+Y): FRONT is the south
 //! face, so it shows the building's front as its south elevation does.
@@ -40,6 +41,8 @@ pub enum Pick {
     Quarter(i8),
     /// Frame everything, from the three-quarter view.
     Home,
+    /// Switch between perspective and orthographic.
+    Projection,
 }
 
 /// The yaw and pitch that look from `d` toward the target. Straight down
@@ -99,7 +102,6 @@ fn axes(cam: &OrbitCamera) -> (Vec3, Vec3, Vec3) {
     (right, up, -fwd)
 }
 
-/// The six faces: their normal and two axes across them.
 /// A face: its normal, its two axes across, and its name.
 type Face = ([i8; 3], [i8; 3], [i8; 3], &'static str);
 
@@ -111,6 +113,158 @@ const FACES: [Face; 6] = [
     ([1, 0, 0], [0, 1, 0], [0, 0, 1], "RIGHT"),
     ([-1, 0, 0], [0, -1, 0], [0, 0, 1], "LEFT"),
 ];
+
+/// A letter of the cube's labels: its width and its strokes, on a box one
+/// unit high, y up. Drawn on the face itself, the labels foreshorten and
+/// turn with it, as if printed there.
+fn glyph(ch: char) -> (f32, Vec<Vec<(f32, f32)>>) {
+    let arc = |from: f32, to: f32, cx: f32, rx: f32| -> Vec<(f32, f32)> {
+        (0..=16)
+            .map(|i| {
+                let t = (from + (to - from) * i as f32 / 16.0).to_radians();
+                (cx + t.cos() * rx, 0.5 + t.sin() * 0.5)
+            })
+            .collect()
+    };
+    let bowl = |y0: f32| -> Vec<(f32, f32)> {
+        // the round part of P, R and B: from the stem out and back
+        let h = 1.0 - y0;
+        vec![
+            (0.0, 1.0),
+            (0.42, 1.0),
+            (0.6, 1.0 - h * 0.12),
+            (0.66, 1.0 - h * 0.5),
+            (0.6, y0 + h * 0.12),
+            (0.42, y0),
+            (0.0, y0),
+        ]
+    };
+    match ch {
+        'T' => (
+            0.7,
+            vec![vec![(0.0, 1.0), (0.7, 1.0)], vec![(0.35, 1.0), (0.35, 0.0)]],
+        ),
+        'O' => (0.76, vec![arc(0.0, 360.0, 0.38, 0.38)]),
+        'C' => (0.72, vec![arc(50.0, 310.0, 0.38, 0.38)]),
+        'G' => (
+            0.74,
+            vec![
+                arc(50.0, 360.0, 0.38, 0.38),
+                vec![(0.76, 0.5), (0.76, 0.42), (0.44, 0.42)],
+            ],
+        ),
+        'P' => (0.66, vec![[vec![(0.0, 0.0)], bowl(0.48)].concat()]),
+        'R' => (
+            0.68,
+            vec![
+                [vec![(0.0, 0.0)], bowl(0.48)].concat(),
+                vec![(0.36, 0.48), (0.68, 0.0)],
+            ],
+        ),
+        'B' => (
+            0.68,
+            vec![
+                [vec![(0.0, 0.0)], bowl(0.54)].concat(),
+                vec![
+                    (0.42, 0.54),
+                    (0.62, 0.46),
+                    (0.68, 0.27),
+                    (0.62, 0.08),
+                    (0.44, 0.0),
+                    (0.0, 0.0),
+                ],
+            ],
+        ),
+        'M' => (
+            0.84,
+            vec![vec![
+                (0.0, 0.0),
+                (0.0, 1.0),
+                (0.42, 0.32),
+                (0.84, 1.0),
+                (0.84, 0.0),
+            ]],
+        ),
+        'N' => (
+            0.7,
+            vec![vec![(0.0, 0.0), (0.0, 1.0), (0.7, 0.0), (0.7, 1.0)]],
+        ),
+        'F' => (
+            0.6,
+            vec![
+                vec![(0.6, 1.0), (0.0, 1.0), (0.0, 0.0)],
+                vec![(0.0, 0.52), (0.48, 0.52)],
+            ],
+        ),
+        'E' => (
+            0.6,
+            vec![
+                vec![(0.6, 1.0), (0.0, 1.0), (0.0, 0.0), (0.6, 0.0)],
+                vec![(0.0, 0.52), (0.5, 0.52)],
+            ],
+        ),
+        'A' => (
+            0.72,
+            vec![
+                vec![(0.0, 0.0), (0.36, 1.0), (0.72, 0.0)],
+                vec![(0.13, 0.36), (0.59, 0.36)],
+            ],
+        ),
+        'K' => (
+            0.66,
+            vec![
+                vec![(0.0, 0.0), (0.0, 1.0)],
+                vec![(0.66, 1.0), (0.0, 0.36)],
+                vec![(0.2, 0.56), (0.66, 0.0)],
+            ],
+        ),
+        'L' => (0.58, vec![vec![(0.0, 1.0), (0.0, 0.0), (0.58, 0.0)]]),
+        'I' => (0.0, vec![vec![(0.0, 0.0), (0.0, 1.0)]]),
+        'H' => (
+            0.7,
+            vec![
+                vec![(0.0, 0.0), (0.0, 1.0)],
+                vec![(0.7, 0.0), (0.7, 1.0)],
+                vec![(0.0, 0.52), (0.7, 0.52)],
+            ],
+        ),
+        _ => (0.6, vec![]),
+    }
+}
+
+/// A face label's strokes in the face's own coordinates (-1 to 1 across),
+/// centred and sized to fit.
+fn label_strokes(label: &str) -> Vec<Vec<(f32, f32)>> {
+    let gap = 0.24;
+    let glyphs: Vec<_> = label.chars().map(glyph).collect();
+    let width: f32 = glyphs.iter().map(|g| g.0).sum::<f32>() + gap * (glyphs.len() as f32 - 1.0);
+    let h = (1.5 / width).min(0.46);
+    let mut x = -width * h / 2.0;
+    let mut out = vec![];
+    for (w, strokes) in glyphs {
+        for st in strokes {
+            out.push(st.iter().map(|(a, b)| (x + a * h, (b - 0.5) * h)).collect());
+        }
+        x += (w + gap) * h;
+    }
+    out
+}
+
+/// A face's axes across it, chosen so its label reads left to right and
+/// is never mirrored: sides keep their label upright; the top and bottom
+/// turn theirs to whichever way reads best from where the eye is.
+fn label_axes(n: [i8; 3], u: [i8; 3], right: Vec3) -> (Vec3, Vec3) {
+    let n3 = v3(n);
+    let u3 = if n[2] != 0 {
+        [Vec3::X, Vec3::Y, -Vec3::X, -Vec3::Y]
+            .into_iter()
+            .max_by(|a, b| a.dot(right).total_cmp(&b.dot(right)))
+            .expect("four")
+    } else {
+        v3(u)
+    };
+    (u3, n3.cross(u3))
+}
 
 fn v3(a: [i8; 3]) -> Vec3 {
     Vec3::new(a[0] as f32, a[1] as f32, a[2] as f32)
@@ -221,10 +375,11 @@ impl ViewCube {
         rect: Rect,
         cam: &OrbitCamera,
         accent: Color32,
+        ortho: bool,
     ) -> (Option<Pick>, Option<Vec2>) {
         let s = 25.0;
-        let c = Pos2::new(rect.right() - 78.0, rect.top() + 72.0);
-        let area = Rect::from_center_size(c + Vec2::new(0.0, 4.0), Vec2::new(144.0, 140.0));
+        let c = Pos2::new(rect.right() - 70.0, rect.top() + 70.0);
+        let area = Rect::from_center_size(c + Vec2::new(-16.0, 5.0), Vec2::new(164.0, 134.0));
         if !rect.contains_rect(area) {
             return (None, None);
         }
@@ -346,28 +501,27 @@ impl ViewCube {
                 outline,
                 Stroke::new(1.0, Color32::from_rgb(150, 154, 160)),
             ));
-            if facing > 0.3 {
-                // the label lies on the face, foreshortened with it
-                let centre = to_screen(n3);
-                let along = (to_screen(n3 + u3) - centre).normalized();
-                let mut angle = along.y.atan2(along.x);
-                if angle.abs() > FRAC_PI_2 {
-                    angle += PI;
-                }
+            if facing > 0.25 {
+                // the label printed on the face, so it turns and
+                // foreshortens with it and always reads the right way
                 let lit = all.iter().any(|cell| {
                     cell.face == fi && Some(cell.zone) == hovered_zone && cell.zone == *n
                 });
-                let colour = if lit { Color32::WHITE } else { ink };
-                let size = 10.0 * (0.6 + 0.4 * facing);
-                let galley = painter.layout_no_wrap(
-                    label.to_string(),
-                    egui::FontId::proportional(size),
-                    colour,
-                );
-                let half = galley.size() / 2.0;
-                let rot = egui::emath::Rot2::from_angle(angle);
-                let at = centre - rot * half;
-                painter.add(egui::epaint::TextShape::new(at, galley, colour).with_angle(angle));
+                let (lu, lv) = label_axes(*n, *u, right);
+                let fade = ((facing - 0.25) / 0.35).clamp(0.0, 1.0);
+                let colour = if lit {
+                    Color32::WHITE
+                } else {
+                    ink.gamma_multiply(0.35 + 0.65 * fade)
+                };
+                let width = 1.15 + 0.35 * facing;
+                for st in label_strokes(label) {
+                    let pts: Vec<Pos2> = st
+                        .iter()
+                        .map(|(a, b)| to_screen(n3 + lu * *a + lv * *b))
+                        .collect();
+                    painter.add(Shape::line(pts, Stroke::new(width, colour)));
+                }
             }
         }
         // the compass letters in front of the cube
@@ -384,63 +538,42 @@ impl ViewCube {
             }
         }
 
-        // the quarter-turn arrows above the cube, and home to its left
-        let arrow = |at: Pos2, dir: f32, lit: bool| {
-            let colour = if lit { accent } else { ink };
-            let r = 6.0;
-            let pts: Vec<Pos2> = (0..=10)
-                .map(|i| {
-                    let t = PI * (0.15 + 0.7 * i as f32 / 10.0);
-                    at + Vec2::new(t.cos() * r * dir, -t.sin() * r)
-                })
-                .collect();
-            let end = *pts.last().expect("points");
-            painter.add(Shape::line(pts, Stroke::new(1.6, colour)));
-            let head = vec![
-                end + Vec2::new(-3.0 * dir, -3.0),
-                end + Vec2::new(3.0 * dir, -1.0),
-                end + Vec2::new(0.0, 3.5),
-            ];
-            painter.add(Shape::convex_polygon(head, colour, Stroke::NONE));
-        };
-        let left = c + Vec2::new(-40.0, -55.0);
-        let right_at = c + Vec2::new(40.0, -55.0);
-        let home = c + Vec2::new(-62.0, -55.0);
-        let near = |p: Pos2| hover.is_some_and(|h| h.distance(p) < 9.0);
-        for (at, dir, q) in [(left, 1.0, 1i8), (right_at, -1.0, -1)] {
-            let lit = near(at);
-            arrow(at, dir, lit);
-            if lit {
-                tip = Some(if q > 0 {
-                    "Turn the view a quarter to the left".into()
+        // a column of round buttons beside the cube
+        let buttons = [
+            (
+                Pick::Home,
+                "Home: frame everything from the three-quarter view",
+            ),
+            (Pick::Quarter(1), "Turn the view a quarter to the left"),
+            (Pick::Quarter(-1), "Turn the view a quarter to the right"),
+            (
+                Pick::Projection,
+                if ortho {
+                    "Orthographic: click for perspective"
                 } else {
-                    "Turn the view a quarter to the right".into()
-                });
-                if clicked {
-                    pick = Some(Pick::Quarter(q));
-                }
-            }
-        }
-        {
-            let lit = near(home);
-            let colour = if lit { accent } else { ink };
-            let roof = vec![
-                home + Vec2::new(-6.0, -1.0),
-                home + Vec2::new(0.0, -6.5),
-                home + Vec2::new(6.0, -1.0),
-            ];
-            painter.add(Shape::line(roof, Stroke::new(1.6, colour)));
-            let body = vec![
-                home + Vec2::new(-4.0, -2.0),
-                home + Vec2::new(-4.0, 5.0),
-                home + Vec2::new(4.0, 5.0),
-                home + Vec2::new(4.0, -2.0),
-            ];
-            painter.add(Shape::line(body, Stroke::new(1.6, colour)));
+                    "Perspective: click for orthographic"
+                },
+            ),
+        ];
+        for (k, (what, hint)) in buttons.into_iter().enumerate() {
+            let at = c + Vec2::new(-84.0, -42.0 + 27.0 * k as f32);
+            let lit = hover.is_some_and(|h| h.distance(at) < 11.5);
+            let (ground, mark) = if lit {
+                (accent, Color32::WHITE)
+            } else {
+                (Color32::from_rgba_unmultiplied(255, 255, 255, 235), ink)
+            };
+            painter.circle(
+                at,
+                11.0,
+                ground,
+                Stroke::new(1.0, Color32::from_rgb(196, 199, 204)),
+            );
+            button_icon(&painter, at, what, ortho, mark);
             if lit {
-                tip = Some("Home: frame everything from the three-quarter view".into());
+                tip = Some(hint.to_string());
                 if clicked {
-                    pick = Some(Pick::Home);
+                    pick = Some(what);
                 }
             }
         }
@@ -449,6 +582,72 @@ impl ViewCube {
             response.on_hover_text(t);
         }
         (pick, drag)
+    }
+}
+
+/// The icon on one of the cube's round buttons, centred on `c`.
+fn button_icon(painter: &egui::Painter, c: Pos2, what: Pick, ortho: bool, colour: Color32) {
+    let stroke = Stroke::new(1.4, colour);
+    let line = |pts: &[(f32, f32)]| {
+        painter.add(Shape::line(
+            pts.iter().map(|(x, y)| c + Vec2::new(*x, *y)).collect(),
+            stroke,
+        ));
+    };
+    match what {
+        Pick::Home => {
+            line(&[(-5.5, -0.5), (0.0, -5.5), (5.5, -0.5)]);
+            line(&[(-3.8, -1.8), (-3.8, 4.8), (3.8, 4.8), (3.8, -1.8)]);
+            line(&[(-1.0, 4.8), (-1.0, 1.6), (1.0, 1.6), (1.0, 4.8)]);
+        }
+        Pick::Quarter(q) => {
+            // three quarters of a circle and its arrowhead
+            // left turns anticlockwise, right clockwise
+            let dir = -(q as f32);
+            let r = 4.6;
+            let pts: Vec<(f32, f32)> = (0..=18)
+                .map(|i| {
+                    let t = (-60.0 + 270.0 * i as f32 / 18.0).to_radians();
+                    (-dir * t.cos() * r, -t.sin() * r)
+                })
+                .collect();
+            line(&pts);
+            let (ex, ey) = pts[pts.len() - 1];
+            let tip = c + Vec2::new(ex, ey);
+            let head = vec![
+                tip + Vec2::new(dir * 3.2, -2.4),
+                tip + Vec2::new(dir * 3.2, 2.6),
+                tip + Vec2::new(-dir * 1.6, 0.0),
+            ];
+            painter.add(Shape::convex_polygon(head, colour, Stroke::NONE));
+        }
+        Pick::Projection if ortho => {
+            // a square grid: lines stay parallel
+            line(&[
+                (-5.5, -4.5),
+                (5.5, -4.5),
+                (5.5, 4.5),
+                (-5.5, 4.5),
+                (-5.5, -4.5),
+            ]);
+            line(&[(-1.8, -4.5), (-1.8, 4.5)]);
+            line(&[(1.8, -4.5), (1.8, 4.5)]);
+            line(&[(-5.5, 0.0), (5.5, 0.0)]);
+        }
+        Pick::Projection => {
+            // a grid going away: lines meet toward the distance
+            line(&[
+                (-3.2, -4.5),
+                (3.2, -4.5),
+                (6.5, 4.5),
+                (-6.5, 4.5),
+                (-3.2, -4.5),
+            ]);
+            line(&[(-1.0, -4.5), (-2.2, 4.5)]);
+            line(&[(1.0, -4.5), (2.2, 4.5)]);
+            line(&[(-4.6, -0.6), (4.6, -0.6)]);
+        }
+        Pick::From(_) => {}
     }
 }
 
@@ -463,7 +662,7 @@ pub fn target_of(pick: Pick, cam: &OrbitCamera) -> Option<(f32, f32)> {
             (yaw / FRAC_PI_4).round() * FRAC_PI_4 + q as f32 * FRAC_PI_2,
             pitch,
         )),
-        Pick::Home => None,
+        Pick::Home | Pick::Projection => None,
     }
 }
 
@@ -477,6 +676,7 @@ pub fn said(pick: Pick) -> String {
         Pick::Quarter(1) => "Turned a quarter to the left.".into(),
         Pick::Quarter(_) => "Turned a quarter to the right.".into(),
         Pick::Home => "Framed everything.".into(),
+        Pick::Projection => String::new(),
     }
 }
 
