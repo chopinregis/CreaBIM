@@ -30,6 +30,12 @@ Reference screenshots for the first part of Phase 2 of *CreaBIM brief 02: consol
 
 The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/assets/logo), with a README of their uses and rules.
 
+## Addendum A3: the review of main 889c32c
+
+| A3 | What | Status | Commit |
+| --- | --- | --- | --- |
+| 6 | Icons | **Done.** All 75 icons in the approved set are copied verbatim from `ui/approved/icons_final.json` (and `icons_actions.json`, the same 14 action icons) into `ui/icons.js`. The test `icons_js_matches_the_approved_set_verbatim` in `webui.rs` fails if one drifts, naming it. To change an icon, change the JSON first, with the owner's OK. | see PR |
+
 ## Screenshots
 
 | Screenshot | What it shows |
@@ -44,10 +50,12 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | [08-door-runs-into-a-join.png](08-door-runs-into-a-join.png) | Widened to 3400 mm, it runs into the hall wall, and the status bar says so. |
 | [09-export-then-open-the-folder.png](09-export-then-open-the-folder.png) | After *Sheets as PDF*, the status bar shows *Open the folder*. |
 | [10-catalogue-beside-the-plan.png](10-catalogue-beside-the-plan.png) | The Catalogue opens at the right, leaving the plan free to click in. |
-
 | [11-brand-mark-in-the-top-bar.png](11-brand-mark-in-the-top-bar.png) | The logo (addendum A2): the small cut of the weaver and its nest at the top left, at twice its size. |
 | [12-new-project-full-mark.png](12-new-project-full-mark.png) | The New project window with the full mark at 48 px. |
 | [13-about-with-the-lockup.png](13-about-with-the-lockup.png) | About CreaBIM with the lockup, and a line about the logo. |
+| [14a-before-icon-drift-889c32c.png](14a-before-icon-drift-889c32c.png) | Before (A3-6): the owner's drift sheet of main 889c32c, with 35 icons that differ from the approved set. |
+| [14b-after-icons-match-the-approved-set.png](14b-after-icons-match-the-approved-set.png) | After: each approved icon beside the one the app now draws; all 75 match. |
+| [15-toolbar-with-the-approved-icons.png](15-toolbar-with-the-approved-icons.png) | The toolbar in the running app, at twice its size, with the approved icons. |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 

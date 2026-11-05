@@ -366,6 +366,10 @@ Gaps reported by work that is still a pull request go here until it merges, then
 - Guide lines from resting on a point or edge go after six seconds unused, instead of staying until Esc (1.8).
 - Ctrl+A, H and the other letter shortcuts stay in a text field; the Catalogue window opens over the other pane, clear of where things are placed; the Materials window closes after *Assign* (1.8).
 
+**In Brief 02, addendum A3 (2026-11-05;** screenshots in [evolution/brief02-phase2](evolution/brief02-phase2)**):**
+
+- Every toolbar and action icon is copied verbatim from the approved set (`ui/approved/icons_final.json` and `icons_actions.json`): Section is the scissors with the dashed line, Grid the straight four-line grid, Shaft has no level lines, Roof is the approved tipi, and Door, Paving, Level, Spot level and Footing are as drawn. A test compares `ui/icons.js` with the JSON, so they can't drift again (A3-6).
+
 **In Brief 02, addendum A2 (2026-11-05):** the logo, the weaver and its nest, is the brand mark in the top bar, the window and taskbar icon, the Windows .exe icon (not yet tried on a Windows build), the lockup in About, and the full mark in New project and the README. The `.creabim` file icon comes with the installer.
 
 **In Brief 02, Phase 1 (`claude/project-thread-2a2eta`, 2026-11-04;** screenshots in [evolution/brief02-phase1](evolution/brief02-phase1)**):**

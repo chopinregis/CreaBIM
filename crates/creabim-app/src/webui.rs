@@ -292,3 +292,154 @@ impl Drop for X11Focus {
         unsafe { (self.xlib.XCloseDisplay)(self.display) };
     }
 }
+
+#[cfg(test)]
+mod approved_icons {
+    //! The toolbar and action icons are the owner's approved set, copied
+    //! verbatim from `ui/approved/*.json`. Changing one needs the owner's
+    //! OK: change the JSON first, then this test says where icons.js lags.
+
+    use std::collections::BTreeMap;
+
+    /// Each approved icon's name in the JSON, and its key in icons.js.
+    const KEYS: &[(&str, &str)] = &[
+        ("Select", "mouse-pointer-2"),
+        ("Align", "align-start-vertical"),
+        ("Wall", "wall"),
+        ("Door", "door"),
+        ("Shaft", "shaft"),
+        ("Mass", "box"),
+        ("Column", "column"),
+        ("Beam", "beam"),
+        ("Slab", "slab"),
+        ("Stair", "stair"),
+        ("Footing", "footing"),
+        ("Object", "object"),
+        ("Extrusion", "extrusion"),
+        ("Sweep", "sweep"),
+        ("Void", "void"),
+        ("Room", "room"),
+        ("Ceiling", "ceiling"),
+        ("Window", "window"),
+        ("Opening", "opening"),
+        ("Roof", "roof"),
+        ("Railing", "railing"),
+        ("Room separator", "room-separator"),
+        ("Curtain wall", "curtain-wall"),
+        ("Screen wall", "screen-wall"),
+        ("Fixtures", "fixtures"),
+        ("Terrain", "terrain"),
+        ("Paving", "paving"),
+        ("Planting", "planting"),
+        ("Section", "scissors-line-dashed"),
+        ("Callout", "callout"),
+        ("Elevation", "elevation"),
+        ("Crop box", "crop-box"),
+        ("Frame all", "frame-all"),
+        ("Hidden elements", "hidden-elements"),
+        ("X-ray", "xray"),
+        ("Dimension", "dimension"),
+        ("Tag", "tag"),
+        ("Angle", "angle"),
+        ("Radius", "radius"),
+        ("Diameter", "diameter"),
+        ("Arc length", "arc-length"),
+        ("Note", "message-square-text"),
+        ("Spot level", "spot-level"),
+        ("Detail component", "detail-component"),
+        ("Sketch", "pen-tool"),
+        ("Guide", "guide"),
+        ("Guide lines", "guide-lines"),
+        ("Level", "level"),
+        ("Copy to levels", "copy-levels"),
+        ("Grid", "grid-lines"),
+        ("Switch join order", "switch-join"),
+        ("Units", "units"),
+        ("Material", "palette"),
+        ("Graphic styles", "anno-styles"),
+        ("Colour scheme", "colour-scheme"),
+        ("View range", "view-range"),
+        ("Underlay", "underlay"),
+        ("Workspace", "workspace"),
+        ("Maximise area", "maximise"),
+        ("Frame selection (view header)", "frame-selection"),
+        ("Edit outline", "edit-outline"),
+        ("Duplicate", "duplicate"),
+        ("Select similar", "select-similar"),
+        ("Hide (H)", "eye-off"),
+        ("Isolate (/)", "isolate"),
+        ("Frame (.)", "frame-selection"),
+        ("Open view", "open-view"),
+        ("Flip", "flip"),
+        ("Make a type", "make-type"),
+        ("Attach top", "attach-top"),
+        ("Select tagged", "select-tagged"),
+        ("Straighten leader", "straighten-leader"),
+        ("More", "ellipsis"),
+        ("Delete", "trash-2"),
+        ("FreeCAD file (F and gear)", "freecad"),
+    ];
+
+    /// icons.js as key -> markup: one `"key": "markup",` per line.
+    fn icons_js() -> BTreeMap<String, String> {
+        super::ICONS
+            .lines()
+            .filter(|l| l.starts_with('"'))
+            .map(|l| {
+                let l = l.trim_end().trim_end_matches(',');
+                let v: serde_json::Value =
+                    serde_json::from_str(&format!("{{{l}}}")).expect("an icons.js line");
+                let (k, v) = v.as_object().unwrap().iter().next().unwrap();
+                (k.clone(), v.as_str().unwrap().to_string())
+            })
+            .collect()
+    }
+
+    fn approved(json: &str) -> Vec<(String, String)> {
+        let v: serde_json::Value = serde_json::from_str(json).unwrap();
+        let mut out = Vec::new();
+        let mut take = |m: &serde_json::Map<String, serde_json::Value>| {
+            for (k, v) in m {
+                match v {
+                    serde_json::Value::String(s) => out.push((k.clone(), s.clone())),
+                    serde_json::Value::Object(_) => {}
+                    _ => panic!("{k}: not markup"),
+                }
+            }
+        };
+        let top = v.as_object().unwrap();
+        take(top);
+        for g in top.values() {
+            if let Some(m) = g.as_object() {
+                take(m);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn icons_js_matches_the_approved_set_verbatim() {
+        let js = icons_js();
+        let keys: BTreeMap<_, _> = KEYS.iter().copied().collect();
+        let mut drift = Vec::new();
+        for json in [
+            include_str!("../ui/approved/icons_final.json"),
+            include_str!("../ui/approved/icons_actions.json"),
+        ] {
+            for (name, markup) in approved(json) {
+                let Some(key) = keys.get(name.as_str()) else {
+                    drift.push(format!(
+                        "{name}: approved, but no icons.js key is named for it"
+                    ));
+                    continue;
+                };
+                match js.get(*key) {
+                    None => drift.push(format!("{name}: icons.js lacks {key}")),
+                    Some(m) if *m != markup => drift.push(format!("{name}: {key} differs")),
+                    _ => {}
+                }
+            }
+        }
+        assert!(drift.is_empty(), "icons drifted:\n{}", drift.join("\n"));
+    }
+}
