@@ -2948,7 +2948,7 @@ impl CreaBimApp {
             return false;
         }
         if self.shell.web.is_none() {
-            match WebUi::new(frame) {
+            match WebUi::new(frame, ui.ctx()) {
                 Ok(w) => self.shell.web = Some(w),
                 Err(e) => {
                     self.status = format!("Using the classic panels: {e}");
@@ -3185,7 +3185,9 @@ impl CreaBimApp {
             }
             None => web.hide_popup(),
         }
-        // Pages run on their own; keep frames coming so their messages are read.
+        // Pages wake the app when they send a message (see WebUi::new). On
+        // Linux they live on GTK, which only runs while frames pump it.
+        #[cfg(target_os = "linux")]
         ctx.request_repaint_after(std::time::Duration::from_millis(30));
         true
     }
