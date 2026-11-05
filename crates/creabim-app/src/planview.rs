@@ -817,6 +817,36 @@ pub fn show(
             draw_item(&painter, &xf, item, selected, mm);
         }
     }
+    // a dimension that holds its spacing shows a small closed padlock by
+    // its value, on screen only: paper prints it as any dimension
+    for item in &plan.items {
+        if let PlanItem::Dimension {
+            id,
+            a,
+            b,
+            offset,
+            witness,
+            text,
+            look,
+            ..
+        } = item
+        {
+            let held = matches!(
+                doc.model().get(*id).map(|e| &e.kind),
+                Some(ElementKind::Dimension(d)) if d.held.is_some()
+            );
+            if held {
+                let g = dimension_geometry(*a, *b, *offset, *witness, look, mm);
+                let px = crate::annotate::text_px(look, mm, &xf);
+                let half = paper::text_width(text, look.size) * mm * xf.scale as f64 / 2.0;
+                let along = DVec2::from_angle(g.angle);
+                let at = xf.to_screen(g.text_at);
+                let dir = Vec2::new(along.x as f32, -along.y as f32);
+                let spot = at + dir * (half as f32 + px * 0.9);
+                crate::tempdims::held_mark(&painter, spot, px.clamp(9.0, 16.0));
+            }
+        }
+    }
     // footings: an ordinary plan doesn't show them, but while the Footing
     // tool is on it shows its level's, and a selected one always shows
     // (A3-1)
