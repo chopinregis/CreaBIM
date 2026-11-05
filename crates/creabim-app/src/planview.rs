@@ -214,9 +214,9 @@ impl Tool {
             Tool::Level => "In a section or elevation, click where the level line starts (its height), then where it ends; its floor plan is made with it. In other views the Levels window opens to add, rename and move levels.",
             Tool::Align => "Click a reference line (a wall face, slab edge, guide or grid line), then the edge of what to align: it turns parallel and moves flush. In Extend mode a wall, beam or grid line end stretches to the reference instead; in Stretch mode the face moves and the rest stays. Centre lines (dashed purple) can be picked too, both ways. In 3D, click a face, edge, corner, centre line or grid line, then a face.",
             Tool::Object => "Click to place the object picked in the Catalogue window. Sinks, WCs, kitchen units, beds and sofas back onto the nearest wall; Space turns the next one a quarter.",
-            Tool::Extrusion => "Draw the outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). It is pulled up from its base by its height, set in the bar: a chimney, a hearth, a pier.",
+            Tool::Extrusion => "Draw the outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). It is pulled up from its base by its height, set in the bar: a chimney, a hearth, a pier. In the 3D view, draw it on any face: it stands square out of that face.",
             Tool::Sweep => "Click a wall to run the profile along its top (coping) or base (plinth); it follows the wall. Or click the points of a path, and the last one again to finish. Pick the profile and its sizes in the bar.",
-            Tool::Void => "Draw the void's outline like a slab. It cuts every wall, slab, roof, site surface and extrusion it meets, between its base and height: a firebox, a hole through a floor.",
+            Tool::Void => "Draw the void's outline like a slab. It cuts every wall, slab, roof, site surface and extrusion it meets, between its base and height: a firebox, a hole through a floor. In the 3D view, draw it on any face, a sloped roof or a wall: it cuts square into that face, as deep as Depth on a face.",
             Tool::Terrain => "Draw the ground's outline like a slab. It starts flat at the level; add spot heights in Properties to shape it. Paving drawn inside it sits flush.",
             Tool::Paving => "Draw paving, gravel, a driveway or decking like a slab. Pick what in the bar; each has its own pattern and material.",
             Tool::Planting => "Click to plant a tree, conifer, palm or shrub. Pick the form, canopy and height in the bar.",
@@ -3215,6 +3215,7 @@ fn keyboard_edits(
         state.cursor,
         flow,
         state.move_target,
+        None,
     ) {
         Ok((m, copies)) => {
             if copies != ids {
@@ -3266,7 +3267,16 @@ pub fn restart_modal(
         return "Nothing selected: click what to move.".into();
     }
     match Modal::start(
-        doc, old.mode, ids, None, old.space, old.pane, grab, pivot, cursor,
+        doc,
+        old.mode,
+        ids,
+        None,
+        old.space,
+        old.pane,
+        grab,
+        pivot,
+        cursor,
+        old.plane(),
     ) {
         Ok(m) => {
             let n = ids.len();
@@ -3318,6 +3328,7 @@ pub fn start_modal(
     cursor: Option<DVec3>,
     flow: Flow,
     works_on: modal::Target,
+    plane: Option<creabim_core::Workplane>,
 ) -> Result<(Modal, Vec<ElementId>), String> {
     let targets = if duplicate {
         modal::duplicate(doc, ids)?
@@ -3327,7 +3338,9 @@ pub fn start_modal(
     // a selected mass face is what G moves; the Move tool picks its face
     // itself when it works on faces
     let face = face.filter(|_| !duplicate && flow == Flow::Keys);
-    match Modal::start(doc, mode, &targets, face, space, pane, grab, pivot, cursor) {
+    match Modal::start(
+        doc, mode, &targets, face, space, pane, grab, pivot, cursor, plane,
+    ) {
         Ok(mut m) => {
             m.duplicated = duplicate;
             Ok((m.with_flow(flow).with_works_on(works_on), targets))

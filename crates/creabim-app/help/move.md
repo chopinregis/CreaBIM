@@ -1,4 +1,4 @@
-# Move, rotate and scale
+# Move, rotate, scale, mirror and offset
 
 ## Move by a base point
 
@@ -29,7 +29,7 @@ Press `F` during Move (or click **Face** on the Move panel) to move one face of 
 - In 3D, point at the face itself. In a plan or section, point at the element's edge: it stands for the face square to the paper.
 - Click, then move the pointer or type a distance. A minus sign pulls the face in.
 
-What it changes depends on the face: a wall's end changes its length, its top its height and its side its thickness; a slab's top its thickness; a door's jamb its width; a column's side its size; a mass's face moves its points. Press `F` again for whole elements.
+What it changes depends on the face: a wall's end changes its length, its top its height and its side its thickness; a slab's top its thickness; a door's jamb its width; a column's side its size; a mass's face moves its points; an extrusion drawn on a face gets deeper square to that face from its outer face, or wider from a side. Press `F` again for whole elements.
 
 ## Grab with the pointer: G
 
@@ -47,6 +47,8 @@ Press on a selected element and drag it. Its grab point and where it lands both 
 
 Press `R`, then `X` or `Y`, to tilt a mass about that axis. In a section, R tilts about the axis you look along. Walls and slabs stay upright.
 
+With the workplane on a face, Move slides along the face and Rotate turns about the face's normal, so a part drawn on a wall turns on the wall.
+
 ## Scale: S
 
 `S` over a view scales the selection with the pointer, or by a typed factor. Press `X`, `Y` or `Z` to scale along one axis only: a wall changes its height, a slab its thickness.
@@ -54,6 +56,20 @@ Press `R`, then `X` or `Y`, to tilt a mass about that axis. In a section, R tilt
 ## Duplicate: Shift+D
 
 `Shift+D` copies the selection and starts moving the copy.
+
+## Mirror
+
+*Edit › Mirror* (or the right-click menu) flips the selection across a line. Click two points on the line. It makes a copy; press `Ctrl` to flip the original instead.
+
+- `Shift` keeps the line along the axes, `Ctrl` while placing snaps it to 15° steps, and a typed angle, then `Enter`, sets it.
+- With the workplane on a face, the line lies on the face, and a part on the face is flipped across it and still stands out of the face.
+- Walls keep their outside out. Objects and columns move and turn to match, but keep their own shape.
+
+## Offset
+
+*Edit › Offset* makes a copy a set distance to one side. Move the pointer to the side you want and click, or type a distance and press `Enter`; `Ctrl` snaps to 50 mm.
+
+A closed outline (slab, roof, ceiling, shaft, extrusion) grows outwards or shrinks inwards. A line (wall, beam, grid, room separator, strip footing, railing) moves sideways. A sketch, an extrusion drawn on a face or a sweep offsets on its own plane.
 
 ## The pivot
 

@@ -276,19 +276,198 @@ impl SketchDraft {
         s
     }
 
-    /// Commit the sketch, if it has enough points. Returns the new element.
-    pub fn finish(self, doc: &mut Document, closed: bool) -> Result<Option<ElementId>, ModelError> {
-        if self.points.len() < 2 && self.radius.is_none() {
-            return Ok(None);
-        }
+    /// The sketch on the level below it, its plane's height above that
+    /// level.
+    fn placed(&self, doc: &Document, closed: bool) -> Sketch {
         let (level, elevation) =
             level_below(doc, self.plane.origin.z).map_or((None, 0.0), |(l, z)| (Some(l), z));
         let mut sketch = self.sketch(closed);
         sketch.level = level;
         sketch.plane.origin.z -= elevation;
+        sketch
+    }
+
+    /// Commit the closed outline as a slab with its top on the draft's
+    /// face, which must lie level (`state` gives its type, or a roof).
+    pub fn finish_slab(
+        self,
+        doc: &mut Document,
+        state: &crate::planview::PlanState,
+    ) -> Result<Option<ElementId>, String> {
+        if self.points.len() < 3 && self.radius.is_none() {
+            return Ok(None);
+        }
+        let sk = self.placed(doc, true);
+        let slab = creabim_core::slab_from_sketch(doc.model(), &sk, crate::outline::NEW_SLAB_THICKNESS)
+            .map_err(|_| {
+                "A slab lies level: draw it on a level face (a floor, a terrace, a flat roof), or draw an extrusion on a sloped one.".to_string()
+            })?;
+        let (e, label) = crate::memberstool::outline_element(doc.model(), state, slab);
+        let id = e.id;
+        doc.commit(Transaction::new(label).insert(e))
+            .map_err(|e| e.to_string())?;
+        Ok(Some(id))
+    }
+
+    /// Commit the outline as a bare opening in the wall whose face it was
+    /// drawn on: the rectangle around it, along the wall and up it.
+    pub fn finish_opening(self, doc: &mut Document) -> Result<Option<ElementId>, String> {
+        if self.points.len() < 2 && self.radius.is_none() {
+            return Ok(None);
+        }
+        let model = doc.model();
+        let n = self.plane.normal();
+        let pts: Vec<DVec3> = self
+            .sketch(true)
+            .outline()
+            .iter()
+            .map(|p| self.plane.to_model(*p))
+            .collect();
+        // the wall with a face on the plane, under the outline
+        let wall = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.curtain.is_none() => Some((e.id, w)),
+                _ => None,
+            })
+            .filter(|(_, w)| {
+                let across = w.direction().perp().extend(0.0);
+                if n.dot(across).abs() < 0.999 {
+                    return false;
+                }
+                let s = (self.plane.origin.truncate() - w.start).dot(w.direction().perp());
+                (s.abs() - w.thickness / 2.0).abs() < 0.02
+            })
+            .map(|(id, w)| {
+                let d = w.direction();
+                let base = creabim_core::walls::base_z(model, w);
+                let us: Vec<f64> = pts
+                    .iter()
+                    .map(|p| (p.truncate() - w.start).dot(d))
+                    .collect();
+                let zs: Vec<f64> = pts.iter().map(|p| p.z - base).collect();
+                let lo = |v: &[f64]| v.iter().copied().fold(f64::INFINITY, f64::min);
+                let hi = |v: &[f64]| v.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                let (u0, u1) = (lo(&us).max(0.0), hi(&us).min(w.length()));
+                let (z0, z1) = (lo(&zs).max(0.0), hi(&zs).min(w.height));
+                (id, u0, u1, z0, z1)
+            })
+            .filter(|(_, u0, u1, z0, z1)| u1 - u0 > 0.01 && z1 - z0 > 0.01)
+            .max_by(|a, b| ((a.2 - a.1) * (a.4 - a.3)).total_cmp(&((b.2 - b.1) * (b.4 - b.3))));
+        let Some((host, u0, u1, z0, z1)) = wall else {
+            return Err("Draw a wall opening on a wall's face.".into());
+        };
+        let o = creabim_core::Opening {
+            host,
+            kind: creabim_core::OpeningKind::Hole,
+            offset: u0,
+            sill: z0,
+            width: u1 - u0,
+            height: z1 - z0,
+            material: None,
+            frame: Default::default(),
+            flip_hand: false,
+            flip_facing: false,
+        };
+        let e = Element::new("Opening", ElementKind::Opening(o));
+        let id = e.id;
+        doc.commit(Transaction::new("Wall opening on a face").insert(e))
+            .map_err(|e| e.to_string())?;
+        Ok(Some(id))
+    }
+
+    /// Commit the sketch, if it has enough points. Returns the new element.
+    pub fn finish(self, doc: &mut Document, closed: bool) -> Result<Option<ElementId>, ModelError> {
+        if self.points.len() < 2 && self.radius.is_none() {
+            return Ok(None);
+        }
+        let sketch = self.placed(doc, closed);
         let e = Element::new("Sketch", ElementKind::Sketch(sketch));
         let id = e.id;
         doc.commit(Transaction::new("Draw sketch").insert(e))?;
+        Ok(Some(id))
+    }
+
+    /// Commit the closed outline as an extrusion or void lying on the
+    /// draft's plane, `base` off it and `height` deep along its normal.
+    /// Returns the new element, or None while it has too few corners.
+    pub fn finish_part(
+        self,
+        doc: &mut Document,
+        base: f64,
+        height: f64,
+        void: bool,
+    ) -> Result<Option<ElementId>, ModelError> {
+        if self.points.len() < 3 && self.radius.is_none() {
+            return Ok(None);
+        }
+        let Some((level, elevation)) = level_below(doc, self.plane.origin.z) else {
+            return Ok(None);
+        };
+        let outline = self.sketch(true).outline();
+        let mut plane = self.plane;
+        plane.origin.z -= elevation;
+        let mut part = creabim_core::parts::Part::extrusion(level, outline, base, height);
+        if let creabim_core::parts::Form::Extrusion { plane: p, .. } = &mut part.form {
+            *p = Some(plane);
+        }
+        let (name, label) = if void {
+            part = part.as_void();
+            ("Void", "Draw void on a face")
+        } else {
+            ("Extrusion", "Draw extrusion on a face")
+        };
+        let e = Element::new(name, ElementKind::Part(part));
+        let id = e.id;
+        doc.commit(Transaction::new(label).insert(e))?;
+        Ok(Some(id))
+    }
+
+    /// Commit the points drawn as the path of a sweep of `profile` lying on
+    /// the draft's face: its profile stands out of the face, along its
+    /// normal. Returns the new element, or None while it has one point.
+    pub fn finish_sweep(
+        self,
+        doc: &mut Document,
+        profile: Vec<DVec2>,
+        name: &str,
+        closed: bool,
+    ) -> Result<Option<ElementId>, ModelError> {
+        if self.points.len() < 2 + usize::from(closed) {
+            return Ok(None);
+        }
+        let Some((level, elevation)) = level_below(doc, self.plane.origin.z) else {
+            return Ok(None);
+        };
+        // arcs go in short straight pieces
+        let sk = self.sketch(closed);
+        let mut pts = sk.outline();
+        if !closed {
+            pts = (0..sk.segment_count())
+                .flat_map(|i| sk.curve(i).points())
+                .fold(Vec::<DVec2>::new(), |mut acc, p| {
+                    if acc.last().is_none_or(|q| q.distance(p) > 1e-9) {
+                        acc.push(p);
+                    }
+                    acc
+                });
+        }
+        let points = pts
+            .iter()
+            .map(|p| self.plane.to_model(*p) - DVec3::Z * elevation)
+            .collect();
+        let part = creabim_core::parts::Part::sweep(
+            level,
+            profile,
+            creabim_core::parts::Path::Points {
+                points,
+                closed,
+                normal: Some(self.plane.normal()),
+            },
+        );
+        let e = Element::new(name, ElementKind::Part(part));
+        let id = e.id;
+        doc.commit(Transaction::new("Draw sweep on a face").insert(e))?;
         Ok(Some(id))
     }
 
@@ -790,6 +969,109 @@ mod tests {
 
     fn draft() -> SketchDraft {
         SketchDraft::new(Workplane::ground(0.0), None)
+    }
+
+    /// A wall of the sample house and the plane of its face on the right
+    /// (looking from its start), 1 m along and 0.5 m up.
+    fn wall_face(doc: &Document) -> (ElementId, Workplane) {
+        let (id, w) = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.curtain.is_none() && w.length() > 3.0 => {
+                    Some((e.id, w.clone()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let d = w.direction();
+        let right = -d.perp();
+        let base = creabim_core::walls::base_z(doc.model(), &w);
+        let at = (w.start + d * 1.0 + right * (w.thickness / 2.0)).extend(base + 0.5);
+        (id, Workplane::facing(at, right.extend(0.0)))
+    }
+
+    /// Draw a 1.2 x 1.0 rectangle on `plane` from its origin.
+    fn rectangle(plane: Workplane) -> SketchDraft {
+        let mut d = SketchDraft::new(plane, None);
+        for p in [
+            DVec2::new(1.2, 0.0),
+            DVec2::new(1.2, 1.0),
+            DVec2::new(0.0, 1.0),
+        ] {
+            d.click(p);
+        }
+        d
+    }
+
+    #[test]
+    fn a_void_drawn_on_a_wall_face_lies_on_it_and_cuts_into_it() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (_, plane) = wall_face(&doc);
+        let id = rectangle(plane)
+            .finish_part(&mut doc, -0.5, 0.51, true)
+            .unwrap()
+            .unwrap();
+        let Some(ElementKind::Part(p)) = doc.model().get(id).map(|e| &e.kind) else {
+            panic!("a part");
+        };
+        assert!(p.void);
+        let creabim_core::parts::Form::Extrusion {
+            plane: Some(q),
+            outline,
+            ..
+        } = &p.form
+        else {
+            panic!("on a plane");
+        };
+        assert!((q.normal() - plane.normal()).length() < 1e-9);
+        assert_eq!(outline.len(), 4);
+        // and it cuts the wall it was drawn on
+        let cuts = creabim_core::parts::void_cuts(doc.model());
+        assert!(cuts.iter().any(|(_, v)| *v == id), "{cuts:?}");
+    }
+
+    #[test]
+    fn an_opening_drawn_on_a_wall_face_is_the_rectangle_around_it() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let (wall, plane) = wall_face(&doc);
+        let id = rectangle(plane).finish_opening(&mut doc).unwrap().unwrap();
+        let Some(ElementKind::Opening(o)) = doc.model().get(id).map(|e| &e.kind) else {
+            panic!("an opening");
+        };
+        assert_eq!(o.host, wall);
+        assert_eq!(o.kind, creabim_core::OpeningKind::Hole);
+        // 1 m along, 0.5 m up, 1.2 x 1.0, whichever way the face's axes run
+        assert!(
+            (o.width - 1.2).abs() < 1e-6 && (o.height - 1.0).abs() < 1e-6,
+            "{o:?}"
+        );
+        assert!((o.sill - 0.5).abs() < 1e-6, "{o:?}");
+        assert!(
+            (o.offset - 1.0).abs() < 1e-6 || (o.offset - (1.0 - 1.2)).abs() < 1e-6,
+            "{o:?}"
+        );
+        // off any wall it says so
+        let air = Workplane::facing(DVec3::new(100.0, 100.0, 1.0), DVec3::X);
+        assert!(rectangle(air).finish_opening(&mut doc).is_err());
+    }
+
+    #[test]
+    fn a_slab_drawn_on_a_level_face_tops_out_on_it_and_not_on_a_slope() {
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let state = crate::planview::PlanState::default();
+        let level = Workplane::ground(1.2);
+        let id = rectangle(level)
+            .finish_slab(&mut doc, &state)
+            .unwrap()
+            .unwrap();
+        let Some(ElementKind::Slab(s)) = doc.model().get(id).map(|e| &e.kind) else {
+            panic!("a slab");
+        };
+        let z = doc.model().level(s.level).unwrap().elevation + s.top_offset;
+        assert!((z - 1.2).abs() < 1e-9, "{z}");
+        let sloped = Workplane::facing(DVec3::new(0.0, 0.0, 3.0), DVec3::new(0.0, -0.5, 1.0));
+        assert!(rectangle(sloped).finish_slab(&mut doc, &state).is_err());
     }
 
     #[test]

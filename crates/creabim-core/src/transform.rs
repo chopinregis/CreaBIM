@@ -60,7 +60,7 @@ impl Xform {
     }
 
     /// A direction (no position) under the change: turned, never moved.
-    fn direction(&self, v: DVec3) -> DVec3 {
+    pub fn direction(&self, v: DVec3) -> DVec3 {
         match *self {
             Xform::Rotate { degrees, .. } => DVec2::from_angle(degrees.to_radians())
                 .rotate(v.truncate())
@@ -73,7 +73,7 @@ impl Xform {
     }
 
     /// Does it keep shapes as they are, only moving or turning them?
-    fn is_rigid(&self) -> bool {
+    pub fn is_rigid(&self) -> bool {
         matches!(
             self,
             Xform::Move(_) | Xform::Rotate { .. } | Xform::Tilt { .. }
@@ -362,6 +362,12 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
                 o.position = t.point2(o.position);
                 o.rotation = (o.rotation + degrees).rem_euclid(360.0);
             }
+            // a mirror in plan: it goes to the mirrored place, facing the
+            // mirrored way (its shape is its type's, so it is not turned over)
+            Xform::Stretch { factor, .. } => {
+                o.position = t.point2(o.position);
+                o.rotation = mirrored_angle(o.rotation, *factor)?;
+            }
             _ => return None,
         },
         ElementKind::Column(_)
@@ -412,6 +418,69 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         | ElementKind::Join(_)
         | ElementKind::ElementType(_)
         | ElementKind::GridGroup(_) => return None,
+    }
+    Some(out)
+}
+
+/// An angle in plan (degrees) after a mirror that turns `factor`'s axes
+/// over, or `None` when `factor` is not a mirror in plan.
+pub fn mirrored_angle(degrees: f64, factor: DVec3) -> Option<f64> {
+    if (factor.abs() - DVec3::ONE).abs().max_element() > 1e-9 || factor.z < 0.0 {
+        return None;
+    }
+    let a = match (factor.x < 0.0, factor.y < 0.0) {
+        (false, false) => degrees,
+        (true, false) => 180.0 - degrees,
+        (false, true) => -degrees,
+        (true, true) => degrees + 180.0,
+    };
+    Some(a.rem_euclid(360.0))
+}
+
+/// The changes that mirror across the plane through `at` facing `normal`,
+/// one after the other. Building elements stay upright, so a mirror plane
+/// that stands up is turned onto the X axis, flipped there and turned
+/// back; a level one flips Z; any other tilts (which only free shapes and
+/// parts take). `None` for no normal.
+pub fn mirror_xforms(at: DVec3, normal: DVec3) -> Option<Vec<Xform>> {
+    let n = normal.try_normalize()?;
+    let flip_x = Xform::Stretch {
+        center: at,
+        factor: DVec3::new(-1.0, 1.0, 1.0),
+    };
+    // (a face's normal read off its mesh is a hair off level or upright)
+    if n.z.abs() < 1e-6 {
+        let deg = n.truncate().to_angle().to_degrees();
+        let center = at.truncate();
+        let turn = |degrees: f64| Xform::Rotate { center, degrees };
+        if deg.abs() < 1e-12 {
+            return Some(vec![flip_x]);
+        }
+        return Some(vec![turn(-deg), flip_x, turn(deg)]);
+    }
+    if n.truncate().length() < 1e-6 {
+        return Some(vec![Xform::Stretch {
+            center: at,
+            factor: DVec3::new(1.0, 1.0, -1.0),
+        }]);
+    }
+    let axis = n.cross(DVec3::X).normalize();
+    let degrees = n.angle_between(DVec3::X).to_degrees();
+    let tilt = |degrees: f64| Xform::Tilt {
+        center: at,
+        axis,
+        degrees,
+    };
+    Some(vec![tilt(degrees), flip_x, tilt(-degrees)])
+}
+
+/// `e` mirrored across the plane through `at` facing `normal`, or `None`
+/// when it can't be (a wall can't be turned upside down, a door goes with
+/// its wall).
+pub fn mirrored(model: &Model, e: &Element, at: DVec3, normal: DVec3) -> Option<Element> {
+    let mut out = e.clone();
+    for t in mirror_xforms(at, normal)? {
+        out = transformed(model, &out, &t)?;
     }
     Some(out)
 }
@@ -948,6 +1017,93 @@ mod tests {
         let (c, dropped) = fresh_copies(&empty, &[door]);
         assert!(c.is_empty());
         assert_eq!(dropped, 1);
+    }
+
+    #[test]
+    fn a_wall_mirrors_across_a_slanted_line_and_keeps_its_outside_out() {
+        let m = sample_house();
+        let wall = m
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Wall(_)))
+            .unwrap();
+        let ElementKind::Wall(w0) = &wall.kind else {
+            panic!()
+        };
+        // across the line y = x: the plane through the origin facing (1, -1)
+        let n = DVec3::new(1.0, -1.0, 0.0);
+        let ElementKind::Wall(w) = mirrored(&m, wall, DVec3::ZERO, n).unwrap().kind else {
+            panic!()
+        };
+        let swap = |p: DVec2| DVec2::new(p.y, p.x);
+        assert!(w.start.distance(swap(w0.start)) < 1e-9);
+        assert!(w.end.distance(swap(w0.end)) < 1e-9);
+        assert_eq!(w.flip, !w0.flip);
+        // a wall can't be turned upside down
+        assert!(mirrored(&m, wall, DVec3::ZERO, DVec3::Z).is_none());
+        // a normal a hair off level (read off a face's mesh) is level
+        let hair = DVec3::new(1.0, -1.0, 1e-8);
+        assert!(mirrored(&m, wall, DVec3::ZERO, hair).is_some());
+    }
+
+    #[test]
+    fn a_part_on_a_face_mirrors_square_to_it_and_still_stands_out_of_it() {
+        use crate::parts::{on_plane, Form, Part};
+        let mut m = sample_house();
+        let level = m
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let sq = crate::polygon::rectangle(DVec2::ZERO, DVec2::new(2.0, 1.0));
+        let mut p = Part::extrusion(level, sq, 0.0, 0.3);
+        // on a sloped face, rising along +y
+        let up = DVec3::new(0.0, -0.6, 0.8);
+        let face = crate::Workplane::facing(DVec3::new(0.0, 0.0, 2.0), up);
+        if let Form::Extrusion { plane, .. } = &mut p.form {
+            *plane = Some(face);
+        }
+        let e = Element::new("Box", ElementKind::Part(p));
+        m.insert(e.clone()).unwrap();
+        let corners = |e: &Element| -> Vec<DVec3> {
+            let ElementKind::Part(p) = &e.kind else {
+                panic!()
+            };
+            let Form::Extrusion {
+                outline,
+                plane: Some(pl),
+                height,
+                ..
+            } = &p.form
+            else {
+                panic!()
+            };
+            let z = DVec3::Z * crate::members::elevation(&m, p.level);
+            outline
+                .iter()
+                .flat_map(|q| [on_plane(pl, *q, 0.0) + z, on_plane(pl, *q, *height) + z])
+                .collect()
+        };
+        // mirrored across planes square to the face, one standing up (in
+        // turns about the vertical) and one sloped (by tilts): the corners
+        // land on the mirror images of the old ones
+        for n in [face.x, face.y] {
+            let at = face.origin + n + DVec3::Z * crate::members::elevation(&m, level);
+            let r = mirrored(&m, &e, at, n).unwrap();
+            let reflect = |q: DVec3| q - 2.0 * (q - at).dot(n) * n;
+            let before: Vec<DVec3> = corners(&e).into_iter().map(reflect).collect();
+            for q in corners(&r) {
+                assert!(before.iter().any(|b| b.distance(q) < 1e-9), "{q}");
+            }
+            // and it still rises out of the face, not into it
+            let ElementKind::Part(rp) = &r.kind else {
+                panic!()
+            };
+            let Form::Extrusion { plane: Some(q), .. } = &rp.form else {
+                panic!()
+            };
+            assert!((q.normal() - up.normalize()).length() < 1e-9);
+            assert!(rp.validate().is_ok());
+        }
     }
 
     #[test]

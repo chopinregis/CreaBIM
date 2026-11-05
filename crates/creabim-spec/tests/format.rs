@@ -305,3 +305,33 @@ fn a_wall_drawn_by_a_layer_boundary_keeps_it() {
     let text = round_trips(&m);
     assert!(text.contains("\"boundary\": 2"), "{text}");
 }
+
+#[test]
+fn a_part_drawn_on_a_face_keeps_its_plane() {
+    let text = SMALL.replace(
+        "\"openings\": [",
+        r#""parts": [
+    { "id": "V1", "level": "L0", "void": true, "outline": [[0, 0], [1, 0], [1, 1], [0, 1]],
+      "base": -0.3, "height": 0.31,
+      "plane": { "origin": [1, 0, 1], "x": [0, 1, 0], "y": [0, 0, 1] } }
+  ],
+  "openings": ["#,
+    );
+    let m = build(&text);
+    let plane = m
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Part(p) => match &p.form {
+                creabim_core::parts::Form::Extrusion { plane, .. } => *plane,
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("a part on a plane");
+    assert_eq!(plane.normal(), glam::DVec3::X);
+    let out = round_trips(&m);
+    assert!(out.contains("\"plane\""), "{out}");
+    // axes that aren't square are an error where they are
+    let p = problems(&text.replace("\"y\": [0, 0, 1]", "\"y\": [0, 1, 1]"));
+    assert!(p.iter().any(|l| l.contains("plane")), "{p:?}");
+}

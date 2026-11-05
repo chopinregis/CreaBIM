@@ -20,7 +20,7 @@ use crate::snaps::{Snap, SnapKind};
 use creabim_core::{
     pushpull::{self, FaceRef},
     transform::{self, Xform},
-    Axis, Document, Element, ElementId, ElementKind, ModelError, Transaction,
+    Axis, Document, Element, ElementId, ElementKind, ModelError, Transaction, Workplane,
 };
 use eframe::egui::{self, Color32, Pos2, Stroke};
 use glam::{DVec2, DVec3};
@@ -106,6 +106,11 @@ pub enum Mode {
     Move,
     Rotate,
     Scale,
+    /// Mirror across a line drawn with two clicks, on the view's plane (in
+    /// 3D the workplane, or the level).
+    Mirror,
+    /// Offset a line or an outline by a distance, to the pointer's side.
+    Offset,
 }
 
 impl Mode {
@@ -114,7 +119,14 @@ impl Mode {
             Mode::Move => "Move",
             Mode::Rotate => "Rotate",
             Mode::Scale => "Scale",
+            Mode::Mirror => "Mirror",
+            Mode::Offset => "Offset",
         }
+    }
+
+    /// Does it make copies by default (Ctrl keeps the original instead)?
+    fn copies_by_default(self) -> bool {
+        matches!(self, Mode::Mirror | Mode::Offset)
     }
 }
 
@@ -302,6 +314,9 @@ impl Events {
     }
 }
 
+/// An element changed as an edit changes it, or `None` when it can't be.
+type Change<'a> = dyn Fn(&creabim_core::Model, &Element) -> Option<Element> + 'a;
+
 /// Copies following the pointer, for Move with Ctrl: each click leaves one
 /// behind, as its own undo step.
 #[derive(Debug)]
@@ -352,13 +367,12 @@ impl CopyPreview {
         })
     }
 
-    fn update(&mut self, doc: &mut Document, d: DVec3) -> Result<(), String> {
+    fn update(&mut self, doc: &mut Document, f: &Change) -> Result<(), String> {
         self.cancel(doc);
         let mut tx = Transaction::new(self.label.clone());
         for (c, moves) in self.copies.iter().zip(&self.moves) {
             let c = if *moves {
-                transform::transformed(doc.model(), c, &Xform::Move(d))
-                    .ok_or_else(|| format!("{} can't be copied there", c.name))?
+                f(doc.model(), c).ok_or_else(|| format!("{} can't be copied there", c.name))?
             } else {
                 c.clone()
             };
@@ -438,6 +452,9 @@ pub struct Modal {
     /// The face under the pointer while the base point is picked.
     hover: Option<FacePick>,
     push: Option<Push>,
+    /// The workplane in 3D: Rotate turns about its normal, Move slides on
+    /// it, Mirror and Offset work on it.
+    plane: Option<Workplane>,
 }
 
 pub enum Outcome {
@@ -450,6 +467,32 @@ pub enum Outcome {
 /// project's unit, and any unit can be written (`2400mm`, `2.4m`, `8'-6"`).
 pub fn parse_length(s: &str) -> Option<f64> {
     crate::units::parse(s)
+}
+
+/// The normal of the plane an edit works on: the level in plans and in
+/// 3D (or the workplane there), the section plane in sections.
+fn drawn_on(space: Space, plane: Option<Workplane>) -> DVec3 {
+    match space {
+        Space::Plan => DVec3::Z,
+        Space::Model => plane.map_or(DVec3::Z, |p| p.normal()),
+        Space::Section { start, end } => -(end - start).normalize_or(DVec2::X).perp().extend(0.0),
+    }
+}
+
+/// Two directions square to each other on that plane: along and up it.
+fn plane_axes(space: Space, plane: Option<Workplane>) -> [DVec3; 2] {
+    match (space, tilted(space, plane)) {
+        (Space::Section { start, end }, _) => {
+            [(end - start).normalize_or(DVec2::X).extend(0.0), DVec3::Z]
+        }
+        (_, Some(p)) => [p.x, p.y],
+        _ => [DVec3::X, DVec3::Y],
+    }
+}
+
+/// The 3D view's workplane when it is not level.
+fn tilted(space: Space, plane: Option<Workplane>) -> Option<Workplane> {
+    plane.filter(|p| space == Space::Model && p.normal().z.abs() < 0.999)
 }
 
 /// The move from `base` to `target`, kept to `axis`, square to the pane
@@ -504,8 +547,11 @@ impl Modal {
         grab: Pos2,
         pivot: Pivot,
         cursor: Option<DVec3>,
+        plane: Option<Workplane>,
     ) -> Result<Modal, String> {
         let model = doc.model();
+        // only the 3D view works on the workplane
+        let plane = plane.filter(|_| space == Space::Model);
         let mut elements: Vec<&Element> = ids.iter().filter_map(|id| model.get(*id)).collect();
         // doors and windows go with their wall when it moves too
         let hosts: Vec<ElementId> = elements.iter().map(|e| e.id).collect();
@@ -553,6 +599,7 @@ impl Modal {
             want_works_on: None,
             hover: None,
             push: None,
+            plane,
         };
         if let (Some(f), ElementKind::FreeMesh(m)) = (face, &first.kind) {
             if f < m.mesh.faces.len() {
@@ -568,12 +615,20 @@ impl Modal {
             }
         }
         // keep what can take this kind of edit
+        let normal = drawn_on(space, plane);
+        let [across, _] = plane_axes(space, plane);
+        let tilted = tilted(space, plane);
         let probe = |c: DVec3| match mode {
-            Mode::Move => Xform::Move(DVec3::X),
+            Mode::Move | Mode::Mirror | Mode::Offset => Xform::Move(DVec3::X),
             Mode::Rotate => match space {
                 Space::Section { .. } => Xform::Tilt {
                     center: c,
                     axis: DVec3::X,
+                    degrees: 1.0,
+                },
+                _ if tilted.is_some() => Xform::Tilt {
+                    center: c,
+                    axis: normal,
                     degrees: 1.0,
                 },
                 _ => Xform::Rotate {
@@ -586,6 +641,14 @@ impl Modal {
                 factor: 1.1,
             },
         };
+        let takes = |e: &Element, c: DVec3| match mode {
+            Mode::Mirror => transform::mirrored(model, e, c, across).is_some(),
+            Mode::Offset => {
+                creabim_core::offset::offset(e, 0.1, normal).is_some()
+                    || creabim_core::offset::offset(e, -0.1, normal).is_some()
+            }
+            _ => transform::transformed(model, e, &probe(c)).is_some(),
+        };
         let mut kept: Vec<(Element, DVec3)> = Vec::new();
         let mut skipped = 0;
         for e in &elements {
@@ -593,7 +656,7 @@ impl Modal {
                 skipped += 1;
                 continue;
             };
-            if transform::transformed(model, e, &probe(c)).is_some() {
+            if takes(e, c) {
                 kept.push(((*e).clone(), c));
             } else {
                 skipped += 1;
@@ -608,6 +671,10 @@ impl Modal {
                 (Mode::Move, 1, _) => format!("{name} can't be moved this way."),
                 (Mode::Rotate, 1, _) => format!("{name} can't be rotated on its own."),
                 (Mode::Scale, 1, _) => format!("{name} can't be scaled."),
+                (Mode::Mirror, 1, _) => format!("{name} can't be mirrored here."),
+                (Mode::Offset, 1, _) => format!(
+                    "{name} can't be offset here: walls, beams, grid lines, slabs and roofs offset in a plan or on a level; sketches, guides and parts drawn on a face, on that face."
+                ),
                 (m, n, _) => format!("None of the {n} selected can take a {}.", m.verb().to_lowercase()),
             });
         }
@@ -638,13 +705,17 @@ impl Modal {
         );
         m.individual = individual;
         m.skipped = skipped;
+        if mode.copies_by_default() {
+            m.copies = CopyPreview::new(doc, m.edit.originals());
+            m.copy = m.copies.is_some();
+        }
         Ok(m)
     }
 
     /// Take clicks as the Move or Rotate tool does: a base point first.
     pub fn with_flow(mut self, flow: Flow) -> Self {
         self.flow = flow;
-        if flow == Flow::Tool && self.uses_points() {
+        if flow == Flow::Tool && self.uses_points() && self.mode != Mode::Offset {
             self.stage = Stage::Base;
         }
         self
@@ -652,6 +723,11 @@ impl Modal {
 
     pub fn stage(&self) -> Stage {
         self.stage
+    }
+
+    /// The workplane it works on, in 3D.
+    pub fn plane(&self) -> Option<Workplane> {
+        self.plane
     }
 
     /// The elements being edited.
@@ -714,6 +790,7 @@ impl Modal {
             Mode::Move => true,
             Mode::Rotate => self.flow == Flow::Tool && self.face.is_none(),
             Mode::Scale => false,
+            Mode::Mirror | Mode::Offset => true,
         }
     }
 
@@ -744,12 +821,17 @@ impl Modal {
 
     /// The pane's own axes, for Shift.
     fn pane_axes(&self) -> [DVec3; 2] {
-        match self.space {
-            Space::Section { start, end } => {
-                [(end - start).normalize_or(DVec2::X).extend(0.0), DVec3::Z]
-            }
-            Space::Plan | Space::Model => [DVec3::X, DVec3::Y],
-        }
+        plane_axes(self.space, self.plane)
+    }
+
+    /// The plane things turn, mirror and offset on, by its normal.
+    fn normal(&self) -> DVec3 {
+        drawn_on(self.space, self.plane)
+    }
+
+    /// The workplane, when it is not level (a wall's face, a roof's slope).
+    fn tilted(&self) -> Option<Workplane> {
+        tilted(self.space, self.plane)
     }
 
     /// Follow the pointer and keys for one frame, drawing the feedback.
@@ -857,6 +939,13 @@ impl Modal {
                 }
                 let what = self.edit.label().to_string();
                 Outcome::Running(match self.mode {
+                    Mode::Mirror if self.stage == Stage::Follow => format!(
+                        "{what}: now click the line's second point.{skipped}"
+                    ),
+                    Mode::Mirror => format!(
+                        "{what}: click the first point of the line to mirror across{}. It snaps to ends, middles, crossings and grid lines. Esc cancels.{skipped}",
+                        if self.tilted().is_some() { ", on the workplane" } else { "" }
+                    ),
                     Mode::Rotate if self.stage == Stage::Reference => format!(
                         "{what}: click the direction to turn from (a reference point).{skipped}"
                     ),
@@ -897,7 +986,7 @@ impl Modal {
 
     /// Can Ctrl leave copies behind: a Move of whole elements.
     fn copies_allowed(&self) -> bool {
-        self.mode == Mode::Move
+        matches!(self.mode, Mode::Move | Mode::Mirror | Mode::Offset)
             && self.face.is_none()
             && !self.duplicated
             && self.works_on == Target::Object
@@ -958,7 +1047,7 @@ impl Modal {
                 }
                 (None, Some(u)) => {
                     let name = model.get(u.id).map_or("", |e| e.name.as_str());
-                    format!("Move face: {name} has no faces to push or pull; walls, slabs, roofs, columns, beams, stairs, railings, doors, windows and masses do. F moves whole elements.")
+                    format!("Move face: {name} has no faces to push or pull; walls, slabs, roofs, columns, beams, stairs, railings, doors, windows, masses, extrusions and voids do. F moves whole elements.")
                 }
                 (None, None) => {
                     "Move face: point at a face of an element (in a plan or section, its edge), and click on it. F moves whole elements instead.".into()
@@ -975,7 +1064,9 @@ impl Modal {
             .base_at
             .is_some_and(|b| b.distance(self.pointer) < STILL);
         // up and down on a plane facing the viewer; across on the level
-        let (target, snap) = if n.z.abs() > 0.5 {
+        // (on a sloped or upright workplane, which a face's normal may cross,
+        // always on the plane facing the viewer)
+        let (target, snap) = if n.z.abs() > 0.5 || self.tilted().is_some() {
             ((map.to_model)(self.pointer, Some(Axis::Z), base), None)
         } else {
             match (map.snap)(self.pointer, Some(base)) {
@@ -1043,12 +1134,21 @@ impl Modal {
             Space::Section { start, end } => {
                 DVec2::new(v.truncate().dot((end - start).normalize_or(DVec2::X)), v.z)
             }
+            Space::Model if self.tilted().is_some() => {
+                let [x, y] = self.pane_axes();
+                DVec2::new(v.dot(x), v.dot(y))
+            }
             Space::Plan | Space::Model => v.truncate(),
         }
     }
 
     /// Following the pointer from the base point.
     fn step_follow(&mut self, doc: &mut Document, ev: &Events, map: &PaneMap) -> Outcome {
+        match self.mode {
+            Mode::Mirror => return self.step_mirror(doc, ev, map),
+            Mode::Offset => return self.step_offset(doc, ev, map),
+            _ => {}
+        }
         let skipped = self.skipped_note();
         // a key move starts from the point under the pointer, snapped
         if self.base.is_none() {
@@ -1083,7 +1183,14 @@ impl Modal {
                 let d = match target {
                     _ if still && typed.is_none() => DVec3::ZERO,
                     Some(t) => {
-                        let level = self.space == Space::Model;
+                        // in 3D things slide on their level, or on a
+                        // sloped or upright workplane
+                        let on = self.tilted().filter(|_| self.axis.is_none());
+                        let t = match on {
+                            Some(p) => t - p.normal() * (t - base).dot(p.normal()),
+                            None => t,
+                        };
+                        let level = self.space == Space::Model && on.is_none();
                         move_delta(base, t, self.axis, ortho, typed, fallback, level)
                     }
                     None => self.delta,
@@ -1126,6 +1233,11 @@ impl Modal {
                         axis: -(end - start).normalize_or_zero().perp().extend(0.0),
                         degrees: deg,
                     },
+                    _ if self.tilted().is_some() => Xform::Tilt {
+                        center: base,
+                        axis: self.normal(),
+                        degrees: deg,
+                    },
                     _ => Xform::Rotate {
                         center: base.truncate(),
                         degrees: deg,
@@ -1150,6 +1262,9 @@ impl Modal {
             ""
         };
         let keys = match self.mode {
+            Mode::Move if self.tilted().is_some() => {
+                "type a distance + Enter, it slides on the workplane, Shift keeps square to it, X, Y or Z keeps to an axis"
+            }
             Mode::Move => "type a distance + Enter, Shift keeps square, X, Y or Z keeps to an axis",
             _ => "type an angle + Enter, Ctrl snaps to 15°",
         };
@@ -1171,6 +1286,23 @@ impl Modal {
     /// Leave things where they are now: the end of the edit, or one more
     /// copy placed.
     fn place(&mut self, doc: &mut Document) -> Outcome {
+        if matches!(self.mode, Mode::Mirror | Mode::Offset) {
+            let placed = match &mut self.copies {
+                Some(c) if self.copy => std::mem::replace(&mut c.applied, false),
+                _ => self.edit.applied(),
+            };
+            if !placed {
+                return Outcome::Running(format!(
+                    "{}: nothing to place yet. Move the pointer, or Esc to stop.",
+                    self.mode.verb()
+                ));
+            }
+            return Outcome::Done(format!(
+                "{}{}. Ctrl+Z to undo.",
+                self.shown,
+                self.skipped_note()
+            ));
+        }
         if self.copy {
             if let Some(c) = &mut self.copies {
                 if c.applied {
@@ -1215,7 +1347,7 @@ impl Modal {
     /// Esc or right-click: take back the last click, or stop. `None` while
     /// the edit goes on.
     fn back(&mut self, doc: &mut Document) -> Option<Outcome> {
-        if self.flow == Flow::Keys || !self.uses_points() {
+        if self.flow == Flow::Keys || !self.uses_points() || self.mode == Mode::Offset {
             return Some(self.finish(doc));
         }
         match self.stage {
@@ -1286,6 +1418,7 @@ impl Modal {
             Mode::Move => "X, Y or Z keeps to an axis",
             Mode::Rotate => "X or Y tilts about that axis",
             Mode::Scale => "X, Y or Z scales along one axis",
+            Mode::Mirror | Mode::Offset => "",
         };
         Outcome::Running(format!(
             "{}{skipped}   ·   {keys}, type a value, click or Enter to finish, Esc to cancel{}",
@@ -1335,6 +1468,7 @@ impl Modal {
                         let faces = self.works_on == Target::Face && self.can_take_faces();
                         let axes: &[Axis] = match (self.mode, self.face.is_some()) {
                             _ if faces => &[],
+                            (Mode::Mirror | Mode::Offset, _) => &[],
                             (Mode::Rotate, true) => &[],
                             _ => &Axis::ALL,
                         };
@@ -1358,8 +1492,8 @@ impl Modal {
                             ui.separator();
                         }
                         ui.label(match self.mode {
-                            Mode::Move => "Distance",
-                            Mode::Rotate => "Angle",
+                            Mode::Move | Mode::Offset => "Distance",
+                            Mode::Rotate | Mode::Mirror => "Angle",
                             Mode::Scale => "Factor",
                         });
                         ui.add(
@@ -1369,9 +1503,13 @@ impl Modal {
                         );
                         if self.copies_allowed() {
                             ui.separator();
+                            let tip = match self.mode {
+                                Mode::Move => "Leave copies behind: each click places one",
+                                _ => "Make a copy and keep the original (off: change the original itself)",
+                            };
                             if ui
                                 .selectable_label(self.copy, "Copy (Ctrl)")
-                                .on_hover_text("Leave copies behind: each click places one")
+                                .on_hover_text(tip)
                                 .clicked()
                             {
                                 self.want_copy = Some(!self.copy);
@@ -1425,6 +1563,9 @@ impl Modal {
     /// The turn axis for a rotate: about the pane's view in plans and
     /// sections, about the vertical in 3D, or about a chosen axis.
     fn turn_axis(&self) -> Option<DVec3> {
+        if let (None, Some(p)) = (self.axis, self.tilted()) {
+            return Some(p.normal());
+        }
         match (self.axis, self.space) {
             (Some(Axis::Z), _) | (None, Space::Model | Space::Plan) => None,
             (Some(a), _) => Some(a.unit()),
@@ -1523,6 +1664,7 @@ impl Modal {
                     }
                 }
             }
+            Mode::Mirror | Mode::Offset => return None,
             Mode::Scale => {
                 let factor = match typed {
                     Some(v) if v != 0.0 => v,
@@ -1575,7 +1717,8 @@ impl Modal {
 
     fn apply(&mut self, doc: &mut Document, t: &Xform) -> Result<(), String> {
         if let (true, Some(c), Xform::Move(d)) = (self.copy, &mut self.copies, t) {
-            return c.update(doc, *d);
+            let d = *d;
+            return c.update(doc, &|m, e| transform::transformed(m, e, &Xform::Move(d)));
         }
         let originals = self.edit.originals().to_vec();
         let changed = match (self.face, &originals[0].kind) {
@@ -1619,6 +1762,185 @@ impl Modal {
             }
         };
         self.edit.update(doc, changed).map_err(|e| e.to_string())
+    }
+
+    /// Show every element (or its copy) changed by `f`.
+    fn apply_with(&mut self, doc: &mut Document, f: &Change) -> Result<(), String> {
+        if self.copy {
+            if let Some(c) = &mut self.copies {
+                return c.update(doc, f);
+            }
+        }
+        let originals = self.edit.originals().to_vec();
+        let mut changed = Vec::with_capacity(originals.len());
+        for o in &originals {
+            changed.push(f(doc.model(), o).ok_or_else(|| format!("{} can't take that", o.name))?);
+        }
+        self.edit.update(doc, changed).map_err(|e| e.to_string())
+    }
+
+    /// Take back what this frame showed, the copies or the change.
+    fn show_nothing(&mut self, doc: &mut Document) {
+        self.edit.cancel(doc);
+        if let Some(c) = &mut self.copies {
+            c.cancel(doc);
+        }
+    }
+
+    /// Mirror: the line from the first point to the pointer (on the view's
+    /// plane), and the selection shown mirrored across it.
+    fn step_mirror(&mut self, doc: &mut Document, ev: &Events, map: &PaneMap) -> Outcome {
+        let skipped = self.skipped_note();
+        let base = match self.base {
+            Some(b) => b,
+            None => {
+                self.stage = Stage::Base;
+                return Outcome::Running(String::new());
+            }
+        };
+        let still = self
+            .base_at
+            .is_some_and(|b| b.distance(self.pointer) < STILL);
+        let w = self.normal();
+        let flat = |t: DVec3| {
+            let d = t - base;
+            d - w * d.dot(w)
+        };
+        // a snap that lies straight out from the first point (off the
+        // plane) gives no line: then the pointer on the plane does
+        let (target, snap) = match (map.snap)(self.pointer, Some(base)) {
+            Some((p, s)) if flat(p).length() > 1e-3 => (Some(p), Some(s)),
+            _ => ((map.to_model)(self.pointer, None, base), None),
+        };
+        self.snap = snap;
+        let [u, v] = self.pane_axes();
+        let mut d = target.map_or(DVec3::ZERO, flat);
+        if self.ortho {
+            d = if d.dot(u).abs() >= d.dot(v).abs() {
+                u * d.dot(u)
+            } else {
+                v * d.dot(v)
+            };
+        }
+        let mut deg = d.dot(v).atan2(d.dot(u)).to_degrees();
+        if ev.ctrl && !snap.is_some_and(|s| s.kind.is_point()) {
+            deg = (deg / 15.0).round() * 15.0;
+        }
+        let typed = self.typed.trim().parse::<f64>().ok();
+        if let Some(a) = typed {
+            deg = a;
+        }
+        let len = d.length().max(1.0);
+        if typed.is_some() || ev.ctrl {
+            let r = deg.to_radians();
+            d = (u * r.cos() + v * r.sin()) * len;
+        }
+        if (still && typed.is_none()) || d.length() < 1e-6 {
+            self.show_nothing(doc);
+            self.target = None;
+            self.shown = format!(
+                "{}: move the pointer to draw the mirror line",
+                self.edit.label()
+            );
+        } else {
+            self.target = Some(base + d);
+            let n = d.normalize().cross(w).normalize();
+            if let Err(e) = self.apply_with(doc, &|m, e| transform::mirrored(m, e, base, n)) {
+                self.shown = format!("Can't mirror that: {e}");
+            } else {
+                let what = match (&self.copies, self.copy) {
+                    (Some(c), true) => c.label.replacen("Copy", "Mirror a copy of", 1),
+                    _ => self.edit.label().to_string(),
+                };
+                self.shown = format!("{what}: across the line at {deg:.1}°");
+            }
+        }
+        if ev.click || ev.enter || self.ask == Some(true) {
+            self.ask = None;
+            return self.place(doc);
+        }
+        let copy = if self.copy {
+            "Ctrl: keep only the mirrored one"
+        } else {
+            "Ctrl: keep the original too"
+        };
+        let typed = if self.typed.is_empty() {
+            String::new()
+        } else {
+            format!("  [typed {}°]", self.typed)
+        };
+        Outcome::Running(format!(
+            "{}{typed}{skipped}   ·   click the line's second point, type its angle + Enter, Shift keeps it square, {copy}, Esc steps back",
+            self.shown
+        ))
+    }
+
+    /// Offset: the selection's lines moved (outlines grown) to the side the
+    /// pointer is on, by how far it is from the last one picked.
+    fn step_offset(&mut self, doc: &mut Document, ev: &Events, map: &PaneMap) -> Outcome {
+        let skipped = self.skipped_note();
+        let w = self.normal();
+        let Some(active) = self.edit.originals().last().cloned() else {
+            return Outcome::Cancelled("Offset: nothing to offset.".into());
+        };
+        let at = (map.snap)(self.pointer, None)
+            .map(|s| s.0)
+            .or_else(|| (map.to_model)(self.pointer, None, self.pivot));
+        self.snap = None;
+        let side = at.and_then(|p| creabim_core::offset::side_distance(doc.model(), &active, p, w));
+        let typed = parse_length(&self.typed).filter(|v| *v != 0.0);
+        let by = match (typed, side) {
+            // a typed distance goes to the pointer's side (a minus sign
+            // to the other)
+            (Some(t), Some(s)) if s < 0.0 => -t,
+            (Some(t), _) => t,
+            (None, Some(s)) => {
+                let step = if ev.ctrl { 0.05 } else { 0.01 };
+                (s / step).round() * step
+            }
+            (None, None) => 0.0,
+        };
+        self.target = at;
+        if by.abs() < 1e-9 {
+            self.show_nothing(doc);
+            self.shown = format!(
+                "{}: move the pointer to the side to offset to",
+                self.edit.label()
+            );
+        } else if let Err(e) = self.apply_with(doc, &|_, e| creabim_core::offset::offset(e, by, w))
+        {
+            self.shown = format!("Can't offset that far: {e}");
+        } else {
+            let what = match (&self.copies, self.copy) {
+                (Some(c), true) => c.label.replacen("Copy", "Offset a copy of", 1),
+                _ => self.edit.label().to_string(),
+            };
+            let way = if by < 0.0 {
+                " (in or to the right)"
+            } else {
+                ""
+            };
+            self.shown = format!("{what}: {}{way}", crate::units::len(by.abs()));
+        }
+        self.delta = DVec3::splat(by);
+        if ev.click || ev.enter || self.ask == Some(true) {
+            self.ask = None;
+            return self.place(doc);
+        }
+        let copy = if self.copy {
+            "Ctrl: move the original instead"
+        } else {
+            "Ctrl: make a copy"
+        };
+        let typed = if self.typed.is_empty() {
+            String::new()
+        } else {
+            format!("  [typed {}]", self.typed)
+        };
+        Outcome::Running(format!(
+            "{}{typed}{skipped}   ·   click to place, type a distance + Enter, Ctrl snaps to 50 mm, {copy}, Esc stops",
+            self.shown
+        ))
     }
 
     fn draw(&self, painter: &egui::Painter, map: &PaneMap) {
@@ -1699,7 +2021,26 @@ impl Modal {
             }
             Stage::Follow => {
                 let to = self.target.and_then(|t| (map.project)(t));
-                if self.mode == Mode::Rotate {
+                if let (Mode::Mirror, Some(b), Some(t)) = (self.mode, self.base, self.target) {
+                    // the mirror line, drawn on well past both points
+                    let d = (t - b).normalize_or_zero();
+                    // as far past both points as still shows on screen
+                    let reach = |from: DVec3, way: DVec3| {
+                        [30.0, 10.0, 3.0, 1.0, 0.0]
+                            .into_iter()
+                            .find_map(|k| (map.project)(from + way * k))
+                    };
+                    if let (Some(p), Some(q)) = (reach(b, -d), reach(t, d)) {
+                        painter.add(egui::Shape::dashed_line(&[p, q], stroke, 10.0, 4.0));
+                    }
+                    if let Some(t) = to {
+                        painter.circle_filled(t, 3.0, accent);
+                    }
+                } else if self.mode == Mode::Offset {
+                    if let Some(t) = to {
+                        painter.circle_stroke(t, 4.0, stroke);
+                    }
+                } else if self.mode == Mode::Rotate {
                     // the reference ray, and the ray to the pointer
                     if let (Some(b), Some(r)) =
                         (base, self.reference.and_then(|r| (map.project)(r)))
@@ -1892,9 +2233,159 @@ mod tests {
             Pos2::ZERO,
             Pivot::Median,
             None,
+            None,
         )
         .unwrap()
         .with_flow(Flow::Tool)
+    }
+
+    #[test]
+    fn mirror_makes_a_mirrored_copy_across_two_clicked_points() {
+        let mut doc = Document::from_model(sample_house());
+        let (id, _) = first_wall(&doc);
+        let ElementKind::Wall(w0) = doc.model().get(id).unwrap().kind.clone() else {
+            unreachable!()
+        };
+        let n = doc.model().len();
+        let mut m = tool(&doc, Mode::Mirror, id);
+        assert_eq!(m.stage(), Stage::Base);
+        // the mirror line: x = 20, up the plan
+        with_map(&[], |map| {
+            m.step(&mut doc, &click(at(20.0, 0.0)), map);
+            assert_eq!(m.stage(), Stage::Follow);
+            m.step(&mut doc, &pointer(at(20.0, 5.0)), map);
+            let out = m.step(&mut doc, &click(at(20.0, 5.0)), map);
+            assert!(matches!(out, Outcome::Done(_)));
+        });
+        // the original stays; the copy (and its doors) is across the line
+        assert_eq!(wall_start(&doc, id), w0.start);
+        assert!(doc.model().len() > n);
+        let copy = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if e.id != id && e.name.ends_with("copy") => Some(w.clone()),
+                _ => None,
+            })
+            .unwrap();
+        let across = |p: DVec2| DVec2::new(40.0 - p.x, p.y);
+        assert!(copy.start.distance(across(w0.start)) < 1e-9);
+        assert!(copy.end.distance(across(w0.end)) < 1e-9);
+        assert_eq!(copy.flip, !w0.flip);
+        // one undo takes it all away
+        doc.undo();
+        assert_eq!(doc.model().len(), n);
+    }
+
+    #[test]
+    fn offset_copies_a_wall_to_the_pointers_side_or_by_a_typed_distance() {
+        let mut doc = Document::from_model(sample_house());
+        let (id, _) = first_wall(&doc);
+        let ElementKind::Wall(w0) = doc.model().get(id).unwrap().kind.clone() else {
+            unreachable!()
+        };
+        let left = w0.direction().perp();
+        let mid = (w0.start + w0.end) / 2.0;
+        let mut m = tool(&doc, Mode::Offset, id);
+        // no base point: it follows the pointer at once
+        assert_eq!(m.stage(), Stage::Follow);
+        let p = mid + left * 2.0;
+        with_map(&[], |map| {
+            m.step(&mut doc, &pointer(at(p.x, p.y)), map);
+            let typed = Events {
+                pointer: Some(at(p.x, p.y)),
+                text: "1.5m".into(),
+                ..Default::default()
+            };
+            m.step(&mut doc, &typed, map);
+            let out = m.step(&mut doc, &click(at(p.x, p.y)), map);
+            assert!(matches!(out, Outcome::Done(_)));
+        });
+        assert_eq!(wall_start(&doc, id), w0.start);
+        let copy = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if e.id != id && e.name.ends_with("copy") => Some(w.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert!(
+            copy.start.distance(w0.start + left * 1.5) < 1e-6,
+            "{:?}",
+            copy.start
+        );
+    }
+
+    #[test]
+    fn on_an_upright_workplane_rotate_turns_a_part_about_its_normal() {
+        use creabim_core::parts::{Form, Part};
+        let model = sample_house();
+        let level = model
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let face = Workplane::facing(DVec3::new(0.0, 0.0, 1.0), -DVec3::Y);
+        let sq = creabim_core::polygon::rectangle(DVec2::ZERO, DVec2::new(2.0, 0.5));
+        let mut p = Part::extrusion(level, sq, 0.0, 0.1);
+        if let Form::Extrusion { plane, .. } = &mut p.form {
+            *plane = Some(face);
+        }
+        let e = Element::new("Panel", ElementKind::Part(p));
+        let pid = e.id;
+        let mut elements: Vec<Element> = model.iter().cloned().collect();
+        elements.push(e);
+        let mut doc = Document::from_model(creabim_core::Model::from_elements(elements).unwrap());
+        let mut m = Modal::start(
+            &doc,
+            Mode::Rotate,
+            &[pid],
+            None,
+            Space::Model,
+            None,
+            Pos2::ZERO,
+            Pivot::Median,
+            None,
+            Some(face),
+        )
+        .unwrap()
+        .with_flow(Flow::Tool);
+        // a map onto the face (x across it, z up it), seen from in front
+        let to_world = |p: Pos2| DVec3::new(p.x as f64 / 10.0, 0.0, -p.y as f64 / 10.0);
+        let to_model = |p: Pos2, _: Option<Axis>, _: DVec3| Some(to_world(p));
+        let project = |p: DVec3| Some(Pos2::new((p.x * 10.0) as f32, (-p.z * 10.0) as f32));
+        let snap = |p: Pos2, _: Option<DVec3>| {
+            let s = Snap {
+                p: to_world(p),
+                kind: SnapKind::Endpoint,
+                host: None,
+            };
+            Some((s.p, s))
+        };
+        let map = PaneMap {
+            to_model: &to_model,
+            project: &project,
+            look: DVec3::Y,
+            snap: &snap,
+            pick_face: None,
+        };
+        let on = |x: f64, z: f64| Pos2::new((x * 10.0) as f32, (-z * 10.0) as f32);
+        // centre, reference along the face, then a quarter turn up it
+        m.step(&mut doc, &click(on(0.0, 1.0)), &map);
+        m.step(&mut doc, &click(on(1.0, 1.0)), &map);
+        m.step(&mut doc, &pointer(on(0.0, 2.0)), &map);
+        let out = m.step(&mut doc, &click(on(0.0, 2.0)), &map);
+        assert!(matches!(out, Outcome::Done(_)));
+        let ElementKind::Part(p) = &doc.model().get(pid).unwrap().kind else {
+            unreachable!()
+        };
+        let Form::Extrusion { plane: Some(q), .. } = &p.form else {
+            unreachable!()
+        };
+        // still on the face, its x axis now pointing up it
+        assert!((q.normal() + DVec3::Y).length() < 1e-9);
+        assert!((q.x - DVec3::Z).length() < 1e-9, "{}", q.x);
     }
 
     #[test]
@@ -2115,6 +2606,7 @@ mod tests {
             None,
             grab,
             Pivot::Median,
+            None,
             None,
         )
         .unwrap();

@@ -13,29 +13,7 @@ pub const MEMBRANE_PARTNER: f64 = 3.5;
 
 /// `pts` moved `by` to their left (right when negative), corners mitred.
 pub fn offset_path(pts: &[DVec2], by: f64) -> Vec<DVec2> {
-    let n = pts.len();
-    let dir = |i: usize| (pts[i + 1] - pts[i]).normalize_or_zero();
-    (0..n)
-        .map(|i| {
-            let before = (i > 0).then(|| dir(i - 1).perp());
-            let after = (i + 1 < n).then(|| dir(i).perp());
-            let m = match (before, after) {
-                (Some(a), Some(b)) => {
-                    let m = (a + b).normalize_or_zero();
-                    let c = m.dot(a);
-                    // a sharp turn is mitred no further than 4 times out
-                    if c.abs() > 0.25 {
-                        m / c
-                    } else {
-                        a
-                    }
-                }
-                (Some(a), None) | (None, Some(a)) => a,
-                (None, None) => DVec2::ZERO,
-            };
-            pts[i] + m * by
-        })
-        .collect()
+    creabim_core::offset::offset_path(pts, by)
 }
 
 /// The linework of a detail component, in its view's drawing coordinates;

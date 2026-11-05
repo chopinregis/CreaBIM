@@ -24,7 +24,12 @@ The screenshots were taken in the running app on a small L corner cut out of the
 | 1 (3.7) | *Draw by this line* on any layer boundary, without the wall moving | **Done** (below). |
 | 1 (3.7) | Check model warnings for gaps and overlaps; IFC parts where layers differ | **Done** (below). |
 | 1 (3.7) | Acceptance: an L corner, core 20 mm past, finishes stopping, in plan, section and 3D, the IFC in a second reader, moved with the edit kept | **Done** (below). |
-| 2–7 | | Not started. |
+| 2 (3.5) | Extrusion and void drawn on any face, keeping their plane; a void on a sloped roof cuts square to it | **Done** (below). |
+| 2 (3.5) | Sweep path drawn on a face, its profile standing out of the face | **Done** (below). |
+| 2 (3.5) | Slab on a level face; wall opening drawn on a wall face | **Done** (below). |
+| 2 (3.5) | Room outline and detail region on a face | Not started: a detail region is drawn in its section or detail view already, and a room follows its walls. |
+| 2 | Align, mirror, offset, move, rotate on the face | **Done** (below): new Mirror and Offset commands, in plan and on a face; Move, Rotate and Align follow a face workplane; push/pull on an extrusion drawn on a face. |
+| 3–7 | | Not started. |
 
 ## 1. Layer editing
 
@@ -124,3 +129,63 @@ Reading the file back into CreaBIM takes each wall's layers from its layer set a
 | The IFC opened in a second reader | 19 (IfcOpenShell) |
 | The wall moved afterwards, the edit kept | 08 |
 
+## 2. Drawing on any face
+
+In the 3D view, the Extrusion, Void, Sweep, Slab and Wall opening tools now draw on the face under the pointer. The first click starts on that face (or on the workplane, if one is set), and later corners stay on the same plane. Snaps only count when they lie on that plane. Before this change, a snap could jump to a corner hidden behind the face.
+
+An extrusion or void drawn this way keeps its plane: `"plane"` in the file, with `base` and `height` measured along the plane's normal. A void cuts square into the face, as deep as *Depth on a face* (default 500 mm). An extrusion stands square out of the face.
+
+![Void on the roof](20-void-on-roof.png)
+
+![Close up](21-void-close.png)
+
+A sweep drawn on a face stores the face's normal with its path (`"face_normal"` in the file). The profile's height runs along that normal, so a band can run up a wall and across it.
+
+![Sweep on a wall face](22-sweep-on-wall.png)
+
+A slab can only go on a level face, and its top sits on that face. A wall opening is drawn on a wall face once the workplane is on that face. It becomes the rectangle around the outline, measured along the wall and up from its base. Without a workplane, a click places an opening as before.
+
+![Opening on a wall face](23-opening-on-wall.png)
+
+Edit mode moves an extrusion's or sweep's corners on its own plane. Move and rotate take the plane with them, and a scale scales the outline on it.
+
+### Mirror, offset, move, rotate and align on the face
+
+Two new commands sit in the Edit menu, the right-click menu and the modify bar: **Mirror** and **Offset**. Both make a copy by default; Ctrl turns the copy off, so the original changes instead.
+
+- **Mirror**: click two points for the mirror line. With a workplane on a face, the line lies on that face and the selection flips across it, so a part on a wall still stands out of the wall afterwards. Shift keeps the line along the plane's axes, Ctrl snaps it to 15° steps, and a typed angle sets it. In plan, it mirrors across a line in the level. Walls keep their outside out, and columns and objects are turned to match.
+- **Offset**: the side of the pointer and its distance from the original set the offset; type a distance and press Enter, and Ctrl snaps to 50 mm. Walls, beams, grids, room separators, strip footings, railings, slabs, roofs, ceilings, shafts and extrusions offset in plan; a sketch, an extrusion drawn on a face and a sweep offset on their own plane. A closed outline grows or shrinks; a line moves sideways.
+- **Move** with a workplane on a face slides along the face. **Rotate** turns about the face's normal, by the pointer or by typed degrees.
+- **Align** with a workplane on a face turns the part on that face, so its edge runs parallel to the reference edge.
+- **Push/pull** now works on an extrusion drawn on a face: its outer face makes it deeper or shallower square to the face, and a side face makes it wider.
+
+![Mirror on a face](24-mirror-on-face.png)
+
+![Mirrored copy](25-mirror-placed.png)
+
+![Rotate on a face](26-rotate-on-face.png)
+
+![Push/pull on a face](27-pushpull-on-face.png)
+
+![Offset preview](28-offset-preview.png)
+
+![Offset placed](29-offset-placed.png)
+
+### Acceptance
+
+| Check | Result |
+| --- | --- |
+| A part drawn on the south wall face, mirrored across a line on the face, copy stands out of the wall | Pass (24, 25; test `a_part_on_a_face_mirrors_square_to_it_and_still_stands_out_of_it`). |
+| A wall mirrored across a slanted line keeps its outside out | Pass (test). |
+| Rotate 30° on the face workplane turns about the face normal | Pass (26; test). |
+| Push/pull of a part on a sloped face gets deeper square to it | Pass (27; test). |
+| Offset a slab by a typed 600 mm in plan | Pass (28, 29; test with a typed "1.5m"). |
+| Align a part on a wall face to a sloped edge | Pass (test `on_a_wall_face_workplane_a_part_turns_on_it_to_a_sloped_edge`). |
+
+**Gaps still open** (in [KNOWN_GAPS](../../KNOWN_GAPS.md)):
+
+- Room outline and detail region on a face.
+- The plan's 2D tools still draw in the level's plane, as before.
+- An object (furniture, fixture) mirrored keeps its own shape: only its position and facing are mirrored. An asymmetric column is not mirrored either, only turned.
+- Mirror and Offset reuse two existing icons for now; new icons wait for the owner's OK.
+- Thin grey slivers can show in the 3D view while a workplane sits on a face.

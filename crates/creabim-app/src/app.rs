@@ -827,7 +827,12 @@ impl CreaBimApp {
                     self.set_workplane(plane, format!("level at {}", crate::units::elevation(p.z)));
                 }
             }
-            Command::Move | Command::Rotate | Command::Scale | Command::Duplicate => {}
+            Command::Move
+            | Command::Rotate
+            | Command::Scale
+            | Command::Mirror
+            | Command::Offset
+            | Command::Duplicate => {}
         }
     }
 
@@ -860,6 +865,12 @@ impl CreaBimApp {
             }
             (Mode::Rotate, true) => {
                 "Rotate: click the centre in a view, then a reference direction, then the new direction.".into()
+            }
+            (Mode::Mirror, _) => {
+                "Mirror: click the first point of the line to mirror across, then the second. In 3D it lies on the workplane (a face, or the level). A mirrored copy is made; Ctrl keeps only the mirrored one.".into()
+            }
+            (Mode::Offset, _) => {
+                "Offset: point at a view and move the pointer to the side to offset to, or type a distance; click to place a copy. Ctrl moves the original instead.".into()
             }
             _ if c == Command::Duplicate => {
                 "Duplicate: point at a view and click a base point; the copy follows to where you click next. Esc leaves it in place.".into()
@@ -1863,6 +1874,16 @@ impl CreaBimApp {
             }
             let eye = cam.eye().as_dvec3();
             let work_z = self.work_level().map_or(0.0, |(_, z)| z);
+            // a sloped or upright workplane (a face): edits slide on it
+            let face_plane = self
+                .workplane
+                .as_ref()
+                .map(|w| w.0)
+                .filter(|w| w.normal().z.abs() < 0.999);
+            let parallel = |at: DVec3| match face_plane {
+                Some(w) => Workplane { origin: at, ..w },
+                None => Workplane::ground(at.z),
+            };
             let to_model = |pos: egui::Pos2, axis: Option<Axis>, pivot: DVec3| {
                 let (o, d) = ray(pos);
                 let plane = if axis == Some(Axis::Z) {
@@ -1870,7 +1891,7 @@ impl CreaBimApp {
                     let f = (pivot - eye).truncate().normalize_or(DVec2::X);
                     Workplane::facing(pivot, -f.extend(0.0))
                 } else {
-                    Workplane::ground(pivot.z)
+                    parallel(pivot)
                 };
                 plane.intersect(o, d)
             };
@@ -1882,7 +1903,7 @@ impl CreaBimApp {
                 // from a base point: on its level; else on what is under
                 // the pointer, or the working level
                 let free = match from {
-                    Some(f) => Workplane::ground(f.z).intersect(o, d),
+                    Some(f) => parallel(f).intersect(o, d),
                     None => pick::pick(scene, o.as_vec3(), d.as_vec3())
                         .map(|h| o + d * h.t as f64)
                         .or_else(|| Workplane::ground(work_z).intersect(o, d)),
@@ -2015,6 +2036,7 @@ impl CreaBimApp {
                         self.plan.cursor,
                         flow,
                         self.plan.move_target,
+                        self.workplane.as_ref().map(|w| w.0),
                     ) {
                         Ok((m, targets)) => {
                             if targets != ids {
@@ -2096,7 +2118,14 @@ impl CreaBimApp {
             }
         }
 
-        if self.plan.tool == Tool::Sketch {
+        // tools that draw on the face under the pointer (a wall opening
+        // only once the workplane is set on a face: else a click places one)
+        let on_face = match self.plan.tool {
+            Tool::Sketch | Tool::Extrusion | Tool::Void | Tool::Sweep | Tool::Slab => true,
+            Tool::Opening => self.workplane.is_some(),
+            _ => false,
+        };
+        if on_face {
             if response.dragged_by(egui::PointerButton::Primary) {
                 let d = response.drag_delta();
                 self.orbit_3d(d);
@@ -2758,6 +2787,8 @@ impl CreaBimApp {
         project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
         ray: &dyn Fn(egui::Pos2) -> (DVec3, DVec3),
     ) {
+        // on a sloped or upright workplane, things turn on it to line up
+        self.plan.align.workplane = self.workplane.as_ref().map(|w| w.0);
         // the tool's hint, for 3D, once the pointer is here
         if response.hovered() && self.plan.align.reference_3d.is_none() {
             self.status = crate::align3d::hint(&self.plan.align);
@@ -3275,13 +3306,28 @@ impl CreaBimApp {
             // only real snaps here: a free point is placed on the plane below
             (s.kind != SnapKind::Grid).then_some((s, align))
         });
+        // only snaps on the plane drawn on: a corner behind the face, seen
+        // through it, would land somewhere else once laid on the plane
+        let near_plane = |q: DVec3| -> bool {
+            let pl = plane.or_else(|| {
+                let (o, d) = ray(hover?);
+                face_plane(&self.scene, o, d)
+            });
+            pl.is_none_or(|pl| (q - pl.origin).dot(pl.normal()).abs() < 0.02)
+        };
+        let tracked = tracked.filter(|(s, _)| near_plane(s.p));
         let snapped = tracked.map(|t| t.0);
         if let Some((s, align)) = tracked {
             if let Some(c) = project(s.p) {
                 snaps::draw_tracked(painter, project, s, align, c, last.and_then(project));
             }
         }
-        // the plane a first click would start on
+        // the plane a first click would start on; off every face, a sketch
+        // starts on the ground and the other tools on the working level
+        let ground = match self.plan.tool {
+            Tool::Sketch => 0.0,
+            _ => self.work_level().map_or(0.0, |(_, z)| z),
+        };
         let (scene, custom) = (&self.scene, self.workplane.as_ref().map(|w| w.0));
         let candidate = |p: egui::Pos2| -> Option<Workplane> {
             let (o, d) = ray(p);
@@ -3294,10 +3340,10 @@ impl CreaBimApp {
                 });
             }
             face_plane(scene, o, d).or_else(|| {
-                let at = Workplane::ground(0.0).intersect(o, d)?;
+                let at = Workplane::ground(ground).intersect(o, d)?;
                 Some(Workplane {
                     origin: at,
-                    ..Workplane::ground(0.0)
+                    ..Workplane::ground(ground)
                 })
             })
         };
@@ -3335,6 +3381,70 @@ impl CreaBimApp {
             let Some(d) = app.plan.sketch.take() else {
                 return;
             };
+            // a level slab, or a bare hole in the wall the outline is on
+            if matches!(app.plan.tool, Tool::Slab | Tool::Opening) {
+                if !closed && app.plan.tool == Tool::Slab {
+                    app.plan.sketch = Some(d);
+                    app.status = "Close the outline on its first corner to make it.".into();
+                    return;
+                }
+                let r = if app.plan.tool == Tool::Slab {
+                    d.finish_slab(&mut app.doc, &app.plan)
+                } else {
+                    d.finish_opening(&mut app.doc)
+                };
+                match r {
+                    Ok(Some(id)) => {
+                        app.selection.only(id);
+                        app.face = None;
+                        app.status = if app.plan.tool == Tool::Slab {
+                            "Slab added with its top on the face. Ctrl+Z to undo."
+                        } else {
+                            "Opening cut in the wall, the rectangle around what you drew. Set its size and sill in Properties. Ctrl+Z to undo."
+                        }
+                        .into();
+                    }
+                    Ok(None) => app.status = "Draw at least two corners.".into(),
+                    Err(m) => app.status = m,
+                }
+                return;
+            }
+            // a sweep along a path drawn on a face
+            if let Some((profile, name)) = crate::partstool::face_sweep(&app.plan) {
+                match d.finish_sweep(&mut app.doc, profile, name, closed) {
+                    Ok(Some(id)) => {
+                        app.selection.only(id);
+                        app.face = None;
+                        app.status = format!("{name} added along the path on the face: its profile stands out of the face. Ctrl+Z to undo.");
+                    }
+                    Ok(None) => app.status = "A path needs two points.".into(),
+                    Err(e) => app.status = format!("Couldn't do that: {e}"),
+                }
+                return;
+            }
+            // an extrusion or a void on the face the outline was drawn on
+            if let Some((base, height, void)) = crate::partstool::on_face(&app.plan) {
+                if !closed {
+                    app.plan.sketch = Some(d);
+                    app.status = "Close the outline on its first corner to make it.".into();
+                    return;
+                }
+                match d.finish_part(&mut app.doc, base, height, void) {
+                    Ok(Some(id)) => {
+                        app.selection.only(id);
+                        app.face = None;
+                        app.status = if void {
+                            "Void added on the face: it cuts square into it. Set its depth in Properties. Ctrl+Z to undo."
+                        } else {
+                            "Extrusion added on the face, standing square out of it. Set its depth in Properties. Ctrl+Z to undo."
+                        }
+                        .into();
+                    }
+                    Ok(None) => app.status = "An outline needs three corners.".into(),
+                    Err(e) => app.status = format!("Couldn't do that: {e}"),
+                }
+                return;
+            }
             match d.finish(&mut app.doc, closed) {
                 Ok(Some(id)) => {
                     app.selection.only(id);

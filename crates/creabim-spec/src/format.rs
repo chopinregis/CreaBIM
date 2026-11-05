@@ -620,6 +620,9 @@ spec_struct! {
         base: f64 = 0.0,
         /// An extrusion's height.
         height: Option<f64>,
+        /// An extrusion drawn on a face: its outline lies on this plane, and
+        /// `base` and `height` run along the plane's normal (`x` × `y`).
+        plane: Option<Plane>,
         /// A sweep's section: `x` across the path (positive to its left),
         /// `y` up from it.
         profile: Vec<DVec2>,
@@ -627,6 +630,9 @@ spec_struct! {
         path: Vec<DVec3>,
         /// The path runs from its last point back to its first.
         closed: bool = false,
+        /// A path drawn on a face: the face's outward normal, which the
+        /// profile's `y` runs along instead of up.
+        face_normal: Option<DVec3>,
         /// A sweep along a wall's id, at its top or base: it follows the
         /// wall (a coping, a plinth).
         wall: Option<String>,
@@ -639,6 +645,16 @@ spec_struct! {
         material: Option<String>,
         /// The IFC class it exports as.
         ifc_class: Option<String>,
+    }
+}
+
+spec_struct! {
+    /// A plane anywhere in the model: its origin (height above the level)
+    /// and two square unit axes along it.
+    pub struct Plane {
+        origin: DVec3,
+        x: DVec3,
+        y: DVec3,
     }
 }
 

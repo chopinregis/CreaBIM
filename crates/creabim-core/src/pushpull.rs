@@ -36,6 +36,7 @@ pub fn can_push(kind: &ElementKind) -> bool {
             | ElementKind::Railing(_)
             | ElementKind::Opening(_)
             | ElementKind::Object(_)
+            | ElementKind::Part(_)
     )
 }
 
@@ -98,6 +99,9 @@ fn facing(n: DVec3) -> Facing {
 ///   its sides move it;
 /// - a door's or window's jambs widen it, its head and sill move;
 /// - a mass's face moves its corners;
+/// - an extrusion's or void's outer face changes its depth (on a face it
+///   was drawn on, square to that face), the face it stands on moves its
+///   base, and its sides move that edge of its outline;
 /// - an object (furniture, a fixture) moves whole, its shape being its
 ///   type's: a side face slides it across the level, its top or bottom
 ///   raises or lowers it.
@@ -111,7 +115,10 @@ pub fn push_face(
     let mut out = elements.to_vec();
     let n = face.normal.normalize_or_zero();
     let look = facing(n);
-    let slopes = matches!(first.kind, ElementKind::Roof(_) | ElementKind::FreeMesh(_));
+    let slopes = matches!(
+        first.kind,
+        ElementKind::Roof(_) | ElementKind::FreeMesh(_) | ElementKind::Part(_)
+    );
     if look == Facing::Sloped && !slopes {
         return None;
     }
@@ -355,6 +362,42 @@ pub fn push_face(
             Facing::Side(flat) => o.position += flat * s,
             Facing::Sloped => return None,
         },
+        ElementKind::Part(p) => {
+            let lift = DVec3::Z * crate::members::elevation(model, p.level);
+            let crate::parts::Form::Extrusion {
+                outline,
+                base,
+                height,
+                plane,
+                ..
+            } = &mut p.form
+            else {
+                return None;
+            };
+            // on its own plane (a face it was drawn on) or on the level
+            let pl = plane.unwrap_or(crate::Workplane::ground(0.0));
+            let along = n.dot(pl.normal());
+            if along > 0.99 {
+                // its outer face: deeper or shallower
+                *height += s;
+            } else if along < -0.99 {
+                // the face it stands on: further in or out, the outer stays
+                *base -= s;
+                *height += s;
+            } else if along.abs() < 0.1 {
+                let want = DVec2::new(n.dot(pl.x), n.dot(pl.y)).normalize_or_zero();
+                let at = pl.to_plane(face.point - lift);
+                let i = roof_edge(outline, want, at)?;
+                let mut by = vec![0.0; outline.len()];
+                by[i] = s;
+                *outline = crate::members::offset_edges(outline, &by);
+            } else {
+                return None;
+            }
+            if *height < 0.005 {
+                return None;
+            }
+        }
         _ => return None,
     }
     check(out, first)
@@ -421,6 +464,57 @@ fn slab_edge(boundary: &[DVec2], bulges: &[f64], face: &FaceRef) -> Option<usize
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_part_on_a_sloped_face_gets_deeper_and_wider_square_to_it() {
+        use crate::parts::{on_plane, Form, Part};
+        let lv = Element::new(
+            "L1",
+            ElementKind::Level(crate::Level {
+                elevation: 3.0,
+                height: 3.0,
+            }),
+        );
+        let face = crate::Workplane::facing(DVec3::new(0.0, 0.0, 2.0), DVec3::new(0.0, -0.6, 0.8));
+        let sq = crate::polygon::rectangle(DVec2::ZERO, DVec2::new(1.0, 1.0));
+        let mut p = Part::extrusion(lv.id, sq, -0.3, 0.31).as_void();
+        if let Form::Extrusion { plane, .. } = &mut p.form {
+            *plane = Some(face);
+        }
+        let e = Element::new("Skylight hole", ElementKind::Part(p));
+        let m = Model::from_elements([lv, e.clone()]).unwrap();
+        let lift = DVec3::Z * 3.0;
+        let n = face.normal();
+        // the face it stands on, deeper in by 0.2
+        let under = FaceRef {
+            point: on_plane(&face, DVec2::splat(0.5), -0.3) + lift,
+            normal: -n,
+            mesh_face: None,
+        };
+        let out = push_face(&m, std::slice::from_ref(&e), &under, 0.2).unwrap();
+        let ElementKind::Part(q) = &out[0].kind else {
+            panic!()
+        };
+        let Form::Extrusion { base, height, .. } = &q.form else {
+            panic!()
+        };
+        assert!((base + 0.5).abs() < 1e-9 && (height - 0.51).abs() < 1e-9);
+        // its side facing along the face's x, out by 0.25
+        let side = FaceRef {
+            point: on_plane(&face, DVec2::new(1.0, 0.5), 0.0) + lift,
+            normal: face.x,
+            mesh_face: None,
+        };
+        let out = push_face(&m, &[e], &side, 0.25).unwrap();
+        let ElementKind::Part(q) = &out[0].kind else {
+            panic!()
+        };
+        let Form::Extrusion { outline, .. } = &q.form else {
+            panic!()
+        };
+        let wide = outline.iter().map(|p| p.x).fold(f64::MIN, f64::max);
+        assert!((wide - 1.25).abs() < 1e-9);
+    }
     use crate::{sample::sample_house, Opening};
 
     fn first_of(model: &Model, pick: impl Fn(&ElementKind) -> bool) -> ElementId {

@@ -299,6 +299,21 @@ pub fn reach(shape: &Shape, face: &FaceRef) -> Result<f64, String> {
     }
 }
 
+/// The reference's direction along the plane facing `wn`, when it lies
+/// along it: an edge on it, or a face standing square to it.
+fn along_plane(shape: &Shape, wn: DVec3) -> Option<DVec3> {
+    match *shape {
+        Shape::Line { a, b } => {
+            let d = (b - a).try_normalize()?;
+            (d.dot(wn).abs() < 0.1).then(|| (d - wn * d.dot(wn)).normalize())
+        }
+        Shape::Plane { normal, .. } if normal.dot(wn).abs() < 0.1 => {
+            wn.cross(normal).try_normalize()
+        }
+        _ => None,
+    }
+}
+
 /// The reference's direction across the level, when it is upright: what
 /// Align turns an upright face parallel to.
 fn plan_direction(shape: &Shape) -> Option<DVec2> {
@@ -324,6 +339,7 @@ fn align_tx(
     shape: &Shape,
     pick: &FacePick,
     centre: bool,
+    plane: Option<creabim_core::Workplane>,
 ) -> Result<(Transaction, String), String> {
     let e = model.get(pick.id).ok_or("Click a face of what to align.")?;
     // a face of a hosted door or window is its wall's: the wall moves
@@ -334,7 +350,32 @@ fn align_tx(
     let fail = || format!("{} can't be aligned.", e.name);
     let (p, mut n) = (pick.face.point, pick.face.normal);
     let mut now = e.clone();
-    if let (true, Some(r)) = (n.z.abs() < 0.1, plan_direction(shape)) {
+    // on a sloped or upright workplane, a face square to it turns on it
+    // until parallel to a reference that lies along it (a part drawn on a
+    // wall lines up with a sloped edge); what can't tilt turns as below
+    let on_plane = plane
+        .filter(|w| w.normal().z.abs() < 0.999)
+        .and_then(|w| Some((w, along_plane(shape, w.normal())?)))
+        .filter(|(w, _)| n.dot(w.normal()).abs() < 0.1);
+    let turned = on_plane.and_then(|(w, r)| {
+        let wn = w.normal();
+        let edge = wn.cross(n).normalize_or_zero();
+        let flat = |v: DVec3| DVec2::new(v.dot(w.x), v.dot(w.y));
+        let deg = turn_to(flat(edge), flat(r));
+        if deg.abs() < 1e-9 {
+            return Some((now.clone(), n));
+        }
+        let t = Xform::Tilt {
+            center: p,
+            axis: wn,
+            degrees: deg,
+        };
+        Some((transformed(model, &now, &t)?, t.direction(n)))
+    });
+    if let Some((e2, n2)) = turned {
+        now = e2;
+        n = n2;
+    } else if let (true, Some(r)) = (n.z.abs() < 0.1, plan_direction(shape)) {
         let deg = turn_to(n.truncate().perp(), r);
         if deg.abs() > 1e-9 {
             now = transformed(
@@ -490,6 +531,7 @@ pub fn apply(
     pick: &FacePick,
     centre: bool,
     at: DVec3,
+    plane: Option<creabim_core::Workplane>,
 ) -> Result<(Transaction, String), String> {
     let same_plane = match reference.shape {
         Shape::Plane { point, normal } => {
@@ -510,7 +552,7 @@ pub fn apply(
     };
     match mode {
         AlignMode::Stretch => stretch(),
-        AlignMode::Align => align_tx(model, &reference.shape, pick, centre),
+        AlignMode::Align => align_tx(model, &reference.shape, pick, centre, plane),
         // what has no ends to run stretches the face clicked instead
         AlignMode::Extend => extend_tx(model, &reference.shape, pick, at).unwrap_or_else(stretch),
     }
@@ -540,7 +582,15 @@ pub fn click(
         .face
         .as_ref()
         .map_or(pick.face.point, |f| f.face.point);
-    match apply(doc.model(), state.mode, &reference, &pick, centre, at) {
+    match apply(
+        doc.model(),
+        state.mode,
+        &reference,
+        &pick,
+        centre,
+        at,
+        state.workplane,
+    ) {
         Ok((tx, msg)) => {
             let target = match doc.model().get(pick.id).map(|e| &e.kind) {
                 Some(ElementKind::Opening(o)) if state.mode == AlignMode::Align && !centre => {
@@ -758,6 +808,66 @@ mod tests {
             what: "test".into(),
             tris: vec![],
         }
+    }
+
+    #[test]
+    fn on_a_wall_face_workplane_a_part_turns_on_it_to_a_sloped_edge() {
+        use creabim_core::parts::{on_plane, Form, Part};
+        use creabim_core::Workplane;
+        let model = sample_house();
+        let level = model
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let lift = DVec3::Z * creabim_core::members::elevation(&model, level);
+        // a 1 m x 0.5 m panel on a face looking along -y
+        let face = Workplane::facing(DVec3::new(0.0, 0.0, 1.0), -DVec3::Y);
+        let sq = creabim_core::polygon::rectangle(DVec2::ZERO, DVec2::new(1.0, 0.5));
+        let mut p = Part::extrusion(level, sq, 0.0, 0.1);
+        if let Form::Extrusion { plane, .. } = &mut p.form {
+            *plane = Some(face);
+        }
+        let e = Element::new("Panel", ElementKind::Part(p));
+        let id = e.id;
+        let mut elements: Vec<Element> = model.iter().cloned().collect();
+        elements.push(e);
+        let model = Model::from_elements(elements).unwrap();
+        // the reference: an edge rising at 45° along the face, through x = 3
+        let r = Shape::Line {
+            a: DVec3::new(3.0, 0.0, 1.0) + lift,
+            b: DVec3::new(4.0, 0.0, 2.0) + lift,
+        };
+        // the panel's right end, a face square to the workplane facing +x
+        let at = on_plane(&face, DVec2::new(1.0, 0.25), 0.05) + lift;
+        let pick = FacePick {
+            id,
+            face: FaceRef {
+                point: at,
+                normal: face.x,
+                mesh_face: None,
+            },
+            tris: vec![],
+        };
+        let (tx, _) = align_tx(&model, &r, &pick, false, Some(face)).unwrap();
+        let mut doc = Document::from_model(model);
+        doc.commit(tx).unwrap();
+        let ElementKind::Part(p) = &doc.model().get(id).unwrap().kind else {
+            panic!()
+        };
+        let Form::Extrusion { plane: Some(q), .. } = &p.form else {
+            panic!()
+        };
+        // still on the face, turned 45° on it (its end now square to the edge)
+        assert!((q.normal() + DVec3::Y).length() < 1e-9);
+        let d = DVec3::new(1.0, 0.0, 1.0).normalize();
+        assert!(q.y.dot(d).abs() > 1.0 - 1e-9, "{}", q.y);
+        // and flush: seen square to the face, the clicked point now lies
+        // on the edge's line
+        let end = on_plane(q, DVec2::new(1.0, 0.25), 0.05) + lift;
+        let mut gap = end - (DVec3::new(3.0, 0.0, 1.0) + lift);
+        gap.y = 0.0;
+        assert!(gap.cross(d).length() < 1e-6, "{gap}");
     }
 
     fn run(doc: &mut Document, mode: AlignMode, r: Reference, pick: FacePick) -> String {
@@ -1176,12 +1286,20 @@ mod tests {
             },
             tris: vec![],
         };
-        let msg = apply(doc.model(), AlignMode::Align, &r, &pick, true, across.point)
-            .map(|(tx, m)| {
-                doc.commit(tx).expect("commits");
-                m
-            })
-            .unwrap_or_else(|e| e);
+        let msg = apply(
+            doc.model(),
+            AlignMode::Align,
+            &r,
+            &pick,
+            true,
+            across.point,
+            None,
+        )
+        .map(|(tx, m)| {
+            doc.commit(tx).expect("commits");
+            m
+        })
+        .unwrap_or_else(|e| e);
         assert!(msg.starts_with("Aligned"), "{msg}");
         let ElementKind::Opening(now) = &doc.model().get(id).unwrap().kind else {
             unreachable!()

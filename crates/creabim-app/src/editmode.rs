@@ -107,6 +107,30 @@ pub fn rings(model: &Model, e: &Element) -> Vec<RingInfo> {
                 holes: h,
                 base,
                 height,
+                plane: Some(pl),
+            } => {
+                // on its face, at its far side from the plane
+                let lift = DVec3::Z * elevation(model, Some(p.level));
+                let on = |ring, pts: &[DVec2]| RingInfo {
+                    ring,
+                    corners: pts
+                        .iter()
+                        .map(|q| creabim_core::parts::on_plane(pl, *q, base + height) + lift)
+                        .collect(),
+                    closed: true,
+                    normal: pl.normal(),
+                    reshapes: true,
+                };
+                let mut out = vec![on(Ring::Outline, outline)];
+                out.extend(h.iter().enumerate().map(|(k, q)| on(Ring::Hole(k), q)));
+                out
+            }
+            Form::Extrusion {
+                outline,
+                holes: h,
+                base,
+                height,
+                plane: None,
             } => {
                 let z = elevation(model, Some(p.level)) + base + height;
                 let mut out = vec![flat(Ring::Outline, outline, z)];
@@ -114,7 +138,12 @@ pub fn rings(model: &Model, e: &Element) -> Vec<RingInfo> {
                 out
             }
             Form::Sweep {
-                path: Path::Points { points, closed },
+                path:
+                    Path::Points {
+                        points,
+                        closed,
+                        normal,
+                    },
                 ..
             } => {
                 let z = elevation(model, Some(p.level));
@@ -122,7 +151,7 @@ pub fn rings(model: &Model, e: &Element) -> Vec<RingInfo> {
                     ring: Ring::Outline,
                     corners: points.iter().map(|q| *q + DVec3::Z * z).collect(),
                     closed: *closed,
-                    normal: DVec3::Z,
+                    normal: normal.unwrap_or(DVec3::Z),
                     reshapes: true,
                 }]
             }
@@ -324,6 +353,14 @@ fn set_corner(e: &mut Element, ring: Ring, i: usize, p: DVec2) -> Result<(), Str
         *c = p.extend(c.z);
         return Ok(());
     }
+    if let ElementKind::Part(part) = &e.kind {
+        if let Some(pl) = sweep_plane(part) {
+            // a path on a face stays on that face
+            let path = sweep_points(&mut e.kind).ok_or("that path is gone")?;
+            *path.get_mut(i).ok_or("that corner is gone")? = pl.to_model(p);
+            return Ok(());
+        }
+    }
     if let Some(path) = sweep_points(&mut e.kind) {
         let c = path.get_mut(i).ok_or("that corner is gone")?;
         *c = p.extend(c.z);
@@ -334,10 +371,39 @@ fn set_corner(e: &mut Element, ring: Ring, i: usize, p: DVec2) -> Result<(), Str
     Ok(())
 }
 
+/// The face a sweep's path was drawn on, through its first point (above
+/// its level).
+fn sweep_plane(part: &creabim_core::parts::Part) -> Option<creabim_core::Workplane> {
+    match &part.form {
+        Form::Sweep {
+            path:
+                Path::Points {
+                    points,
+                    normal: Some(n),
+                    ..
+                },
+            ..
+        } => Some(creabim_core::Workplane::facing(*points.first()?, *n)),
+        _ => None,
+    }
+}
+
 /// A model point as a corner of `e`'s outlines: in plan, or in a sketch's plane.
 fn local(model: &Model, e: &Element, p: DVec3) -> DVec2 {
+    if let ElementKind::Part(part) = &e.kind {
+        if let Some(pl) = sweep_plane(part) {
+            return pl.to_plane(p - DVec3::Z * elevation(model, Some(part.level)));
+        }
+    }
     match &e.kind {
         ElementKind::Sketch(sk) => sk.plane.to_plane(p - DVec3::Z * elevation(model, sk.level)),
+        ElementKind::Part(creabim_core::parts::Part {
+            form: Form::Extrusion {
+                plane: Some(pl), ..
+            },
+            level,
+            ..
+        }) => pl.to_plane(p - DVec3::Z * elevation(model, Some(*level))),
         ElementKind::Detail(d) => {
             creabim_core::DrawingFrame::of(model, d.view).map_or(p.truncate(), |f| f.to_drawing(p))
         }
@@ -357,6 +423,10 @@ fn round(v: f64, step: f64) -> f64 {
 /// outline its arcs split, a roof keeps its sloping edge, a sketch its
 /// segment kinds, a railing the heights either side.
 fn insert(e: &mut Element, ring: Ring, i: usize, p: DVec2) {
+    let face = match &e.kind {
+        ElementKind::Part(part) => sweep_plane(part),
+        _ => None,
+    };
     match (&mut e.kind, ring) {
         (ElementKind::Slab(s), Ring::Outline) => {
             s.split_edge(i);
@@ -400,7 +470,8 @@ fn insert(e: &mut Element, ring: Ring, i: usize, p: DVec2) {
                 (Some(a), Some(b)) => (a.z + b.z) / 2.0,
                 _ => 0.0,
             };
-            path.insert((i + 1).min(n), p.extend(z));
+            let at = face.map_or(p.extend(z), |pl| pl.to_model(p));
+            path.insert((i + 1).min(n), at);
         }
         (kind, ring) => {
             if let Some(pts) = ring_mut(kind, ring) {
@@ -638,7 +709,7 @@ fn shape_problem(e: &Element, disc: bool) -> Option<String> {
         ElementKind::Part(p) => match &p.form {
             Form::Extrusion { outline, holes, .. } => (outline.clone(), true, holes.clone()),
             Form::Sweep {
-                path: Path::Points { points, closed },
+                path: Path::Points { points, closed, .. },
                 ..
             } => (
                 points.iter().map(|q| q.truncate()).collect(),

@@ -812,9 +812,11 @@ fn part(e: &Element, id: &str, p: &parts::Part, ids: &Ids) -> f::Part {
         holes: vec![],
         base: 0.0,
         height: None,
+        plane: None,
         profile: vec![],
         path: vec![],
         closed: false,
+        face_normal: None,
         wall: None,
         edge: f::WallEdge::Top,
         offset: 0.0,
@@ -829,7 +831,13 @@ fn part(e: &Element, id: &str, p: &parts::Part, ids: &Ids) -> f::Part {
             holes,
             base,
             height,
+            plane,
         } => {
+            out.plane = plane.map(|pl| f::Plane {
+                origin: pl.origin,
+                x: pl.x,
+                y: pl.y,
+            });
             out.outline = outline.clone();
             out.holes = holes.clone();
             out.base = *base;
@@ -838,9 +846,14 @@ fn part(e: &Element, id: &str, p: &parts::Part, ids: &Ids) -> f::Part {
         parts::Form::Sweep { profile, path } => {
             out.profile = profile.clone();
             match path {
-                parts::Path::Points { points, closed } => {
+                parts::Path::Points {
+                    points,
+                    closed,
+                    normal,
+                } => {
                     out.path = points.clone();
                     out.closed = *closed;
+                    out.face_normal = *normal;
                 }
                 parts::Path::Wall {
                     wall,
