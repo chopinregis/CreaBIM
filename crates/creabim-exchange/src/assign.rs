@@ -141,6 +141,7 @@ pub fn fit(
                 disallow_join: [false; 2],
                 attach_top: vec![],
                 curtain: None,
+                layer_ends: vec![],
             }))
         }
         Assign::Slab => {
@@ -164,6 +165,7 @@ pub fn fit(
                 boundary.reverse();
             }
             Ok(ElementKind::Slab(Slab {
+                layer_edges: vec![],
                 level,
                 boundary,
                 thickness: hi.z - lo.z,

@@ -58,6 +58,22 @@ fn layer_color(f: creabim_core::LayerFunction, plain: [f32; 3]) -> [f32; 3] {
     }
 }
 
+/// The solid of each layer of a layered element, in model coordinates,
+/// air gaps left out: what an export writes as the element's parts.
+/// Empty for an element that isn't layered.
+pub fn layer_parts(
+    model: &Model,
+    e: &Element,
+    joins: &std::collections::HashMap<ElementId, creabim_core::WallEnds>,
+) -> Vec<(LayerPart, TriMesh)> {
+    layer_items(model, e, joins, [0.8; 3])
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|i| !i.is_lining())
+        .filter_map(|i| Some((i.layer?, i.mesh)))
+        .collect()
+}
+
 /// The solid of each layer of a layered element, with its look; air gaps
 /// are left empty. `None` for an element that isn't layered.
 fn layer_items(
@@ -96,6 +112,7 @@ fn layer_items(
                         top.as_ref(),
                         (b.s0, b.s1),
                         b.core,
+                        b.ext,
                     );
                     (b, m)
                 })
@@ -104,11 +121,11 @@ fn layer_items(
         ElementKind::Slab(s) => {
             let level = model.level(s.level)?;
             let top = s.top(level.elevation);
-            let outline = s.outline();
             let holes = creabim_core::slab::holes_of(model, e);
             assembly::depth_bands(a, s.thickness)
                 .into_iter()
                 .map(|b| {
+                    let outline = s.layer_outline(b.index);
                     let m = slab_mesh_with_holes(&outline, &holes, top - b.s0, b.s1 - b.s0);
                     (b, m)
                 })
@@ -123,7 +140,13 @@ fn layer_items(
             assembly::depth_bands(a, r.thickness)
                 .into_iter()
                 .map(|b| {
-                    let m = crate::members::roof_layer_mesh(r, base, tv - b.s1 * k, tv - b.s0 * k);
+                    let m = crate::members::roof_layer_mesh(
+                        r,
+                        base,
+                        tv - b.s1 * k,
+                        tv - b.s0 * k,
+                        Some(b.index),
+                    );
                     (b, crate::members::cut_holes(m, &holes))
                 })
                 .collect()

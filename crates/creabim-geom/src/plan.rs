@@ -1053,8 +1053,9 @@ pub fn plan_view_with(
                 if let Some((_, asm)) = creabim_core::assembly_of(model, e) {
                     // each layer between its own ends: a core runs on at a T
                     for band in creabim_core::assembly::wall_bands(asm, w) {
-                        let at =
-                            |u: f64, s: f64| w.start + d * ends.place(w, u, s, band.core) + n * s;
+                        let at = |u: f64, s: f64| {
+                            w.start + d * ends.place_layer(w, u, s, band.core, band.ext) + n * s
+                        };
                         for &(a, b) in &pieces {
                             layers.push(CutPiece {
                                 id: e.id,

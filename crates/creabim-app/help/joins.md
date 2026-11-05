@@ -25,6 +25,21 @@ Walls that meet at their ends join as a corner, a T or a cross:
 
 Walls join at a node only when they are drawn to the same point. Ends that stop short of each other are left unjoined.
 
+## Corner presets
+
+Where a wall's end meets one other wall at a corner, pick how the two join: right-click the wall near that end, *Corner join*, or in *Properties › Junctions* the row for that end.
+
+| Preset | What it does |
+|---|---|
+| Auto | As the walls join by themselves: every layer meets its partner on the mitre |
+| Cores lap, finishes stop | The finishes meet on the mitre; the stronger wall's core (the thicker, or the one drawn first) runs on to the far face of the other's core, and the other's core stops square against it |
+| This wall runs through | Every layer of this wall runs to the other wall's far face; every layer of the other stops at this one |
+| The other wall runs through | The other way round |
+| Mitre every layer | Every layer on the mitre, as Auto does at a corner |
+| Not joined | Both ends stay square, overlapping at the corner |
+
+The preset is kept with the two walls, so it stays when either moves. Layer ends moved by hand (see [Edit mode](edit-mode)) are offsets from where the preset puts them.
+
 ## Setting a junction by hand
 
 Select the two elements (Shift+click the second), then right-click:

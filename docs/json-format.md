@@ -345,6 +345,7 @@ The line a wall is drawn along and kept on when it gets thicker. The exterior is
 - `"interior-face"`
 - `"core-exterior"`
 - `"core-interior"`
+- `"layer-boundary"`: One of the boundaries between layers, named by `boundary`.
 
 ### Frame
 
@@ -393,6 +394,7 @@ Which fields a category uses: wall: `thickness` (or `assembly`), `material`, `lo
 | `assembly` | string |  | An assembly's id. |
 | `material` | string |  | A material's id. |
 | `location` | [Location](#location) |  | A wall type's location line. |
+| `boundary` | integer |  | With location `layer-boundary`: which boundary, counted from the exterior face (0) to the interior face (the layer count). |
 | `height` | number |  | A wall type's height for new walls; a door or window's height. |
 | `width` | number |  |  |
 | `sill` | number |  |  |
@@ -466,6 +468,7 @@ A straight wall along its centreline on a level.
 | `material` | string |  |  |
 | `assembly` | string |  |  |
 | `location` | [Location](#location) |  |  |
+| `boundary` | integer |  | With location `layer-boundary`: which boundary, counted from the exterior face (0) to the interior face (the layer count). |
 | `flip` | boolean | default `false` | The exterior face on the left instead of the right. |
 | `attach_top` | array of string |  | Roofs and slabs (ids) the top follows the underside of. |
 

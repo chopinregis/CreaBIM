@@ -837,9 +837,16 @@ pub fn hint(model: &Model, e: &Element) -> String {
     let outlines = !rings(model, e).is_empty();
     let name = &e.name;
     if outlines {
+        let layers = if crate::handles::has_layers(model, e.id) {
+            " Tab: its layers' edges."
+        } else {
+            ""
+        };
         format!(
-            "Editing {name}: select a corner and press Delete (Shift+click or drag a box for more); drag a corner to move it, an edge's grip to push it, a ◇ to pull out a corner, inside a hole to move it. Right-click for more. Esc finishes."
+            "Editing {name}: select a corner and press Delete (Shift+click or drag a box for more); drag a corner to move it, an edge's grip to push it, a ◇ to pull out a corner, inside a hole to move it. Right-click for more.{layers} Esc finishes."
         )
+    } else if crate::handles::has_layers(model, e.id) {
+        format!("Editing {name}: drag its grips in any view. Tab: its layers' ends. Esc or Enter finishes.")
     } else {
         format!("Editing {name}: drag its grips in any view. Esc or Enter finishes.")
     }
@@ -849,7 +856,7 @@ pub fn hint(model: &Model, e: &Element) -> String {
 pub fn panel_hint(kind: &ElementKind) -> &'static str {
     match kind {
         ElementKind::Slab(_) | ElementKind::Roof(_) => {
-            "Click a corner (Shift+click or a box for more) and press Delete to remove it. Drag corners and edges of the outline and of each hole, a ◇ to add a corner, inside a hole to move it. Right-click a corner, an edge or a hole for more."
+            "Click a corner (Shift+click or a box for more) and press Delete to remove it. Drag corners and edges of the outline and of each hole, a ◇ to add a corner, inside a hole to move it. Right-click a corner, an edge or a hole for more. Layered: Tab shows a grip on each edge of each layer, to push that layer out past the edge or pull it in."
         }
         ElementKind::Shaft(_) => {
             "Click a corner and press Delete to remove it. Drag its corners and edges in any plan, section or 3D view, a ◇ to add a corner. The grips in its middle move its base and top."
@@ -862,6 +869,9 @@ pub fn panel_hint(kind: &ElementKind) -> &'static str {
         }
         ElementKind::Sketch(_) | ElementKind::Railing(_) => {
             "Click a corner and press Delete to remove it; drag corners to move them, a ◇ to add one. Right-click for more."
+        }
+        ElementKind::Wall(w) if w.assembly.is_some() => {
+            "Drag its grips in any view. Tab: Layers, a grip at each end of each layer; drag one to run that layer on past the join or hold it back (Tab while dragging types how far). A filled grip was moved; right-click it to reset it or every layer."
         }
         _ => "Drag its grips in any view.",
     }

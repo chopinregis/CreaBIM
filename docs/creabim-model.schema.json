@@ -254,6 +254,11 @@
           "$ref": "#/$defs/Location",
           "description": "A wall type's location line."
         },
+        "boundary": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "With location `layer-boundary`: which boundary, counted from the exterior face (0) to the interior face (the layer count)."
+        },
         "height": {
           "type": "number",
           "description": "A wall type's height for new walls; a door or window's height."
@@ -285,7 +290,8 @@
         "exterior-face",
         "interior-face",
         "core-exterior",
-        "core-interior"
+        "core-interior",
+        "layer-boundary"
       ]
     },
     "Frame": {
@@ -502,6 +508,11 @@
         "material": { "type": "string" },
         "assembly": { "type": "string" },
         "location": { "$ref": "#/$defs/Location" },
+        "boundary": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "With location `layer-boundary`: which boundary, counted from the exterior face (0) to the interior face (the layer count)."
+        },
         "flip": {
           "type": "boolean",
           "description": "The exterior face on the left instead of the right.",

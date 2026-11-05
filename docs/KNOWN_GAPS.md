@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **57** | **7** | **191** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 6 | 8 | 6 | 20 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 7 | 8 | 5 | 20 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -54,7 +54,7 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 3.3 | Views have no linked "Open in 3D" crop box (callouts, sections, elevations, plans). (A callout's box resizes and moves with grips.) | 2 | M | MU01-07 |
 | 3.5 | Only Sketch draws on the active workplane; void, extrusion, sweep, slab, opening and detail region draw in plan XY. | 4 | L | MU01-12 |
 | 3.6 | No edge offset in 3D (offset edge, offset all, insert point). | 4 | M–L | B01-7 |
-| 3.7 | Layers can't be edited by hand: no layer-end handles in plan or section, no corner join presets, no "Draw by this line", no IFC parts where layers differ. | 4 | L | MU08-01 |
+| 3.7 | Layer editing is in (Phase 4 item 1). Left over: a layer run on by hand into the wall it meets overlaps that wall's layers in plan (Check layer joins lists it); a grip drag's preview leaves out the joins around it; thin layers' grips crowd together in plan at small scales; corner presets don't cover tees or three-way joints; a slab's arc edge keeps its bulge ratio when its layer moves; adding or removing an outline corner shifts the layer edits on the edges after it; the open JSON format doesn't carry layer ends, layer edges or corner presets yet (the project file does); an IFC read back takes a wall's layers from its layer set, so its parts, and the edits they show, are not read; Check layer joins covers wall ends only, not slab and roof edges. | 4 | S | MU08-01 |
 | 5.1 | Schedules don't export to Excel. | 4 | M | B01 |
 | 5.2 | No quantities per assembly layer, rates per material or Take-off pane. | 4 | L | B01 |
 | 5.3 | No image or PDF references with calibration. | 4 | L | B01 |
@@ -346,6 +346,16 @@ Gaps reported by work that is still a pull request go here until it merges, then
 ---
 
 ## Recently fixed
+
+**In Brief 02, Phase 4, item 1, layer editing (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase4](evolution/brief02-phase4)**):**
+
+- In Edit mode, `Tab` on a layered wall shows Layers: a grip at each end of each layer, in plans, sections, callouts and 3D. Drag one, or type how far, to run the layer on past its join or hold it back; the moved end's grip is filled, and right-click resets it or every layer. Each edit is kept as an offset from the join, through moves, stretches and a change of type (layers the new type lacks drop theirs, and the status bar says so) (3.7, in part).
+- Layered slabs and roofs have the same Layers: a grip on each edge of each layer, to push that layer out past the edge or pull it in (a slate past the fascia), kept as a distance square to the edge, with reset (3.7, in part).
+- Corners where two walls meet have join presets, in the right-click menu (*Corner join*) and *Properties › Junctions*: Auto, Cores lap and finishes stop, This wall runs through, The other wall runs through, Mitre every layer, Not joined (3.7, in part).
+- A wall can be drawn by any line between its layers: *Draw by its exterior face* or *interior face* on a layer grip's right-click menu in Layers, or the boundaries listed under *Properties › Location line*. The wall does not move; the file keeps it as `"location": "layer-boundary"` with `"boundary"` (3.7, in part).
+- *Create › Check layer joins* (and `creabim check`) lists and selects the walls with a layer held back from a join, leaving a gap, or run on into the wall it meets, overlapping it; ends that meet nothing are left alone (3.7).
+- IFC export writes each layer of a wall, slab or roof whose layers were moved by hand, or whose cores lap at a corner, as an `IfcBuildingElementPart` with its layer's material, aggregated by the element, which keeps its own body and layer set. Checked with `tools/validate_ifc.py` (IfcOpenShell); reading such a file back doesn't add the parts as extra elements (3.7).
+- The typed length in a grip drag showed a box where its caret should be. It shows `|`.
 
 **In Brief 02, Phase 3, the view cube (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase3](evolution/brief02-phase3)**):**
 

@@ -876,6 +876,64 @@ pub struct Wall {
     /// instead of a solid wall. Its thickness is the mullions' depth.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curtain: Option<crate::curtain::CurtainGrid>,
+    /// Layer ends moved by hand (Layers, in Edit mode): each runs its
+    /// layer on past, or stops it short of, where the joins put that end.
+    /// Kept when the wall moves, stretches, turns or changes type; a layer
+    /// the type no longer has drops its edit.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_ends: Vec<LayerEnd>,
+}
+
+/// One layer's ends moved by hand: how far layer `layer` (counted from the
+/// exterior) runs past where the joins put its start and its end, in
+/// metres along the wall. Negative stops it short.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LayerEnd {
+    pub layer: usize,
+    #[serde(default)]
+    pub start: f64,
+    #[serde(default)]
+    pub end: f64,
+}
+
+impl LayerEnd {
+    pub fn is_zero(&self) -> bool {
+        self.start.abs() < 1e-9 && self.end.abs() < 1e-9
+    }
+}
+
+/// One layer's edge moved by hand on a slab or a roof: how far edge
+/// `edge` of layer `layer` (counted from the top) is pushed out past the
+/// element's own edge, in metres in plan, square to it. Negative pulls it
+/// in.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LayerEdge {
+    pub layer: usize,
+    pub edge: usize,
+    pub by: f64,
+}
+
+/// How far each of `n` edges of layer `layer` is pushed out by `edits`.
+pub fn layer_edge_offsets(edits: &[LayerEdge], layer: usize, n: usize) -> Vec<f64> {
+    let mut out = vec![0.0; n];
+    for e in edits.iter().filter(|e| e.layer == layer && e.edge < n) {
+        out[e.edge] = e.by;
+    }
+    out
+}
+
+/// Set how far edge `edge` of layer `layer` is pushed out; an edit back
+/// at zero is dropped.
+pub fn set_layer_edge(edits: &mut Vec<LayerEdge>, layer: usize, edge: usize, by: f64) {
+    match edits
+        .iter_mut()
+        .find(|e| e.layer == layer && e.edge == edge)
+    {
+        Some(e) => e.by = by,
+        None => edits.push(LayerEdge { layer, edge, by }),
+    }
+    edits.retain(|e| e.by.abs() > 1e-9);
+    edits.sort_by_key(|e| (e.layer, e.edge));
 }
 
 fn is_false(v: &bool) -> bool {
@@ -897,6 +955,10 @@ pub enum LocationLine {
     InteriorFace,
     CoreExterior,
     CoreInterior,
+    /// The line between layer `k - 1` and layer `k`, counted from the
+    /// exterior: 0 is the exterior face, the layer count the interior
+    /// face (3.7, *Draw by this line*).
+    Boundary(u8),
 }
 
 impl LocationLine {
@@ -921,6 +983,7 @@ impl LocationLine {
             LocationLine::InteriorFace => "Interior face",
             LocationLine::CoreExterior => "Core exterior face",
             LocationLine::CoreInterior => "Core interior face",
+            LocationLine::Boundary(_) => "A layer boundary",
         }
     }
 }
@@ -961,7 +1024,38 @@ impl Wall {
             disallow_join: [false; 2],
             attach_top: vec![],
             curtain: None,
+            layer_ends: vec![],
         }
+    }
+
+    /// How far layer `layer` runs past its start and its end, as edited
+    /// by hand: `[start, end]`, zero when untouched.
+    pub fn layer_ext(&self, layer: usize) -> [f64; 2] {
+        self.layer_ends
+            .iter()
+            .find(|l| l.layer == layer)
+            .map_or([0.0; 2], |l| [l.start, l.end])
+    }
+
+    /// Set how far layer `layer` runs past one end (`end` false for the
+    /// start); an edit back at zero is dropped.
+    pub fn set_layer_ext(&mut self, layer: usize, end: bool, by: f64) {
+        match self.layer_ends.iter_mut().find(|l| l.layer == layer) {
+            Some(l) => {
+                if end {
+                    l.end = by
+                } else {
+                    l.start = by
+                }
+            }
+            None => self.layer_ends.push(LayerEnd {
+                layer,
+                start: if end { 0.0 } else { by },
+                end: if end { by } else { 0.0 },
+            }),
+        }
+        self.layer_ends.retain(|l| !l.is_zero());
+        self.layer_ends.sort_by_key(|l| l.layer);
     }
 
     pub fn length(&self) -> f64 {
@@ -1000,6 +1094,9 @@ pub struct Slab {
     /// inside the outline. Shafts cut more; see [`crate::slab::holes_of`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub holes: Vec<Vec<DVec2>>,
+    /// Layer edges moved by hand (see [`LayerEdge`]); none for most.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_edges: Vec<LayerEdge>,
 }
 
 impl Slab {
@@ -1014,7 +1111,27 @@ impl Slab {
             bulges: vec![],
             assembly: None,
             holes: vec![],
+            layer_edges: vec![],
         }
+    }
+
+    /// The corners of layer `layer`'s outline: the slab's, with any of its
+    /// edges moved by hand pushed out or pulled in.
+    pub fn layer_boundary(&self, layer: usize) -> Vec<DVec2> {
+        let by = layer_edge_offsets(&self.layer_edges, layer, self.boundary.len());
+        crate::members::offset_edges(&self.boundary, &by)
+    }
+
+    /// Layer `layer`'s outline, arcs traced, as [`Slab::outline`].
+    pub fn layer_outline(&self, layer: usize) -> Vec<DVec2> {
+        if !self.layer_edges.iter().any(|e| e.layer == layer) {
+            return self.outline();
+        }
+        Slab {
+            boundary: self.layer_boundary(layer),
+            ..self.clone()
+        }
+        .outline()
     }
 
     /// The bulge of edge `i`; 0 for a straight one.
@@ -1814,6 +1931,50 @@ pub const FREE_MESH_CLASSES: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_slab_layer_edge_moves_that_layer_only() {
+        let mut s = Slab::new(
+            ElementId::new(),
+            vec![
+                DVec2::ZERO,
+                DVec2::new(5.0, 0.0),
+                DVec2::new(5.0, 4.0),
+                DVec2::new(0.0, 4.0),
+            ],
+            0.3,
+        );
+        set_layer_edge(&mut s.layer_edges, 1, 2, 0.05);
+        assert_eq!(s.layer_outline(0), s.outline());
+        let out = s.layer_outline(1);
+        assert!(out.iter().any(|p| (p.y - 4.05).abs() < 1e-9), "{out:?}");
+        assert_eq!(
+            layer_edge_offsets(&s.layer_edges, 1, 4),
+            [0.0, 0.0, 0.05, 0.0]
+        );
+        set_layer_edge(&mut s.layer_edges, 1, 2, 0.0);
+        assert!(s.layer_edges.is_empty());
+    }
+
+    #[test]
+    fn layer_ends_are_kept_sorted_dropped_at_zero_and_left_out_of_files_untouched() {
+        let mut w = Wall::new(ElementId::new(), DVec2::ZERO, DVec2::X * 4.0, 0.3, 3.0);
+        w.set_layer_ext(2, true, 0.02);
+        w.set_layer_ext(0, false, -0.05);
+        assert_eq!(w.layer_ext(2), [0.0, 0.02]);
+        assert_eq!(w.layer_ext(0), [-0.05, 0.0]);
+        assert_eq!(w.layer_ext(1), [0.0; 2]);
+        assert_eq!(
+            w.layer_ends.iter().map(|l| l.layer).collect::<Vec<_>>(),
+            [0, 2]
+        );
+        let back: Wall = serde_json::from_str(&serde_json::to_string(&w).unwrap()).unwrap();
+        assert_eq!(back.layer_ends, w.layer_ends);
+        w.set_layer_ext(2, true, 0.0);
+        w.set_layer_ext(0, false, 0.0);
+        assert!(w.layer_ends.is_empty());
+        assert!(!serde_json::to_string(&w).unwrap().contains("layer_ends"));
+    }
 
     #[test]
     fn dimension_points_from_older_files_still_read() {

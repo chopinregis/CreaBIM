@@ -95,3 +95,81 @@ fn layered_elements_round_trip_through_ifcx() {
         .expect("the roof");
     assert!(assembly_of(&back, roof).is_some());
 }
+
+/// The layered house with one wall's core run 20 mm on at its end and its
+/// interior finish held back 50 mm at its start.
+fn with_a_layer_edit() -> (Model, usize) {
+    let m = layered_house();
+    let wall = m
+        .iter()
+        .find(|e| e.name == "GF Wall 2")
+        .expect("a ground floor wall")
+        .clone();
+    let (_, a) = assembly_of(&m, &wall).unwrap();
+    let n = a
+        .layers
+        .iter()
+        .filter(|l| l.function != LayerFunction::AirGap)
+        .count();
+    let core = a.core().0;
+    let last = a.layers.len() - 1;
+    let mut after: Element = wall.clone();
+    if let ElementKind::Wall(w) = &mut after.kind {
+        w.set_layer_ext(core, true, 0.02);
+        w.set_layer_ext(last, false, -0.05);
+    }
+    let mut doc = creabim_core::Document::from_model(m);
+    doc.commit(Transaction::new("Layer ends").replace(wall, after))
+        .unwrap();
+    (doc.model().clone(), n)
+}
+
+#[test]
+fn a_wall_with_layers_moved_by_hand_goes_out_with_its_layers_as_parts() {
+    let (model, n) = with_a_layer_edit();
+    let ifc = export_ifc4(&model, &ExportOptions::default());
+    // only the edited wall has parts, one per solid layer
+    assert_eq!(
+        ifc.matches("IFCBUILDINGELEMENTPART(").count(),
+        n,
+        "{n} layers"
+    );
+    let part = ifc
+        .lines()
+        .find(|l| l.contains("IFCBUILDINGELEMENTPART("))
+        .unwrap();
+    assert!(part.contains("'GF Wall 2 "), "{part}");
+    // the wall is made of them, and keeps its own body and layer set
+    let wall = ifc
+        .lines()
+        .find(|l| l.contains("IFCWALL(") && l.contains("'GF Wall 2'"))
+        .unwrap();
+    let wall_ref = wall.split('=').next().unwrap();
+    assert!(ifc
+        .lines()
+        .any(|l| l.contains("IFCRELAGGREGATES(") && l.contains(&format!(",{wall_ref},("))));
+    assert_eq!(ifc.matches("IFCMATERIALLAYERSETUSAGE(").count(), 11);
+    // read back, the parts are not extra elements: the wall has its layers
+    let plain = import_ifc(&export_ifc4(&layered_house(), &ExportOptions::default()))
+        .unwrap()
+        .model;
+    let back = import_ifc(&ifc).unwrap().model;
+    let meshes = |m: &Model| count_free_meshes(m);
+    assert_eq!(meshes(&back), meshes(&plain));
+    assert_eq!(layered(&back), layered(&layered_house()));
+    if let Some(dir) = std::env::var_os("CREABIM_IFC_OUT") {
+        std::fs::write(std::path::Path::new(&dir).join("layer-parts.ifc"), &ifc).unwrap();
+    }
+}
+
+fn count_free_meshes(m: &Model) -> usize {
+    m.iter()
+        .filter(|e| matches!(e.kind, ElementKind::FreeMesh(_)))
+        .count()
+}
+
+#[test]
+fn an_untouched_layered_house_has_no_parts() {
+    let ifc = export_ifc4(&layered_house(), &ExportOptions::default());
+    assert_eq!(ifc.matches("IFCBUILDINGELEMENTPART(").count(), 0);
+}

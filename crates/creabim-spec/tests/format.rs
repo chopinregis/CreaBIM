@@ -287,3 +287,21 @@ fn fields_a_kind_does_not_use_are_errors() {
         ["$.views[0].level: `level` is not used by a section view"]
     );
 }
+
+#[test]
+fn a_wall_drawn_by_a_layer_boundary_keeps_it() {
+    let m = build(&SMALL.replace(
+        "\"thickness\": 0.2 }",
+        "\"thickness\": 0.2, \"location\": \"layer-boundary\", \"boundary\": 2 }",
+    ));
+    let w = m
+        .iter()
+        .find_map(|e| match &e.kind {
+            ElementKind::Wall(w) => Some(w.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(w.location, creabim_core::LocationLine::Boundary(2));
+    let text = round_trips(&m);
+    assert!(text.contains("\"boundary\": 2"), "{text}");
+}

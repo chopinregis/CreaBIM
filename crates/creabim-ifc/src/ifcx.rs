@@ -1118,6 +1118,7 @@ impl Builder {
                             disallow_join: [false; 2],
                             attach_top: vec![],
                             curtain: None,
+                            layer_ends: vec![],
                         }),
                         of_type: None,
                     });
@@ -1135,6 +1136,7 @@ impl Builder {
                             id,
                             name,
                             kind: ElementKind::Slab(Slab {
+                                layer_edges: vec![],
                                 level,
                                 boundary: p.footprint,
                                 thickness: p.z1 - p.z0,

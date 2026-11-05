@@ -292,6 +292,9 @@ pub struct Band {
     pub core: bool,
     /// Its join priority ([`Layer::join_priority`]).
     pub priority: u8,
+    /// How far it runs past the wall's start and end, edited by hand
+    /// (see [`crate::Wall::layer_ends`]); zero for slabs and roofs.
+    pub ext: [f64; 2],
 }
 
 /// A wall's layers across it, exterior first. The exterior is on the
@@ -317,6 +320,7 @@ pub fn wall_bands(a: &Assembly, wall: &Wall) -> Vec<Band> {
                 function: l.function,
                 core: a.is_core(i),
                 priority: l.join_priority(),
+                ext: wall.layer_ext(i),
             }
         })
         .collect()
@@ -345,6 +349,7 @@ pub fn depth_bands(a: &Assembly, thickness: f64) -> Vec<Band> {
             function: l.function,
             core: a.is_core(i),
             priority: l.join_priority(),
+            ext: [0.0; 2],
         })
         .collect()
 }
@@ -402,8 +407,17 @@ pub fn set_assembly(model: &Model, e: &mut Element, assembly: Option<ElementId>)
         ElementKind::Roof(r) => r.assembly = assembly,
         _ => return false,
     }
-    if let Some((_, a)) = assembly_of(model, e) {
+    let layers = assembly_of(model, e).map(|(_, a)| {
         set_thickness(e, a.total());
+        a.layers.len()
+    });
+    // a layer the new type doesn't have drops its edited ends and edges
+    let keep = layers.unwrap_or(0);
+    match &mut e.kind {
+        ElementKind::Wall(w) => w.layer_ends.retain(|l| l.layer < keep),
+        ElementKind::Slab(s) => s.layer_edges.retain(|l| l.layer < keep),
+        ElementKind::Roof(r) => r.layer_edges.retain(|l| l.layer < keep),
+        _ => {}
     }
     true
 }
@@ -757,6 +771,7 @@ mod tests {
             disallow_join: [false; 2],
             attach_top: vec![],
             curtain: None,
+            layer_ends: vec![],
         };
         let b = wall_bands(a, &w);
         assert!((b[0].s0 + 0.1825).abs() < 1e-9 && (b[0].s1 + 0.0805).abs() < 1e-9);

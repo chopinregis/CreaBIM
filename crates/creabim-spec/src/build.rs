@@ -581,7 +581,7 @@ fn assembly(c: &mut Ctx, a: &f::Assembly, at: &Path) {
     );
 }
 
-fn location(l: f::Location) -> core::LocationLine {
+fn location(l: f::Location, boundary: Option<u32>) -> core::LocationLine {
     match l {
         f::Location::Centre => core::LocationLine::Centre,
         f::Location::CoreCentre => core::LocationLine::CoreCentre,
@@ -589,6 +589,9 @@ fn location(l: f::Location) -> core::LocationLine {
         f::Location::InteriorFace => core::LocationLine::InteriorFace,
         f::Location::CoreExterior => core::LocationLine::CoreExterior,
         f::Location::CoreInterior => core::LocationLine::CoreInterior,
+        f::Location::LayerBoundary => {
+            core::LocationLine::Boundary(boundary.unwrap_or(0).min(255) as u8)
+        }
     }
 }
 
@@ -674,7 +677,10 @@ fn element_type(c: &mut Ctx, t: &f::Type, at: &Path) {
             w.thickness = thick(c, &mut need);
             w.assembly = assembly;
             w.material = material;
-            w.location = t.location.map(location).unwrap_or_default();
+            w.location = t
+                .location
+                .map(|l| location(l, t.boundary))
+                .unwrap_or_default();
             w.height = t.height.map(|h| c.l(h));
             w.curtain = None;
             w.screen = t.screen.as_ref().map(|s| {
@@ -825,7 +831,7 @@ fn wall(c: &mut Ctx, w: &f::Wall, at: &Path) {
         wall.material = material;
     }
     if let Some(l) = w.location {
-        wall.location = location(l);
+        wall.location = location(l, w.boundary);
     }
     wall.flip = w.flip;
     wall.attach_top = attach;
@@ -1044,6 +1050,7 @@ fn roof(c: &mut Ctx, r: &f::Roof, at: &Path) {
         }
     };
     let roof = core::Roof {
+        layer_edges: vec![],
         level,
         boundary,
         shape,

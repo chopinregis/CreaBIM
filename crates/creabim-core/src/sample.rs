@@ -72,6 +72,7 @@ pub fn sample_house() -> Model {
         tx = tx.insert(Element::new(
             format!("{lname} Slab"),
             ElementKind::Slab(Slab {
+                layer_edges: vec![],
                 level,
                 boundary: corners.to_vec(),
                 thickness: 0.25,
@@ -100,6 +101,7 @@ pub fn sample_house() -> Model {
                     disallow_join: [false; 2],
                     attach_top: vec![],
                     curtain: None,
+                    layer_ends: vec![],
                 }),
             );
             let id = wall.id;
@@ -178,6 +180,7 @@ pub fn sample_house() -> Model {
             disallow_join: [false; 2],
             attach_top: vec![],
             curtain: None,
+            layer_ends: vec![],
         }),
     );
     let pid = part.id;

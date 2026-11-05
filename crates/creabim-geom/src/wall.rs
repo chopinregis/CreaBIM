@@ -45,12 +45,14 @@ pub fn wall_mesh(
     top: Option<&TopProfile>,
 ) -> TriMesh {
     let t = wall.thickness / 2.0;
-    wall_layer_mesh(wall, base_z, openings, ends, top, (-t, t), false)
+    wall_layer_mesh(wall, base_z, openings, ends, top, (-t, t), false, [0.0; 2])
 }
 
 /// One layer of a layered wall as a closed solid: the part of the wall
 /// between `band.0` and `band.1` across it (left positive), its ends on
-/// the wall's end lines, or past them for a `core` layer that runs on.
+/// the wall's end lines, or past them for a `core` layer that runs on,
+/// and `ext` past them (start, end) where its ends were moved by hand.
+#[allow(clippy::too_many_arguments)]
 pub fn wall_layer_mesh(
     wall: &Wall,
     base_z: f64,
@@ -59,6 +61,7 @@ pub fn wall_layer_mesh(
     top: Option<&TopProfile>,
     band: (f64, f64),
     core: bool,
+    ext: [f64; 2],
 ) -> TriMesh {
     let len = wall.length();
     let h = wall.height;
@@ -106,7 +109,7 @@ pub fn wall_layer_mesh(
     let floor = vs[vs.len().saturating_sub(2)].max(0.0) + 0.01;
     let p = |u: f64, v: f64, w: f64| -> DVec3 {
         // the end grid lines and gap sides follow the joins
-        let u = ends.place(wall, u, w, core);
+        let u = ends.place_layer(wall, u, w, core, ext);
         let xy = wall.start + d * u + n2 * w;
         let z = match top {
             Some(t) if v >= h - 1e-9 => t.z_at(xy).map_or(z0 + h, |z| z.max(z0 + floor.min(h))),
@@ -257,6 +260,41 @@ mod tests {
         ];
         let m = wall_mesh(&wall(), 0.0, &[], &WallEnds::default(), Some(&away));
         assert!((m.volume() - 5.0 * 3.0 * 0.2).abs() < 1e-5);
+    }
+
+    #[test]
+    fn a_layer_run_on_by_hand_grows_by_its_run() {
+        // the middle 100 mm of the wall, 20 mm past its end
+        let band = (-0.05, 0.05);
+        let m = wall_layer_mesh(
+            &wall(),
+            0.0,
+            &[],
+            &WallEnds::default(),
+            None,
+            band,
+            true,
+            [0.0, 0.02],
+        );
+        assert!(
+            (m.volume() - 5.02 * 3.0 * 0.1).abs() < 1e-6,
+            "{}",
+            m.volume()
+        );
+        let (_, hi) = m.bounds().unwrap();
+        assert!((hi.y - 6.02).abs() < 1e-9);
+        // held back 50 mm at its start
+        let m = wall_layer_mesh(
+            &wall(),
+            0.0,
+            &[],
+            &WallEnds::default(),
+            None,
+            band,
+            false,
+            [-0.05, 0.0],
+        );
+        assert!((m.volume() - 4.95 * 3.0 * 0.1).abs() < 1e-6);
     }
 
     #[test]

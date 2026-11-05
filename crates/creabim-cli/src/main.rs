@@ -67,7 +67,9 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
                                        print or save a schedule as CSV
   creabim stats <model>                count elements by IFC class
   creabim check <model>                list objects standing in doorways or in
-                                       a door's swing; fails if there are any
+                                       a door's swing, and wall layers moved
+                                       by hand into a gap or an overlap at a
+                                       join; fails if there are any
   creabim rooms-from-notes <model> <out>
                                        turn room labels written as notes
                                        (a name over an area) into rooms
@@ -364,12 +366,21 @@ fn main() -> ExitCode {
             for line in creabim_core::checks::report(&m, &clashes) {
                 println!("{line}");
             }
-            match clashes.len() {
-                0 => {
-                    println!("no objects in doorways or door swings");
+            let layers = creabim_core::checks::layer_issues(&m);
+            for line in creabim_core::checks::layer_report(&m, &layers) {
+                println!("{line}");
+            }
+            match (clashes.len(), layers.len()) {
+                (0, 0) => {
+                    println!("no objects in doorways or door swings, no layer gaps or overlaps at joins");
                     Ok(())
                 }
-                n => Err(format!("{n} objects in the way of doors or windows")),
+                (n, 0) => Err(format!("{n} objects in the way of doors or windows")),
+                (0, 1) => Err("1 layer end leaves a gap or overlap at a join".into()),
+                (0, k) => Err(format!("{k} layer ends leave a gap or overlap at a join")),
+                (n, k) => Err(format!(
+                    "{n} objects in the way of doors or windows, {k} layer ends leave a gap or overlap at a join"
+                )),
             }
         }),
         ["rooms-from-notes", input, out] => creabim_store::load(input)

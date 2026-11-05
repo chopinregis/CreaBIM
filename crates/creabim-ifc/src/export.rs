@@ -488,6 +488,10 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                 of_type(e, r);
                 wall_refs.insert(e.id, (r, pl));
                 contained.entry(Some(wall.level)).or_default().push(r);
+                if cut.is_none() {
+                    let z = elevation(Some(wall.level));
+                    write_layer_parts(&mut c, model, e, r, spl, z, &joins, &mut by_material);
+                }
                 if let Some((a, _)) = asm {
                     // layers run across the wall from its exterior face,
                     // measured from the axis
@@ -536,6 +540,10 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                 let r = product(&mut c, "IFCSLAB", e, pl, shape, ",$,.FLOOR.");
                 of_type(e, r);
                 contained.entry(Some(slab.level)).or_default().push(r);
+                if cut.is_none() {
+                    let z = elevation(Some(slab.level));
+                    write_layer_parts(&mut c, model, e, r, spl, z, &joins, &mut by_material);
+                }
                 // holes, and shafts passing through, as openings voiding it
                 for (i, h) in creabim_core::slab::holes_of(model, e).iter().enumerate() {
                     let z = slab.top_offset - slab.thickness - 0.05;
@@ -652,6 +660,9 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                     // same column, beam, roof, stair or railing
                     let props = [("Definition", Prop::Text(json))];
                     c.pset_on(&[r], crate::import::MEMBER_PSET, &props);
+                }
+                if cut.is_none() {
+                    write_layer_parts(&mut c, model, e, r, spl, z0, &joins, &mut by_material);
                 }
                 if let ElementKind::Roof(roof) = k {
                     // the mesh has its holes already; say so for other tools
@@ -1269,6 +1280,87 @@ fn object_type(
         );
     }
     out
+}
+
+/// Whether element `e`'s layers are not all as its layer set puts them:
+/// a layer end or edge moved by hand, or cores lapped at a corner.
+fn layers_differ(e: &Element, joins: &HashMap<ElementId, creabim_core::WallEnds>) -> bool {
+    match &e.kind {
+        ElementKind::Wall(w) => {
+            !w.layer_ends.is_empty()
+                || joins
+                    .get(&e.id)
+                    .is_some_and(|j| j.core_line.iter().any(Option::is_some))
+        }
+        ElementKind::Slab(s) => !s.layer_edges.is_empty(),
+        ElementKind::Roof(r) => !r.layer_edges.is_empty(),
+        _ => false,
+    }
+}
+
+/// Element `host`'s layers as `IfcBuildingElementPart`s that make it up,
+/// each its own solid with its layer's material, where the layers are not
+/// all as the layer set puts them; the host keeps its body and layer set
+/// for tools that read only those. Placed in the storey at `spl`, `z0` up.
+#[allow(clippy::too_many_arguments)]
+fn write_layer_parts(
+    c: &mut Ctx,
+    model: &Model,
+    e: &Element,
+    host: Ref,
+    spl: Ref,
+    z0: f64,
+    joins: &HashMap<ElementId, creabim_core::WallEnds>,
+    by_material: &mut HashMap<ElementId, Vec<Ref>>,
+) {
+    if !layers_differ(e, joins) {
+        return;
+    }
+    let names: Vec<String> = creabim_core::assembly_of(model, e)
+        .map(|(_, a)| {
+            a.layers
+                .iter()
+                .enumerate()
+                .map(|(i, l)| {
+                    l.material
+                        .and_then(|m| model.get(m))
+                        .map_or_else(|| format!("layer {}", i + 1), |m| m.name.clone())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut parts = vec![];
+    for (layer, mesh) in creabim_geom::scene::layer_parts(model, e, joins) {
+        if mesh.indices.is_empty() {
+            continue;
+        }
+        let pl = c.local_placement(Some(spl), DVec3::ZERO, None);
+        let fs = tessellate(c, &mesh, |p| p - DVec3::Z * z0);
+        let shape = c.shape("Tessellation", &[fs]);
+        let g = c.guid();
+        let name = names
+            .get(layer.index)
+            .cloned()
+            .unwrap_or_else(|| format!("layer {}", layer.index + 1));
+        let p = c.w.add(
+            "IFCBUILDINGELEMENTPART",
+            format!(
+                "{g},$,{},$,$,{pl},{shape},$,.NOTDEFINED.",
+                string(&format!("{} {name}", e.name))
+            ),
+        );
+        if let Some(m) = layer.material {
+            by_material.entry(m).or_default().push(p);
+        }
+        parts.push(p);
+    }
+    if !parts.is_empty() {
+        let g = c.guid();
+        c.w.add(
+            "IFCRELAGGREGATES",
+            format!("{g},$,$,$,{host},{}", list(&parts)),
+        );
+    }
 }
 
 /// How a layered element takes its assembly's layer set.

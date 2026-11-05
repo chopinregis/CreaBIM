@@ -322,6 +322,10 @@ pub struct Roof {
     /// polygon in plan.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub holes: Vec<Vec<DVec2>>,
+    /// Layer edges moved by hand at the eaves and verges (see
+    /// [`crate::LayerEdge`]); edge `i` is the eave past boundary edge `i`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_edges: Vec<crate::LayerEdge>,
 }
 
 /// One flat piece of a roof's underside: its outline in plan and the plane
@@ -355,6 +359,7 @@ impl Roof {
             })
             .unwrap_or(0);
         Self {
+            layer_edges: vec![],
             level,
             boundary,
             shape,
@@ -413,8 +418,26 @@ impl Roof {
     }
 
     /// The underside as flat pieces, together covering the eave outline.
-    pub fn faces(&self) -> Vec<RoofFace> {
+    /// Layer `layer`'s eaves: the roof's, with any of its edges moved by
+    /// hand pushed out or pulled in.
+    pub fn layer_eaves(&self, layer: usize) -> Vec<DVec2> {
         let eaves = self.eave_outline();
+        let by = crate::layer_edge_offsets(&self.layer_edges, layer, eaves.len());
+        offset_edges(&eaves, &by)
+    }
+
+    /// The pieces of layer `layer`'s underside: the roof's planes, over
+    /// its own eaves.
+    pub fn layer_faces(&self, layer: usize) -> Vec<RoofFace> {
+        self.faces_over(self.layer_eaves(layer))
+    }
+
+    pub fn faces(&self) -> Vec<RoofFace> {
+        self.faces_over(self.eave_outline())
+    }
+
+    /// The pieces of the underside over outline `eaves`.
+    fn faces_over(&self, eaves: Vec<DVec2>) -> Vec<RoofFace> {
         let n = self.boundary.len();
         if n < 3 {
             return vec![];
@@ -1499,6 +1522,35 @@ pub fn is_convex(poly: &[DVec2]) -> bool {
 }
 
 /// A counter-clockwise polygon grown outwards by `by` (mitred corners).
+/// `poly` with edge `i` (corner `i` to `i + 1`) moved out square to
+/// itself by `by[i]` (negative: in); each corner where its two edges'
+/// new lines cross, or slid along when they are parallel.
+pub fn offset_edges(poly: &[DVec2], by: &[f64]) -> Vec<DVec2> {
+    let n = poly.len();
+    if n < 3 || by.iter().all(|b| b.abs() < 1e-12) {
+        return poly.to_vec();
+    }
+    let ccw = crate::polygon::signed_area2(poly) > 0.0;
+    let dir = |i: usize| (poly[(i + 1) % n] - poly[i]).normalize_or_zero();
+    let out_n = |i: usize| if ccw { -dir(i).perp() } else { dir(i).perp() };
+    let off = |i: usize| by.get(i).copied().unwrap_or(0.0);
+    (0..n)
+        .map(|i| {
+            let prev = (i + n - 1) % n;
+            // the two moved lines: p0 + t d0 and p1 + s d1
+            let (d0, d1) = (dir(prev), dir(i));
+            let p0 = poly[i] + out_n(prev) * off(prev);
+            let p1 = poly[i] + out_n(i) * off(i);
+            let den = d0.perp_dot(d1);
+            if den.abs() < 1e-9 {
+                p1
+            } else {
+                p0 + d0 * ((p1 - p0).perp_dot(d1) / den)
+            }
+        })
+        .collect()
+}
+
 pub fn offset_polygon(poly: &[DVec2], by: f64) -> Vec<DVec2> {
     let n = poly.len();
     if n < 3 || by.abs() < 1e-12 {
@@ -1587,6 +1639,60 @@ mod tests {
             DVec2::new(w, d),
             DVec2::new(0.0, d),
         ]
+    }
+
+    #[test]
+    fn offset_edges_moves_only_the_edges_asked() {
+        let sq = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(4.0, 0.0),
+            DVec2::new(4.0, 3.0),
+            DVec2::new(0.0, 3.0),
+        ];
+        // the bottom edge out 0.1, the right one in 0.2
+        let p = offset_edges(&sq, &[0.1, -0.2, 0.0, 0.0]);
+        assert!(p[0].distance(DVec2::new(0.0, -0.1)) < 1e-9, "{p:?}");
+        assert!(p[1].distance(DVec2::new(3.8, -0.1)) < 1e-9, "{p:?}");
+        assert!(p[2].distance(DVec2::new(3.8, 3.0)) < 1e-9, "{p:?}");
+        assert_eq!(p[3], sq[3]);
+        // clockwise, out is still out
+        let cw: Vec<DVec2> = sq.iter().rev().copied().collect();
+        let q = offset_edges(&cw, &[0.0, 0.0, 0.0, 0.1]);
+        assert!(crate::polygon::signed_area2(&q).abs() > crate::polygon::signed_area2(&cw).abs());
+    }
+
+    #[test]
+    fn a_roof_layer_pushed_out_at_one_eave_reaches_further() {
+        let mut r = Roof {
+            layer_edges: vec![],
+            level: ElementId::new(),
+            boundary: vec![
+                DVec2::new(0.0, 0.0),
+                DVec2::new(6.0, 0.0),
+                DVec2::new(6.0, 4.0),
+                DVec2::new(0.0, 4.0),
+            ],
+            shape: RoofShape::Hip,
+            pitch: 30.0,
+            overhang: 0.4,
+            thickness: 0.3,
+            base_offset: 0.0,
+            edge: 0,
+            material: None,
+            assembly: None,
+            holes: vec![],
+        };
+        crate::set_layer_edge(&mut r.layer_edges, 0, 0, 0.1);
+        let ys = |faces: &[RoofFace]| {
+            faces
+                .iter()
+                .flat_map(|f| f.outline.iter().map(|p| p.y))
+                .fold(f64::INFINITY, f64::min)
+        };
+        assert!((ys(&r.faces()) + 0.4).abs() < 1e-9);
+        assert!((ys(&r.layer_faces(0)) + 0.5).abs() < 1e-9);
+        // other layers keep the roof's eaves
+        assert!((ys(&r.layer_faces(1)) + 0.4).abs() < 1e-9);
     }
 
     #[test]

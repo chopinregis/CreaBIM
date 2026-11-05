@@ -641,6 +641,11 @@ impl PlanState {
     }
 
     /// Is a tool waiting for more clicks?
+    /// Is a grip being dragged in a plan or section?
+    pub fn gripping(&self) -> bool {
+        self.grip.is_some()
+    }
+
     pub fn busy(&self) -> bool {
         self.pending.is_some()
             || !self.dim.is_empty()
@@ -774,7 +779,10 @@ pub fn show(
         let reading = (matches!(tool, Tool::Select | Tool::Tag)
             || (tool == Tool::Align && kind == PaneKind::Axonometric))
             && state.modal.is_none()
-            && state.boxsel.is_none();
+            && state.boxsel.is_none()
+            // in Edit mode Tab is Layers', in a drag the typed length's
+            && state.edit.is_none()
+            && state.grip.is_none();
         let pointer = response.hover_pos().filter(|_| reading);
         let tol = 6.0 / xf.scale as f64;
         let rev = doc.model().revision();
@@ -2802,6 +2810,7 @@ fn section_tool(
                         disallow_join: [false; 2],
                         attach_top: vec![],
                         curtain: None,
+                        layer_ends: vec![],
                     }),
                 );
                 // its type's thickness, but its drawn height
@@ -2932,6 +2941,7 @@ fn section_tool(
                 let e = Element::new(
                     "Slab",
                     ElementKind::Slab(Slab {
+                        layer_edges: vec![],
                         level,
                         boundary,
                         thickness,

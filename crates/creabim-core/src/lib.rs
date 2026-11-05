@@ -60,16 +60,18 @@ pub use curtain::{CurtainGrid, GridRule, PanelKind};
 pub use detail::{DetailItem, DetailKind, DrawingFrame, MembraneLook};
 pub use document::{Document, Step, StepId};
 pub use editmesh::EditMesh;
+pub use element::{layer_edge_offsets, set_layer_edge, LayerEdge, LayerEnd, LocationLine, WallTop};
 pub use element::{
     Cut, Dimension, Element, ElementKind, FreeMesh, Grid, GridGroup, Guide, Hatch, HostPoint,
     Level, LevelHead, Material, Opening, OpeningFrame, OpeningKind, ScheduleCategory, Sheet,
     Sketch, Slab, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall, Workplane,
 };
-pub use element::{LocationLine, WallTop};
 pub use footing::{Footing, FootingKind};
 pub use graphics::{LineWeights, PlanGraphics};
 pub use id::ElementId;
-pub use joins::{wall_joins, Gap, JoinRule, JoinWinner, WallEnds};
+pub use joins::{
+    corner_partner, wall_joins, CornerJoin, CornerPreset, Gap, JoinRule, JoinWinner, WallEnds,
+};
 pub use marks::{marks, material_of, MarkClass, MarkOrder, MarkRule, MarkRules};
 pub use members::{Beam, Column, Landing, Profile, Railing, Roof, RoofShape, Stair, StairSide};
 pub use model::Model;
