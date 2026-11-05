@@ -3184,6 +3184,7 @@ fn new_path(name: &str) -> String {
 /// egui's spacing and type, roomier than its defaults.
 pub(super) fn style(ctx: &egui::Context, theme: Theme) {
     let p = theme.palette();
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("theme.palette"), p));
     let mode = if p.dark {
         egui::Theme::Dark
     } else {

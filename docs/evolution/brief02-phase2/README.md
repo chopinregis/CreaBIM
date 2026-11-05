@@ -34,6 +34,8 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 
 | A3 | What | Status | Commit |
 | --- | --- | --- | --- |
+| 3 | Value pills | **Done.** While a grip is dragged, a pill by the grip shows only the value that is changing: "Length 5000 → 5707 +707", or "Moved 750" for a slide or a move. On release it stays about a second, then fades. It shows only in the pane the drag is in. It sits on the theme's raised surface with a 1 px line round it, 11.5 px type and 6 px corners, in the theme's text colour with the changing number in the accent. A test checks both are at least 4.5:1 in all seven themes. The full summary (length, height, thickness) goes to the status bar. D hides or shows the pills. | see PR |
+| 4 | Slide grip | **Done.** The grip that floated 300 mm off a wall's face is gone, so every grip sits on the wall. Dragging the wall's body slides it square to itself and its joined walls stretch. Shift frees the direction, and Tab types the distance. A wall under 14 px across on screen shows its thickness grip only when the pointer comes near its face. | see PR |
 | 5 | Marker highlight | **Done.** Hovering a view mark, text, tag or dimension traces the mark itself in the hover colour at 1.5 times its line weight: bubble, wedge, line and text. There are no boxes round them. Selected, it is traced the same way in the accent, with its grips (the section line's end square and its depth, the move square on a room tag, whose dashed box is gone). The pick area is as generous as before but not drawn. A marker's text now has the extent of its own size on paper, so it fits inside the bubble (before, a 3 mm number counted as 3 m across). A selected note on a sheet is traced too, not framed. | see PR |
 | 6 | Icons | **Done.** All 75 icons in the approved set are copied verbatim from `ui/approved/icons_final.json` (and `icons_actions.json`, the same 14 action icons) into `ui/icons.js`. The test `icons_js_matches_the_approved_set_verbatim` in `webui.rs` fails if one drifts, naming it. To change an icon, change the JSON first, with the owner's OK. | see PR |
 
@@ -60,6 +62,9 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | [16-marker-hover-before-after.png](16-marker-hover-before-after.png) | A3-5: hovering an elevation mark. Before, two nested boxes far bigger than the bubble; after, the bubble, wedge and line themselves in blue. |
 | [17-tag-hover-before-after.png](17-tag-hover-before-after.png) | Hovering a window tag: before boxed, after the tag itself traced. |
 | [18-marker-selected-before-after.png](18-marker-selected-before-after.png) | The mark selected: traced in the accent, with its end square and its depth. |
+| [19-no-floating-slide-grip.png](19-no-floating-slide-grip.png) | A3-4: before, a slide grip off the kitchen wall's face; after, the grips on the wall, and the wall slid 750 mm by its body, the north wall stretching with it. |
+| [20-live-value-pill.png](20-live-value-pill.png) | A3-3: dragging the wall's end. Before, nothing until release; after, "Length 5000 → 5707 +707" by the grip. |
+| [21-full-summary-in-the-status-bar.png](21-full-summary-in-the-status-bar.png) | On release, the status bar has the full summary. |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 

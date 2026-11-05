@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **58** | **7** | **192** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 5 | 17 | 7 | 29 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 3 | 17 | 7 | 27 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -52,7 +52,7 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 2.11 | Room tags: Stacked (the default) and Inline (the first tag) are drawn; the Number badge and Boxed layouts are not yet. Tags don't yet keep level in rotated views. | 2 | M | MU09 |
 | 2.12 | View markers: Classic (the default) and the first markers are drawn; the Minimal and Bold families are not yet. A single click on a bubble doesn't open its view (a double-click on the selected mark does). | 2 | M | MU09 |
 | 2.13 | Choices have no pictures or live previews; personal settings and the style pack are not kept apart; no marker or tag designer; style packs can't be exported and imported with custom styles. | 3 | M–L | MU10 |
-| 2.14 | Grips have their four states, but there are no live dimensions while dragging (old → new ± change, gap to the nearest neighbour), no "Widened D03 by 300 mm" wording in the status bar, and the grip accent doesn't follow a personal setting. | 2 | M | MU11, MU12 |
+| 2.14 | Grips have their four states and a live pill (old → new ± change, A3-3), but no gap to the nearest neighbour while dragging, no "Widened D03 by 300 mm" wording in the status bar, and the grip accent doesn't follow a personal setting. | 2 | M | MU11, MU12 |
 | 3.1 | Detail components can be selected but have no grips. | 2 | M | MU01-01 |
 | 3.2 | Plants have no grips (canopy radius in plan; canopy and height in 3D). | 2 | S | MU01-04 |
 | 3.3 | A callout's box can't be resized with grips; views have no linked "Open in 3D" crop box. | 2 | M | MU01-07 |
@@ -69,8 +69,6 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 5.6 | Stairs: no "Cut a well for this stair", headroom check, short-landing or re-flow warnings. Roofs: no overhang per edge, no offer to attach the walls under a new roof. No Check model panel (openings across joins, beams or footings in slabs, missing wells). | 4 | M | RR |
 | A3-1 | Footings can't be seen while placing them: an ordinary floor plan shows none, even with the Footing tool on; no preview, no "Make a Foundation plan" link, no per-view choice for footings. | 2 | M | MU13_01, MU13_05 |
 | A3-2 | Host tools (Footing, Door, Window, Railing, Tag, Attach top) don't pick their host before the first click: snaps and guides win over the wall, and Tab doesn't cycle overlapping hosts; `wall_at` ignores the location line. | 2 | M | MU13_02 |
-| A3-3 | Value pills while dragging show the full summary instead of the changing value alone, stay too long, and show in panes the drag isn't in; D doesn't toggle live dimensions. | 2 | S | MU13_07 |
-| A3-4 | A wall's slide grip floats 300 mm off its face; sliding by the wall's body, Shift to free the direction and Tab for the distance are missing. | 2 | S | MU13_07 |
 | A3-7 | Membrane paths can't be finished by Enter, double-click or right-click; Esc loses them; the membrane draws exactly over the line it follows. (Detail component grips are 3.1.) | 2 | M | MU13_08 |
 | 6 | Release basics: Windows installer and portable zip, a file-format version in `.creabim`, README limits, issue templates, the Terrace House sample, CONTRIBUTING. | R | M | RR |
 
@@ -375,6 +373,8 @@ Gaps reported by work that is still a pull request go here until it merges, then
 
 - Every toolbar and action icon is copied verbatim from the approved set (`ui/approved/icons_final.json` and `icons_actions.json`): Section is the scissors with the dashed line, Grid the straight four-line grid, Shaft has no level lines, Roof is the approved tipi, and Door, Paving, Level, Spot level and Footing are as drawn. A test compares `ui/icons.js` with the JSON, so they can't drift again (A3-6).
 - Hovering a view mark, text, tag or dimension traces the mark itself, 1.5 times heavier, instead of boxing it; selected, it is traced in the accent with its grips, and a room tag loses its dashed box. A marker's text has the extent of its paper size, so it fits its bubble (A3-5).
+- A grip's drag shows a pill by the grip with only the value changing ("Length 5000 → 5707 +707"), in that pane only, themed and legible in every theme; it fades about a second after release, the full summary goes to the status bar, and D hides or shows it (A3-3).
+- No slide grip floats off a wall: the wall's body slides it, joined walls stretching; Shift frees it, Tab types the distance; a wall too thin on screen shows its thickness grip only near its face (A3-4).
 
 **In Brief 02, addendum A2 (2026-11-05):** the logo, the weaver and its nest, is the brand mark in the top bar, the window and taskbar icon, the Windows .exe icon (not yet tried on a Windows build), the lockup in About, and the full mark in New project and the README. The `.creabim` file icon comes with the installer.
 

@@ -2,7 +2,7 @@
 //! the theme's id; egui (the properties panel and the views' own controls)
 //! takes the same colours from here.
 
-use eframe::egui::Color32;
+use eframe::egui::{self, Color32};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Theme {
@@ -24,6 +24,7 @@ pub enum Theme {
 }
 
 /// The colours egui needs.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Palette {
     pub dark: bool,
     pub panel: Color32,
@@ -158,6 +159,47 @@ impl Theme {
                 0xF0C36B,
             ),
         }
+    }
+}
+
+/// WCAG contrast ratio of two colours, 1 to 21.
+pub fn contrast_ratio(a: Color32, b: Color32) -> f32 {
+    let lum = |c: Color32| {
+        let ch = |v: u8| {
+            let v = v as f32 / 255.0;
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let [r, g, b, _] = c.to_array();
+        0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+    };
+    let (x, y) = (lum(a), lum(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+/// `c` moved toward `toward` just far enough to reach 4.5:1 against
+/// `ground`, so accent text stays legible in every theme.
+pub fn legible(c: Color32, ground: Color32, toward: Color32) -> Color32 {
+    let mix = |t: f32| {
+        let [r0, g0, b0, _] = c.to_array();
+        let [r1, g1, b1, _] = toward.to_array();
+        let m = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t).round() as u8;
+        Color32::from_rgb(m(r0, r1), m(g0, g1), m(b0, b1))
+    };
+    (0..=20)
+        .map(|i| mix(i as f32 / 20.0))
+        .find(|m| contrast_ratio(*m, ground) >= 4.5)
+        .unwrap_or(toward)
+}
+
+impl Palette {
+    /// The palette last applied to `ctx` (Light before any).
+    pub fn of(ctx: &egui::Context) -> Palette {
+        ctx.data(|d| d.get_temp::<Palette>(egui::Id::new("theme.palette")))
+            .unwrap_or_else(|| Theme::Light.palette())
     }
 }
 
