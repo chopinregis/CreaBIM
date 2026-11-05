@@ -237,7 +237,7 @@ impl CreaBimApp {
         let mut images = serde_json::Map::new();
         if let Some(md) = help::text(id) {
             for path in help::targets(md).1 {
-                if let Some(url) = help::data_url(path) {
+                if let Some(url) = help::data_url_for(path, self.shell.theme.palette().dark) {
                     images.insert(path.to_string(), json!(url));
                 }
             }

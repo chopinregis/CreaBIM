@@ -252,14 +252,15 @@ html[data-pane="top"] body {
 .logo {
   width: 22px;
   height: 22px;
-  border-radius: 6px;
-  background: var(--accent);
   display: grid;
   place-items: center;
-  color: var(--on-accent);
+  /* the weaver and its nest: sage in light themes, light sage in dark ones */
+  color: #8FB08A;
 }
 
-.logo svg { width: 14px; height: 14px; stroke-width: 2.2; }
+html[data-theme="light"] .logo, html[data-theme="paper"] .logo, html[data-theme="sage"] .logo { color: #4F6B4C; }
+
+.logo svg.mark { width: 20px; height: 20px; display: block; }
 
 .menubtn {
   height: 28px;
@@ -938,7 +939,8 @@ kbd {
 /* ---------- New project ---------- */
 
 .np { display: flex; flex-direction: column; gap: 14px; padding: 20px 24px; height: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
-.np-head { display: flex; align-items: baseline; }
+.np-head { display: flex; align-items: center; gap: 12px; }
+.np-logo, .np-logo svg.mark { width: 48px; height: 48px; }
 .np-head b { font-size: 17px; font-weight: 650; flex: 1; }
 .np-esc { color: var(--muted); font-size: 12px; }
 .np-starts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
