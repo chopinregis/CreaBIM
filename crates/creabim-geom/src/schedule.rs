@@ -781,6 +781,7 @@ pub fn schedule_drawing(view: ElementId, title: &str, s: &Schedule) -> PlanView 
             text: t.to_string(),
             size,
             align,
+            mm: 1.0,
         })
     };
     text(

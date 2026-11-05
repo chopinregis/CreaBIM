@@ -34,6 +34,7 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 
 | A3 | What | Status | Commit |
 | --- | --- | --- | --- |
+| 5 | Marker highlight | **Done.** Hovering a view mark, text, tag or dimension traces the mark itself in the hover colour at 1.5 times its line weight: bubble, wedge, line and text. There are no boxes round them. Selected, it is traced the same way in the accent, with its grips (the section line's end square and its depth, the move square on a room tag, whose dashed box is gone). The pick area is as generous as before but not drawn. A marker's text now has the extent of its own size on paper, so it fits inside the bubble (before, a 3 mm number counted as 3 m across). A selected note on a sheet is traced too, not framed. | see PR |
 | 6 | Icons | **Done.** All 75 icons in the approved set are copied verbatim from `ui/approved/icons_final.json` (and `icons_actions.json`, the same 14 action icons) into `ui/icons.js`. The test `icons_js_matches_the_approved_set_verbatim` in `webui.rs` fails if one drifts, naming it. To change an icon, change the JSON first, with the owner's OK. | see PR |
 
 ## Screenshots
@@ -56,6 +57,9 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | [14a-before-icon-drift-889c32c.png](14a-before-icon-drift-889c32c.png) | Before (A3-6): the owner's drift sheet of main 889c32c, with 35 icons that differ from the approved set. |
 | [14b-after-icons-match-the-approved-set.png](14b-after-icons-match-the-approved-set.png) | After: each approved icon beside the one the app now draws; all 75 match. |
 | [15-toolbar-with-the-approved-icons.png](15-toolbar-with-the-approved-icons.png) | The toolbar in the running app, at twice its size, with the approved icons. |
+| [16-marker-hover-before-after.png](16-marker-hover-before-after.png) | A3-5: hovering an elevation mark. Before, two nested boxes far bigger than the bubble; after, the bubble, wedge and line themselves in blue. |
+| [17-tag-hover-before-after.png](17-tag-hover-before-after.png) | Hovering a window tag: before boxed, after the tag itself traced. |
+| [18-marker-selected-before-after.png](18-marker-selected-before-after.png) | The mark selected: traced in the accent, with its end square and its depth. |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 
