@@ -876,6 +876,30 @@ pub struct Wall {
     /// instead of a solid wall. Its thickness is the mullions' depth.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curtain: Option<crate::curtain::CurtainGrid>,
+    /// Layer ends moved by hand (Layers, in Edit mode): each runs its
+    /// layer on past, or stops it short of, where the joins put that end.
+    /// Kept when the wall moves, stretches, turns or changes type; a layer
+    /// the type no longer has drops its edit.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_ends: Vec<LayerEnd>,
+}
+
+/// One layer's ends moved by hand: how far layer `layer` (counted from the
+/// exterior) runs past where the joins put its start and its end, in
+/// metres along the wall. Negative stops it short.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LayerEnd {
+    pub layer: usize,
+    #[serde(default)]
+    pub start: f64,
+    #[serde(default)]
+    pub end: f64,
+}
+
+impl LayerEnd {
+    pub fn is_zero(&self) -> bool {
+        self.start.abs() < 1e-9 && self.end.abs() < 1e-9
+    }
 }
 
 fn is_false(v: &bool) -> bool {
@@ -961,7 +985,38 @@ impl Wall {
             disallow_join: [false; 2],
             attach_top: vec![],
             curtain: None,
+            layer_ends: vec![],
         }
+    }
+
+    /// How far layer `layer` runs past its start and its end, as edited
+    /// by hand: `[start, end]`, zero when untouched.
+    pub fn layer_ext(&self, layer: usize) -> [f64; 2] {
+        self.layer_ends
+            .iter()
+            .find(|l| l.layer == layer)
+            .map_or([0.0; 2], |l| [l.start, l.end])
+    }
+
+    /// Set how far layer `layer` runs past one end (`end` false for the
+    /// start); an edit back at zero is dropped.
+    pub fn set_layer_ext(&mut self, layer: usize, end: bool, by: f64) {
+        match self.layer_ends.iter_mut().find(|l| l.layer == layer) {
+            Some(l) => {
+                if end {
+                    l.end = by
+                } else {
+                    l.start = by
+                }
+            }
+            None => self.layer_ends.push(LayerEnd {
+                layer,
+                start: if end { 0.0 } else { by },
+                end: if end { by } else { 0.0 },
+            }),
+        }
+        self.layer_ends.retain(|l| !l.is_zero());
+        self.layer_ends.sort_by_key(|l| l.layer);
     }
 
     pub fn length(&self) -> f64 {
@@ -1814,6 +1869,26 @@ pub const FREE_MESH_CLASSES: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn layer_ends_are_kept_sorted_dropped_at_zero_and_left_out_of_files_untouched() {
+        let mut w = Wall::new(ElementId::new(), DVec2::ZERO, DVec2::X * 4.0, 0.3, 3.0);
+        w.set_layer_ext(2, true, 0.02);
+        w.set_layer_ext(0, false, -0.05);
+        assert_eq!(w.layer_ext(2), [0.0, 0.02]);
+        assert_eq!(w.layer_ext(0), [-0.05, 0.0]);
+        assert_eq!(w.layer_ext(1), [0.0; 2]);
+        assert_eq!(
+            w.layer_ends.iter().map(|l| l.layer).collect::<Vec<_>>(),
+            [0, 2]
+        );
+        let back: Wall = serde_json::from_str(&serde_json::to_string(&w).unwrap()).unwrap();
+        assert_eq!(back.layer_ends, w.layer_ends);
+        w.set_layer_ext(2, true, 0.0);
+        w.set_layer_ext(0, false, 0.0);
+        assert!(w.layer_ends.is_empty());
+        assert!(!serde_json::to_string(&w).unwrap().contains("layer_ends"));
+    }
 
     #[test]
     fn dimension_points_from_older_files_still_read() {

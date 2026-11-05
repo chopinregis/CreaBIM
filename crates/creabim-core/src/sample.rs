@@ -100,6 +100,7 @@ pub fn sample_house() -> Model {
                     disallow_join: [false; 2],
                     attach_top: vec![],
                     curtain: None,
+                    layer_ends: vec![],
                 }),
             );
             let id = wall.id;
@@ -178,6 +179,7 @@ pub fn sample_house() -> Model {
             disallow_join: [false; 2],
             attach_top: vec![],
             curtain: None,
+            layer_ends: vec![],
         }),
     );
     let pid = part.id;

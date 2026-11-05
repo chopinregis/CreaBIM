@@ -37,6 +37,7 @@ impl CreaBimApp {
         }
         let Some(id) = self.plan.edit else {
             self.plan.grips.clear();
+            handles::set_layers(false);
             return;
         };
         if self.selection.active != Some(id)
@@ -46,6 +47,7 @@ impl CreaBimApp {
         {
             self.plan.edit = None;
             self.plan.grips.clear();
+            handles::set_layers(false);
         }
     }
 

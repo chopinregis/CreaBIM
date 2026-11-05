@@ -840,6 +840,8 @@ pub fn hint(model: &Model, e: &Element) -> String {
         format!(
             "Editing {name}: select a corner and press Delete (Shift+click or drag a box for more); drag a corner to move it, an edge's grip to push it, a ◇ to pull out a corner, inside a hole to move it. Right-click for more. Esc finishes."
         )
+    } else if crate::handles::has_layers(model, e.id) {
+        format!("Editing {name}: drag its grips in any view. Tab: its layers' ends. Esc or Enter finishes.")
     } else {
         format!("Editing {name}: drag its grips in any view. Esc or Enter finishes.")
     }

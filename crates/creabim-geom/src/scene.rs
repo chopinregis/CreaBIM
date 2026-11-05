@@ -96,6 +96,7 @@ fn layer_items(
                         top.as_ref(),
                         (b.s0, b.s1),
                         b.core,
+                        b.ext,
                     );
                     (b, m)
                 })

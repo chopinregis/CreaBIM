@@ -65,7 +65,7 @@ pub use element::{
     Level, LevelHead, Material, Opening, OpeningFrame, OpeningKind, ScheduleCategory, Sheet,
     Sketch, Slab, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall, Workplane,
 };
-pub use element::{LocationLine, WallTop};
+pub use element::{LayerEnd, LocationLine, WallTop};
 pub use footing::{Footing, FootingKind};
 pub use graphics::{LineWeights, PlanGraphics};
 pub use id::ElementId;

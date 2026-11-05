@@ -1570,6 +1570,7 @@ impl<'a> Importer<'a> {
             disallow_join: [false; 2],
             attach_top: vec![],
             curtain: None,
+            layer_ends: vec![],
         };
         Ok((wall, voids))
     }

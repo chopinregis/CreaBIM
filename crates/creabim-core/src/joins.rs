@@ -303,11 +303,17 @@ impl WallEnds {
     /// the joins; anything else stays at `u`. `core` for a layer that runs
     /// on past the faces.
     pub fn place(&self, wall: &Wall, u: f64, s: f64, core: bool) -> f64 {
+        self.place_layer(wall, u, s, core, [0.0; 2])
+    }
+
+    /// As [`WallEnds::place`], for a layer whose ends were moved by hand
+    /// `ext` past where the joins put them (start, end).
+    pub fn place_layer(&self, wall: &Wall, u: f64, s: f64, core: bool, ext: [f64; 2]) -> f64 {
         if u <= 0.0 {
-            return self.layer_start(wall, s, core);
+            return self.layer_start(wall, s, core) - ext[0];
         }
         if u >= wall.length() {
-            return self.layer_end(wall, s, core);
+            return self.layer_end(wall, s, core) + ext[1];
         }
         for g in &self.gaps {
             if (u - g.lo_mid()).abs() < 1e-9 {

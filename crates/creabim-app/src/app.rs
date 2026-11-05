@@ -936,6 +936,25 @@ impl CreaBimApp {
         {
             self.toggle_edit_mode();
         }
+        // Tab in Edit mode on a layered element: its layers' ends, and back
+        if let Some(id) = self.plan.edit {
+            let free = self.handle_drag.is_none()
+                && !self.plan.gripping()
+                && !self.plan.grips.typing
+                && !ctx.egui_wants_keyboard_input();
+            if free && handles::has_layers(self.doc.model(), id) {
+                let tab = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab));
+                if tab {
+                    let on = !handles::layers();
+                    handles::set_layers(on);
+                    self.status = if on {
+                        "Layers: drag a layer's end to run it on or hold it back. Tab: back to the element's grips.".into()
+                    } else {
+                        editmode::enter(self.doc.model(), id, &mut self.plan.edit)
+                    };
+                }
+            }
+        }
         // M: the Move tool
         let m_key = ctx.input(|i| {
             !i.modifiers.command
@@ -5253,6 +5272,16 @@ impl CreaBimApp {
             } else {
                 format!("{label}: {} elements.", others.len() + 1)
             };
+            // a layer the new type hasn't got loses its edited ends
+            if let (ElementKind::Wall(was), ElementKind::Wall(now)) = (&e.kind, &edited.kind) {
+                let lost = was.layer_ends.len().saturating_sub(now.layer_ends.len());
+                if lost > 0 {
+                    let s = if lost == 1 { "" } else { "s" };
+                    msg = format!(
+                        "{msg} {lost} edited layer end{s} dropped: the new type has no such layer."
+                    );
+                }
+            }
             if let ElementKind::Opening(o) = &edited.kind {
                 let model = self.doc.model();
                 if let Some(w) = creabim_core::walls::opening_crosses_join(model, id, o) {

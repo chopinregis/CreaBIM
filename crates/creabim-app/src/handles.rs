@@ -174,6 +174,12 @@ pub enum HandleKind {
     /// Edge `i` of a callout's box (bottom, right, top, left), pushed out
     /// or pulled in.
     CalloutEdge(usize),
+    /// In Edit mode's Layers (Tab), the start or end of layer `layer` of
+    /// a layered wall, run on past its join or held back.
+    LayerEnd {
+        layer: usize,
+        end: bool,
+    },
 }
 
 impl HandleKind {
@@ -210,6 +216,7 @@ impl HandleKind {
             HandleKind::PlantCanopy => "Change the canopy of",
             HandleKind::PlantHeight => "Change height of",
             HandleKind::CalloutCorner(_) | HandleKind::CalloutEdge(_) => "Resize the callout of",
+            HandleKind::LayerEnd { .. } => "Move a layer end of",
             HandleKind::WallFace | HandleKind::SlabUnderside | HandleKind::SlabTop => {
                 "Change thickness of"
             }
@@ -272,6 +279,7 @@ impl HandleKind {
             HandleKind::PlantHeight => "Height",
             HandleKind::CalloutCorner(_) => "Callout corner",
             HandleKind::CalloutEdge(_) => "Callout edge: push",
+            HandleKind::LayerEnd { .. } => "Layer end",
         }
     }
 
@@ -312,6 +320,9 @@ impl HandleKind {
                 "Drag: resize the callout's box (its detail view follows)"
             }
             HandleKind::CalloutEdge(_) => "Drag: push the box's edge (its detail view follows)",
+            HandleKind::LayerEnd { .. } => {
+                "Drag: run the layer on or hold it back · Tab: type how far · Right-click: reset"
+            }
             _ => "Drag to change it",
         }
     }
@@ -330,9 +341,119 @@ pub struct Handle {
 /// The handles of element `id`, with `edit` those Edit mode adds (see
 /// [`crate::editmode`]).
 pub fn handles_in(model: &Model, id: ElementId, face: Option<usize>, edit: bool) -> Vec<Handle> {
+    if edit && layers() {
+        let ends = layer_handles(model, id);
+        if !ends.is_empty() {
+            return ends;
+        }
+    }
     let mut out = handles(model, id, face);
     out.extend(crate::editmode::outline_handles(model, id, edit));
     out
+}
+
+static LAYERS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Edit mode's Layers (3.7): Tab in Edit mode on a layered element shows
+/// a grip at each of its layers' ends instead of its own grips.
+pub fn set_layers(on: bool) {
+    LAYERS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn layers() -> bool {
+    LAYERS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Does `id` have layers to edit one by one?
+pub fn has_layers(model: &Model, id: ElementId) -> bool {
+    !layer_handles(model, id).is_empty()
+}
+
+/// A grip at each end of each layer of wall `id`, where the joins and any
+/// edit put it, sliding along the wall. Empty unless it is layered.
+pub fn layer_handles(model: &Model, id: ElementId) -> Vec<Handle> {
+    let Some(e) = model.get(id) else {
+        return vec![];
+    };
+    let ElementKind::Wall(w) = &e.kind else {
+        return vec![];
+    };
+    let Some((_, a)) = creabim_core::assembly::assembly_of(model, e) else {
+        return vec![];
+    };
+    let bands = creabim_core::assembly::wall_bands(a, w);
+    if bands.len() < 2 {
+        return vec![];
+    }
+    let ends = creabim_core::wall_joins(model)
+        .remove(&id)
+        .unwrap_or_default();
+    let z0 = elevation(model, Some(w.level)) + w.base_offset;
+    let (d, n) = (w.direction(), w.direction().perp());
+    let last = (bands.len() - 1) as f64;
+    let mut out = vec![];
+    for (k, b) in bands.iter().enumerate() {
+        let s = (b.s0 + b.s1) / 2.0;
+        // stepped up the end face, so each reads on its own in 3D
+        let z = z0 + w.height * (0.3 + 0.4 * k as f64 / last);
+        for end in [false, true] {
+            let u = ends.place_layer(w, if end { w.length() } else { 0.0 }, s, b.core, b.ext);
+            let at = (w.start + d * u + n * s).extend(z);
+            out.push(Handle {
+                kind: HandleKind::LayerEnd {
+                    layer: b.index,
+                    end,
+                },
+                at,
+                constraint: Constraint::Line {
+                    point: at,
+                    dir: d.extend(0.0),
+                },
+                nudge: 0.0,
+            });
+        }
+    }
+    out
+}
+
+/// Put layer end `which` of wall `id` back where its joins put it, or
+/// with `None` every layer end, as one undo step.
+pub fn reset_layer_ends(
+    doc: &mut Document,
+    id: ElementId,
+    which: Option<(usize, bool)>,
+) -> Result<String, String> {
+    let e = doc.model().get(id).ok_or("it is gone")?.clone();
+    let mut after = e.clone();
+    let ElementKind::Wall(w) = &mut after.kind else {
+        return Err("only walls have layer ends to reset".into());
+    };
+    let (label, done) = match which {
+        Some((layer, end)) => {
+            w.set_layer_ext(layer, end, 0.0);
+            ("Reset layer end", "The layer's end is back on its join.")
+        }
+        None => {
+            w.layer_ends.clear();
+            ("Reset all layers", "Every layer's end is back on its join.")
+        }
+    };
+    if after == e {
+        return Err("Nothing to reset: no layer end was moved.".into());
+    }
+    doc.commit(creabim_core::Transaction::new(label).replace(e, after))
+        .map_err(|e| e.to_string())?;
+    Ok(done.into())
+}
+
+/// Has layer end `kind` of `e` been moved by hand?
+fn edited_end(e: Option<&Element>, kind: HandleKind) -> bool {
+    match (e.map(|e| &e.kind), kind) {
+        (Some(ElementKind::Wall(w)), HandleKind::LayerEnd { layer, end }) => {
+            w.layer_ext(layer)[usize::from(end)] != 0.0
+        }
+        _ => false,
+    }
 }
 
 fn elevation(model: &Model, level: Option<ElementId>) -> f64 {
@@ -851,6 +972,17 @@ pub fn apply(
             walls::set_location_line(model, w, a, b);
             moved_end = Some(if end { w.end } else { w.start });
         }
+        (ElementKind::Wall(w), HandleKind::LayerEnd { layer, end }) => {
+            // out past the end is more, back along the wall less
+            let along = d.truncate().dot(w.direction());
+            let by = round(if end { along } else { -along }, step / 5.0);
+            let old = w.layer_ext(layer)[usize::from(end)];
+            let len = w.length();
+            if old + by < -len / 2.0 {
+                return Err("a layer can't be held back past the wall's middle".into());
+            }
+            w.set_layer_ext(layer, end, old + by);
+        }
         (ElementKind::Wall(w), HandleKind::WallTop) => match &mut w.top {
             // tied to a level: the drag sets how far above it the top is
             WallTop::UpToLevel { offset, .. } => {
@@ -1311,6 +1443,8 @@ enum MenuOn {
     /// An edge, and the model point clicked on it.
     Edge(Ring, usize, DVec3),
     Hole(usize),
+    /// A layer's start or end, in Layers.
+    LayerEnd(usize, bool),
     Blank,
 }
 
@@ -2045,7 +2179,14 @@ fn grip_menu(
         AllCorners,
         Deselect,
         Finish,
+        ResetLayerEnd(usize, bool),
+        ResetLayers,
     }
+    let edited_layers = match &e.kind {
+        ElementKind::Wall(w) => !w.layer_ends.is_empty(),
+        _ => false,
+    };
+    let in_layers = layers() && has_layers(model, id);
     let mut act = None;
     let area = egui::Area::new(egui::Id::new(("grip-menu", m.pane)))
         .order(egui::Order::Foreground)
@@ -2097,6 +2238,18 @@ fn grip_menu(
                     MenuOn::Hole(k) => {
                         item(ui, true, "Remove hole", Act::RemoveHole(k));
                         item(ui, true, "Move hole", Act::MoveHole(k));
+                    }
+                    MenuOn::LayerEnd(layer, end) => {
+                        let moved = edited_end(Some(&e), HandleKind::LayerEnd { layer, end });
+                        item(ui, moved, "Reset layer end", Act::ResetLayerEnd(layer, end));
+                        item(ui, edited_layers, "Reset all layers", Act::ResetLayers);
+                        ui.separator();
+                        item(ui, true, "Finish editing   Esc", Act::Finish);
+                    }
+                    MenuOn::Blank if in_layers => {
+                        item(ui, edited_layers, "Reset all layers", Act::ResetLayers);
+                        ui.separator();
+                        item(ui, true, "Finish editing   Esc", Act::Finish);
                     }
                     MenuOn::Blank => {
                         item(ui, true, "Select all corners", Act::AllCorners);
@@ -2154,6 +2307,8 @@ fn grip_menu(
             sel.request = Some(GripRequest::Finish);
             Ok("Finished editing.".into())
         }
+        Act::ResetLayerEnd(layer, end) => reset_layer_ends(doc, id, Some((layer, end))),
+        Act::ResetLayers => reset_layer_ends(doc, id, None),
     };
     Some(r.unwrap_or_else(|e| e))
 }
@@ -2343,7 +2498,10 @@ pub fn interact(
         {
             continue;
         }
-        let filled = edit && matches!(h.kind, HandleKind::Vertex { .. });
+        // a corner in Edit mode, or a layer end moved by hand: a dot
+        let filled = edit
+            && (matches!(h.kind, HandleKind::Vertex { .. })
+                || edited_end(element.as_ref(), h.kind));
         draw_grip(painter, c, bar, state, filled, picked, &look);
         if state == GripState::Hover {
             if let Some(dir) = bar.flatten() {
@@ -2419,6 +2577,7 @@ pub fn interact(
     if edit && drag.is_none() && response.secondary_clicked() {
         if let (Some(p), Some(e)) = (response.interact_pointer_pos(), &element) {
             let on = match nearest(p).map(|h| h.kind) {
+                Some(HandleKind::LayerEnd { layer, end }) => MenuOn::LayerEnd(layer, end),
                 Some(HandleKind::Vertex { ring, i }) => {
                     if !grips.picked(ring, i) {
                         grips.pick(ring, i, false);
@@ -3116,6 +3275,97 @@ fn typed_length(
 mod tests {
     use super::*;
     use creabim_core::sample::sample_house;
+
+    /// A layered wall of the typed house, and the index of its core layer.
+    fn layered_wall(m: &Model) -> (ElementId, usize) {
+        m.iter()
+            .find_map(|e| {
+                let ElementKind::Wall(w) = &e.kind else {
+                    return None;
+                };
+                let (_, a) = creabim_core::assembly::assembly_of(m, e)?;
+                let bands = creabim_core::assembly::wall_bands(a, w);
+                (bands.len() > 1)
+                    .then(|| bands.iter().find(|b| b.core).map(|b| (e.id, b.index)))
+                    .flatten()
+            })
+            .expect("a layered wall")
+    }
+
+    #[test]
+    fn a_layer_end_runs_on_by_its_grip_keeps_through_a_move_and_resets() {
+        let m = creabim_core::sample::typed_house();
+        let (id, core) = layered_wall(&m);
+        assert!(has_layers(&m, id));
+        let mut doc = Document::from_model(m);
+        let kind = HandleKind::LayerEnd {
+            layer: core,
+            end: true,
+        };
+        let h = layer_handles(doc.model(), id)
+            .into_iter()
+            .find(|h| h.kind == kind)
+            .unwrap();
+        let w = |doc: &Document| match &doc.model().get(id).unwrap().kind {
+            ElementKind::Wall(w) => w.clone(),
+            _ => unreachable!(),
+        };
+        let dir = w(&doc).direction().extend(0.0);
+        // 20 mm on past the end
+        let (orig, joined) = originals(doc.model(), id, kind);
+        let model = doc.model().clone();
+        let out = apply(&model, &orig, &joined, kind, h.at, h.at + dir * 0.02, 0.0).unwrap();
+        let new = out[0].clone();
+        doc.edit(id, "drag", |e| *e = new.clone()).unwrap();
+        assert!((w(&doc).layer_ext(core)[1] - 0.02).abs() < 1e-9);
+        // its grip moved with it, and shows filled
+        let moved = layer_handles(doc.model(), id)
+            .into_iter()
+            .find(|h| h.kind == kind)
+            .unwrap();
+        assert!((moved.at - h.at).dot(dir) > 0.019);
+        assert!(edited_end(doc.model().get(id), kind));
+        // the other layers and the start are as they were
+        assert_eq!(w(&doc).layer_ext(core)[0], 0.0);
+        // moved, the wall keeps its edit
+        doc.edit(id, "move", |e| {
+            if let ElementKind::Wall(w) = &mut e.kind {
+                w.start += DVec2::new(1.0, 0.5);
+                w.end += DVec2::new(1.0, 0.5);
+            }
+        })
+        .unwrap();
+        assert!((w(&doc).layer_ext(core)[1] - 0.02).abs() < 1e-9);
+        // and resetting puts it back
+        reset_layer_ends(&mut doc, id, Some((core, true))).unwrap();
+        assert!(w(&doc).layer_ends.is_empty());
+        assert!(reset_layer_ends(&mut doc, id, None).is_err());
+    }
+
+    #[test]
+    fn a_layer_end_held_back_goes_the_other_way_at_the_start() {
+        let m = creabim_core::sample::typed_house();
+        let (id, core) = layered_wall(&m);
+        let kind = HandleKind::LayerEnd {
+            layer: core,
+            end: false,
+        };
+        let h = layer_handles(&m, id)
+            .into_iter()
+            .find(|h| h.kind == kind)
+            .unwrap();
+        let ElementKind::Wall(w) = &m.get(id).unwrap().kind else {
+            unreachable!()
+        };
+        // dragged back along the wall from its start: held back 50 mm
+        let into = w.direction().extend(0.0) * 0.05;
+        let (orig, joined) = originals(&m, id, kind);
+        let out = apply(&m, &orig, &joined, kind, h.at, h.at + into, 0.0).unwrap();
+        let ElementKind::Wall(w) = &out[0].kind else {
+            unreachable!()
+        };
+        assert!((w.layer_ext(core)[0] + 0.05).abs() < 1e-9);
+    }
 
     /// How far a wall's location line sits off its centreline.
     fn walls_offset(m: &Model, w: &creabim_core::Wall) -> f64 {

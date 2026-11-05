@@ -641,6 +641,11 @@ impl PlanState {
     }
 
     /// Is a tool waiting for more clicks?
+    /// Is a grip being dragged in a plan or section?
+    pub fn gripping(&self) -> bool {
+        self.grip.is_some()
+    }
+
     pub fn busy(&self) -> bool {
         self.pending.is_some()
             || !self.dim.is_empty()
@@ -2802,6 +2807,7 @@ fn section_tool(
                         disallow_join: [false; 2],
                         attach_top: vec![],
                         curtain: None,
+                        layer_ends: vec![],
                     }),
                 );
                 // its type's thickness, but its drawn height
