@@ -115,6 +115,7 @@ pub struct CreaBimApp {
     /// The same for views seen in X-ray, which their sheets don't follow.
     xray_drawings: HashMap<ElementId, (u64, Drawing)>,
     camera: OrbitCamera,
+    cube: crate::viewcube::ViewCube,
     /// Aspect ratio of the 3D view as last drawn, for framing.
     aspect: f32,
     viewport: Option<Viewport3d>,
@@ -250,6 +251,7 @@ impl CreaBimApp {
             looks: HashMap::new(),
             xray_drawings: HashMap::new(),
             camera: OrbitCamera::default(),
+            cube: Default::default(),
             aspect: 0.65,
             viewport,
             geometry_key: None,
@@ -674,6 +676,35 @@ impl CreaBimApp {
             self.frame_3d();
             self.status = "Framed the 3D view.".into();
         }
+    }
+
+    /// The view cube in the 3D view's corner: a click turns the view, a
+    /// drag on it orbits.
+    fn view_cube(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        use crate::viewcube::{said, target_of};
+        let accent = crate::theme::Palette::of(ui.ctx()).accent;
+        let (pick, drag) = self.cube.ui(ui, rect, &self.camera, accent);
+        if let Some(d) = drag {
+            self.camera.orbit(GVec2::new(d.x, d.y));
+        }
+        let Some(pick) = pick else {
+            return;
+        };
+        let now = ui.input(|i| i.time);
+        let to = match target_of(pick, &self.camera) {
+            Some(to) => to,
+            None => {
+                let (yaw, pitch) = (self.camera.yaw, self.camera.pitch);
+                self.frame_3d();
+                (self.camera.yaw, self.camera.pitch) = (yaw, pitch);
+                let mut iso = self.camera.clone();
+                iso.look(crate::camera::Look::Iso);
+                (iso.yaw, iso.pitch)
+            }
+        };
+        self.cube.turn_to(&self.camera, to, now);
+        self.status = said(pick);
+        ui.ctx().request_repaint();
     }
 
     /// Fit the 3D view round the whole model.
@@ -1674,6 +1705,9 @@ impl CreaBimApp {
             return;
         };
         let modal_here = self.plan.modal.as_ref().is_some_and(|m| m.pane.is_none());
+        if self.cube.step(&mut self.camera, ui.input(|i| i.time)) {
+            ui.ctx().request_repaint();
+        }
         if response.dragged_by(egui::PointerButton::Secondary)
             || response.dragged_by(egui::PointerButton::Middle)
         {
@@ -1753,6 +1787,7 @@ impl CreaBimApp {
         self.draw_grid_bubbles(&painter, &project);
         self.draw_crop_frames(&painter, &project);
         self.hover_3d(ui, &response, &painter, &project, &ray, modal_here);
+        self.view_cube(ui, rect);
 
         // the Move and Rotate tools, or a keyboard move, rotate or scale,
         // running here

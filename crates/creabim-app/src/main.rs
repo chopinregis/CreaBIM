@@ -45,6 +45,7 @@ mod tooltabs;
 mod tracker;
 mod ui_model;
 mod units;
+mod viewcube;
 mod webui;
 
 /// The window's and the taskbar's icon: the app tile, sage.

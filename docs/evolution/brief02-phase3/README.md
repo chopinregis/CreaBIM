@@ -9,7 +9,7 @@ Reference screenshots for Phase 3 of *CreaBIM brief 02: consolidated* (2026-11-0
 | 3.1 (2.6) | View areas and workspaces | **Done, with small gaps** (below). |
 | 3.2 (2.10, part 3) | Temporary dimensions that drive, with the padlock | **Done in plans, with gaps** (below). |
 | 3.3 (2.11–2.13) | Choices with pictures, personal settings, style packs, the marker and tag designer, style pack export and import | **Partly done** (below): pictures, live preview and the marker designer are in; the tag designer is not. |
-| 3.4 (4.2) | View cube | Not started. |
+| 3.4 (4.2) | View cube | **Done, with small gaps** (below). |
 
 ## 3.1 View areas and workspaces
 
@@ -134,6 +134,37 @@ Select one wall, grid line, door, window or column in a plan. Blue dimensions sh
 3. *+ New style from Classic…*: pick Rounded box, Filled, Small arrow and the green swatch, name it and *Save as style*. It shows under *Your styles* and on the plan.
 4. *Save pack as…*, open another project and *Load pack…*: the style comes along.
 5. *CreaBIM › Settings…*, select a wall, rest on *One grip shape*, then click it. Restart: it is still your choice.
+
+## 3.4 View cube
+
+The 3D view has a **view cube** in its top right corner.
+
+- **26 hot zones.** Each face, edge and corner lights up under the pointer, with a tip such as *Look from the top, front (south)*. A click turns the view there smoothly, in about a third of a second, by the shorter way round. The status bar then says *Looking from the top, front, left (south-west).*
+- **Compass ring.** N, E, S and W sit on a ring on the ground under the cube; a click looks from that side. N is red. Letters behind the cube are hidden by it.
+- **Quarter-turn arrows.** The two arrows above turn the view 90° round the vertical. From a corner view they go to the next corner.
+- **Home.** The house frames everything from the three-quarter view.
+- **Dragging** the cube orbits the view.
+- **Faces are named from north.** North is up in plans (+Y). *Front* is the south face, so *Front* shows the building as its south elevation does, and *Top* keeps north up.
+
+![The view cube, with a tip](62-view-cube.png)
+
+![The view cube, closer](62b-view-cube-close.png)
+
+![Front, Top, a corner, then a quarter turn](63-view-cube-picks.png)
+
+### Still to do in 3.4
+
+- North is the model's +Y; the project has no true-north angle yet, so the faces can't follow a site turned off the axes.
+- The cube can't be hidden, resized or moved, and has no right-click menu (such as *Set this view as home* or *Orthographic on faces*).
+- Picking a face keeps perspective on; it doesn't switch to orthographic.
+- There is a cube only in the 3D view, not in sections or elevations.
+
+## 3.4 How to test
+
+1. Open the starter house. Rest the pointer on the cube's *Front*; it lights up with a tip. Click it: the view turns to the south side.
+2. Click *Top*: the plan from above, north up. Click the house to go back.
+3. Click the corner where *Top*, *Left* and *Front* meet, then the right-hand arrow: the view goes from the south-west corner to the north-west one.
+4. Click *S* on the ring, then drag the cube to orbit.
 
 ## How to test 3.2
 

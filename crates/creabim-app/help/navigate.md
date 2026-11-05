@@ -12,6 +12,18 @@
 
 The buttons at the top right of the 3D view do the same, and more: zoom in and out, orbit round the selection, perspective or orthographic, the ground grid, [X-ray](visibility#x-ray), **Show** (what the 3D view shows), the **render** menu (*Shaded*, *Shaded with edges*, *Hidden line* or *Wireframe*, also in *View › Render*; wireframe shows shafts and what is inside walls) and **View** (look from the top, the front, a side or a corner).
 
+### The view cube
+
+The cube in the top right corner of the 3D view turns the view for you:
+
+- Click a **face** (*Top*, *Front*, *Right*…), an **edge** or a **corner** to look from there. The view turns smoothly and the status bar says where you are looking from, for example *Looking from the top, front, left (south-west)*.
+- Click **N**, **E**, **S** or **W** on the ring under it to look from that side.
+- The two **arrows** above it turn the view a quarter round, from a corner to the next corner.
+- The **house** frames everything from the three-quarter view, as `Home` does.
+- Drag the cube to orbit.
+
+*Front* is the south face: the cube is named from north, which is up in plans, so *Front* shows what the south elevation shows.
+
 ## In plans, sections and sheets
 
 | Do this | To |

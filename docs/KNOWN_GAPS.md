@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **57** | **7** | **191** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 6 | 9 | 6 | 21 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 6 | 8 | 6 | 20 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -55,7 +55,6 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 3.5 | Only Sketch draws on the active workplane; void, extrusion, sweep, slab, opening and detail region draw in plan XY. | 4 | L | MU01-12 |
 | 3.6 | No edge offset in 3D (offset edge, offset all, insert point). | 4 | M–L | B01-7 |
 | 3.7 | Layers can't be edited by hand: no layer-end handles in plan or section, no corner join presets, no "Draw by this line", no IFC parts where layers differ. | 4 | L | MU08-01 |
-| 4.2 | No view cube. | 3 | M | B01-2 |
 | 5.1 | Schedules don't export to Excel. | 4 | M | B01 |
 | 5.2 | No quantities per assembly layer, rates per material or Take-off pane. | 4 | L | B01 |
 | 5.3 | No image or PDF references with calibration. | 4 | L | B01 |
@@ -347,6 +346,10 @@ Gaps reported by work that is still a pull request go here until it merges, then
 ---
 
 ## Recently fixed
+
+**In Brief 02, Phase 3, the view cube (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase3](evolution/brief02-phase3)**):**
+
+- A view cube in the 3D view's corner: 26 hot zones (faces, edges, corners) that turn the view smoothly to look from there, a compass ring under it, two quarter-turn arrows and a home button that frames everything. Its faces are named from north, so *Front* is the south side (4.2).
 
 **In Brief 02, Phase 3, choices with pictures and your own styles (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase3](evolution/brief02-phase3)**):**
 
