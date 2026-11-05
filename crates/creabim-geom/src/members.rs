@@ -63,15 +63,19 @@ pub fn cut_holes(mesh: TriMesh, holes: &[Vec<DVec2>]) -> TriMesh {
 /// A roof as a closed solid: each flat piece of its underside, raised by the
 /// roof's upright thickness for the top, with upright edges round the eaves.
 pub fn roof_mesh(r: &Roof, base: f64) -> TriMesh {
-    roof_layer_mesh(r, base, 0.0, r.vertical_thickness())
+    roof_layer_mesh(r, base, 0.0, r.vertical_thickness(), None)
 }
 
 /// One layer of a layered roof: the part of the roof from `from` to `to`
 /// above its underside, measured upright.
-pub fn roof_layer_mesh(r: &Roof, base: f64, from: f64, to: f64) -> TriMesh {
+pub fn roof_layer_mesh(r: &Roof, base: f64, from: f64, to: f64, layer: Option<usize>) -> TriMesh {
     let mut m = TriMesh::default();
     let tv = to - from;
-    let eaves = r.eave_outline();
+    // a layer whose edges were moved by hand has eaves of its own
+    let (eaves, faces) = match layer {
+        Some(i) => (r.layer_eaves(i), r.layer_faces(i)),
+        None => (r.eave_outline(), r.faces()),
+    };
     let on_eaves = |a: DVec2, b: DVec2| {
         let mid = (a + b) / 2.0;
         let n = eaves.len();
@@ -87,7 +91,7 @@ pub fn roof_layer_mesh(r: &Roof, base: f64, from: f64, to: f64) -> TriMesh {
                     < 1e-6
         })
     };
-    for f in r.faces() {
+    for f in faces {
         let pts = &f.outline;
         let tris = triangulate(pts);
         let lo: Vec<DVec3> = pts

@@ -165,6 +165,7 @@ pub fn fit(
                 boundary.reverse();
             }
             Ok(ElementKind::Slab(Slab {
+                layer_edges: vec![],
                 level,
                 boundary,
                 thickness: hi.z - lo.z,

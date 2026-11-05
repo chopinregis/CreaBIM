@@ -411,9 +411,13 @@ pub fn set_assembly(model: &Model, e: &mut Element, assembly: Option<ElementId>)
         set_thickness(e, a.total());
         a.layers.len()
     });
-    if let ElementKind::Wall(w) = &mut e.kind {
-        // a layer the new type doesn't have drops its edited ends
-        w.layer_ends.retain(|l| l.layer < layers.unwrap_or(0));
+    // a layer the new type doesn't have drops its edited ends and edges
+    let keep = layers.unwrap_or(0);
+    match &mut e.kind {
+        ElementKind::Wall(w) => w.layer_ends.retain(|l| l.layer < keep),
+        ElementKind::Slab(s) => s.layer_edges.retain(|l| l.layer < keep),
+        ElementKind::Roof(r) => r.layer_edges.retain(|l| l.layer < keep),
+        _ => {}
     }
     true
 }

@@ -1136,6 +1136,7 @@ impl Builder {
                             id,
                             name,
                             kind: ElementKind::Slab(Slab {
+                                layer_edges: vec![],
                                 level,
                                 boundary: p.footprint,
                                 thickness: p.z1 - p.z0,

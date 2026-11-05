@@ -105,11 +105,11 @@ fn layer_items(
         ElementKind::Slab(s) => {
             let level = model.level(s.level)?;
             let top = s.top(level.elevation);
-            let outline = s.outline();
             let holes = creabim_core::slab::holes_of(model, e);
             assembly::depth_bands(a, s.thickness)
                 .into_iter()
                 .map(|b| {
+                    let outline = s.layer_outline(b.index);
                     let m = slab_mesh_with_holes(&outline, &holes, top - b.s0, b.s1 - b.s0);
                     (b, m)
                 })
@@ -124,7 +124,13 @@ fn layer_items(
             assembly::depth_bands(a, r.thickness)
                 .into_iter()
                 .map(|b| {
-                    let m = crate::members::roof_layer_mesh(r, base, tv - b.s1 * k, tv - b.s0 * k);
+                    let m = crate::members::roof_layer_mesh(
+                        r,
+                        base,
+                        tv - b.s1 * k,
+                        tv - b.s0 * k,
+                        Some(b.index),
+                    );
                     (b, crate::members::cut_holes(m, &holes))
                 })
                 .collect()

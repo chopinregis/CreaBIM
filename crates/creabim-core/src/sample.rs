@@ -72,6 +72,7 @@ pub fn sample_house() -> Model {
         tx = tx.insert(Element::new(
             format!("{lname} Slab"),
             ElementKind::Slab(Slab {
+                layer_edges: vec![],
                 level,
                 boundary: corners.to_vec(),
                 thickness: 0.25,

@@ -948,7 +948,11 @@ impl CreaBimApp {
                     let on = !handles::layers();
                     handles::set_layers(on);
                     self.status = if on {
-                        "Layers: drag a layer's end to run it on or hold it back. Tab: back to the element's grips.".into()
+                        match self.doc.model().get(id).map(|e| &e.kind) {
+                            Some(ElementKind::Wall(_)) => "Layers: drag a layer's end to run it on or hold it back. Tab: back to the element's grips.",
+                            _ => "Layers: drag a layer's edge to push it out past the edge or pull it in. Tab: back to the element's grips.",
+                        }
+                        .into()
                     } else {
                         editmode::enter(self.doc.model(), id, &mut self.plan.edit)
                     };
@@ -5276,14 +5280,21 @@ impl CreaBimApp {
                 format!("{label}: {} elements.", others.len() + 1)
             };
             // a layer the new type hasn't got loses its edited ends
-            if let (ElementKind::Wall(was), ElementKind::Wall(now)) = (&e.kind, &edited.kind) {
-                let lost = was.layer_ends.len().saturating_sub(now.layer_ends.len());
-                if lost > 0 {
-                    let s = if lost == 1 { "" } else { "s" };
-                    msg = format!(
-                        "{msg} {lost} edited layer end{s} dropped: the new type has no such layer."
-                    );
-                }
+            let edits = |k: &ElementKind| match k {
+                ElementKind::Wall(w) => w.layer_ends.len(),
+                ElementKind::Slab(s) => s.layer_edges.len(),
+                ElementKind::Roof(r) => r.layer_edges.len(),
+                _ => 0,
+            };
+            let lost = edits(&e.kind).saturating_sub(edits(&edited.kind));
+            if lost > 0 {
+                let what = match (&edited.kind, lost) {
+                    (ElementKind::Wall(_), 1) => "edited layer end",
+                    (ElementKind::Wall(_), _) => "edited layer ends",
+                    (_, 1) => "edited layer edge",
+                    _ => "edited layer edges",
+                };
+                msg = format!("{msg} {lost} {what} dropped: the new type has no such layer.");
             }
             if let ElementKind::Opening(o) = &edited.kind {
                 let model = self.doc.model();

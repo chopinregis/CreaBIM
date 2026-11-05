@@ -2941,6 +2941,7 @@ fn section_tool(
                 let e = Element::new(
                     "Slab",
                     ElementKind::Slab(Slab {
+                        layer_edges: vec![],
                         level,
                         boundary,
                         thickness,

@@ -1658,6 +1658,7 @@ impl<'a> Importer<'a> {
             id: eid,
             name: Self::name(e, "Slab"),
             kind: ElementKind::Slab(Slab {
+                layer_edges: vec![],
                 level: lid,
                 boundary: p.outline,
                 thickness: p.z1 - p.z0,

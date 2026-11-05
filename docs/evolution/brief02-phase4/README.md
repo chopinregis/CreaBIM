@@ -19,7 +19,7 @@ The screenshots were taken in the running app on a small L corner cut out of the
 | Item | Part | Status |
 | --- | --- | --- |
 | 1 (3.7) | Wall layer ends: grips in Layers, drag or type, a dot on edited ends, reset one or all, kept through move, stretch and retype | **Done** (below). |
-| 1 (3.7) | Slab and roof layer edges | Not started. |
+| 1 (3.7) | Slab and roof layer edges: a grip on each edge of each layer, drag or type, reset | **Done** (below). |
 | 1 (3.7) | Corner join presets | Not started. |
 | 1 (3.7) | *Draw by this line* on any layer boundary | Not started. |
 | 1 (3.7) | Check model warnings for gaps and overlaps; IFC parts where layers differ | Not started. |
@@ -57,7 +57,22 @@ After the drag, the moved end's grip is filled. Here the block runs 20 mm past t
 
 **Reset.** Right-click a layer grip: *Reset layer end* puts that end back on its join, *Reset all layers* every end of the wall. Each is one undo step.
 
+### Slab and roof layer edges
+
+On a layered slab or roof, `Tab` in Edit mode shows a grip on each edge of each layer, at the middle of the edge and of the layer's depth. Drag one square to the edge, or type how far, to push that layer out past the element's edge or pull it in: a slate run on past the fascia, insulation stopped short of a slab edge. A roof's edges are its eaves and verges, and a pushed-out layer runs on down its own slope. In plan, where a slab's layers sit on one another, each layer's grip is drawn a step further out; in sections and 3D each is at its own depth.
+
+![Roof layer grips](09-roof-layer-grips.png)
+
+![Before](10-roof-eave-before.png)
+
+![After](11-roof-eave-after.png)
+
+Each edit is kept on the slab or roof (`layer_edges` in the file) as a distance square to that edge, so it moves with the edge when the outline is reshaped. *Reset layer edge* and *Reset all layers* are in the grip's right-click menu, and a change of type drops the edits of layers the new type lacks, as for walls.
+
 **Gaps still open** (in [KNOWN_GAPS](../../KNOWN_GAPS.md)):
+
+- A slab's arc edge is moved by its corners, so its bulge keeps its ratio rather than staying parallel.
+- Adding or removing a corner of the outline renumbers its edges, and edits on edges after it move to the next edge.
 
 - A layer run on into the wall it meets overlaps that wall's layers, and the plan draws one over the other; the corner join presets (next) will decide which wins.
 - While a grip is dragged, the preview is drawn without the joins of the walls around it.

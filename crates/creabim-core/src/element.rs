@@ -902,6 +902,40 @@ impl LayerEnd {
     }
 }
 
+/// One layer's edge moved by hand on a slab or a roof: how far edge
+/// `edge` of layer `layer` (counted from the top) is pushed out past the
+/// element's own edge, in metres in plan, square to it. Negative pulls it
+/// in.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LayerEdge {
+    pub layer: usize,
+    pub edge: usize,
+    pub by: f64,
+}
+
+/// How far each of `n` edges of layer `layer` is pushed out by `edits`.
+pub fn layer_edge_offsets(edits: &[LayerEdge], layer: usize, n: usize) -> Vec<f64> {
+    let mut out = vec![0.0; n];
+    for e in edits.iter().filter(|e| e.layer == layer && e.edge < n) {
+        out[e.edge] = e.by;
+    }
+    out
+}
+
+/// Set how far edge `edge` of layer `layer` is pushed out; an edit back
+/// at zero is dropped.
+pub fn set_layer_edge(edits: &mut Vec<LayerEdge>, layer: usize, edge: usize, by: f64) {
+    match edits
+        .iter_mut()
+        .find(|e| e.layer == layer && e.edge == edge)
+    {
+        Some(e) => e.by = by,
+        None => edits.push(LayerEdge { layer, edge, by }),
+    }
+    edits.retain(|e| e.by.abs() > 1e-9);
+    edits.sort_by_key(|e| (e.layer, e.edge));
+}
+
 fn is_false(v: &bool) -> bool {
     !*v
 }
@@ -1055,6 +1089,9 @@ pub struct Slab {
     /// inside the outline. Shafts cut more; see [`crate::slab::holes_of`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub holes: Vec<Vec<DVec2>>,
+    /// Layer edges moved by hand (see [`LayerEdge`]); none for most.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_edges: Vec<LayerEdge>,
 }
 
 impl Slab {
@@ -1069,7 +1106,27 @@ impl Slab {
             bulges: vec![],
             assembly: None,
             holes: vec![],
+            layer_edges: vec![],
         }
+    }
+
+    /// The corners of layer `layer`'s outline: the slab's, with any of its
+    /// edges moved by hand pushed out or pulled in.
+    pub fn layer_boundary(&self, layer: usize) -> Vec<DVec2> {
+        let by = layer_edge_offsets(&self.layer_edges, layer, self.boundary.len());
+        crate::members::offset_edges(&self.boundary, &by)
+    }
+
+    /// Layer `layer`'s outline, arcs traced, as [`Slab::outline`].
+    pub fn layer_outline(&self, layer: usize) -> Vec<DVec2> {
+        if !self.layer_edges.iter().any(|e| e.layer == layer) {
+            return self.outline();
+        }
+        Slab {
+            boundary: self.layer_boundary(layer),
+            ..self.clone()
+        }
+        .outline()
     }
 
     /// The bulge of edge `i`; 0 for a straight one.
@@ -1869,6 +1926,30 @@ pub const FREE_MESH_CLASSES: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_slab_layer_edge_moves_that_layer_only() {
+        let mut s = Slab::new(
+            ElementId::new(),
+            vec![
+                DVec2::ZERO,
+                DVec2::new(5.0, 0.0),
+                DVec2::new(5.0, 4.0),
+                DVec2::new(0.0, 4.0),
+            ],
+            0.3,
+        );
+        set_layer_edge(&mut s.layer_edges, 1, 2, 0.05);
+        assert_eq!(s.layer_outline(0), s.outline());
+        let out = s.layer_outline(1);
+        assert!(out.iter().any(|p| (p.y - 4.05).abs() < 1e-9), "{out:?}");
+        assert_eq!(
+            layer_edge_offsets(&s.layer_edges, 1, 4),
+            [0.0, 0.0, 0.05, 0.0]
+        );
+        set_layer_edge(&mut s.layer_edges, 1, 2, 0.0);
+        assert!(s.layer_edges.is_empty());
+    }
 
     #[test]
     fn layer_ends_are_kept_sorted_dropped_at_zero_and_left_out_of_files_untouched() {

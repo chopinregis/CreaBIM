@@ -1044,6 +1044,7 @@ fn roof(c: &mut Ctx, r: &f::Roof, at: &Path) {
         }
     };
     let roof = core::Roof {
+        layer_edges: vec![],
         level,
         boundary,
         shape,

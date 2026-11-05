@@ -60,12 +60,12 @@ pub use curtain::{CurtainGrid, GridRule, PanelKind};
 pub use detail::{DetailItem, DetailKind, DrawingFrame, MembraneLook};
 pub use document::{Document, Step, StepId};
 pub use editmesh::EditMesh;
+pub use element::{layer_edge_offsets, set_layer_edge, LayerEdge, LayerEnd, LocationLine, WallTop};
 pub use element::{
     Cut, Dimension, Element, ElementKind, FreeMesh, Grid, GridGroup, Guide, Hatch, HostPoint,
     Level, LevelHead, Material, Opening, OpeningFrame, OpeningKind, ScheduleCategory, Sheet,
     Sketch, Slab, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall, Workplane,
 };
-pub use element::{LayerEnd, LocationLine, WallTop};
 pub use footing::{Footing, FootingKind};
 pub use graphics::{LineWeights, PlanGraphics};
 pub use id::ElementId;
