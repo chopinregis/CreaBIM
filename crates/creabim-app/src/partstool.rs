@@ -173,6 +173,8 @@ pub struct PartSettings {
     pub path: Vec<DVec2>,
     pub terrain_thickness: f64,
     pub area: usize,
+    /// How deep a void drawn on a face in 3D cuts into it.
+    pub face_depth: f64,
     pub plant: PlantForm,
     pub canopy: f64,
     pub plant_height: f64,
@@ -185,6 +187,7 @@ impl Default for PartSettings {
             extrusion_height: 1.0,
             void_base: 0.3,
             void_height: 0.6,
+            face_depth: 0.5,
             profile: SweepProfile::Coping,
             size: SweepProfile::Coping.defaults(),
             steps: 3,
@@ -225,6 +228,27 @@ pub fn make_for(state: &PlanState) -> Option<Make> {
         },
         Tool::Paving => Make::Area(s.area),
         _ => return None,
+    })
+}
+
+/// Where a part drawn on a face in 3D starts off the face and how far it
+/// runs, along the face's outward normal: an extrusion stands out of the
+/// face, a void cuts into it (and pokes 10 mm out, for a clean cut).
+pub fn on_face(state: &PlanState) -> Option<(f64, f64, bool)> {
+    let s = &state.parts;
+    match state.tool {
+        Tool::Extrusion => Some((0.0, s.extrusion_height, false)),
+        Tool::Void => Some((-s.face_depth, s.face_depth + 0.01, true)),
+        _ => None,
+    }
+}
+
+/// The profile and name of a sweep drawn now on a face in the 3D view.
+pub fn face_sweep(state: &PlanState) -> Option<(Vec<DVec2>, &'static str)> {
+    let s = &state.parts;
+    (state.tool == Tool::Sweep).then(|| {
+        let (a, b) = s.size;
+        (s.profile.profile(0.2, a, b, s.steps), s.profile.label())
     })
 }
 
@@ -379,6 +403,7 @@ pub fn click(
                     Path::Points {
                         points: pts.iter().map(|q| q.extend(0.0)).collect(),
                         closed: false,
+                        normal: None,
                     },
                 );
                 state.status = Some(format!("{} added.", s.profile.label()));
@@ -440,6 +465,12 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                 "Height",
                 s.void_height,
                 "Height of new voids",
+            ),
+            num(
+                "face_depth",
+                "Depth on a face",
+                s.face_depth,
+                "How deep a void drawn on a face in the 3D view cuts into it, square to the face",
             ),
         ],
         Tool::Sweep => {
@@ -525,6 +556,7 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "extrusion_height" => s.extrusion_height = v.clamp(0.01, 1000.0),
         "void_base" => s.void_base = v.clamp(-100.0, 1000.0),
         "void_height" => s.void_height = v.clamp(0.01, 1000.0),
+        "face_depth" => s.face_depth = v.clamp(0.01, 100.0),
         "size_a" => s.size.0 = v.clamp(0.0, 20.0),
         "size_b" => s.size.1 = v.clamp(0.005, 20.0),
         "steps" => s.steps = v.round().clamp(1.0, 40.0) as u32,
@@ -596,26 +628,48 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
             holes,
             base,
             height,
+            plane,
         } => {
-            if num(ui, "Base", base, -100.0, 1000.0) {
+            let (b, h) = if plane.is_some() {
+                ("Offset from the face", "Depth")
+            } else {
+                ("Base", "Height")
+            };
+            if num(ui, b, base, -100.0, 1000.0) {
                 label = "Extrusion base";
             }
-            if num(ui, "Height", height, 0.001, 1000.0) {
+            if num(ui, h, height, 0.001, 1000.0) {
                 label = "Extrusion height";
             }
-            weak(
-                ui,
-                format!(
-                    "An outline of {} corners{}, pulled up from {} above its level.",
-                    outline.len(),
-                    if holes.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" with {} holes", holes.len())
-                    },
-                    crate::units::len(*base)
-                ),
-            );
+            let holes_text = if holes.is_empty() {
+                String::new()
+            } else {
+                format!(" with {} holes", holes.len())
+            };
+            if plane.is_some() {
+                weak(
+                    ui,
+                    format!(
+                        "Drawn on a face: an outline of {} corners{}, running square to the face from its offset, as deep as its depth.",
+                        outline.len(),
+                        holes_text
+                    ),
+                );
+            } else {
+                weak(
+                    ui,
+                    format!(
+                        "An outline of {} corners{}, pulled up from {} above its level.",
+                        outline.len(),
+                        if holes.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" with {} holes", holes.len())
+                        },
+                        crate::units::len(*base)
+                    ),
+                );
+            }
         }
         Form::Sweep { profile, path } => {
             // the profile's width and height, rescaling it
@@ -676,7 +730,7 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
                         label = "Sweep ends";
                     }
                 }
-                Path::Points { points, closed } => {
+                Path::Points { points, closed, .. } => {
                     if crate::props::switch(ui, closed, "Closed path").changed() {
                         label = "Sweep path";
                     }

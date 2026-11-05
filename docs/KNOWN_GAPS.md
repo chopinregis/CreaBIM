@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **57** | **7** | **191** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 7 | 8 | 5 | 20 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 7 | 9 | 4 | 20 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -52,7 +52,7 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 2.13 | Choices with pictures and live previews are in *Tags and marks* and the grip choice only; pens, patterns, object styles and view templates are still plain lists. No room tag designer. | 3 | M | MU10 |
 | 2.14 | Grips have their four states and a live pill (old → new ± change, A3-3), but no gap to the nearest neighbour while dragging, no "Widened D03 by 300 mm" wording in the status bar, and the grip accent colour isn't a personal setting (the grip style is). | 2 | M | MU11, MU12 |
 | 3.3 | Views have no linked "Open in 3D" crop box (callouts, sections, elevations, plans). (A callout's box resizes and moves with grips.) | 2 | M | MU01-07 |
-| 3.5 | Only Sketch draws on the active workplane; void, extrusion, sweep, slab, opening and detail region draw in plan XY. | 4 | L | MU01-12 |
+| 3.5 | Extrusion, void, sweep, slab (on level faces) and wall opening draw on a face in 3D (Phase 4 item 2). Still to do: mirror and offset commands (on a face or in plan); Align on the workplane; a depth handle for an extrusion on a face; room outline and detail region on a face. | 4 | M | MU01-12 |
 | 3.6 | No edge offset in 3D (offset edge, offset all, insert point). | 4 | M–L | B01-7 |
 | 3.7 | Layer editing is in (Phase 4 item 1). Left over: a layer run on by hand into the wall it meets overlaps that wall's layers in plan (Check layer joins lists it); a grip drag's preview leaves out the joins around it; thin layers' grips crowd together in plan at small scales; corner presets don't cover tees or three-way joints; a slab's arc edge keeps its bulge ratio when its layer moves; adding or removing an outline corner shifts the layer edits on the edges after it; the open JSON format doesn't carry layer ends, layer edges or corner presets yet (the project file does); an IFC read back takes a wall's layers from its layer set, so its parts, and the edits they show, are not read; Check layer joins covers wall ends only, not slab and roof edges. | 4 | S | MU08-01 |
 | 5.1 | Schedules don't export to Excel. | 4 | M | B01 |
@@ -346,6 +346,11 @@ Gaps reported by work that is still a pull request go here until it merges, then
 ---
 
 ## Recently fixed
+
+**In Brief 02, Phase 4, item 2, drawing on any face (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase4](evolution/brief02-phase4)**):**
+
+- In the 3D view, Extrusion, Void, Sweep, Slab and Wall opening draw on the face under the pointer (or the workplane). An extrusion or void keeps its plane and runs square to it: a void on a sloped roof cuts square into the slope. A sweep's path runs on the face with its profile standing out of it. A slab goes on a level face. A wall opening is the rectangle around what is drawn on a wall face (3.5).
+- Snaps while drawing on a face only count on that face. A corner hidden behind the face no longer pulls the point somewhere else (3.5).
 
 **In Brief 02, Phase 4, item 1, layer editing (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase4](evolution/brief02-phase4)**):**
 

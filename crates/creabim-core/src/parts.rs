@@ -60,6 +60,11 @@ pub enum Form {
         holes: Vec<Vec<DVec2>>,
         base: f64,
         height: f64,
+        /// Drawn on a face: the outline lies on this plane (its origin's
+        /// height above the level) and `base` and `height` run along its
+        /// normal. None for a plan outline pulled up.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plane: Option<crate::Workplane>,
     },
     /// A section profile carried along a path. The profile is in the
     /// path's own axes: `x` across it (positive to the left, looking
@@ -76,6 +81,11 @@ pub enum Path {
         points: Vec<DVec3>,
         #[serde(default, skip_serializing_if = "is_false")]
         closed: bool,
+        /// Drawn on a face: the face's outward normal, which the profile's
+        /// `y` runs along (its `x` across the path, on the face). None for
+        /// a path whose profile stands upright.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        normal: Option<DVec3>,
     },
     /// Along a wall's centreline, from its start to its end, at its top or
     /// its base: it follows the wall when the wall moves or grows.
@@ -108,6 +118,11 @@ impl WallEdge {
     }
 }
 
+/// Point `p` of a face-drawn outline, `h` off its plane along the normal.
+pub fn on_plane(pl: &crate::Workplane, p: DVec2, h: f64) -> DVec3 {
+    pl.to_model(p) + pl.normal() * h
+}
+
 impl Part {
     /// A solid extrusion of `outline` between `base` and `base + height`
     /// above `level`.
@@ -122,6 +137,7 @@ impl Part {
                 holes: vec![],
                 base,
                 height,
+                plane: None,
             },
             void: false,
             material: None,
@@ -156,6 +172,17 @@ impl Part {
         }
     }
 
+    /// The outward normal of the face a sweep's path was drawn on.
+    pub fn face_normal(&self) -> Option<DVec3> {
+        match &self.form {
+            Form::Sweep {
+                path: Path::Points { normal, .. },
+                ..
+            } => *normal,
+            _ => None,
+        }
+    }
+
     /// The wall a sweep follows.
     pub fn host(&self) -> Option<ElementId> {
         match &self.form {
@@ -175,7 +202,18 @@ impl Part {
                 holes,
                 base,
                 height,
+                plane,
             } => {
+                if let Some(pl) = plane {
+                    let unit = |v: DVec3| v.is_finite() && (v.length() - 1.0).abs() < 1e-6;
+                    if !(pl.origin.is_finite()
+                        && unit(pl.x)
+                        && unit(pl.y)
+                        && pl.x.dot(pl.y).abs() < 1e-6)
+                    {
+                        return Err("an extrusion's plane needs two square unit axes".into());
+                    }
+                }
                 if outline.len() < 3 || !finite(outline) {
                     return Err("an extrusion's outline needs three finite corners".into());
                 }
@@ -194,7 +232,14 @@ impl Part {
                     return Err("a sweep's profile has no area".into());
                 }
                 match path {
-                    Path::Points { points, closed } => {
+                    Path::Points {
+                        points,
+                        closed,
+                        normal,
+                    } => {
+                        if normal.is_some_and(|n| !n.is_finite() || n.length() < 1e-9) {
+                            return Err("a sweep's face normal must be a direction".into());
+                        }
                         if points.len() < 2 + usize::from(*closed)
                             || points.iter().any(|p| !p.is_finite())
                         {
@@ -219,7 +264,7 @@ impl Part {
             return None;
         };
         match path {
-            Path::Points { points, closed } => {
+            Path::Points { points, closed, .. } => {
                 let z = crate::members::elevation(model, self.level);
                 Some((points.iter().map(|p| *p + DVec3::Z * z).collect(), *closed))
             }
@@ -254,6 +299,25 @@ impl Part {
                 outline,
                 base,
                 height,
+                plane: Some(pl),
+                ..
+            } => {
+                let z = crate::members::elevation(model, self.level);
+                let mut lo = DVec3::splat(f64::INFINITY);
+                let mut hi = DVec3::splat(f64::NEG_INFINITY);
+                for p in outline {
+                    for h in [*base, base + height] {
+                        let q = on_plane(pl, *p, h) + DVec3::Z * z;
+                        lo = lo.min(q);
+                        hi = hi.max(q);
+                    }
+                }
+                lo.is_finite().then_some((lo, hi))
+            }
+            Form::Extrusion {
+                outline,
+                base,
+                height,
                 ..
             } => {
                 let z = crate::members::elevation(model, self.level) + base;
@@ -263,7 +327,18 @@ impl Part {
             Form::Sweep { profile, .. } => {
                 let (pts, _) = self.path(model)?;
                 let (plo, phi) = flat_bounds(profile)?;
-                let reach = plo.x.abs().max(phi.x.abs());
+                let mut reach = plo.x.abs().max(phi.x.abs());
+                if self.face_normal().is_some() {
+                    // on a face the profile stands out along its normal
+                    reach = reach.max(plo.y.abs()).max(phi.y.abs());
+                    let (mut lo, mut hi) =
+                        (DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY));
+                    for p in pts {
+                        lo = lo.min(p - DVec3::splat(reach * 2.0));
+                        hi = hi.max(p + DVec3::splat(reach * 2.0));
+                    }
+                    return Some((lo, hi));
+                }
                 let mut lo = DVec3::splat(f64::INFINITY);
                 let mut hi = DVec3::splat(f64::NEG_INFINITY);
                 for p in pts {
@@ -477,6 +552,28 @@ pub fn transform(part: &mut Part, t: &Xform) -> Option<()> {
             holes,
             base,
             height,
+            plane: Some(pl),
+        } => {
+            // drawn on a face: the plane goes where the change takes it,
+            // the outline stays as drawn on it (a scale scales it too)
+            pl.origin = t.point3(pl.origin);
+            if t.is_rigid() {
+                pl.x = t.direction(pl.x).normalize();
+                pl.y = t.direction(pl.y).normalize();
+            } else if let Some(f) = factor {
+                for p in outline.iter_mut().chain(holes.iter_mut().flatten()) {
+                    *p *= f;
+                }
+                *height *= f;
+                *base *= f;
+            }
+        }
+        Form::Extrusion {
+            outline,
+            holes,
+            base,
+            height,
+            plane: None,
         } => {
             for p in outline.iter_mut().chain(holes.iter_mut().flatten()) {
                 *p = t.point2(*p);
@@ -489,6 +586,16 @@ pub fn transform(part: &mut Part, t: &Xform) -> Option<()> {
         }
         Form::Sweep { profile, path } => {
             match path {
+                Path::Points {
+                    points,
+                    normal: Some(n),
+                    ..
+                } => {
+                    for p in points.iter_mut() {
+                        *p = t.point3(*p);
+                    }
+                    *n = t.direction(*n).normalize_or(*n);
+                }
                 Path::Points { points, .. } => {
                     for p in points.iter_mut() {
                         *p = t.point2(p.truncate()).extend(p.z + dz);
@@ -607,6 +714,41 @@ mod tests {
         // the area is the sum of the stacked treads: 0.3 * 0.15 * (3 + 2 + 1)
         let area = crate::polygon::signed_area2(&p) / 2.0;
         assert!((area - 0.3 * 0.15 * 6.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_part_on_a_face_moves_and_turns_with_its_plane() {
+        let l = ElementId::new();
+        let sq = crate::polygon::rectangle(DVec2::ZERO, DVec2::ONE);
+        let mut p = Part::extrusion(l, sq.clone(), -0.2, 0.3);
+        let pl = crate::Workplane::facing(DVec3::new(1.0, 0.0, 1.0), DVec3::X);
+        if let Form::Extrusion { plane, .. } = &mut p.form {
+            *plane = Some(pl);
+        }
+        transform(&mut p, &Xform::Move(DVec3::new(0.0, 2.0, 0.5))).unwrap();
+        transform(
+            &mut p,
+            &Xform::Rotate {
+                center: DVec2::ZERO,
+                degrees: 90.0,
+            },
+        )
+        .unwrap();
+        let Form::Extrusion {
+            outline,
+            plane: Some(q),
+            base,
+            ..
+        } = &p.form
+        else {
+            unreachable!()
+        };
+        // drawn on the plane as before; the plane turned to face +y
+        assert_eq!(outline, &sq);
+        assert_eq!(*base, -0.2);
+        assert!((q.origin - DVec3::new(-2.0, 1.0, 1.5)).length() < 1e-9);
+        assert!((q.normal() - DVec3::Y).length() < 1e-9);
+        assert!(p.validate().is_ok());
     }
 
     #[test]

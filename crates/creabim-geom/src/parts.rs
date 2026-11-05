@@ -32,16 +32,71 @@ pub fn part_mesh(model: &Model, p: &Part) -> Option<TriMesh> {
             holes,
             base,
             height,
+            plane: Some(pl),
+        } => {
+            // built flat on the plane, then laid on it: the plane's axes are
+            // right-handed, so the faces keep facing out
+            let mut m = slab_mesh_with_holes(outline, holes, base + height, *height);
+            let lift = DVec3::Z * members::elevation(model, p.level);
+            let n = pl.normal();
+            for v in &mut m.positions {
+                let q = creabim_core::parts::on_plane(
+                    pl,
+                    DVec2::new(v[0] as f64, v[1] as f64),
+                    v[2] as f64,
+                );
+                *v = (q + lift).as_vec3().to_array();
+            }
+            for v in &mut m.normals {
+                let q = pl.x * v[0] as f64 + pl.y * v[1] as f64 + n * v[2] as f64;
+                *v = q.as_vec3().to_array();
+            }
+            Some(m)
+        }
+        Form::Extrusion {
+            outline,
+            holes,
+            base,
+            height,
+            plane: None,
         } => {
             let z = members::elevation(model, p.level) + base;
             Some(slab_mesh_with_holes(outline, holes, z + height, *height))
         }
         Form::Sweep { profile, .. } => {
             let (path, closed) = p.path(model)?;
-            let m = sweep_mesh(profile, &path, closed);
+            let m = match p.face_normal() {
+                Some(n) => sweep_mesh_on(profile, &path, closed, n),
+                None => sweep_mesh(profile, &path, closed),
+            };
             (!m.is_empty()).then_some(m)
         }
     }
+}
+
+/// [`sweep_mesh`] with `up` (a face's outward normal) for the profile's
+/// `y` instead of the vertical: the path is laid flat in a frame where
+/// `up` is vertical, swept there and stood back up.
+pub fn sweep_mesh_on(profile: &[DVec2], path: &[DVec3], closed: bool, up: DVec3) -> TriMesh {
+    let up = up.normalize_or(DVec3::Z);
+    let ex = if up.z.abs() > 0.999 {
+        DVec3::X * up.z.signum()
+    } else {
+        DVec3::Z.cross(up).normalize()
+    };
+    let ey = up.cross(ex);
+    let flat: Vec<DVec3> = path
+        .iter()
+        .map(|p| DVec3::new(p.dot(ex), p.dot(ey), p.dot(up)))
+        .collect();
+    let mut m = sweep_mesh(profile, &flat, closed);
+    let back = |v: &mut [f32; 3]| {
+        let q = ex * v[0] as f64 + ey * v[1] as f64 + up * v[2] as f64;
+        *v = q.as_vec3().to_array();
+    };
+    m.positions.iter_mut().for_each(back);
+    m.normals.iter_mut().for_each(back);
+    m
 }
 
 /// A closed solid: `profile` (counter-clockwise, `x` to the path's left,
@@ -909,6 +964,85 @@ pub fn plant_symbol(out: &mut Vec<PlanItem>, id: ElementId, c: DVec2, form: Plan
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_sweep_drawn_up_a_wall_face_stands_out_of_it() {
+        // a path up and across a wall face looking -y, at y = 0
+        let path = [
+            DVec3::new(0.0, 0.0, 0.0),
+            DVec3::new(0.0, 0.0, 2.0),
+            DVec3::new(1.5, 0.0, 2.0),
+        ];
+        let profile = vec![
+            DVec2::new(-0.05, 0.0),
+            DVec2::new(0.05, 0.0),
+            DVec2::new(0.05, 0.1),
+            DVec2::new(-0.05, 0.1),
+        ];
+        let m = sweep_mesh_on(&profile, &path, false, -DVec3::Y);
+        assert!(m.triangle_count() > 0);
+        for v in &m.positions {
+            // out of the face (toward -y) by up to the profile's height
+            assert!(v[1] <= 1e-6 && v[1] >= -0.1 - 1e-6, "{v:?}");
+        }
+        // closed and outward, as long as the path: 2 m + 1.5 m of a 0.1 x 0.1 bar
+        let vol: f64 = m
+            .indices
+            .chunks(3)
+            .map(|t| {
+                let p = |k: usize| glam::Vec3::from(m.positions[t[k] as usize]).as_dvec3();
+                p(0).dot(p(1).cross(p(2))) / 6.0
+            })
+            .sum();
+        assert!((vol - 0.035).abs() < 2e-3, "{vol}");
+    }
+
+    #[test]
+    fn an_extrusion_on_a_sloped_face_stands_square_to_it() {
+        let level = Element::new(
+            "L",
+            ElementKind::Level(creabim_core::Level {
+                elevation: 2.0,
+                height: 3.0,
+            }),
+        );
+        let lid = level.id;
+        let m = Model::from_elements(vec![level]).unwrap();
+        // a 30° slope rising along y, through (0, 0, 1) above the level
+        let a = 30f64.to_radians();
+        let n = DVec3::new(0.0, -a.sin(), a.cos());
+        let pl = creabim_core::Workplane::facing(DVec3::new(0.0, 0.0, 1.0), n);
+        let mut p = Part::extrusion(
+            lid,
+            creabim_core::polygon::rectangle(DVec2::ZERO, DVec2::ONE),
+            -0.4,
+            0.5,
+        );
+        if let Form::Extrusion { plane, .. } = &mut p.form {
+            *plane = Some(pl);
+        }
+        p.validate().unwrap();
+        let mesh = part_mesh(&m, &p).unwrap();
+        // every corner is 0.4 under the face or 0.1 over it, along its normal
+        for v in &mesh.positions {
+            let q = glam::Vec3::from(*v).as_dvec3() - DVec3::new(0.0, 0.0, 3.0);
+            let h = q.dot(pl.normal());
+            assert!((h + 0.4).abs() < 1e-5 || (h - 0.1).abs() < 1e-5, "{h}");
+        }
+        // and the solid is closed and outward: its volume is the box's
+        let vol: f64 = mesh
+            .indices
+            .chunks(3)
+            .map(|t| {
+                let p = |k: usize| glam::Vec3::from(mesh.positions[t[k] as usize]).as_dvec3();
+                p(0).dot(p(1).cross(p(2))) / 6.0
+            })
+            .sum();
+        assert!((vol - 0.5).abs() < 1e-4, "{vol}");
+        let (lo, hi) = p.bounds(&m).unwrap();
+        assert!(lo.z < 3.0 && hi.z > 3.5, "{lo} {hi}");
+    }
+
     use super::*;
     use creabim_core::parts::{self, Path};
     use creabim_core::{Level, Wall};
@@ -965,6 +1099,7 @@ mod tests {
             Path::Points {
                 points: vec![DVec3::ZERO, DVec3::new(1.2, 0.0, 0.0)],
                 closed: false,
+                normal: None,
             },
         );
         let m = Model::from_elements([lv]).unwrap();

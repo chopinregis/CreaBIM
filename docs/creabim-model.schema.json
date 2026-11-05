@@ -884,6 +884,10 @@
           "default": 0.0
         },
         "height": { "type": "number", "description": "An extrusion's height." },
+        "plane": {
+          "$ref": "#/$defs/Plane",
+          "description": "An extrusion drawn on a face: its outline lies on this plane, and `base` and `height` run along the plane's normal (`x` × `y`)."
+        },
         "profile": {
           "type": "array",
           "items": {
@@ -909,6 +913,13 @@
           "description": "The path runs from its last point back to its first.",
           "default": false
         },
+        "face_normal": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "A path drawn on a face: the face's outward normal, which the profile's `y` runs along instead of up."
+        },
         "wall": {
           "type": "string",
           "description": "A sweep along a wall's id, at its top or base: it follows the wall (a coping, a plinth)."
@@ -931,6 +942,32 @@
         "ifc_class": { "type": "string", "description": "The IFC class it exports as." }
       },
       "required": ["id", "level"],
+      "additionalProperties": false
+    },
+    "Plane": {
+      "type": "object",
+      "description": "A plane anywhere in the model: its origin (height above the level) and two square unit axes along it.",
+      "properties": {
+        "origin": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "x": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "y": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "required": ["origin", "x", "y"],
       "additionalProperties": false
     },
     "WallEdge": {

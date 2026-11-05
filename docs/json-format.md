@@ -642,6 +642,16 @@ A railing along a path, or along one side of a stair.
 | `side` | [Side](#side) |  |  |
 | `material` | string |  |  |
 
+### Plane
+
+A plane anywhere in the model: its origin (height above the level) and two square unit axes along it.
+
+| Field | Type | | Description |
+|---|---|---|---|
+| `origin` | [x, y, z] | required |  |
+| `x` | [x, y, z] | required |  |
+| `y` | [x, y, z] | required |  |
+
 ### WallEdge
 
 A wall's top or base.
@@ -662,9 +672,11 @@ An extrusion of a plan outline, or a sweep of a profile along a path. A void cut
 | `holes` | array of array of [x, y] |  | An extrusion's holes. |
 | `base` | number | default `0.0` | An extrusion's bottom above the level. |
 | `height` | number |  | An extrusion's height. |
+| `plane` | [Plane](#plane) |  | An extrusion drawn on a face: its outline lies on this plane, and `base` and `height` run along the plane's normal (`x` × `y`). |
 | `profile` | array of [x, y] |  | A sweep's section: `x` across the path (positive to its left), `y` up from it. |
 | `path` | array of [x, y, z] |  | A sweep's path through points, `z` above the level. |
 | `closed` | boolean | default `false` | The path runs from its last point back to its first. |
+| `face_normal` | [x, y, z] |  | A path drawn on a face: the face's outward normal, which the profile's `y` runs along instead of up. |
 | `wall` | string |  | A sweep along a wall's id, at its top or base: it follows the wall (a coping, a plinth). |
 | `edge` | [WallEdge](#walledge) | default `"top"` |  |
 | `offset` | number | default `0.0` | Lifts a wall path off its edge. |

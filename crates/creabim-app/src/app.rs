@@ -2096,7 +2096,14 @@ impl CreaBimApp {
             }
         }
 
-        if self.plan.tool == Tool::Sketch {
+        // tools that draw on the face under the pointer (a wall opening
+        // only once the workplane is set on a face: else a click places one)
+        let on_face = match self.plan.tool {
+            Tool::Sketch | Tool::Extrusion | Tool::Void | Tool::Sweep | Tool::Slab => true,
+            Tool::Opening => self.workplane.is_some(),
+            _ => false,
+        };
+        if on_face {
             if response.dragged_by(egui::PointerButton::Primary) {
                 let d = response.drag_delta();
                 self.orbit_3d(d);
@@ -3275,13 +3282,28 @@ impl CreaBimApp {
             // only real snaps here: a free point is placed on the plane below
             (s.kind != SnapKind::Grid).then_some((s, align))
         });
+        // only snaps on the plane drawn on: a corner behind the face, seen
+        // through it, would land somewhere else once laid on the plane
+        let near_plane = |q: DVec3| -> bool {
+            let pl = plane.or_else(|| {
+                let (o, d) = ray(hover?);
+                face_plane(&self.scene, o, d)
+            });
+            pl.is_none_or(|pl| (q - pl.origin).dot(pl.normal()).abs() < 0.02)
+        };
+        let tracked = tracked.filter(|(s, _)| near_plane(s.p));
         let snapped = tracked.map(|t| t.0);
         if let Some((s, align)) = tracked {
             if let Some(c) = project(s.p) {
                 snaps::draw_tracked(painter, project, s, align, c, last.and_then(project));
             }
         }
-        // the plane a first click would start on
+        // the plane a first click would start on; off every face, a sketch
+        // starts on the ground and the other tools on the working level
+        let ground = match self.plan.tool {
+            Tool::Sketch => 0.0,
+            _ => self.work_level().map_or(0.0, |(_, z)| z),
+        };
         let (scene, custom) = (&self.scene, self.workplane.as_ref().map(|w| w.0));
         let candidate = |p: egui::Pos2| -> Option<Workplane> {
             let (o, d) = ray(p);
@@ -3294,10 +3316,10 @@ impl CreaBimApp {
                 });
             }
             face_plane(scene, o, d).or_else(|| {
-                let at = Workplane::ground(0.0).intersect(o, d)?;
+                let at = Workplane::ground(ground).intersect(o, d)?;
                 Some(Workplane {
                     origin: at,
-                    ..Workplane::ground(0.0)
+                    ..Workplane::ground(ground)
                 })
             })
         };
@@ -3335,6 +3357,70 @@ impl CreaBimApp {
             let Some(d) = app.plan.sketch.take() else {
                 return;
             };
+            // a level slab, or a bare hole in the wall the outline is on
+            if matches!(app.plan.tool, Tool::Slab | Tool::Opening) {
+                if !closed && app.plan.tool == Tool::Slab {
+                    app.plan.sketch = Some(d);
+                    app.status = "Close the outline on its first corner to make it.".into();
+                    return;
+                }
+                let r = if app.plan.tool == Tool::Slab {
+                    d.finish_slab(&mut app.doc, &app.plan)
+                } else {
+                    d.finish_opening(&mut app.doc)
+                };
+                match r {
+                    Ok(Some(id)) => {
+                        app.selection.only(id);
+                        app.face = None;
+                        app.status = if app.plan.tool == Tool::Slab {
+                            "Slab added with its top on the face. Ctrl+Z to undo."
+                        } else {
+                            "Opening cut in the wall, the rectangle around what you drew. Set its size and sill in Properties. Ctrl+Z to undo."
+                        }
+                        .into();
+                    }
+                    Ok(None) => app.status = "Draw at least two corners.".into(),
+                    Err(m) => app.status = m,
+                }
+                return;
+            }
+            // a sweep along a path drawn on a face
+            if let Some((profile, name)) = crate::partstool::face_sweep(&app.plan) {
+                match d.finish_sweep(&mut app.doc, profile, name, closed) {
+                    Ok(Some(id)) => {
+                        app.selection.only(id);
+                        app.face = None;
+                        app.status = format!("{name} added along the path on the face: its profile stands out of the face. Ctrl+Z to undo.");
+                    }
+                    Ok(None) => app.status = "A path needs two points.".into(),
+                    Err(e) => app.status = format!("Couldn't do that: {e}"),
+                }
+                return;
+            }
+            // an extrusion or a void on the face the outline was drawn on
+            if let Some((base, height, void)) = crate::partstool::on_face(&app.plan) {
+                if !closed {
+                    app.plan.sketch = Some(d);
+                    app.status = "Close the outline on its first corner to make it.".into();
+                    return;
+                }
+                match d.finish_part(&mut app.doc, base, height, void) {
+                    Ok(Some(id)) => {
+                        app.selection.only(id);
+                        app.face = None;
+                        app.status = if void {
+                            "Void added on the face: it cuts square into it. Set its depth in Properties. Ctrl+Z to undo."
+                        } else {
+                            "Extrusion added on the face, standing square out of it. Set its depth in Properties. Ctrl+Z to undo."
+                        }
+                        .into();
+                    }
+                    Ok(None) => app.status = "An outline needs three corners.".into(),
+                    Err(e) => app.status = format!("Couldn't do that: {e}"),
+                }
+                return;
+            }
             match d.finish(&mut app.doc, closed) {
                 Ok(Some(id)) => {
                     app.selection.only(id);

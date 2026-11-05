@@ -43,6 +43,20 @@ A **void** cuts every wall, slab, roof, terrain, hard landscape area and solid e
 
 The void is worked out from where things are. Move the void and the hole moves with it. Move it clear of an element and that element is no longer cut. In 3D the void shows as a see-through orange outline that you can click. In plans and sections you see only the hole it leaves. To make a solid part into a void, or a void back into a solid, tick or untick **Void** in *Properties*.
 
+## Drawing on a face
+
+In the 3D view, the Extrusion, Void, Sweep, Slab and Wall opening tools draw on the face under the pointer: a wall, a sloped roof, an angled face. The first click starts on that face (or on the workplane, when one is set), and the corners after it stay on the same plane. Snaps work as in a plan, but only on that face.
+
+| Tool | Drawn on a face |
+|---|---|
+| Extrusion | Stands square out of the face, as high as *Height*. |
+| Void | Cuts square into the face, as deep as *Depth on a face*: a roof light, a niche. |
+| Sweep | Its path runs on the face, and its profile stands out of it: a band up and across a wall. `Enter` finishes an open path; clicking the first point closes it. |
+| Slab | Only on a level face: its top goes on that face. |
+| Wall opening | Once the workplane is on a wall face (*Workplane › Pick a face*): the rectangle around what you draw. Without one, a click places an opening as before. |
+
+The extrusion, void or sweep keeps the plane it was drawn on. In *Properties* its *Offset from the face* and *Depth* run along the face's normal. Its corners in Edit mode move on that plane, and moving or turning it takes the plane along.
+
 ## Reshaping
 
 An extrusion, a void and a sweep through points have the same grips as a slab. Drag a corner or an edge to reshape it. To add or remove corners, or to change an extrusion's holes, open it in [Edit mode](edit-mode) (`Enter`). A sweep along a wall has no corners of its own: it follows the wall.

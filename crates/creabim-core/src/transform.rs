@@ -60,7 +60,7 @@ impl Xform {
     }
 
     /// A direction (no position) under the change: turned, never moved.
-    fn direction(&self, v: DVec3) -> DVec3 {
+    pub fn direction(&self, v: DVec3) -> DVec3 {
         match *self {
             Xform::Rotate { degrees, .. } => DVec2::from_angle(degrees.to_radians())
                 .rotate(v.truncate())
@@ -73,7 +73,7 @@ impl Xform {
     }
 
     /// Does it keep shapes as they are, only moving or turning them?
-    fn is_rigid(&self) -> bool {
+    pub fn is_rigid(&self) -> bool {
         matches!(
             self,
             Xform::Move(_) | Xform::Rotate { .. } | Xform::Tilt { .. }

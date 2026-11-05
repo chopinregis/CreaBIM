@@ -24,7 +24,12 @@ The screenshots were taken in the running app on a small L corner cut out of the
 | 1 (3.7) | *Draw by this line* on any layer boundary, without the wall moving | **Done** (below). |
 | 1 (3.7) | Check model warnings for gaps and overlaps; IFC parts where layers differ | **Done** (below). |
 | 1 (3.7) | Acceptance: an L corner, core 20 mm past, finishes stopping, in plan, section and 3D, the IFC in a second reader, moved with the edit kept | **Done** (below). |
-| 2–7 | | Not started. |
+| 2 (3.5) | Extrusion and void drawn on any face, keeping their plane; a void on a sloped roof cuts square to it | **Done** (below). |
+| 2 (3.5) | Sweep path drawn on a face, its profile standing out of the face | **Done** (below). |
+| 2 (3.5) | Slab on a level face; wall opening drawn on a wall face | **Done** (below). |
+| 2 (3.5) | Room outline and detail region on a face | Not started: a detail region is drawn in its section or detail view already, and a room follows its walls. |
+| 2 | Align, mirror, offset, move, rotate on the face | Partly done: Edit mode corners stay on the plane, and move and rotate take the plane along. Mirror and offset don't exist yet, and Align doesn't use the workplane. |
+| 3–7 | | Not started. |
 
 ## 1. Layer editing
 
@@ -123,4 +128,31 @@ Reading the file back into CreaBIM takes each wall's layers from its layer set a
 | Shown in plan, section and 3D | 04, 05, 06, 07 |
 | The IFC opened in a second reader | 19 (IfcOpenShell) |
 | The wall moved afterwards, the edit kept | 08 |
+
+## 2. Drawing on any face
+
+In the 3D view, the Extrusion, Void, Sweep, Slab and Wall opening tools now draw on the face under the pointer. The first click starts on that face (or on the workplane, if one is set), and later corners stay on the same plane. Snaps only count when they lie on that plane. Before this change, a snap could jump to a corner hidden behind the face.
+
+An extrusion or void drawn this way keeps its plane: `"plane"` in the file, with `base` and `height` measured along the plane's normal. A void cuts square into the face, as deep as *Depth on a face* (default 500 mm). An extrusion stands square out of the face.
+
+![Void on the roof](20-void-on-roof.png)
+
+![Close up](21-void-close.png)
+
+A sweep drawn on a face stores the face's normal with its path (`"face_normal"` in the file). The profile's height runs along that normal, so a band can run up a wall and across it.
+
+![Sweep on a wall face](22-sweep-on-wall.png)
+
+A slab can only go on a level face, and its top sits on that face. A wall opening is drawn on a wall face once the workplane is on that face. It becomes the rectangle around the outline, measured along the wall and up from its base. Without a workplane, a click places an opening as before.
+
+![Opening on a wall face](23-opening-on-wall.png)
+
+Edit mode moves an extrusion's or sweep's corners on its own plane. Move and rotate take the plane with them, and a scale scales the outline on it.
+
+**Gaps still open** (in [KNOWN_GAPS](../../KNOWN_GAPS.md)):
+
+- There is no mirror or offset command yet, on faces or in plan. Align doesn't use the workplane.
+- The plan's 2D tools still draw in the level's plane, as before.
+- An extrusion on a face has no push/pull handle for its depth; set the depth in Properties.
+- The sketch hint shows while a face tool draws.
 

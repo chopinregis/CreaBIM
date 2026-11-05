@@ -1275,11 +1275,11 @@ fn part(c: &mut Ctx, p: &f::Part, at: &Path) {
     const COMMON: &[&str] = &["id", "name", "level", "void", "material", "ifc_class"];
     let extrusion = !p.outline.is_empty();
     let own: &[&str] = if extrusion {
-        &["outline", "holes", "base", "height"]
+        &["outline", "holes", "base", "height", "plane"]
     } else if p.wall.is_some() {
         &["profile", "wall", "edge", "offset", "extend"]
     } else {
-        &["profile", "path", "closed"]
+        &["profile", "path", "closed", "face_normal"]
     };
     let allowed: Vec<&str> = COMMON.iter().chain(own).copied().collect();
     let kind = if extrusion { "an extrusion" } else { "a sweep" };
@@ -1292,8 +1292,20 @@ fn part(c: &mut Ctx, p: &f::Part, at: &Path) {
             return c.fail(&p.id);
         };
         let mut part = parts::Part::extrusion(level, c.pts(&p.outline), c.l(p.base), c.l(h));
-        if let parts::Form::Extrusion { holes, .. } = &mut part.form {
+        if let parts::Form::Extrusion { holes, plane, .. } = &mut part.form {
             *holes = p.holes.iter().map(|h| c.pts(h)).collect();
+            if let Some(pl) = &p.plane {
+                let (x, y) = (pl.x.normalize_or_zero(), pl.y.normalize_or_zero());
+                if x == glam::DVec3::ZERO || y == glam::DVec3::ZERO || x.dot(y).abs() > 1e-6 {
+                    c.err(&at.key("plane"), "a plane needs two square axes");
+                    return c.fail(&p.id);
+                }
+                *plane = Some(creabim_core::Workplane {
+                    origin: c.p3(pl.origin),
+                    x,
+                    y,
+                });
+            }
         }
         part
     } else if p.profile.is_empty() {
@@ -1321,9 +1333,15 @@ fn part(c: &mut Ctx, p: &f::Part, at: &Path) {
                     );
                     return c.fail(&p.id);
                 }
+                let normal = p.face_normal.and_then(|n| n.try_normalize());
+                if p.face_normal.is_some() && normal.is_none() {
+                    c.err(&at.key("face_normal"), "a face normal needs a direction");
+                    return c.fail(&p.id);
+                }
                 parts::Path::Points {
                     points: p.path.iter().map(|x| c.p3(*x)).collect(),
                     closed: p.closed,
+                    normal,
                 }
             }
         };
