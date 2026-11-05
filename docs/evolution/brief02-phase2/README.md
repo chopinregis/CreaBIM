@@ -18,6 +18,25 @@ Reference screenshots for the first part of Phase 2 of *CreaBIM brief 02: consol
 | 1.8 | Guide lines | **Done.** Guide lines from resting on a point or edge now go after six seconds without use. While a snap follows one, or a shape is being drawn, they stay. The *guides* and *tracking* settings keep their defaults (on). | `75b7551` |
 | 1.8 | To check by hand | **All three happened and are fixed.** Ctrl+A, H and the other letter shortcuts now stay in a text field. The Catalogue window opens over the other pane, or at the right edge, clear of where things are placed. The Materials window closes after *Assign*. | `147726d` |
 
+## The logo (addendum A2)
+
+| A2 | What | Status |
+| --- | --- | --- |
+| 1 | Top-left brand and the CreaBIM menu | **Done.** The small cut at 20 px, `creabim-mark` in `ui/icons.js`: sage `#4F6B4C` in the light themes (Light, Paper, Sage), light sage `#8FB08A` in the dark ones. |
+| 2 | Window and taskbar icon | **Done.** `ViewportBuilder::with_icon` from `creabim-app-icon-256.png`. |
+| 3 | Windows .exe icon | **Done, but not tried.** `build.rs` embeds `creabim.ico` through `winresource` when built on Windows. It can't be built here (Linux), so check the .exe's icon in Explorer on the first Windows build. The macOS bundle needs an `.icns` step when there is a bundle, which comes with the installer (section 6). |
+| 4 | About, New project, README | **Done.** About shows the lockup (white in dark themes). New project and the README header show the full mark. |
+| 5 | `.creabim` file icon | **Later,** with the installer (section 6). |
+
+The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/assets/logo), with a README of their uses and rules.
+
+## Addendum A3: the review of main 889c32c
+
+| A3 | What | Status | Commit |
+| --- | --- | --- | --- |
+| 5 | Marker highlight | **Done.** Hovering a view mark, text, tag or dimension traces the mark itself in the hover colour at 1.5 times its line weight: bubble, wedge, line and text. There are no boxes round them. Selected, it is traced the same way in the accent, with its grips (the section line's end square and its depth, the move square on a room tag, whose dashed box is gone). The pick area is as generous as before but not drawn. A marker's text now has the extent of its own size on paper, so it fits inside the bubble (before, a 3 mm number counted as 3 m across). A selected note on a sheet is traced too, not framed. | see PR |
+| 6 | Icons | **Done.** All 75 icons in the approved set are copied verbatim from `ui/approved/icons_final.json` (and `icons_actions.json`, the same 14 action icons) into `ui/icons.js`. The test `icons_js_matches_the_approved_set_verbatim` in `webui.rs` fails if one drifts, naming it. To change an icon, change the JSON first, with the owner's OK. | see PR |
+
 ## Screenshots
 
 | Screenshot | What it shows |
@@ -32,6 +51,15 @@ Reference screenshots for the first part of Phase 2 of *CreaBIM brief 02: consol
 | [08-door-runs-into-a-join.png](08-door-runs-into-a-join.png) | Widened to 3400 mm, it runs into the hall wall, and the status bar says so. |
 | [09-export-then-open-the-folder.png](09-export-then-open-the-folder.png) | After *Sheets as PDF*, the status bar shows *Open the folder*. |
 | [10-catalogue-beside-the-plan.png](10-catalogue-beside-the-plan.png) | The Catalogue opens at the right, leaving the plan free to click in. |
+| [11-brand-mark-in-the-top-bar.png](11-brand-mark-in-the-top-bar.png) | The logo (addendum A2): the small cut of the weaver and its nest at the top left, at twice its size. |
+| [12-new-project-full-mark.png](12-new-project-full-mark.png) | The New project window with the full mark at 48 px. |
+| [13-about-with-the-lockup.png](13-about-with-the-lockup.png) | About CreaBIM with the lockup, and a line about the logo. |
+| [14a-before-icon-drift-889c32c.png](14a-before-icon-drift-889c32c.png) | Before (A3-6): the owner's drift sheet of main 889c32c, with 35 icons that differ from the approved set. |
+| [14b-after-icons-match-the-approved-set.png](14b-after-icons-match-the-approved-set.png) | After: each approved icon beside the one the app now draws; all 75 match. |
+| [15-toolbar-with-the-approved-icons.png](15-toolbar-with-the-approved-icons.png) | The toolbar in the running app, at twice its size, with the approved icons. |
+| [16-marker-hover-before-after.png](16-marker-hover-before-after.png) | A3-5: hovering an elevation mark. Before, two nested boxes far bigger than the bubble; after, the bubble, wedge and line themselves in blue. |
+| [17-tag-hover-before-after.png](17-tag-hover-before-after.png) | Hovering a window tag: before boxed, after the tag itself traced. |
+| [18-marker-selected-before-after.png](18-marker-selected-before-after.png) | The mark selected: traced in the accent, with its end square and its depth. |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 

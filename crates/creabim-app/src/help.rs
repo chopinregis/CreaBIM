@@ -111,6 +111,11 @@ pub const CONTENTS: &str = "contents";
 
 /// The pictures the pages show, by the path they are written with.
 pub const IMAGES: &[(&str, &[u8])] = &[
+    // the logo: the weaver and its nest (assets/logo)
+    (
+        "img/creabim-lockup.png",
+        include_bytes!("../assets/logo/png/creabim-lockup-640x200.png"),
+    ),
     img!("interface"),
     img!("palette"),
     img!("levels"),
@@ -704,8 +709,15 @@ fn date_of_day(z: i64) -> String {
     format!("{d} {} {y}", MONTHS[(m - 1) as usize])
 }
 
-/// Pictures as `data:` addresses, for the Help panel's page.
-pub fn data_url(path: &str) -> Option<String> {
+/// The white lockup, for dark themes.
+const LOCKUP_WHITE: &[u8] = include_bytes!("../assets/logo/png/creabim-lockup-white-640x200.png");
+
+/// A picture as a `data:` address, for the Help panel's page; on a dark
+/// theme the logo is the white one.
+pub fn data_url_for(path: &str, dark: bool) -> Option<String> {
+    if dark && path == "img/creabim-lockup.png" {
+        return Some(format!("data:image/png;base64,{}", base64(LOCKUP_WHITE)));
+    }
     let (_, bytes) = IMAGES.iter().find(|i| i.0 == path)?;
     let mime = if path.ends_with(".png") {
         "image/png"
@@ -805,7 +817,7 @@ mod tests {
             }
             for i in images {
                 assert!(
-                    data_url(i).is_some(),
+                    data_url_for(i, false).is_some(),
                     "{id} shows {i}, which isn't in IMAGES"
                 );
             }
@@ -978,5 +990,14 @@ mod tests {
                 assert!(page.contains(&format!("`{}`", c.shortcut())), "{c:?}");
             }
         }
+    }
+
+    #[test]
+    fn about_shows_the_lockup_in_the_themes_colour() {
+        assert!(text("about").unwrap().contains("img/creabim-lockup.png"));
+        let light = data_url_for("img/creabim-lockup.png", false).unwrap();
+        let dark = data_url_for("img/creabim-lockup.png", true).unwrap();
+        assert!(light.starts_with("data:image/png;base64,"));
+        assert_ne!(light, dark);
     }
 }

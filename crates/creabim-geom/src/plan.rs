@@ -595,13 +595,15 @@ pub enum PlanItem {
         at: DVec2,
         text: String,
     },
-    /// Text at a fixed paper size, `size` mm tall.
+    /// Text at a fixed paper size, `size` mm tall, in a drawing of `mm`
+    /// units per paper millimetre (1 for paper itself, as on a schedule).
     Text {
         id: ElementId,
         at: DVec2,
         text: String,
         size: f64,
         align: crate::paper::Anchor,
+        mm: f64,
     },
     /// A dimension from `a` to `b`, its line `offset` to the left. A
     /// horizontal or vertical one measures from `a` to `b` square across,
@@ -727,18 +729,20 @@ impl PlanItem {
                 text,
                 size,
                 align,
+                mm,
                 ..
             } => {
-                // text items are in paper units already (schedules)
-                let w = crate::paper::text_width(text, *size);
+                // the text's own box, at its size on paper
+                let w = crate::paper::text_width(text, *size) * mm;
+                let h = size * mm;
                 let x0 = match align {
                     crate::paper::Anchor::Start => at.x,
                     crate::paper::Anchor::Middle => at.x - w / 2.0,
                     crate::paper::Anchor::End => at.x - w,
                 };
                 pts.extend([
-                    DVec2::new(x0, at.y - size / 2.0),
-                    DVec2::new(x0 + w, at.y + size / 2.0),
+                    DVec2::new(x0, at.y - h / 2.0),
+                    DVec2::new(x0 + w, at.y + h / 2.0),
                 ]);
             }
             PlanItem::Dimension { a, b, offset, .. } => {

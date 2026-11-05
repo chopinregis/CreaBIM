@@ -1,4 +1,5 @@
-//! Records the commit and the day the app was built, for About CreaBIM.
+//! Records the commit and the day the app was built, for About CreaBIM,
+//! and on Windows gives the .exe its icon: the weaver and its nest.
 
 use std::process::Command;
 
@@ -19,4 +20,20 @@ fn main() {
     println!("cargo:rustc-env=CREABIM_BUILD_DAY={day}");
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/refs/heads");
+    println!("cargo:rerun-if-changed=assets/logo/creabim.ico");
+    exe_icon();
 }
+
+#[cfg(windows)]
+fn exe_icon() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        let mut res = winresource::WindowsResource::new();
+        res.set_icon("assets/logo/creabim.ico");
+        if let Err(e) = res.compile() {
+            println!("cargo:warning=the .exe icon was not embedded: {e}");
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn exe_icon() {}

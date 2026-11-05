@@ -68,13 +68,14 @@ fn circle(id: ElementId, pen: Pen, c: DVec2, r: f64) -> PlanItem {
     }
 }
 
-fn text(id: ElementId, at: DVec2, text: &str, size: f64) -> PlanItem {
+fn text(id: ElementId, at: DVec2, text: &str, size: f64, mm: f64) -> PlanItem {
     PlanItem::Text {
         id,
         at,
         text: text.to_string(),
         size,
         align: crate::paper::Anchor::Middle,
+        mm,
     }
 }
 
@@ -117,8 +118,8 @@ pub fn bubble(
         b: c + DVec2::X * r,
     });
     let big = if number.chars().count() > 2 { 2.6 } else { 3.2 };
-    out.push(text(id, c + DVec2::Y * 2.1 * mm, number, big));
-    out.push(text(id, c - DVec2::Y * 2.1 * mm, sheet, 1.9));
+    out.push(text(id, c + DVec2::Y * 2.1 * mm, number, big, mm));
+    out.push(text(id, c - DVec2::Y * 2.1 * mm, sheet, 1.9, mm));
     out
 }
 
@@ -323,5 +324,29 @@ mod tests {
             assert_ne!(sheet_ref(&m, v), "–");
         }
         assert_eq!(sheet_ref(&m, ElementId::new()), "–");
+    }
+
+    #[test]
+    fn a_bubbles_text_fits_inside_the_bubble() {
+        // at 1:50 in metres, 0.05 units to a paper millimetre
+        let mm = 0.05;
+        let c = DVec2::new(3.0, 4.0);
+        let r = BUBBLE * mm;
+        let items = bubble(ElementId::new(), c, "12", "A-101", None, mm);
+        let texts: Vec<_> = items
+            .iter()
+            .filter(|i| matches!(i, PlanItem::Text { .. }))
+            .collect();
+        assert_eq!(texts.len(), 2);
+        for t in texts {
+            let (lo, hi) = t.bounds().unwrap();
+            for p in [lo, hi, DVec2::new(lo.x, hi.y), DVec2::new(hi.x, lo.y)] {
+                assert!(
+                    p.distance(c) <= r * 1.05,
+                    "{t:?} reaches {} from the centre of a bubble of {r}",
+                    p.distance(c)
+                );
+            }
+        }
     }
 }

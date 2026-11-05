@@ -40,13 +40,20 @@ mod ui_model;
 mod units;
 mod webui;
 
+/// The window's and the taskbar's icon: the app tile, sage.
+fn app_icon() -> std::sync::Arc<eframe::egui::IconData> {
+    let png = include_bytes!("../assets/logo/png/creabim-app-icon-256.png");
+    std::sync::Arc::new(eframe::icon_data::from_png_bytes(png).unwrap_or_default())
+}
+
 fn main() -> eframe::Result {
     #[cfg(target_os = "linux")]
     linux_setup();
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("CreaBIM")
-            .with_inner_size([1400.0, 860.0]),
+            .with_inner_size([1400.0, 860.0])
+            .with_icon(app_icon()),
         renderer: eframe::Renderer::Wgpu,
         #[cfg(target_os = "linux")]
         event_loop_builder: Some(Box::new(|b| {

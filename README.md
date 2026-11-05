@@ -1,3 +1,5 @@
+<p align="center"><img src="crates/creabim-app/assets/logo/svg/creabim-mark.svg" width="96" alt="The CreaBIM logo: a weaver beside the woven nest it built"></p>
+
 # CreaBIM
 
 CreaBIM is an open-source, BIM-native architectural modeler: one model for freeform concept design and permit drawings, with Blender-style modeling, live 2D views and native IFC.

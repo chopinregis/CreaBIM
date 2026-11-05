@@ -18,6 +18,13 @@
     return `<svg class="i ${cls || ""}" viewBox="0 0 24 24">${body}</svg>`;
   }
 
+  // the CreaBIM mark: filled, in the brand colour of the theme
+  // (the small cut below 48 px, the full mark from 48 px up)
+  function mark(full) {
+    const name = full ? "creabim-mark-full" : "creabim-mark";
+    return `<svg class="mark" viewBox="0 0 200 200" aria-label="CreaBIM">${window.ICONS[name]}</svg>`;
+  }
+
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -121,7 +128,7 @@
       tools += `<button class="tool ${t.active ? "on" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}<span>${esc(t.label)}</span></button>`;
     }
     const html =
-      `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="About, updates, settings and exit"><span class="logo">${icon("box")}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
+      `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="About, updates, settings and exit"><span class="logo">${mark()}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
       `<div class="quick">${quick}</div><span class="spacer"></span><div class="doc" title="${esc(S.doc.path)}"><span class="dot"></span>${esc(S.doc.name)}</div>${S.right.map(control).join("")}</div>` +
       `<div class="bar2"><div class="tools">${tools}</div><span class="spacer"></span></div>` +
       // the tool options strip: the tool in use and what it can be set to,
@@ -407,7 +414,7 @@
     const card = (c, big) => `<button class="${big ? "np-big" : "np-sample"} ${local.pick === c.id ? "on" : ""}" data-pick="${esc(c.id)}" title="${esc(c.line)}">` +
       (big ? `<span class="np-pic">${icon(c.icon)}</span><span class="np-text"><b>${esc(c.title)}</b><span>${esc(c.line)}</span></span>` :
         `<span class="np-icon">${icon(c.icon)}</span><span class="np-text"><b>${esc(c.title)}</b><span>${esc(c.line)}</span></span>`) + `</button>`;
-    root.innerHTML = `<div class="np"><div class="np-head"><b>${esc(d.title)}</b><span class="np-esc">Esc to close</span></div>` +
+    root.innerHTML = `<div class="np"><div class="np-head"><span class="logo np-logo">${mark(true)}</span><b>${esc(d.title)}</b><span class="np-esc">Esc to close</span></div>` +
       `<div class="np-starts">${d.starts.map((c) => card(c, true)).join("")}</div>` +
       `<div class="np-sub">${esc(d.samples_title)}</div><div class="np-samples">${d.samples.map((c) => card(c, false)).join("")}</div>` +
       `<div class="np-foot"><span>${esc(d.note)}</span><span class="spacer"></span><button class="np-btn" data-np="cancel">Cancel</button><button class="np-btn primary" data-np="create">Create</button></div></div>`;

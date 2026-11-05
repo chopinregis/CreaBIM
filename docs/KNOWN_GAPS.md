@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **58** | **7** | **192** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S) | 3 | 14 | 7 | 24 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 5 | 17 | 7 | 29 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -67,6 +67,11 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 5.4 | No profile library for beams and columns as sweep presets. | 4 | L | B01 |
 | 5.5 | No curved walls. | 4 | L | B01 |
 | 5.6 | Stairs: no "Cut a well for this stair", headroom check, short-landing or re-flow warnings. Roofs: no overhang per edge, no offer to attach the walls under a new roof. No Check model panel (openings across joins, beams or footings in slabs, missing wells). | 4 | M | RR |
+| A3-1 | Footings can't be seen while placing them: an ordinary floor plan shows none, even with the Footing tool on; no preview, no "Make a Foundation plan" link, no per-view choice for footings. | 2 | M | MU13_01, MU13_05 |
+| A3-2 | Host tools (Footing, Door, Window, Railing, Tag, Attach top) don't pick their host before the first click: snaps and guides win over the wall, and Tab doesn't cycle overlapping hosts; `wall_at` ignores the location line. | 2 | M | MU13_02 |
+| A3-3 | Value pills while dragging show the full summary instead of the changing value alone, stay too long, and show in panes the drag isn't in; D doesn't toggle live dimensions. | 2 | S | MU13_07 |
+| A3-4 | A wall's slide grip floats 300 mm off its face; sliding by the wall's body, Shift to free the direction and Tab for the distance are missing. | 2 | S | MU13_07 |
+| A3-7 | Membrane paths can't be finished by Enter, double-click or right-click; Esc loses them; the membrane draws exactly over the line it follows. (Detail component grips are 3.1.) | 2 | M | MU13_08 |
 | 6 | Release basics: Windows installer and portable zip, a file-format version in `.creabim`, README limits, issue templates, the Terrace House sample, CONTRIBUTING. | R | M | RR |
 
 ---
@@ -365,6 +370,13 @@ Gaps reported by work that is still a pull request go here until it merges, then
 - A box selection that takes several kinds says what it took and offers *Keep only…* in the status bar (1.8).
 - Guide lines from resting on a point or edge go after six seconds unused, instead of staying until Esc (1.8).
 - Ctrl+A, H and the other letter shortcuts stay in a text field; the Catalogue window opens over the other pane, clear of where things are placed; the Materials window closes after *Assign* (1.8).
+
+**In Brief 02, addendum A3 (2026-11-05;** screenshots in [evolution/brief02-phase2](evolution/brief02-phase2)**):**
+
+- Every toolbar and action icon is copied verbatim from the approved set (`ui/approved/icons_final.json` and `icons_actions.json`): Section is the scissors with the dashed line, Grid the straight four-line grid, Shaft has no level lines, Roof is the approved tipi, and Door, Paving, Level, Spot level and Footing are as drawn. A test compares `ui/icons.js` with the JSON, so they can't drift again (A3-6).
+- Hovering a view mark, text, tag or dimension traces the mark itself, 1.5 times heavier, instead of boxing it; selected, it is traced in the accent with its grips, and a room tag loses its dashed box. A marker's text has the extent of its paper size, so it fits its bubble (A3-5).
+
+**In Brief 02, addendum A2 (2026-11-05):** the logo, the weaver and its nest, is the brand mark in the top bar, the window and taskbar icon, the Windows .exe icon (not yet tried on a Windows build), the lockup in About, and the full mark in New project and the README. The `.creabim` file icon comes with the installer.
 
 **In Brief 02, Phase 1 (`claude/project-thread-2a2eta`, 2026-11-04;** screenshots in [evolution/brief02-phase1](evolution/brief02-phase1)**):**
 

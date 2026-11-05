@@ -790,8 +790,14 @@ pub fn show(
             draw_item(&painter, &xf, item, selected, mm);
         }
     }
+    // a selected mark is traced in the accent, as a hover traces it
+    for item in plan.items.iter().filter(|it| is_mark(it)) {
+        if selection.contains(item.id()) && !ghost {
+            trace(&painter, &xf, item, ACCENT_SELECTED, mm);
+        }
+    }
     if let Some(id) = hovered {
-        draw_hover(&painter, &xf, &plan.items, id);
+        draw_hover(&painter, &xf, &plan.items, id, mm);
     }
     if let Some(id) = hoverpick::badge(ui.ctx(), &mut state.hover, pane, doc.model()) {
         if ui.input(|i| i.modifiers.shift) {
@@ -3713,12 +3719,23 @@ fn draw_item_xray(
     }
 }
 
+/// The selection's colour in a pane: what selected linework is drawn in.
+pub const ACCENT_SELECTED: Color32 = Color32::from_rgb(230, 120, 30);
+
+/// How much heavier a traced mark is than the mark itself (A3-5).
+pub const TRACE: f32 = 1.5;
+
 /// The pre-selection highlight of element `id`: its linework traced and
-/// its fills washed in the hover colour, over the drawing.
-pub fn draw_hover(painter: &egui::Painter, xf: &Xf, items: &[PlanItem], id: ElementId) {
+/// its fills washed in the hover colour, over the drawing. Marks, text,
+/// tags and dimensions are traced themselves, never boxed.
+pub fn draw_hover(painter: &egui::Painter, xf: &Xf, items: &[PlanItem], id: ElementId, mm: f64) {
     let line = Stroke::new(2.5, hoverpick::HOVER.gamma_multiply(0.75));
     let wash = hoverpick::HOVER.gamma_multiply(0.16);
     for it in items.iter().filter(|it| it.id() == id) {
+        if is_mark(it) {
+            trace(painter, xf, it, hoverpick::HOVER, mm);
+            continue;
+        }
         match it {
             PlanItem::Fill { points, .. }
             | PlanItem::Tint { points, .. }
@@ -3751,23 +3768,153 @@ pub fn draw_hover(painter: &egui::Painter, xf: &Xf, items: &[PlanItem], id: Elem
                 end,
                 ..
             } => {
-                let pts: Vec<Pos2> = (0..=24)
-                    .map(|i| {
-                        let t = start + (end - start) * i as f64 / 24.0;
-                        xf.to_screen(*center + DVec2::from_angle(t) * *radius)
-                    })
-                    .collect();
-                painter.add(egui::Shape::line(pts, line));
+                painter.add(egui::Shape::line(
+                    arc_points(xf, *center, *radius, *start, *end),
+                    line,
+                ));
             }
-            PlanItem::Image { .. } => {}
-            // labels, text and annotation: a soft box round them
-            other => {
-                if let Some((lo, hi)) = other.bounds() {
-                    let r = Rect::from_two_pos(xf.to_screen(lo), xf.to_screen(hi)).expand(3.0);
-                    painter.rect(r, 3.0, wash, line, egui::StrokeKind::Outside);
-                }
+            _ => {}
+        }
+    }
+}
+
+/// Is `item` part of a mark drawn on paper (a view mark's bubble, wedge
+/// and line, a text, tag, label or dimension), which a hover or a
+/// selection traces rather than washes?
+pub fn is_mark(item: &PlanItem) -> bool {
+    match item {
+        PlanItem::Label { .. }
+        | PlanItem::Text { .. }
+        | PlanItem::Dimension { .. }
+        | PlanItem::Tag { .. }
+        | PlanItem::Annotation { .. } => true,
+        PlanItem::Line { pen, .. } | PlanItem::Arc { pen, .. } => *pen == Pen::Symbol,
+        // a view mark's solid wedge
+        PlanItem::Shade { rgb, .. } => rgb.iter().sum::<f32>() < 1.0,
+        _ => false,
+    }
+}
+
+fn arc_points(xf: &Xf, center: DVec2, radius: f64, start: f64, end: f64) -> Vec<Pos2> {
+    (0..=24)
+        .map(|i| {
+            let t = start + (end - start) * i as f64 / 24.0;
+            xf.to_screen(center + DVec2::from_angle(t) * radius)
+        })
+        .collect()
+}
+
+/// One mark drawn over itself in `color`, its strokes [`TRACE`] times
+/// their weight: what hovering it or selecting it shows.
+pub fn trace(painter: &egui::Painter, xf: &Xf, item: &PlanItem, color: Color32, mm: f64) {
+    let stroke = Stroke::new(TRACE, color);
+    match item {
+        PlanItem::Line { a, b, .. } => {
+            painter.line_segment([xf.to_screen(*a), xf.to_screen(*b)], stroke);
+        }
+        PlanItem::Arc {
+            center,
+            radius,
+            start,
+            end,
+            ..
+        } => {
+            painter.add(egui::Shape::line(
+                arc_points(xf, *center, *radius, *start, *end),
+                stroke,
+            ));
+        }
+        PlanItem::Shade { points, .. } => fill_polygon(painter, xf, points, color),
+        PlanItem::Label { at, text, .. } => {
+            let p = xf.to_screen(*at);
+            if creabim_geom::plan::is_bubble(text) {
+                let r = 10.0 * creabim_geom::plan::bubble_scale(text) as f32;
+                painter.circle_stroke(p, r, stroke);
+            }
+            painter.text(
+                p,
+                egui::Align2::CENTER_CENTER,
+                text,
+                egui::FontId::proportional(12.0),
+                color,
+            );
+        }
+        PlanItem::Text {
+            at,
+            text,
+            size,
+            align,
+            ..
+        } => {
+            let px = (size * mm * xf.scale as f64) as f32;
+            if px >= 4.0 {
+                let look = TextLook {
+                    bold: true,
+                    ..TextLook::default()
+                };
+                crate::annotate::text(
+                    painter,
+                    xf.to_screen(*at),
+                    text,
+                    px,
+                    color,
+                    0.0,
+                    *align,
+                    &look,
+                );
             }
         }
+        PlanItem::Dimension {
+            a,
+            b,
+            offset,
+            text,
+            look,
+            witness,
+            breaks,
+            ..
+        } => {
+            let d = (*a, *b, *offset, *witness);
+            draw_dimension_weighted(painter, xf, d, breaks, text, look, mm, color, TRACE);
+        }
+        PlanItem::Annotation { item, .. } => {
+            crate::annotate::paint_weighted(painter, xf, item, color, mm, TRACE);
+        }
+        PlanItem::Tag {
+            anchor,
+            at,
+            elbow,
+            text,
+            round,
+            look,
+            ..
+        } => {
+            let g = tag_geometry(*anchor, *at, *elbow, text, *round, look, mm);
+            if !g.leader.is_empty() {
+                let line: Vec<Pos2> = g.leader.iter().map(|p| xf.to_screen(*p)).collect();
+                painter.add(egui::Shape::line(line, stroke));
+                crate::annotate::paint_ends_weighted(painter, xf, &g.ends, color, TRACE);
+            }
+            let pts: Vec<Pos2> = g.outline.iter().map(|p| xf.to_screen(*p)).collect();
+            let heavy = Stroke::new(1.2 * TRACE, color);
+            if g.closed {
+                painter.add(egui::Shape::closed_line(pts, heavy));
+            } else if pts.len() > 1 {
+                painter.add(egui::Shape::line(pts, heavy));
+            }
+            let px = crate::annotate::text_px(look, mm, xf);
+            crate::annotate::text(
+                painter,
+                xf.to_screen(*at),
+                text,
+                px,
+                color,
+                0.0,
+                paper::Anchor::Middle,
+                look,
+            );
+        }
+        _ => {}
     }
 }
 
@@ -3783,12 +3930,38 @@ fn draw_dimension(
     mm: f64,
     ink: Color32,
 ) {
+    draw_dimension_weighted(
+        painter,
+        xf,
+        (a, b, offset, witness),
+        breaks,
+        text,
+        look,
+        mm,
+        ink,
+        1.0,
+    );
+}
+
+/// A dimension with its strokes `w` times their weight.
+#[allow(clippy::too_many_arguments)]
+fn draw_dimension_weighted(
+    painter: &egui::Painter,
+    xf: &Xf,
+    (a, b, offset, witness): (DVec2, DVec2, f64, Option<[DVec2; 2]>),
+    breaks: &[[f64; 2]],
+    text: &str,
+    look: &TextLook,
+    mm: f64,
+    ink: Color32,
+    w: f32,
+) {
     let mut g = dimension_geometry(a, b, offset, witness, look, mm);
     g.break_line(breaks);
     for (p, q) in g.lines {
-        painter.line_segment([xf.to_screen(p), xf.to_screen(q)], Stroke::new(1.0, ink));
+        painter.line_segment([xf.to_screen(p), xf.to_screen(q)], Stroke::new(w, ink));
     }
-    crate::annotate::paint_ends(painter, xf, &g.ends, ink);
+    crate::annotate::paint_ends_weighted(painter, xf, &g.ends, ink, w);
     let px = crate::annotate::text_px(look, mm, xf);
     crate::annotate::text(
         painter,
@@ -4484,6 +4657,7 @@ pub fn hit_all(items: &[PlanItem], p: DVec2, tol: f64, mm: f64) -> Vec<ElementId
                 text,
                 size,
                 align,
+                ..
             } if *id != ElementId::NIL => {
                 // schedule rows: anywhere along the row's height
                 let w = paper::text_width(text, *size) * mm;
@@ -4952,6 +5126,26 @@ mod tests {
 
     use super::*;
     use creabim_core::{EditMesh, FreeMesh};
+
+    #[test]
+    fn a_view_marks_parts_are_traced_not_boxed() {
+        // every part of a bubble with its wedge is traced by a hover
+        let id = ElementId::new();
+        let items =
+            creabim_geom::markers::bubble(id, DVec2::ZERO, "A", "A-201", Some(DVec2::X), 0.05);
+        assert!(items.len() >= 4);
+        for it in &items {
+            assert!(is_mark(it), "{it:?} would be washed, not traced");
+        }
+        // a wall's cut linework and fill are not marks
+        let wall = PlanItem::Line {
+            id,
+            pen: Pen::Cut,
+            a: DVec2::ZERO,
+            b: DVec2::X,
+        };
+        assert!(!is_mark(&wall));
+    }
 
     #[test]
     fn a_click_in_a_doors_opening_takes_the_door_not_the_footing_below() {

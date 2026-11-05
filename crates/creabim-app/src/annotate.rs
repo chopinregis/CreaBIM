@@ -92,16 +92,29 @@ pub fn text(
 
 /// Draw an annotation in a pane.
 pub fn paint(painter: &egui::Painter, xf: &Xf, item: &Annotation, color: Color32, mm: f64) {
+    paint_weighted(painter, xf, item, color, mm, 1.0);
+}
+
+/// Draw an annotation with its strokes `w` times their weight: a hover or
+/// selection traces the annotation itself, heavier, in its colour.
+pub fn paint_weighted(
+    painter: &egui::Painter,
+    xf: &Xf,
+    item: &Annotation,
+    color: Color32,
+    mm: f64,
+    w: f32,
+) {
     let m = item.marks(mm);
     for l in &m.lines {
         let pts: Vec<Pos2> = l.iter().map(|p| xf.to_screen(*p)).collect();
-        painter.add(egui::Shape::line(pts, Stroke::new(1.0, color)));
+        painter.add(egui::Shape::line(pts, Stroke::new(w, color)));
     }
     for a in &m.arrows {
         let pts: Vec<Pos2> = a.iter().map(|p| xf.to_screen(*p)).collect();
         painter.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
     }
-    paint_ends(painter, xf, &m.ends, color);
+    paint_ends_weighted(painter, xf, &m.ends, color, w);
     let px = text_px(&item.look, mm, xf);
     for t in &m.texts {
         text(
@@ -120,12 +133,17 @@ pub fn paint(painter: &egui::Painter, xf: &Xf, item: &Annotation, color: Color32
 /// Draw dimension and leader ends in a pane: thin and heavy strokes and
 /// filled shapes.
 pub fn paint_ends(painter: &egui::Painter, xf: &Xf, ends: &Ends, color: Color32) {
+    paint_ends_weighted(painter, xf, ends, color, 1.0);
+}
+
+/// Dimension and leader ends with their strokes `w` times their weight.
+pub fn paint_ends_weighted(painter: &egui::Painter, xf: &Xf, ends: &Ends, color: Color32, w: f32) {
     let screen = |l: &Vec<DVec2>| -> Vec<Pos2> { l.iter().map(|p| xf.to_screen(*p)).collect() };
     for l in &ends.thin {
-        painter.add(egui::Shape::line(screen(l), Stroke::new(1.0, color)));
+        painter.add(egui::Shape::line(screen(l), Stroke::new(w, color)));
     }
     for l in &ends.heavy {
-        painter.add(egui::Shape::line(screen(l), Stroke::new(2.0, color)));
+        painter.add(egui::Shape::line(screen(l), Stroke::new(2.0 * w, color)));
     }
     for f in &ends.fills {
         painter.add(egui::Shape::convex_polygon(screen(f), color, Stroke::NONE));
@@ -990,8 +1008,8 @@ pub fn draw_grips(
     selection: &Selection,
     mm: f64,
 ) {
-    // a selected room tag: a dashed box round its lines and one square to
-    // move it by
+    // a selected room tag: traced in the accent (planview::trace) and one
+    // square to move it by, no box round it
     let mut boxes: Vec<(ElementId, egui::Rect)> = vec![];
     for it in items {
         let PlanItem::Annotation { id, item } = it else {
@@ -1013,21 +1031,6 @@ pub fn draw_grips(
     }
     for (_, r) in boxes {
         let r = r.expand(5.0);
-        let c = [
-            r.left_top(),
-            r.right_top(),
-            r.right_bottom(),
-            r.left_bottom(),
-            r.left_top(),
-        ];
-        for w in c.windows(2) {
-            painter.extend(egui::Shape::dashed_line(
-                &[w[0], w[1]],
-                Stroke::new(1.0, ACCENT),
-                4.0,
-                3.0,
-            ));
-        }
         painter.rect(
             egui::Rect::from_center_size(r.center_top(), Vec2::splat(8.0)),
             1.0,
@@ -1081,18 +1084,9 @@ pub fn sheet_input(
     let zoom = xf.scale;
     for it in &items {
         if let PlanItem::Annotation { id, item } = it {
-            // the sheet draws the note itself; a selected one gets a frame
-            let pts = item.extent();
-            if let (true, Some(first)) = (selection.contains(*id), pts.first()) {
-                let (lo, hi) = pts
-                    .iter()
-                    .fold((*first, *first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
-                painter.rect_stroke(
-                    egui::Rect::from_two_pos(xf.to_screen(lo), xf.to_screen(hi)).expand(3.0),
-                    2.0,
-                    Stroke::new(1.5, ACCENT),
-                    egui::StrokeKind::Outside,
-                );
+            // the sheet draws the note itself; a selected one is traced
+            if selection.contains(*id) {
+                paint_weighted(painter, xf, item, ACCENT, 1.0, crate::planview::TRACE);
             }
         }
     }
