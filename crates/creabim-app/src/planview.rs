@@ -422,6 +422,9 @@ pub struct PlanState {
     /// on, that temporary guide lines run from. They stay while you work,
     /// until rested on again, cleared (Esc with nothing to cancel), or kept.
     pub refs: HashMap<ElementId, Vec<snaps::Reference>>,
+    /// When each view's references were last picked or followed: they go
+    /// after [`REF_FADE`] seconds unused, so none linger until Esc.
+    refs_used: HashMap<ElementId, f64>,
     /// What the pointer is resting on for a reference: since when, and
     /// whether that rest has already picked (or dropped) it.
     ref_rest: Option<(snaps::Reference, f64, bool)>,
@@ -516,6 +519,7 @@ impl Default for PlanState {
             objects: Default::default(),
             want_catalogue: false,
             want_footings: vec![],
+            refs_used: HashMap::new(),
             boxed: false,
             spotlight: vec![],
             spotlight_ghost: false,
@@ -940,6 +944,14 @@ pub fn show(
         click_is_not_a_rest(state, tool, response.clicked(), under, now);
         if let Some(msg) = rest_reference(state, view, under, now, q) {
             state.status = Some(msg);
+        }
+        // guide lines last while they are used: a snap following one, or
+        // a shape being drawn from them; otherwise they go after a while
+        let following = tracked.as_ref().is_some_and(|t| !t.guides.is_empty());
+        fade_references(state, view, now, following || drawing_from.is_some());
+        if state.refs.get(&view).is_some_and(|r| !r.is_empty()) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(REF_FADE / 4.0));
         }
     } else {
         // a point snapped to and rested on while drawing is tracked too
@@ -4829,9 +4841,28 @@ fn rest_reference(
     if refs.len() > snaps::MAX_REFERENCES {
         refs.remove(0);
     }
+    state.refs_used.insert(view, now);
     Some(format!(
-        "Guide lines from this {what}: where they cross snaps. Rest on it again to drop them, K keeps one, Esc clears them all."
+        "Guide lines from this {what}: where they cross snaps. They go when not used for a few seconds; K keeps one."
     ))
+}
+
+/// Seconds a view's guide lines last with nothing using them.
+pub const REF_FADE: f64 = 6.0;
+
+/// Drop a view's references once nothing has used them for [`REF_FADE`].
+fn fade_references(state: &mut PlanState, view: ElementId, now: f64, used: bool) {
+    if state.refs.get(&view).is_none_or(|r| r.is_empty()) {
+        state.refs_used.remove(&view);
+        return;
+    }
+    let last = state.refs_used.entry(view).or_insert(now);
+    if used {
+        *last = now;
+    } else if now - *last > REF_FADE {
+        state.refs.remove(&view);
+        state.refs_used.remove(&view);
+    }
 }
 
 /// While drawing, a point snapped to and rested on for a moment joins the
@@ -4873,6 +4904,27 @@ fn rest_on(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn guide_lines_go_when_nothing_uses_them() {
+        let view = ElementId::new();
+        let edge = snaps::Reference::Edge {
+            a: DVec3::ZERO,
+            b: DVec3::X,
+            arc: None,
+        };
+        let mut state = PlanState::default();
+        rest_reference(&mut state, view, Some(edge), 0.0, false);
+        assert!(rest_reference(&mut state, view, Some(edge), 1.0, false).is_some());
+        fade_references(&mut state, view, 2.0, false);
+        assert_eq!(state.refs[&view].len(), 1);
+        // a snap following them keeps them
+        fade_references(&mut state, view, 6.5, true);
+        fade_references(&mut state, view, 10.0, false);
+        assert_eq!(state.refs[&view].len(), 1);
+        fade_references(&mut state, view, 6.5 + REF_FADE + 0.1, false);
+        assert!(!state.refs.contains_key(&view));
+    }
+
     #[test]
     fn resting_after_an_align_click_keeps_its_message() {
         let view = ElementId::new();
