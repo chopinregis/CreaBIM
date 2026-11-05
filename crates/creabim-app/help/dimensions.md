@@ -7,7 +7,7 @@ Dimensions measure the model. Their points stick to what they measure (wall corn
 Select one wall, grid line, door, window or column in a plan. Blue dimensions show the distance to its nearest neighbours: the parallel walls and grid lines beside a wall or grid line, the nearest grid lines or walls to a column, and the wall's ends or the next opening beside a door or window.
 
 - **Click a value and type a new one**, then `Enter`. The element moves to make it true. A wall takes its doors and windows and the walls joined to it along; a grid line takes the walls and columns standing on it. `Tab` moves on to the next value, `Backspace` takes a character back and `Esc` stops.
-- **Click the padlock** beside a value to keep it as a dimension that holds the spacing. Moving either end then moves the other by as much. Click a closed padlock to let it go; the dimension stays. A dimension that holds its spacing shows a small blue padlock by its value, on screen only.
+- **Click the padlock** beside a value to keep it as a dimension that holds the spacing. Moving either end then moves the other by as much. Click a closed padlock to let it go; the dimension stays. A dimension that holds its spacing shows a faint padlock by its value, strong while it or one of its ends is selected; it is on screen only, so sheets print a plain dimension.
 
 The typing works like typing a length while drawing a wall. Nothing is added to the drawing unless you lock a value.
 

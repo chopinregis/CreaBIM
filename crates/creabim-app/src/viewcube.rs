@@ -30,6 +30,19 @@ struct Turn {
 #[derive(Default)]
 pub struct ViewCube {
     turn: Option<Turn>,
+    /// What the drag in progress started on: the cube (orbit), or the zoom
+    /// or pan button.
+    grab: Option<Nav>,
+    /// Where the cube and its buttons were last drawn.
+    area: Option<Rect>,
+}
+
+/// A drag on the cube or its buttons, by this frame's pointer movement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Nav {
+    Orbit(Vec2),
+    Pan(Vec2),
+    Zoom(Vec2),
 }
 
 /// What a click on the cube asks for.
@@ -43,6 +56,10 @@ pub enum Pick {
     Home,
     /// Switch between perspective and orthographic.
     Projection,
+    /// The zoom button: dragged, not clicked.
+    Zoom,
+    /// The pan button: dragged, not clicked.
+    Pan,
 }
 
 /// The yaw and pitch that look from `d` toward the target. Straight down
@@ -341,6 +358,18 @@ fn wrap(a: f32, b: f32) -> f32 {
 }
 
 impl ViewCube {
+    /// Whether a drag that started on the cube or its buttons is going on,
+    /// so the view itself leaves the pointer alone.
+    pub fn grabbing(&self) -> bool {
+        self.grab.is_some()
+    }
+
+    /// Whether `p` is on the cube or its buttons, so a click there is the
+    /// cube's and not a pick in the view.
+    pub fn covers(&self, p: Pos2) -> bool {
+        self.area.is_some_and(|a| a.contains(p))
+    }
+
     /// Start turning the camera to `to`.
     pub fn turn_to(&mut self, cam: &OrbitCamera, to: (f32, f32), now: f64) {
         let from = cam.view_angles();
@@ -376,13 +405,15 @@ impl ViewCube {
         cam: &OrbitCamera,
         accent: Color32,
         ortho: bool,
-    ) -> (Option<Pick>, Option<Vec2>) {
+    ) -> (Option<Pick>, Option<Nav>) {
         let s = 25.0;
         let c = Pos2::new(rect.right() - 70.0, rect.top() + 70.0);
-        let area = Rect::from_center_size(c + Vec2::new(-16.0, 5.0), Vec2::new(164.0, 134.0));
+        let area = Rect::from_center_size(c + Vec2::new(-16.0, 13.0), Vec2::new(164.0, 152.0));
         if !rect.contains_rect(area) {
+            self.area = None;
             return (None, None);
         }
+        self.area = Some(area);
         let response = ui.interact(area, ui.id().with("viewcube"), Sense::click_and_drag());
         let painter = ui.painter_at(rect);
         let hover = response.hover_pos();
@@ -538,8 +569,28 @@ impl ViewCube {
             }
         }
 
+        // a press in the cube's corner starts its own drag: on the zoom or
+        // pan button that (set below), anywhere else an orbit
+        let (pressed, down, delta) = ui.input(|i| {
+            (
+                i.pointer.primary_pressed(),
+                i.pointer.primary_down(),
+                i.pointer.delta(),
+            )
+        });
+        let press = if pressed {
+            ui.input(|i| i.pointer.press_origin())
+                .filter(|p| area.contains(*p))
+        } else {
+            None
+        };
+        if press.is_some() {
+            self.grab = Some(Nav::Orbit(Vec2::ZERO));
+        }
         // a column of round buttons beside the cube
         let buttons = [
+            (Pick::Zoom, "Zoom: drag up to zoom in, down to zoom out"),
+            (Pick::Pan, "Pan: drag to move the view"),
             (
                 Pick::Home,
                 "Home: frame everything from the three-quarter view",
@@ -556,8 +607,21 @@ impl ViewCube {
             ),
         ];
         for (k, (what, hint)) in buttons.into_iter().enumerate() {
-            let at = c + Vec2::new(-84.0, -42.0 + 27.0 * k as f32);
-            let lit = hover.is_some_and(|h| h.distance(at) < 11.5);
+            let at = c + Vec2::new(-84.0, -50.0 + 25.0 * k as f32);
+            let held = self.grab.is_some_and(|g| {
+                matches!(
+                    (g, what),
+                    (Nav::Zoom(_), Pick::Zoom) | (Nav::Pan(_), Pick::Pan)
+                )
+            });
+            let lit = held || hover.is_some_and(|h| h.distance(at) < 11.5);
+            if press.is_some_and(|p| p.distance(at) < 11.5) {
+                match what {
+                    Pick::Zoom => self.grab = Some(Nav::Zoom(Vec2::ZERO)),
+                    Pick::Pan => self.grab = Some(Nav::Pan(Vec2::ZERO)),
+                    _ => {}
+                }
+            }
             let (ground, mark) = if lit {
                 (accent, Color32::WHITE)
             } else {
@@ -565,23 +629,34 @@ impl ViewCube {
             };
             painter.circle(
                 at,
-                11.0,
+                10.5,
                 ground,
                 Stroke::new(1.0, Color32::from_rgb(196, 199, 204)),
             );
             button_icon(&painter, at, what, ortho, mark);
             if lit {
                 tip = Some(hint.to_string());
-                if clicked {
+                if clicked && !matches!(what, Pick::Zoom | Pick::Pan) {
                     pick = Some(what);
                 }
             }
         }
-        let drag = response.dragged().then(|| response.drag_delta());
+        if !down {
+            self.grab = None;
+        }
+        // the press frame's movement came before the press
+        let nav = self
+            .grab
+            .filter(|_| !pressed && delta != Vec2::ZERO)
+            .map(|g| match g {
+                Nav::Orbit(_) => Nav::Orbit(delta),
+                Nav::Pan(_) => Nav::Pan(delta),
+                Nav::Zoom(_) => Nav::Zoom(delta),
+            });
         if let Some(t) = tip.filter(|_| !response.dragged()) {
             response.on_hover_text(t);
         }
-        (pick, drag)
+        (pick, nav)
     }
 }
 
@@ -647,6 +722,28 @@ fn button_icon(painter: &egui::Painter, c: Pos2, what: Pick, ortho: bool, colour
             line(&[(1.0, -4.5), (2.2, 4.5)]);
             line(&[(-4.6, -0.6), (4.6, -0.6)]);
         }
+        Pick::Zoom => {
+            // a magnifier
+            painter.circle_stroke(c + Vec2::new(-1.2, -1.2), 4.2, stroke);
+            line(&[(1.9, 1.9), (5.6, 5.6)]);
+            line(&[(-3.2, -1.2), (0.8, -1.2)]);
+            line(&[(-1.2, -3.2), (-1.2, 0.8)]);
+        }
+        Pick::Pan => {
+            // four ways out from the middle
+            line(&[(-6.0, 0.0), (6.0, 0.0)]);
+            line(&[(0.0, -6.0), (0.0, 6.0)]);
+            for (dx, dy) in [(1.0f32, 0.0f32), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
+                let tip = c + Vec2::new(dx * 6.5, dy * 6.5);
+                let back = Vec2::new(-dx, -dy) * 2.8;
+                let side = Vec2::new(-dy, dx) * 2.2;
+                painter.add(Shape::convex_polygon(
+                    vec![tip, tip + back + side, tip + back - side],
+                    colour,
+                    Stroke::NONE,
+                ));
+            }
+        }
         Pick::From(_) => {}
     }
 }
@@ -662,7 +759,7 @@ pub fn target_of(pick: Pick, cam: &OrbitCamera) -> Option<(f32, f32)> {
             (yaw / FRAC_PI_4).round() * FRAC_PI_4 + q as f32 * FRAC_PI_2,
             pitch,
         )),
-        Pick::Home | Pick::Projection => None,
+        Pick::Home | Pick::Projection | Pick::Zoom | Pick::Pan => None,
     }
 }
 
@@ -676,7 +773,7 @@ pub fn said(pick: Pick) -> String {
         Pick::Quarter(1) => "Turned a quarter to the left.".into(),
         Pick::Quarter(_) => "Turned a quarter to the right.".into(),
         Pick::Home => "Framed everything.".into(),
-        Pick::Projection => String::new(),
+        Pick::Projection | Pick::Zoom | Pick::Pan => String::new(),
     }
 }
 
