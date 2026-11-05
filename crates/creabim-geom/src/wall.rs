@@ -50,7 +50,9 @@ pub fn wall_mesh(
 
 /// One layer of a layered wall as a closed solid: the part of the wall
 /// between `band.0` and `band.1` across it (left positive), its ends on
-/// the wall's end lines, or past them for a `core` layer that runs on.
+/// the wall's end lines, or past them for a `core` layer that runs on,
+/// and `ext` past them (start, end) where its ends were moved by hand.
+#[allow(clippy::too_many_arguments)]
 pub fn wall_layer_mesh(
     wall: &Wall,
     base_z: f64,

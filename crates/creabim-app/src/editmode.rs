@@ -865,6 +865,9 @@ pub fn panel_hint(kind: &ElementKind) -> &'static str {
         ElementKind::Sketch(_) | ElementKind::Railing(_) => {
             "Click a corner and press Delete to remove it; drag corners to move them, a ◇ to add one. Right-click for more."
         }
+        ElementKind::Wall(w) if w.assembly.is_some() => {
+            "Drag its grips in any view. Tab: Layers, a grip at each end of each layer; drag one to run that layer on past the join or hold it back (Tab while dragging types how far). A filled grip was moved; right-click it to reset it or every layer."
+        }
         _ => "Drag its grips in any view.",
     }
 }

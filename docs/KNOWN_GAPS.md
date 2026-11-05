@@ -54,7 +54,7 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 3.3 | Views have no linked "Open in 3D" crop box (callouts, sections, elevations, plans). (A callout's box resizes and moves with grips.) | 2 | M | MU01-07 |
 | 3.5 | Only Sketch draws on the active workplane; void, extrusion, sweep, slab, opening and detail region draw in plan XY. | 4 | L | MU01-12 |
 | 3.6 | No edge offset in 3D (offset edge, offset all, insert point). | 4 | M–L | B01-7 |
-| 3.7 | Layers can't be edited by hand: no layer-end handles in plan or section, no corner join presets, no "Draw by this line", no IFC parts where layers differ. | 4 | L | MU08-01 |
+| 3.7 | Wall layer ends can be moved by hand (Layers, `Tab` in Edit mode). Still to do: slab and roof layer edges, corner join presets, "Draw by this line", Check model warnings for gaps and overlaps, IFC parts where layers differ. A layer run on into the wall it meets overlaps that wall's layers in plan; a grip drag's preview leaves out the joins around it; thin layers' grips crowd together in plan at small scales. | 4 | L | MU08-01 |
 | 5.1 | Schedules don't export to Excel. | 4 | M | B01 |
 | 5.2 | No quantities per assembly layer, rates per material or Take-off pane. | 4 | L | B01 |
 | 5.3 | No image or PDF references with calibration. | 4 | L | B01 |
@@ -346,6 +346,11 @@ Gaps reported by work that is still a pull request go here until it merges, then
 ---
 
 ## Recently fixed
+
+**In Brief 02, Phase 4, wall layer ends (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase4](evolution/brief02-phase4)**):**
+
+- In Edit mode, `Tab` on a layered wall shows Layers: a grip at each end of each layer, in plans, sections, callouts and 3D. Drag one, or type how far, to run the layer on past its join or hold it back; the moved end's grip is filled, and right-click resets it or every layer. Each edit is kept as an offset from the join, through moves, stretches and a change of type (layers the new type lacks drop theirs, and the status bar says so) (3.7, in part).
+- The typed length in a grip drag showed a box where its caret should be. It shows `|`.
 
 **In Brief 02, Phase 3, the view cube (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase3](evolution/brief02-phase3)**):**
 

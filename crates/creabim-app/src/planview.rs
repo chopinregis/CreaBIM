@@ -779,7 +779,10 @@ pub fn show(
         let reading = (matches!(tool, Tool::Select | Tool::Tag)
             || (tool == Tool::Align && kind == PaneKind::Axonometric))
             && state.modal.is_none()
-            && state.boxsel.is_none();
+            && state.boxsel.is_none()
+            // in Edit mode Tab is Layers', in a drag the typed length's
+            && state.edit.is_none()
+            && state.grip.is_none();
         let pointer = response.hover_pos().filter(|_| reading);
         let tol = 6.0 / xf.scale as f64;
         let rev = doc.model().revision();

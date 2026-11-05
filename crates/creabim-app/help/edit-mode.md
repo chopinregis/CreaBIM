@@ -10,6 +10,18 @@ Edit mode opens one element so every one of its grips shows, in every view it is
 
 `Esc`, `Enter` again, *Finish editing* in the right-click menu, or selecting something else closes it. *Properties* says *Editing* while it is open, and the status bar lists what you can do.
 
+## Layers: each layer's ends
+
+On a layered wall, press `Tab` in Edit mode for **Layers**: the wall's own grips give way to one grip at each end of each layer, where its join puts that end. They show in plans, sections, callouts and 3D (stepped up the end face there, so each can be reached). `Tab` again goes back.
+
+| Do this | And |
+|---|---|
+| Drag a layer grip along the wall | The layer runs on past its join, or is held back; press `Tab` to type how far |
+| Rest on a grip | It names its layer and end, and how far it was moved |
+| Right-click a grip | *Reset layer end*, *Reset all layers* |
+
+A moved end's grip is filled. The edit is kept as an offset from the join, so it stays when the wall moves or stretches. Changing the wall's type keeps the edits of the layers the new type has too, and the status bar says how many were dropped.
+
 ## Outlines: one way for all of them
 
 Slab outlines and their holes, roof outlines and their holes, shafts, sketches and free railing paths all work the same way. Their outlines are traced in orange, with:

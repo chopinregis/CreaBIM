@@ -446,6 +446,31 @@ pub fn reset_layer_ends(
     Ok(done.into())
 }
 
+/// What a layer end grip says by it: its layer and which end, and how
+/// far it was moved.
+fn layer_name(model: &Model, id: ElementId, kind: HandleKind) -> Option<String> {
+    let HandleKind::LayerEnd { layer, end } = kind else {
+        return None;
+    };
+    let e = model.get(id)?;
+    let (_, a) = creabim_core::assembly::assembly_of(model, e)?;
+    let l = a.layers.get(layer)?;
+    let what = l
+        .material
+        .and_then(|m| model.get(m))
+        .map_or_else(|| format!("Layer {}", layer + 1), |m| m.name.clone());
+    let side = if end { "end" } else { "start" };
+    let by = match &e.kind {
+        ElementKind::Wall(w) => w.layer_ext(layer)[usize::from(end)],
+        _ => 0.0,
+    };
+    Some(if by == 0.0 {
+        format!("{what}: {side}")
+    } else {
+        format!("{what}: {side}, {:+.0} mm", by * 1000.0)
+    })
+}
+
 /// Has layer end `kind` of `e` been moved by hand?
 fn edited_end(e: Option<&Element>, kind: HandleKind) -> bool {
     match (e.map(|e| &e.kind), kind) {
@@ -2551,7 +2576,14 @@ pub fn interact(
             .and_then(screen)
             .unwrap_or(p);
         // the grip says what it is; in Edit mode, what more it does
-        pill(painter, at + Vec2::new(0.0, -34.0), k.name(), &look, 1.0);
+        let name = layer_name(doc.model(), id, k);
+        pill(
+            painter,
+            at + Vec2::new(0.0, -34.0),
+            name.as_deref().unwrap_or(k.name()),
+            &look,
+            1.0,
+        );
         if edit {
             let tip = if fixed {
                 "Drag: move corner · This sketch's arcs or constraints keep its corners: no adding or removing"
@@ -3242,7 +3274,7 @@ fn typed_length(
             painter,
             p,
             &format!(
-                "{shown}▏ {}  Enter: apply · Esc: back to the pointer",
+                "{shown}| {}  Enter: apply · Esc: back to the pointer",
                 crate::units::symbol()
             ),
             ACCENT,

@@ -2468,7 +2468,10 @@ impl CreaBimApp {
                 && self.plan.modal.is_none()
                 && self.plane_pick.is_none()
                 && self.box_3d.is_none()
-                && !self.box_armed;
+                && !self.box_armed
+                // in Edit mode Tab is Layers', in a drag the typed length's
+                && self.plan.edit.is_none()
+                && self.handle_drag.is_none();
             let pointer = response.hover_pos().filter(|_| reading);
             let rev = self.doc.model().revision();
             let mut slot = self.plan.hover.take();
