@@ -218,6 +218,39 @@ impl HandleKind {
         }
     }
 
+    /// The grip's short name, shown by it under the pointer.
+    pub fn name(self) -> &'static str {
+        match self {
+            HandleKind::WallEnd { .. } => "Wall end",
+            HandleKind::WallTop => "Top: raise",
+            HandleKind::WallFace => "Face: thicken",
+            HandleKind::SlabTop => "Top: raise",
+            HandleKind::SlabUnderside => "Underside: thicken",
+            HandleKind::OpeningJamb { .. } => "Jamb: widen",
+            HandleKind::OpeningHead => "Head: raise",
+            HandleKind::OpeningSill => "Sill: raise",
+            HandleKind::GridEnd { .. } => "Grid end",
+            HandleKind::Face(_) => "Face: push",
+            HandleKind::Member { .. } => "Point",
+            HandleKind::ViewEnd { .. } => "Line end",
+            HandleKind::ViewDepth => "Depth",
+            HandleKind::CropFace(_) => "Crop face",
+            HandleKind::CropMove => "Crop box: move",
+            HandleKind::Vertex { .. } => "Corner",
+            HandleKind::Edge { .. } => "Edge: push",
+            HandleKind::AddVertex { .. } => "Add a corner",
+            HandleKind::Ring { .. } => "Outline: move",
+            HandleKind::ShaftBase => "Base",
+            HandleKind::ShaftTop => "Top",
+            HandleKind::Rotate => "Turn",
+            HandleKind::ColumnSize { depth: false } => "Width",
+            HandleKind::ColumnSize { depth: true } => "Depth",
+            HandleKind::WallSlide => "Wall: slide",
+            HandleKind::OpeningSlide => "Slide along the wall",
+            HandleKind::BeamWidth => "Width",
+        }
+    }
+
     /// What the grip does, for the tooltip by the pointer.
     pub fn tip(self, edit: bool) -> &'static str {
         match self {
@@ -1162,6 +1195,150 @@ fn note(painter: &Painter, at: Pos2, text: &str, color: Color32) {
     painter.galley(pos, galley, color);
 }
 
+/// How long a let-go grip's value shows, seconds.
+const FLASH: f64 = 1.5;
+
+/// The four states of a grip, the same on every element.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GripState {
+    Rest,
+    /// Under the pointer: it grows a little and says what it is.
+    Hover,
+    /// Held: a white core and a soft halo.
+    Held,
+    /// Another grip is held: this one fades back.
+    Faded,
+}
+
+/// The colours grips and their pills take from the theme.
+struct GripLook {
+    accent: Color32,
+    /// A pill's ground and its text: dark ink in light themes, light in
+    /// dark ones.
+    ink: Color32,
+    paper: Color32,
+}
+
+impl GripLook {
+    fn of(ctx: &egui::Context) -> Self {
+        let v = ctx.global_style().visuals.clone();
+        Self {
+            accent: ACCENT,
+            ink: v.strong_text_color(),
+            paper: v.panel_fill,
+        }
+    }
+}
+
+/// A grip at `c`: a square, or a bar across `bar` (a screen direction;
+/// `Some(None)` is a bar seen end on, drawn as a dot).
+fn draw_grip(
+    painter: &Painter,
+    c: Pos2,
+    bar: Option<Option<Vec2>>,
+    state: GripState,
+    filled: bool,
+    picked: bool,
+    look: &GripLook,
+) {
+    let alpha = if state == GripState::Faded { 0.4 } else { 1.0 };
+    let accent = look.accent.gamma_multiply(alpha);
+    let grow = match state {
+        GripState::Hover => 2.0,
+        GripState::Held => 1.0,
+        _ => 0.0,
+    };
+    if state == GripState::Held {
+        painter.circle_filled(c, 12.0, look.accent.gamma_multiply(0.18));
+    }
+    let core = if state == GripState::Held {
+        Color32::WHITE
+    } else if filled || picked || bar.is_some() {
+        accent
+    } else {
+        Color32::WHITE.gamma_multiply(alpha)
+    };
+    match bar {
+        Some(Some(dir)) => {
+            // a short rounded bar across the way it moves
+            let len = 6.0 + grow;
+            let a = c - dir * len;
+            let b = c + dir * len;
+            painter.line_segment([a, b], Stroke::new(5.0 + grow, accent));
+            for p in [a, b] {
+                painter.circle_filled(p, (5.0 + grow) / 2.0, accent);
+            }
+            if state == GripState::Held {
+                painter.line_segment([a, b], Stroke::new(2.0, core));
+            }
+        }
+        Some(None) => {
+            painter.circle(c, 3.5 + grow, core, Stroke::new(1.5, accent));
+        }
+        None => {
+            let side = 8.0 + 2.0 * grow;
+            painter.rect(
+                Rect::from_center_size(c, Vec2::splat(side)),
+                1.0,
+                core,
+                Stroke::new(1.5, accent),
+                egui::StrokeKind::Middle,
+            );
+            if picked {
+                painter.rect_stroke(
+                    Rect::from_center_size(c, Vec2::splat(side + 5.0)),
+                    2.0,
+                    Stroke::new(1.0, look.ink.gamma_multiply(0.7)),
+                    egui::StrokeKind::Middle,
+                );
+            }
+        }
+    }
+}
+
+/// The "+" that pulls a new corner out of an edge in Edit mode.
+fn draw_plus(painter: &Painter, c: Pos2, state: GripState, look: &GripLook) {
+    let r = if state == GripState::Rest { 5.5 } else { 7.0 };
+    let fill = if state == GripState::Held {
+        Color32::WHITE
+    } else {
+        look.paper
+    };
+    painter.circle(c, r, fill, Stroke::new(1.5, look.accent));
+    let s = Stroke::new(1.5, look.accent);
+    painter.line_segment([c - Vec2::X * (r - 2.5), c + Vec2::X * (r - 2.5)], s);
+    painter.line_segment([c - Vec2::Y * (r - 2.5), c + Vec2::Y * (r - 2.5)], s);
+}
+
+/// A small pill centred under `at`, in the theme's ink.
+fn pill(painter: &Painter, at: Pos2, text: &str, look: &GripLook, alpha: f32) {
+    let font = egui::FontId::proportional(11.5);
+    let galley = painter.layout_no_wrap(text.to_owned(), font, look.paper.gamma_multiply(alpha));
+    let size = galley.size() + Vec2::new(14.0, 6.0);
+    let mut rect = Rect::from_center_size(at + Vec2::new(0.0, size.y / 2.0), size);
+    let clip = painter.clip_rect().shrink(4.0);
+    rect = rect.translate(Vec2::new(
+        (clip.left() - rect.left()).max(0.0) + (clip.right() - rect.right()).min(0.0),
+        (clip.top() - rect.top()).max(0.0) + (clip.bottom() - rect.bottom()).min(0.0),
+    ));
+    painter.rect_filled(rect, size.y / 2.0, look.ink.gamma_multiply(alpha * 0.94));
+    painter.galley(rect.min + Vec2::new(7.0, 3.0), galley, look.paper);
+}
+
+/// The two-way pointer for a grip that moves along screen direction `d`.
+fn resize_cursor(d: Vec2) -> egui::CursorIcon {
+    let a = d.y.atan2(d.x).to_degrees().rem_euclid(180.0);
+    if !(22.5..157.5).contains(&a) {
+        egui::CursorIcon::ResizeHorizontal
+    } else if (67.5..112.5).contains(&a) {
+        egui::CursorIcon::ResizeVertical
+    } else if a < 90.0 {
+        egui::CursorIcon::ResizeNwSe
+    } else {
+        egui::CursorIcon::ResizeNeSw
+    }
+}
+
 /// The outlines of `e` on screen, each with its ring and corners.
 fn screen_rings(
     model: &Model,
@@ -1495,136 +1672,6 @@ fn draw_view_range(painter: &Painter, input: &PaneInput, a: DVec2, b: DVec2, dep
     }
 }
 
-/// What a flip arrow turns round.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Flip {
-    /// A wall's exterior and interior.
-    Wall,
-    /// A door's swing, or a window's inside and outside.
-    Facing,
-    /// A door's hinge side.
-    Hand,
-    /// The way a section or elevation looks.
-    View,
-    /// Turn an object round to face the other way.
-    Object,
-}
-
-impl Flip {
-    pub fn label(self) -> &'static str {
-        match self {
-            Flip::Wall => "Flip wall",
-            Flip::Facing => "Flip facing",
-            Flip::Hand => "Flip door hand",
-            Flip::View => "Flip view direction",
-            Flip::Object => "Turn it round",
-        }
-    }
-}
-
-/// A clickable flip control: where it sits and which way its arrows point.
-#[derive(Clone, Copy, Debug)]
-pub struct FlipArrow {
-    pub flip: Flip,
-    pub at: DVec3,
-    pub dir: DVec2,
-}
-
-/// The flip arrows of a selected wall, door or window, in plan: a wall's
-/// beside its exterior face, square to it; a door's or window's side by
-/// side on the face away from where it opens or faces. A section's or
-/// elevation's sits behind its line, pointing the way it looks.
-pub fn flip_arrows(model: &Model, id: ElementId) -> Vec<FlipArrow> {
-    match model.get(id).map(|e| &e.kind) {
-        Some(ElementKind::View(v)) => match v.kind {
-            ViewKind::Section { start, end, .. } if start.distance(end) > 0.2 => {
-                let along = (end - start).normalize_or_zero();
-                let look = along.perp();
-                let at = start + along * (start.distance(end) * 0.25).min(1.5) - look * 0.6;
-                vec![FlipArrow {
-                    flip: Flip::View,
-                    at: at.extend(0.0),
-                    dir: look,
-                }]
-            }
-            _ => vec![],
-        },
-        Some(ElementKind::Object(o)) => {
-            let e = model.get(id).expect("just found");
-            let Some((lo, hi)) = creabim_core::objects::type_of(model, e).map(|t| t.bounds())
-            else {
-                return vec![];
-            };
-            let z = creabim_core::objects::base_z(model, e).unwrap_or(0.0);
-            let side = o.to_plan(DVec2::new(hi.x + 0.4, (lo.y + hi.y) / 2.0));
-            vec![FlipArrow {
-                flip: Flip::Object,
-                at: side.extend(z),
-                dir: o.facing().normalize_or_zero(),
-            }]
-        }
-        Some(ElementKind::Wall(w)) if w.length() > 0.1 => {
-            let z = walls::base_z(model, w);
-            let n = w.direction().perp();
-            let out = if w.flip { n } else { -n };
-            let mid = (w.start + w.end) / 2.0;
-            vec![FlipArrow {
-                flip: Flip::Wall,
-                at: (mid + out * (w.thickness / 2.0 + 0.5)).extend(z),
-                dir: n,
-            }]
-        }
-        Some(ElementKind::Opening(o)) => {
-            let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
-                return vec![];
-            };
-            let z = walls::base_z(model, w);
-            let d = w.direction();
-            let n = d.perp();
-            let side = if o.faces_left(w) { n } else { -n };
-            let mid = w.start + d * (o.offset + o.width / 2.0);
-            let mut v = vec![FlipArrow {
-                flip: Flip::Facing,
-                at: (mid - d * 0.3 - side * (w.thickness / 2.0 + 0.5)).extend(z),
-                dir: n,
-            }];
-            if o.kind == OpeningKind::Door {
-                v.push(FlipArrow {
-                    flip: Flip::Hand,
-                    at: (mid + d * 0.3 - side * (w.thickness / 2.0 + 0.5)).extend(z),
-                    dir: d,
-                });
-            }
-            v
-        }
-        _ => vec![],
-    }
-}
-
-/// Two arrowheads back to back across `c`, along screen direction `v`.
-fn draw_flip_arrow(painter: &Painter, c: Pos2, v: Vec2, hot: bool) {
-    let col = if hot {
-        ACCENT
-    } else {
-        ACCENT.gamma_multiply(0.85)
-    };
-    painter.circle(
-        c,
-        11.0,
-        Color32::WHITE.gamma_multiply(0.9),
-        Stroke::new(1.0, col),
-    );
-    let p = v.rot90();
-    let stroke = Stroke::new(if hot { 2.2 } else { 1.6 }, col);
-    painter.line_segment([c - v * 7.5, c + v * 7.5], stroke);
-    for s in [1.0, -1.0] {
-        let tip = c + v * 7.5 * s;
-        let back = tip - v * 4.0 * s;
-        painter.line_segment([tip, back + p * 3.5], stroke);
-        painter.line_segment([tip, back - p * 3.5], stroke);
-    }
-}
-
 /// Draw the selected element's handles and run a drag on them (or on the
 /// element itself). Returns `true` while a drag runs, so the pane leaves
 /// the pointer alone, and puts a message for the status bar in `status`.
@@ -1665,7 +1712,8 @@ pub fn interact(
         shown
             .iter()
             .filter_map(|h| Some((h, screen(h)?.distance(p))))
-            .filter(|(_, d)| *d < 10.0)
+            // 8 px to see, 16 px to hit
+            .filter(|(_, d)| *d < 8.0)
             // a corner wins over an add-corner grip or an edge's at the
             // same spot
             .min_by(|a, b| {
@@ -1694,75 +1742,97 @@ pub fn interact(
         .filter(|_| drag.is_none() && !grips.busy())
         .and_then(nearest)
         .map(|h| h.kind);
+    let held = drag.as_ref().and_then(|d| d.kind);
+    // in Edit mode the "+" shows only on the edge under the pointer
+    let hovered_edge = match (edit, pointer, &element) {
+        (true, Some(p), Some(e)) if drag.is_none() => {
+            edge_at(doc.model(), e, input, p).map(|(r, i, _)| (r, i))
+        }
+        _ => None,
+    };
+    let look = GripLook::of(&ctx);
     for h in &shown {
         let Some(c) = screen(h) else {
             continue;
         };
-        let is_hot = hot == Some(h.kind);
-        if let HandleKind::AddVertex { .. } = h.kind {
-            // a small diamond with a plus: a corner to pull out
-            let r = if is_hot { 6.5 } else { 5.0 };
-            let pts = vec![
-                c + Vec2::new(0.0, -r),
-                c + Vec2::new(r, 0.0),
-                c + Vec2::new(0.0, r),
-                c + Vec2::new(-r, 0.0),
-            ];
-            let fill = if is_hot {
-                Color32::from_rgb(255, 228, 200)
-            } else {
-                Color32::WHITE
-            };
-            painter.add(egui::Shape::convex_polygon(
-                pts,
-                fill,
-                Stroke::new(1.2, ACCENT),
-            ));
-            let s = Stroke::new(1.0, ACCENT);
-            painter.line_segment([c - Vec2::X * 2.5, c + Vec2::X * 2.5], s);
-            painter.line_segment([c - Vec2::Y * 2.5, c + Vec2::Y * 2.5], s);
+        let state = if held == Some(h.kind) {
+            GripState::Held
+        } else if held.is_some() {
+            GripState::Faded
+        } else if hot == Some(h.kind) {
+            GripState::Hover
+        } else {
+            GripState::Rest
+        };
+        if let HandleKind::AddVertex { ring, i } = h.kind {
+            if state == GripState::Rest && hovered_edge != Some((ring, i)) {
+                continue;
+            }
+            draw_plus(painter, c, state, &look);
             continue;
         }
-        if let Constraint::Line { dir, .. } = h.constraint {
-            // a short stem shows which way the handle slides
-            if let Some(tip) = (input.project)(h.at + dir * 0.3) {
-                let v = (tip - c).normalized() * 14.0;
-                if v.is_finite() {
-                    painter.line_segment([c - v, c + v], Stroke::new(1.5, ACCENT));
-                }
+        let picked = matches!(h.kind, HandleKind::Vertex { ring, i } if grips.picked(ring, i));
+        // a square is a point you move, a bar an edge or a face you push
+        let bar = h.kind.round().then(|| match h.constraint {
+            Constraint::Line { dir, .. } => (input.project)(h.at + dir * 0.3)
+                .map(|tip| (tip - c).normalized())
+                .filter(|v| v.is_finite())
+                .map(|v| v.rot90()),
+            Constraint::Plane { .. } => None,
+        });
+        let filled = edit && matches!(h.kind, HandleKind::Vertex { .. });
+        draw_grip(painter, c, bar, state, filled, picked, &look);
+        if state == GripState::Hover {
+            if let Some(dir) = bar.flatten() {
+                ctx.set_cursor_icon(resize_cursor(dir.rot90()));
+            } else {
+                ctx.set_cursor_icon(egui::CursorIcon::Move);
             }
         }
-        // a picked corner is filled; the one under the pointer grows
-        let picked = matches!(h.kind, HandleKind::Vertex { ring, i } if grips.picked(ring, i));
-        let fill = if picked {
-            ACCENT
-        } else if is_hot {
-            Color32::from_rgb(255, 228, 200)
+    }
+    // the held grip's old place stays as a faint tick
+    if let Some(d) = drag.as_ref().filter(|d| d.kind.is_some()) {
+        if let Some(c) = (input.project)(d.grab) {
+            let s = Stroke::new(1.0, look.accent.gamma_multiply(0.45));
+            painter.line_segment([c - Vec2::splat(4.0), c + Vec2::splat(4.0)], s);
+            painter.line_segment([c + Vec2::new(-4.0, 4.0), c + Vec2::new(4.0, -4.0)], s);
+        }
+    }
+    // a let-go grip's new value, for a second
+    let flash_id = egui::Id::new("grip.flash");
+    if let Some((text, at, t0)) = ctx.data(|d| d.get_temp::<(String, Pos2, f64)>(flash_id)) {
+        let age = ctx.input(|i| i.time) - t0;
+        if age < FLASH {
+            let fade = (1.0 - (age / FLASH).powi(3)) as f32;
+            pill(painter, at + Vec2::new(0.0, -34.0), &text, &look, fade);
+            ctx.request_repaint();
         } else {
-            Color32::WHITE
-        };
-        let grow = if is_hot { 1.5 } else { 0.0 };
-        if h.kind.round() {
-            painter.circle(c, 4.5 + grow, fill, Stroke::new(1.5, ACCENT));
-        } else {
-            painter.rect(
-                Rect::from_center_size(c, Vec2::splat(9.0 + 2.0 * grow)),
-                0.0,
-                fill,
-                Stroke::new(1.5, ACCENT),
-                egui::StrokeKind::Middle,
-            );
+            ctx.data_mut(|d| d.remove::<(String, Pos2, f64)>(flash_id));
         }
     }
     if let (Some(k), Some(p)) = (hot, pointer) {
         let fixed = matches!(k, HandleKind::Vertex { ring, .. } | HandleKind::AddVertex { ring, .. }
             if element.as_ref().and_then(|e| crate::editmode::ring_of(doc.model(), e, ring)).is_some_and(|r| !r.reshapes));
-        let tip = if fixed && edit {
-            "Drag: move corner · This sketch's arcs or constraints keep its corners: no adding or removing"
-        } else {
-            k.tip(edit)
-        };
-        note(painter, p, tip, Color32::from_gray(40));
+        let at = shown
+            .iter()
+            .find(|h| h.kind == k)
+            .and_then(screen)
+            .unwrap_or(p);
+        // the grip says what it is; in Edit mode, what more it does
+        pill(painter, at + Vec2::new(0.0, -34.0), k.name(), &look, 1.0);
+        if edit {
+            let tip = if fixed {
+                "Drag: move corner · This sketch's arcs or constraints keep its corners: no adding or removing"
+            } else {
+                k.tip(edit)
+            };
+            note(
+                painter,
+                p + Vec2::new(0.0, 22.0),
+                tip,
+                Color32::from_gray(40),
+            );
+        }
     }
 
     // the right-click menu, open in this pane
@@ -1872,59 +1942,8 @@ pub fn interact(
         }
     }
 
-    // flip arrows, in plans: a click turns the wall, door or window round
-    if drag.is_none() && input.look.z.abs() > 0.9 {
-        let arrows = flip_arrows(doc.model(), id);
-        let mut hit = None;
-        for a in &arrows {
-            let (Some(c), Some(tip)) = (
-                (input.project)(a.at),
-                (input.project)(a.at + a.dir.extend(0.0) * 0.3),
-            ) else {
-                continue;
-            };
-            let v = (tip - c).normalized();
-            if !v.is_finite() {
-                continue;
-            }
-            let hot = pointer.is_some_and(|p| p.distance(c) < 11.0);
-            if hot {
-                hit = Some(a.flip);
-            }
-            draw_flip_arrow(painter, c, v, hot);
-        }
-        if let (Some(Flip::View), true) = (hit, response.clicked()) {
-            let r = match transform::flip_view(doc.model(), id) {
-                Some(tx) => doc.commit(tx).map_err(|e| e.to_string()),
-                None => Err("only sections and elevations flip".into()),
-            };
-            *status = Some(match r {
-                Ok(()) => {
-                    "Flipped: it looks the other way along the same line. Ctrl+Z to undo.".into()
-                }
-                Err(e) => format!("Couldn't do that: {e}"),
-            });
-            return true;
-        }
-        if let (Some(f), true) = (hit, response.clicked()) {
-            let model = doc.model().clone();
-            let r = doc.edit(id, f.label(), |e| match (&mut e.kind, f) {
-                (ElementKind::Object(_), Flip::Object) => turn_object(&model, e, 180.0),
-                (ElementKind::Wall(w), Flip::Wall) => walls::flip_wall(w),
-                (ElementKind::Opening(o), Flip::Hand) => walls::flip_hand(o),
-                (ElementKind::Opening(o), _) => walls::flip_facing(o),
-                _ => {}
-            });
-            *status = Some(match r {
-                Ok(()) => format!("{}. Ctrl+Z to undo.", f.label()),
-                Err(e) => format!("Couldn't do that: {e}"),
-            });
-            return true;
-        }
-        if let (Some(f), Some(p)) = (hit, pointer) {
-            note(painter, p, f.label(), Color32::from_gray(40));
-        }
-    }
+    // flips are Space (facing) and Shift+Space (hand), and the action
+    // bar: no circles on the plan (see flip_arrows)
 
     // a click on a grip keeps the selection rather than picking what lies
     // under it; in Edit mode it picks the corner (Shift adds), and a
@@ -2128,6 +2147,16 @@ pub fn interact(
         let applied = d.edit.applied();
         if applied {
             *status = doc.undo_label().map(|l| format!("{l}. Ctrl+Z to undo."));
+            // the new value, by the grip for a second
+            let value = doc
+                .model()
+                .get(id)
+                .map(|e| readout(std::slice::from_ref(e)))
+                .filter(|v| !v.is_empty());
+            if let (Some(v), Some(at)) = (value, (input.project)(d.last)) {
+                let t = ctx.input(|i| i.time);
+                ctx.data_mut(|m| m.insert_temp(egui::Id::new("grip.flash"), (v, at, t)));
+            }
         }
         let press = d.press;
         *drag = None;
@@ -2961,7 +2990,6 @@ mod tests {
         assert!(handles(&m, e.id, None)
             .iter()
             .any(|h| h.kind == HandleKind::Rotate));
-        assert!(flip_arrows(&m, e.id).iter().any(|f| f.flip == Flip::Object));
     }
 
     #[test]

@@ -102,7 +102,7 @@ pub fn callout_click(
     doc.commit(Transaction::new(format!("Call out {name}")).insert(e))?;
     selection.only(id);
     state.status = Some(format!(
-        "{name} at 1:{:.0}: it shows what is inside the box, and follows the model. Draw detail components in it with the Detail tool; place it on a sheet like any view.",
+        "{name} at 1:{:.0} is under Details in the project browser. Open this view (in Properties) or double-click the callout to draw in it; it follows the model.",
         state.details.callout_scale
     ));
     Ok(Some(id))
@@ -307,8 +307,7 @@ pub fn join_fields(ui: &mut egui::Ui, model: &Model, j: &mut JoinRule) -> &'stat
         name_of(model, j.a),
         name_of(model, j.b)
     ));
-    if ui
-        .checkbox(&mut j.cleanup, "Clean up the junction")
+    if crate::props::switch(ui, &mut j.cleanup, "Clean up the junction")
         .on_hover_text("Off: both are drawn whole where they overlap, with their own outlines.")
         .changed()
     {

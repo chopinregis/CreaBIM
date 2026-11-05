@@ -13,6 +13,7 @@ pub mod curtain;
 pub mod declutter;
 pub mod detail;
 pub mod looks;
+pub mod markers;
 pub mod members;
 pub mod mesh;
 pub mod objects;

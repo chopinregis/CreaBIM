@@ -117,22 +117,25 @@ html[data-theme="blueprint"] {
 }
 
 html[data-theme="sage"] {
-  --bg: #EEF1EA;
-  --panel: #F7F9F3;
-  --panel-2: #E3E8DC;
-  --raise: #E3E8DC;
-  --raise-2: #CBD3C2;
-  --border: #CBD3C2;
-  --border-2: #B5C0AA;
-  --text: #1E2A22;
-  --text-2: #4B5A4F;
-  --muted: #7A877C;
-  --faint: rgba(122, 135, 124, 0.75);
-  --accent: #4F6E58;
-  --accent-2: #A8843A;
-  --accent-text: #4F6E58;
-  --accent-soft: #DDE8DA;
-  --accent-ring: rgba(79, 110, 88, 0.5);
+  /* the approved mockup's palette (brief 02) */
+  --bg: #F6F7F4;
+  --panel: #FFFFFF;
+  --panel-2: #F6F7F4;
+  --raise: #EEF1EA;
+  --raise-2: #E3EBDF;
+  --border: #E3E6DF;
+  --border-2: #D3D8CE;
+  --text: #22261F;
+  --text-2: #2F362B;
+  --muted: #5D6558;
+  --faint: rgba(93, 101, 88, 0.75);
+  --accent: #4F6B4C;
+  --accent-2: #3E5A3B;
+  --accent-text: #3E5A3B;
+  --accent-soft: #E3EBDF;
+  --accent-ring: rgba(79, 107, 76, 0.5);
+  --select: #E07A2E;
+  --anno: #2B4C8C;
   --on-accent: #ffffff;
   --good: #3F7A4F;
   --warn: #9A6A1E;
@@ -228,25 +231,32 @@ html[data-pane="top"] body {
   border-bottom: 1px solid var(--border);
 }
 
+/* The application menu: the logo and name, as a tinted button. */
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-right: 10px;
+  gap: 7px;
+  height: 30px;
+  padding: 0 8px 0 4px;
+  margin-right: 8px;
+  border-radius: 8px;
   font-weight: 650;
   letter-spacing: 0.01em;
   font-size: 13px;
+  color: var(--text);
+  background: var(--accent-soft);
 }
+.brand .chev { width: 12px; height: 12px; color: var(--muted); }
+.brand:hover, .brand.open { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-ring); color: var(--text); }
 
 .logo {
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  background: var(--accent);
   display: grid;
   place-items: center;
-  color: white;
-  box-shadow: 0 2px 8px rgba(91, 108, 255, 0.35);
+  color: var(--on-accent);
 }
 
 .logo svg { width: 14px; height: 14px; stroke-width: 2.2; }
@@ -277,16 +287,21 @@ html[data-pane="top"] body {
 
 .qsep { width: 1px; height: 18px; background: var(--border-2); margin: 0 5px; }
 
+/* The project's file name, at the right beside the Workspace picker. */
 .doc {
-  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 320px;
+  max-width: 260px;
+  margin-right: 8px;
 }
 
-.doc b { color: var(--text-2); font-weight: 550; }
+.doc .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex: none; }
 
 .bar2 {
   height: 40px;
@@ -309,7 +324,8 @@ html[data-pane="top"] body {
 /* Under about 1100 px the rows tighten first: the logo without its
    name, and narrower menu, quick and tool buttons. */
 @media (max-width: 1100px) {
-  .brand { font-size: 0; gap: 0; margin-right: 6px; }
+  .brand .name, .brand .chev { display: none; }
+  .brand { gap: 0; margin-right: 6px; padding: 0 4px; }
   .menubtn { padding: 0 7px; }
   .ibtn { width: 27px; }
   .qsep { margin: 0 3px; }
@@ -918,3 +934,29 @@ kbd {
 .hdoc figure.zoomable { cursor: zoom-in; }
 .hdoc figure.zoomable.big { cursor: zoom-out; position: fixed; inset: 8px; margin: 0; z-index: 10; background: var(--panel); padding: 8px; border-radius: 8px; box-shadow: 0 0 0 1px var(--border-2), 0 10px 40px rgba(0, 0, 0, 0.35); display: flex; flex-direction: column; justify-content: center; overflow: auto; }
 .hdoc figure.zoomable.big img { width: auto; max-width: none; min-width: 100%; }
+
+/* ---------- New project ---------- */
+
+.np { display: flex; flex-direction: column; gap: 14px; padding: 20px 24px; height: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
+.np-head { display: flex; align-items: baseline; }
+.np-head b { font-size: 17px; font-weight: 650; flex: 1; }
+.np-esc { color: var(--muted); font-size: 12px; }
+.np-starts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.np-big { display: flex; flex-direction: column; text-align: left; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); }
+.np-big .np-pic { height: 92px; border-radius: 8px; background: var(--panel-2); display: grid; place-items: center; color: var(--accent); }
+.np-big .np-pic svg { width: 56px; height: 56px; stroke-width: 1.4; }
+.np-text { display: flex; flex-direction: column; gap: 3px; }
+.np-text b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.np-text span { color: var(--muted); font-size: 12px; }
+.np-sub { font-size: 11px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.np-samples { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.np-sample { display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); }
+.np-icon { width: 36px; height: 36px; border-radius: 8px; background: var(--panel-2); display: grid; place-items: center; color: var(--text-2); flex: none; }
+.np-icon svg { width: 20px; height: 20px; }
+.np-big:hover, .np-sample:hover { border-color: var(--border-2); background: var(--panel-2); }
+.np-big.on, .np-sample.on { border: 1.5px solid var(--accent); background: var(--accent-soft); }
+.np-big.on .np-pic { background: var(--panel); }
+.np-foot { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin-top: auto; }
+.np-btn { height: 32px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border-2); color: var(--text); background: var(--panel); font-weight: 550; }
+.np-btn:hover { background: var(--raise); }
+.np-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }

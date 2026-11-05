@@ -23,6 +23,8 @@ use eframe::egui_wgpu;
 use glam::{DVec2, DVec3, Vec2 as GVec2, Vec3 as GVec3};
 use std::collections::HashMap;
 
+#[path = "appmenu.rs"]
+pub(crate) mod appmenu;
 #[path = "assemblies.rs"]
 mod assemblies;
 #[path = "cropui.rs"]
@@ -210,6 +212,10 @@ pub struct CreaBimApp {
     last_in_2d: bool,
     /// The crop box whose elements clicks in the 3D view are picking.
     crop_pick: Option<ElementId>,
+    /// The Settings window is open.
+    settings_open: bool,
+    /// The New project window, with the classic panels.
+    new_project_classic: bool,
 }
 
 impl CreaBimApp {
@@ -227,6 +233,10 @@ impl CreaBimApp {
         app.shell.settings = settings;
         app.load_model(creabim_core::starter::starter_house());
         app.status = STARTER_LOADED.into();
+        // `creabim-app house.creabim` opens that file instead
+        if let Some(path) = launch_file(std::env::args().skip(1)) {
+            app.open_path(&path);
+        }
         app
     }
 
@@ -277,6 +287,8 @@ impl CreaBimApp {
             type_preview: Default::default(),
             catalogue: Default::default(),
             levels: Default::default(),
+            settings_open: false,
+            new_project_classic: false,
             marks: Default::default(),
             gstyles: Default::default(),
             level_copy: Default::default(),
@@ -756,7 +768,7 @@ impl CreaBimApp {
             return;
         }
         if let Some(old) = self.plan.modal.as_mut() {
-            old.cancel(&mut self.doc);
+            old.discard(&mut self.doc);
             self.plan.modal = None;
         }
         self.plan.cancel();
@@ -774,6 +786,9 @@ impl CreaBimApp {
             }
             (Mode::Rotate, true) => {
                 "Rotate: click the centre in a view, then a reference direction, then the new direction.".into()
+            }
+            _ if c == Command::Duplicate => {
+                "Duplicate: point at a view and click a base point; the copy follows to where you click next. Esc leaves it in place.".into()
             }
             _ => format!(
                 "{}: point at a view and move the pointer, then click to finish. Right-click cancels.",
@@ -869,6 +884,22 @@ impl CreaBimApp {
             } else if !self.plan.busy() {
                 self.flip_selected(hand);
             }
+        }
+        let (settings, shortcuts) = ctx.input(|i| {
+            let cmd = i.modifiers.command;
+            (
+                cmd && i.key_pressed(egui::Key::Comma),
+                cmd && i.key_pressed(egui::Key::Slash),
+            )
+        });
+        if settings {
+            self.settings_open = !self.settings_open;
+        }
+        if ctx.input(|i| i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::N)) {
+            self.open_new_project(ctx);
+        }
+        if shortcuts {
+            self.open_help("shortcuts");
         }
         let (palette, next_theme, home, frame_sel) = ctx.input(|i| {
             let (cmd, shift) = (i.modifiers.command, i.modifiers.shift);
@@ -3910,7 +3941,9 @@ impl CreaBimApp {
         if matches!(e.kind, ElementKind::Level(_)) {
             // a level is renamed with the plans named after it, once typed
             self.level_name_field(ui, id, &e.name);
-        } else if ui.text_edit_singleline(&mut name).changed() {
+        } else if crate::props::row(ui, "Name", |ui| {
+            crate::props::fill(ui, egui::TextEdit::singleline(&mut name)).changed()
+        }) {
             let r = self
                 .doc
                 .edit_merged(id, "Rename", |e| e.name = name.clone());
@@ -3954,11 +3987,9 @@ impl CreaBimApp {
         let mut extrude_sketch = false;
         let mut draw_hole = false;
         let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
-            ui.horizontal(|ui| {
-                ui.label(text);
-                ui.add(crate::units::drag(v).range(lo..=hi)).changed()
+            crate::props::row(ui, text, |ui| {
+                crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
             })
-            .inner
         };
         let mut redraw = false;
         let mut new_style = false;
@@ -3994,8 +4025,7 @@ impl CreaBimApp {
                 }
                 ElementKind::Wall(w) => {
                     let mut curtain = w.curtain.is_some();
-                    if ui
-                    .checkbox(&mut curtain, "Curtain wall")
+                    if crate::props::switch(ui, &mut curtain, "Curtain wall")
                     .on_hover_text("A grid of mullions holding glass or solid panels; doors in it take the place of panels")
                     .changed()
                 {
@@ -4176,11 +4206,10 @@ impl CreaBimApp {
                     }
                     if o.kind == creabim_core::OpeningKind::Window {
                         let panes = |ui: &mut egui::Ui, text: &str, v: &mut u32| {
-                            ui.horizontal(|ui| {
-                                ui.label(text);
-                                ui.add(egui::DragValue::new(v).range(1..=12)).changed()
+                            crate::props::row(ui, text, |ui| {
+                                crate::props::fill(ui, egui::DragValue::new(v).range(1..=12))
+                                    .changed()
                             })
-                            .inner
                         };
                         if panes(ui, "Panes across", &mut o.frame.panes_across) {
                             label = "Window panes"
@@ -4201,8 +4230,7 @@ impl CreaBimApp {
                                     }
                                 }
                             });
-                        if ui
-                            .checkbox(by_type, "Group by type")
+                        if crate::props::switch(ui, by_type, "Group by type")
                             .on_hover_text(
                                 "List the rows under a heading per element type, with its count.",
                             )
@@ -4255,8 +4283,7 @@ impl CreaBimApp {
                             depth,
                             cut,
                         } => {
-                            if ui
-                                .checkbox(cut, "Cut through the model (section)")
+                            if crate::props::switch(ui, cut, "Cut through the model (section)")
                                 .changed()
                             {
                                 label = "Section or elevation"
@@ -4275,9 +4302,9 @@ impl CreaBimApp {
                         ViewKind::Axonometric { azimuth, altitude } => {
                             let deg =
                                 |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| {
-                                    ui.horizontal(|ui| {
-                                        ui.label(text);
-                                        ui.add(
+                                    crate::props::row(ui, text, |ui| {
+                                        crate::props::fill(
+                                            ui,
                                             egui::DragValue::new(v)
                                                 .speed(0.5)
                                                 .range(lo..=hi)
@@ -4285,7 +4312,6 @@ impl CreaBimApp {
                                         )
                                         .changed()
                                     })
-                                    .inner
                                 };
                             if deg(ui, "Azimuth", azimuth, 0.0, 360.0)
                                 | deg(ui, "Altitude", altitude, -89.0, 89.0)
@@ -4301,8 +4327,7 @@ impl CreaBimApp {
                     if matches!(
                         v.kind,
                         ViewKind::Plan { .. } | ViewKind::Section { cut: true, .. }
-                    ) && ui
-                        .checkbox(&mut v.room_colours, "Colour rooms")
+                    ) && crate::props::switch(ui, &mut v.room_colours, "Colour rooms")
                         .on_hover_text(
                             "Fill each room with a colour of its own, the same in every view",
                         )
@@ -4311,8 +4336,7 @@ impl CreaBimApp {
                         label = "Colour rooms"
                     }
                     if matches!(v.kind, ViewKind::Plan { .. })
-                        && ui
-                            .checkbox(&mut v.ceiling_plan, "Reflected ceiling plan")
+                        && crate::props::switch(ui, &mut v.ceiling_plan, "Reflected ceiling plan")
                             .on_hover_text("Draw the ceilings and what hangs from them, not the floor and furniture")
                             .changed()
                     {
@@ -4378,18 +4402,16 @@ impl CreaBimApp {
                         }
                     }
                     let mm = |ui: &mut egui::Ui, text: &str, v: &mut f64| {
-                        ui.horizontal(|ui| {
-                            ui.label(text);
-                            ui.add(egui::DragValue::new(v).speed(1.0).suffix(" mm"))
+                        crate::props::row(ui, text, |ui| {
+                            crate::props::fill(ui, egui::DragValue::new(v).speed(1.0).suffix(" mm"))
                                 .changed()
                         })
-                        .inner
                     };
                     if mm(ui, "Centre X", &mut vp.center.x) | mm(ui, "Centre Y", &mut vp.center.y) {
                         label = "Move view on sheet"
                     }
                     let mut cropped = vp.crop.is_some();
-                    if ui.checkbox(&mut cropped, "Crop the view").changed() {
+                    if crate::props::switch(ui, &mut cropped, "Crop the view").changed() {
                         vp.crop = if cropped {
                             let view = vp.view;
                             self.drawing(view)
@@ -5122,8 +5144,40 @@ impl CreaBimApp {
             if slot.is_some() {
                 creabim_core::assembly::set_assembly(self.doc.model(), &mut edited, slot);
             }
-            let r = self.doc.edit_merged(id, label, |e| *e = edited.clone());
-            self.report(r, format!("{label}."));
+            // with several selected, the change goes to each of the same kind
+            let mut others = vec![];
+            for o in self.selection.all() {
+                let Some(other) = self.doc.model().get(o) else {
+                    continue;
+                };
+                if let Some(mut out) = crate::multiedit::apply_to(&e, &edited, other) {
+                    let slot = creabim_core::assembly::assembly_slot(&out).flatten();
+                    if slot.is_some() {
+                        creabim_core::assembly::set_assembly(self.doc.model(), &mut out, slot);
+                    }
+                    others.push((other.clone(), out));
+                }
+            }
+            let msg = if others.is_empty() {
+                format!("{label}.")
+            } else {
+                format!("{label}: {} elements.", others.len() + 1)
+            };
+            let r = if others.is_empty() {
+                self.doc.edit_merged(id, label, |e| *e = edited.clone())
+            } else {
+                let mut tx = creabim_core::Transaction::new(label);
+                if let Some(cur) = self.doc.model().get(id).cloned() {
+                    if cur != edited {
+                        tx = tx.replace(cur, edited.clone());
+                    }
+                }
+                for (b, a) in others {
+                    tx = tx.replace(b, a);
+                }
+                self.doc.commit_merged(tx)
+            };
+            self.report(r, msg);
         }
         if object_type {
             self.object_type_section(ui, id);
@@ -5363,7 +5417,7 @@ impl eframe::App for CreaBimApp {
         if std::mem::take(&mut self.plan.want_levels) {
             self.open_levels();
         }
-        // a detail view just called out opens beside its parent
+        // a view mark double-clicked: its view opens
         if let Some(v) = self.plan.want_view.take() {
             self.active_view = Some(v);
         }
@@ -5388,6 +5442,8 @@ impl eframe::App for CreaBimApp {
         self.styles_window(&ctx);
         self.templates_window(&ctx);
         self.units_window(&ctx);
+        self.settings_window(&ctx);
+        self.new_project_window(&ctx);
         self.marks_window(&ctx);
         self.graphic_styles_window(&ctx);
         self.ground_spacing_window(&ctx);
@@ -5738,8 +5794,7 @@ fn plan_graphics_ui(
     let mut label = None;
     ui.add_space(4.0);
     ui.label(egui::RichText::new("Graphics").strong());
-    if ui
-        .checkbox(&mut g.below_fill, "Tint what lies below the cut")
+    if crate::props::switch(ui, &mut g.below_fill, "Tint what lies below the cut")
         .on_hover_text("Furniture, fittings and imported meshes under the cut get a light fill.")
         .changed()
     {
@@ -5755,16 +5810,12 @@ fn plan_graphics_ui(
                 label = Some("Below-cut fill");
             }
         });
-        if ui
-            .checkbox(&mut g.below_grey, "In grey, not material colours")
-            .changed()
-        {
+        if crate::props::switch(ui, &mut g.below_grey, "In grey, not material colours").changed() {
             label = Some("Below-cut fill");
         }
     }
     let mut to_level = g.range.view_depth.is_none();
-    if ui
-        .checkbox(&mut to_level, "View depth: down to the level below")
+    if crate::props::switch(ui, &mut to_level, "View depth: down to the level below")
         .on_hover_text(
             "How far below its floor the plan looks, through holes in the floor such as a stair well.",
         )
@@ -5782,8 +5833,7 @@ fn plan_graphics_ui(
         });
     }
     let mut auto = g.weights.is_none();
-    if ui
-        .checkbox(&mut auto, "Line weights from the style pack")
+    if crate::props::switch(ui, &mut auto, "Line weights from the style pack")
         .on_hover_text("The style pack's pens for the view's scale: in the Standard pack, heavier at 1:50 and larger, lighter at 1:100 and smaller.")
         .changed()
     {
@@ -5836,17 +5886,24 @@ fn plan_graphics_ui(
 /// A drop-down of the ways a section, elevation or 3D view draws.
 fn view_style_combo(ui: &mut egui::Ui, salt: &str, style: &mut ViewStyle) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
+    crate::props::row(ui, "Style", |ui| {
         egui::ComboBox::from_id_salt(salt)
             .selected_text(style.label())
+            .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for s in ViewStyle::ALL {
                     changed |= ui.selectable_value(style, s, s.label()).changed();
                 }
             });
-        ui.label("Style");
     });
     changed
+}
+
+/// The file named on the command line, if any: the first argument that
+/// isn't an option.
+pub(crate) fn launch_file(args: impl Iterator<Item = String>) -> Option<String> {
+    args.into_iter()
+        .find(|a| !a.starts_with('-') && !a.is_empty())
 }
 
 /// What the status bar says when the starter house opens.

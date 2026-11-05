@@ -32,8 +32,47 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **58** | **7** | **192** |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S) | 8 | 14 | 7 | 29 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
+
+---
+
+## Brief 02 (2026-11-04)
+
+Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11-04 with its mockup boards. **Item** is the brief's section; **Phase** is the brief's order of work (1 quick wins, 2 layout and editing, 3 structure, 4 heavy modelling, R release basics). **Source** is the brief's tag: *MU01-nn* and *MU02…MU11* are the owner's markups, *B01* the first brief, *RR* the release review, *tour* the tour films. Items move to [Recently fixed](#recently-fixed) as they land.
+
+| Item | Gap | Phase | Size | Source |
+| --- | --- | --- | --- | --- |
+| 0 | The waiting branches `claude/demo-player`, `claude/starter-house-polish` and `claude/backlog` were never pushed. Their multi-select Properties edits and `creabim-app <file>` were rebuilt in Phase 1; category names still wrap mid-word in the visibility list. | 1 | S | B01 |
+| 1.4 | A new strip footing's top defaults to the wall base, overlapping a ground slab; it should default to the slab's underside. *Under selected* includes partitions. A plan click on a door picks the dashed footing below. | 2 | S | RR, tour |
+| 1.5 | A new beam's top defaults to the top of the storey, inside the slab above; it should default to the slab's underside. | 2 | S | RR |
+| 1.6 | Over an underlay, snaps prefer wall faces, so traced walls land 100 mm out. Snap to faces and centrelines, and say which in the snap mark. | 2 | S | RR, tour |
+| 1.7 | Widening a door or window from Properties grows it from one jamb. It should grow about its centre or keep the edge nearest a corner. No warning when an opening crosses a wall join. | 2 | S | RR, tour |
+| 1.8 | *Frame all* clears the plan cameras too. Exports write next to the project with no dialog and no "Open the folder". Box selection doesn't offer "Keep only…" directly. Guide lines pinned by resting on a point stay until Esc twice. To check: Ctrl+A in a text field, the Catalogue window over the plan, the Materials window after *Assign material*. | 2 | S | RR |
+| 2.1 | No Model / Annotate / View / Manage tabs, and labelled tools that wrap; "· 1 selected" isn't shown by the file name; view controls sit in the options row. (The application menu and the file name at the right landed in Phase 1.) | 2 | M | MU01-08…11 |
+| 2.6 | No view areas: the 3D view has a floating toolbar, view controls are duplicated in the options row, narrow areas squeeze their buttons, the hint line is drawn over the plan. No workspaces, no `/` isolate, Ctrl+Space or Ctrl+PgUp/PgDn. | 3 | L | MU02-02…05 |
+| 2.7 | Edit outline and Delete are text buttons at the bottom of Properties. An element action bar under the name: own actions tinted, then Duplicate, Select similar, Hide, Isolate, Frame, ⋯, Delete in red. | 2 | M | MU05 |
+| 2.10 | No tracker (Length / Angle with Tab while drawing or dragging), no Step in the Snap menu, no temporary dimensions that drive, no padlock. | 2 (tracker, steps), 3 (temporary dimensions) | M–L | MU09 |
+| 2.11 | Room tags: Stacked (the default) and Inline (the first tag) are drawn; the Number badge and Boxed layouts are not yet. Tags don't yet keep level in rotated views. | 2 | M | MU09 |
+| 2.12 | View markers: Classic (the default) and the first markers are drawn; the Minimal and Bold families are not yet. A single click on a bubble doesn't open its view (a double-click on the selected mark does). | 2 | M | MU09 |
+| 2.13 | Choices have no pictures or live previews; personal settings and the style pack are not kept apart; no marker or tag designer; style packs can't be exported and imported with custom styles. | 3 | M–L | MU10 |
+| 2.14 | Grips have their four states, but there are no live dimensions while dragging (old → new ± change, gap to the nearest neighbour), no "Widened D03 by 300 mm" wording in the status bar, and the grip accent doesn't follow a personal setting. | 2 | M | MU11, MU12 |
+| 3.1 | Detail components can be selected but have no grips. | 2 | M | MU01-01 |
+| 3.2 | Plants have no grips (canopy radius in plan; canopy and height in 3D). | 2 | S | MU01-04 |
+| 3.3 | A callout's box can't be resized with grips; views have no linked "Open in 3D" crop box. | 2 | M | MU01-07 |
+| 3.4 | *Fill room* shows no boundary preview and no red gap when walls don't close. | 2 | S | MU01-06 |
+| 3.5 | Only Sketch draws on the active workplane; void, extrusion, sweep, slab, opening and detail region draw in plan XY. | 4 | L | MU01-12 |
+| 3.6 | No edge offset in 3D (offset edge, offset all, insert point). | 4 | M–L | B01-7 |
+| 3.7 | Layers can't be edited by hand: no layer-end handles in plan or section, no corner join presets, no "Draw by this line", no IFC parts where layers differ. | 4 | L | MU08-01 |
+| 4.2 | No view cube. | 3 | M | B01-2 |
+| 5.1 | Schedules don't export to Excel. | 4 | M | B01 |
+| 5.2 | No quantities per assembly layer, rates per material or Take-off pane. | 4 | L | B01 |
+| 5.3 | No image or PDF references with calibration. | 4 | L | B01 |
+| 5.4 | No profile library for beams and columns as sweep presets. | 4 | L | B01 |
+| 5.5 | No curved walls. | 4 | L | B01 |
+| 5.6 | Stairs: no "Cut a well for this stair", headroom check, short-landing or re-flow warnings. Roofs: no overhang per edge, no offer to attach the walls under a new roof. No Check model panel (openings across joins, beams or footings in slabs, missing wells). | 4 | M | RR |
+| 6 | Release basics: Windows installer and portable zip, a file-format version in `.creabim`, README limits, issue templates, the Terrace House sample, CONTRIBUTING. | R | M | RR |
 
 ---
 
@@ -315,6 +354,23 @@ None on 2026-11-04. Gaps reported by work that is still a pull request go here u
 ---
 
 ## Recently fixed
+
+**In Brief 02, Phase 1 (`claude/project-thread-2a2eta`, 2026-11-04;** screenshots in [evolution/brief02-phase1](evolution/brief02-phase1)**):**
+
+- A Properties change with several elements selected goes to every selected element of the same kind, in one undo step; each keeps its own place (brief 0).
+- `creabim-app <file>` opens that file at launch (brief 0).
+- Duplicate leaves its copy in place on Esc and says "Copy made: click a base point, then where it goes" (1.1).
+- Drawing a callout keeps the parent view; a double-click on the selected mark opens its view (1.2).
+- Tool help cards sit clear of the 3D view's toolbar and close on Esc or when the pointer leaves (1.3).
+- An application menu (About, version and build, updates, Settings Ctrl+,, shortcuts Ctrl+/, Exit) and the file name at the right of the top bar (2.1, menu part).
+- Properties rows put the label first and the control in one column; choices of four or more are dropdowns; on/off settings are accent switches; section headers are full-width rows with a turning chevron (2.2, 2.3).
+- The final icon set, a FreeCAD icon of its own and a units icon instead of the ruler (2.4).
+- A Units switch in the status bar, saved with the project and undone in one step (2.5).
+- One **New project…** window (Ctrl+N) with Empty and Starter house; the six samples are under Help (2.8).
+- Quiet grips: squares for points, bars for edges and jambs, no circles on stalks or flip circles, "+" only on the hovered edge in Edit mode, flips on Space and Shift+Space (2.9).
+- Grip states: under the pointer a grip grows, names itself and shows a two-way pointer; held it has a white core and a halo, the others fade and its old place stays as a tick; let go, its value shows for a moment (2.14, states).
+- Stacked room tags and Classic view markers by default, sized on paper, with the sheet reference or "–"; the first ones stay selectable under Graphic styles › Tags and marks (2.11, 2.12, in part).
+- Top and Bottom look straight down and up with north up, and orbiting snaps to an axis view within 2° (4.1).
 
 **In the gaps sweep (`claude/gaps-sweep`, 2026-11-04):**
 

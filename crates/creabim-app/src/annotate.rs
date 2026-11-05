@@ -990,6 +990,52 @@ pub fn draw_grips(
     selection: &Selection,
     mm: f64,
 ) {
+    // a selected room tag: a dashed box round its lines and one square to
+    // move it by
+    let mut boxes: Vec<(ElementId, egui::Rect)> = vec![];
+    for it in items {
+        let PlanItem::Annotation { id, item } = it else {
+            continue;
+        };
+        if !selection.contains(*id) || !matches!(item.shape, Shape::Note { .. }) {
+            continue;
+        }
+        if !matches!(model.get(*id).map(|e| &e.kind), Some(ElementKind::Tag(_))) {
+            continue;
+        }
+        for b in item.text_boxes() {
+            let r = egui::Rect::from_points(&b.map(|p| xf.to_screen(p)));
+            match boxes.iter_mut().find(|(i, _)| i == id) {
+                Some((_, all)) => *all = all.union(r),
+                None => boxes.push((*id, r)),
+            }
+        }
+    }
+    for (_, r) in boxes {
+        let r = r.expand(5.0);
+        let c = [
+            r.left_top(),
+            r.right_top(),
+            r.right_bottom(),
+            r.left_bottom(),
+            r.left_top(),
+        ];
+        for w in c.windows(2) {
+            painter.extend(egui::Shape::dashed_line(
+                &[w[0], w[1]],
+                Stroke::new(1.0, ACCENT),
+                4.0,
+                3.0,
+            ));
+        }
+        painter.rect(
+            egui::Rect::from_center_size(r.center_top(), Vec2::splat(8.0)),
+            1.0,
+            Color32::WHITE,
+            Stroke::new(1.5, ACCENT),
+            egui::StrokeKind::Middle,
+        );
+    }
     for it in items {
         if !selection.contains(it.id()) {
             continue;
@@ -1194,8 +1240,7 @@ pub fn look_ui(
         });
     ui.horizontal(|ui| {
         let mut own = color.is_some();
-        if ui
-            .checkbox(&mut own, "Own colour")
+        if crate::props::switch(ui, &mut own, "Own colour")
             .on_hover_text("Override the style's colour for this one")
             .changed()
         {
@@ -1261,8 +1306,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     });
     ui.horizontal(|ui| {
         let mut own = s.color.is_some();
-        if ui
-            .checkbox(&mut own, "Colour")
+        if crate::props::switch(ui, &mut own, "Colour")
             .on_hover_text("Off: black on paper, blue on screen")
             .changed()
         {
@@ -1298,15 +1342,17 @@ fn terminator_combo(
     t: &mut Option<Terminator>,
 ) -> bool {
     let mut changed = false;
-    egui::ComboBox::from_id_salt(salt)
-        .selected_text(t.map_or(usual.to_string(), |t| t.label().to_string()))
-        .show_ui(ui, |ui| {
-            changed |= ui.selectable_value(t, None, usual).changed();
-            for k in Terminator::ALL {
-                changed |= ui.selectable_value(t, Some(k), k.label()).changed();
-            }
-        });
-    ui.label(text);
+    crate::props::row(ui, text, |ui| {
+        egui::ComboBox::from_id_salt(salt)
+            .selected_text(t.map_or(usual.to_string(), |t| t.label().to_string()))
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                changed |= ui.selectable_value(t, None, usual).changed();
+                for k in Terminator::ALL {
+                    changed |= ui.selectable_value(t, Some(k), k.label()).changed();
+                }
+            });
+    });
     changed
 }
 
@@ -1389,8 +1435,7 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
                 }
             }
         });
-    if ui
-        .checkbox(&mut s.break_at_tags, "Break dimension lines at tags")
+    if crate::props::switch(ui, &mut s.break_at_tags, "Break dimension lines at tags")
         .on_hover_text(
             "Dimension lines in this style leave a gap where a tag or a note sits across them",
         )
@@ -1508,8 +1553,7 @@ pub fn note_ui(
         label = Some("Note text");
     }
     let mut leader = n.leader.is_some();
-    if ui
-        .checkbox(&mut leader, "Leader")
+    if crate::props::switch(ui, &mut leader, "Leader")
         .on_hover_text("An arrow from the note to what it is about. Drag its square to move it.")
         .changed()
     {

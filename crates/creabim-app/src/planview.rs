@@ -1741,8 +1741,17 @@ pub fn show(
                     && under == selection.active
                 {
                     if let Some(id) = under {
-                        state.status =
-                            Some(crate::editmode::enter(doc.model(), id, &mut state.edit));
+                        // a callout, section or elevation mark opens its view
+                        let is_view = matches!(
+                            doc.model().get(id).map(|e| &e.kind),
+                            Some(ElementKind::View(_))
+                        );
+                        if is_view && id != view {
+                            state.want_view = Some(id);
+                        } else {
+                            state.status =
+                                Some(crate::editmode::enter(doc.model(), id, &mut state.edit));
+                        }
                     }
                     return None;
                 }
@@ -1784,8 +1793,9 @@ pub fn show(
             ),
             (_, Tool::Tag) => tag_tool(doc, view, &view_def, picked(), raw, state, selection),
             (PaneKind::Plan { .. } | PaneKind::Section { .. }, Tool::Callout) => {
-                crate::detailtool::callout_click(doc, view, p, state, selection)
-                    .map(|made| state.want_view = made.or(state.want_view))
+                // the new callout is selected where it was drawn; its view
+                // opens from Properties or with a double-click
+                crate::detailtool::callout_click(doc, view, p, state, selection).map(|_| ())
             }
             (PaneKind::Plan { .. } | PaneKind::Section { .. }, Tool::Detail) => {
                 crate::detailtool::detail_click(doc, view, p, state, selection)
@@ -2948,6 +2958,12 @@ fn keyboard_edits(
 
 /// What to do first, as a running edit begins.
 pub fn start_hint(m: &Modal) -> String {
+    if m.duplicated && m.mode == Mode::Move {
+        return match m.stage() {
+            Stage::Base => "Copy made: click a base point, then where it goes. Typed distances work; Esc leaves it in place.".into(),
+            _ => "Copy made: move the pointer and click where it goes. Esc leaves it in place.".into(),
+        };
+    }
     match (m.stage(), m.mode) {
         (Stage::Base, Mode::Rotate) => "Rotate: click the centre to turn about.".into(),
         (Stage::Base, _) => {

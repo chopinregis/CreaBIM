@@ -530,6 +530,66 @@ pub struct StylePack {
     /// The template a view without one of its own takes, by kind.
     #[serde(default, skip_serializing_if = "KindTemplates::is_empty")]
     pub default_templates: KindTemplates,
+    /// How every room tag in the project is laid out.
+    #[serde(default, skip_serializing_if = "RoomTagStyle::is_default")]
+    pub room_tags: RoomTagStyle,
+    /// The family every section, elevation and callout mark is drawn in,
+    /// so a project never mixes them.
+    #[serde(default, skip_serializing_if = "MarkerFamily::is_default")]
+    pub markers: MarkerFamily,
+}
+
+/// How a room tag lays out its fields.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RoomTagStyle {
+    /// The name in capitals and semibold, the area below it, the number
+    /// small and last.
+    #[default]
+    Stacked,
+    /// The tag as it was first drawn: the number and the area on one line.
+    Inline,
+}
+
+impl RoomTagStyle {
+    pub const ALL: [RoomTagStyle; 2] = [RoomTagStyle::Stacked, RoomTagStyle::Inline];
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RoomTagStyle::Stacked => "Stacked",
+            RoomTagStyle::Inline => "Inline",
+        }
+    }
+}
+
+/// A family of view marks: sections, elevations, callouts and detail
+/// callouts drawn as one set.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkerFamily {
+    /// A split bubble (the view's number over its sheet), a solid wedge
+    /// the way the view looks, heavy line ends and a dash-dot line.
+    #[default]
+    Classic,
+    /// The marks as they were first drawn.
+    Plain,
+}
+
+impl MarkerFamily {
+    pub const ALL: [MarkerFamily; 2] = [MarkerFamily::Classic, MarkerFamily::Plain];
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            MarkerFamily::Classic => "Classic",
+            MarkerFamily::Plain => "Plain (first markers)",
+        }
+    }
 }
 
 /// A template name for each kind of view.

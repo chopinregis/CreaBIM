@@ -486,16 +486,14 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
     }
     let mut label = "";
     let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
-        ui.horizontal(|ui| {
-            ui.label(text);
-            ui.add(crate::units::drag(v).range(lo..=hi)).changed()
+        crate::props::row(ui, text, |ui| {
+            crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
         })
-        .inner
     };
     let deg = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
-        ui.horizontal(|ui| {
-            ui.label(text);
-            ui.add(
+        crate::props::row(ui, text, |ui| {
+            crate::props::fill(
+                ui,
                 egui::DragValue::new(v)
                     .speed(0.5)
                     .range(lo..=hi)
@@ -503,7 +501,6 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             )
             .changed()
         })
-        .inner
     };
     let weak = |ui: &mut egui::Ui, t: String| {
         ui.label(egui::RichText::new(t).weak());
@@ -546,8 +543,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             }
             if c.top.is_unconnected() {
                 let mut fixed = c.height.is_some();
-                if ui
-                    .checkbox(&mut fixed, "Fixed height (else up to the next level)")
+                if crate::props::switch(ui, &mut fixed, "Fixed height (else up to the next level)")
                     .changed()
                 {
                     c.height = fixed.then(|| c.height_in(model));
@@ -611,14 +607,23 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             );
         }
         ElementKind::Roof(r) => {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Shape");
-                for s in RoofShape::ALL {
-                    if ui.selectable_value(&mut r.shape, s, s.label()).changed() {
-                        label = "Roof shape"
+            // each shape with its own picture
+            crate::props::Combo::new("Shape")
+                .selected_text(r.shape.label())
+                .show_ui(ui, |ui| {
+                    for s in RoofShape::ALL {
+                        let pick = crate::props::picture_option(
+                            ui,
+                            r.shape == s,
+                            s.label(),
+                            |p, rect, st| roof_glyph(p, rect, st, s),
+                        );
+                        if pick.clicked() && r.shape != s {
+                            r.shape = s;
+                            label = "Roof shape"
+                        }
                     }
-                }
-            });
+                });
             if r.shape != RoofShape::Flat && deg(ui, "Pitch", &mut r.pitch, 1.0, 75.0) {
                 label = "Roof pitch"
             }
@@ -679,8 +684,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 label = "Turn stair"
             }
             let mut fixed = s.height.is_some();
-            if ui
-                .checkbox(&mut fixed, "Fixed rise (else up to the next level)")
+            if crate::props::switch(ui, &mut fixed, "Fixed rise (else up to the next level)")
                 .changed()
             {
                 s.height = fixed.then(|| s.rise(model));
@@ -694,7 +698,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             let rise = s.rise(model);
             let n = members::riser_count(rise, s.max_riser);
             let mut turn = s.landing.is_some();
-            if ui.checkbox(&mut turn, "L-shaped, with a landing").changed() {
+            if crate::props::switch(ui, &mut turn, "L-shaped, with a landing").changed() {
                 s.landing = turn.then_some(Landing {
                     after: n / 2,
                     left: true,
@@ -803,11 +807,9 @@ fn column_levels(ui: &mut egui::Ui, model: &Model, c: &mut Column) -> &'static s
         label = "Column base level";
     }
     let num = |ui: &mut egui::Ui, text: &str, v: &mut f64| -> bool {
-        ui.horizontal(|ui| {
-            ui.label(text);
-            ui.add(crate::units::drag(v).range(-50.0..=50.0)).changed()
+        crate::props::row(ui, text, |ui| {
+            crate::props::fill(ui, crate::units::drag(v).range(-50.0..=50.0)).changed()
         })
-        .inner
     };
     if num(ui, "Base offset", &mut c.base_offset) {
         label = "Column base offset";
@@ -841,11 +843,9 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
     use creabim_core::FootingKind;
     let mut label = "";
     let num = |ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64| -> bool {
-        ui.horizontal(|ui| {
-            ui.label(text);
-            ui.add(crate::units::drag(v).range(lo..=hi)).changed()
+        crate::props::row(ui, text, |ui| {
+            crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
         })
-        .inner
     };
     let weak = |ui: &mut egui::Ui, t: String| {
         ui.label(egui::RichText::new(t).weak());
@@ -1040,7 +1040,7 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                         &format!("roof.{}", s.label()),
                         s.label(),
                         m.roof_shape == *s,
-                        "tent",
+                        roof_icon(*s),
                         "Shape of new roofs",
                     )
                 })
@@ -1180,6 +1180,50 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
             {
                 m.roof_shape = s;
             }
+        }
+    }
+}
+
+/// The interface icon of a roof shape: each its own.
+pub(crate) fn roof_icon(s: RoofShape) -> &'static str {
+    match s {
+        RoofShape::Flat => "roof-flat",
+        RoofShape::Shed => "roof-mono",
+        RoofShape::Gable => "roof-gable",
+        RoofShape::Hip => "roof-hip",
+    }
+}
+
+/// A roof shape's outline, drawn small in `r` for its drop-down: the
+/// same pictures as the icons.
+fn roof_glyph(p: &egui::Painter, r: egui::Rect, st: egui::Stroke, s: RoofShape) {
+    let at = |x: f32, y: f32| egui::pos2(r.left() + x * r.width(), r.top() + y * r.height());
+    let line = |pts: &[(f32, f32)]| {
+        let pts: Vec<egui::Pos2> = pts.iter().map(|&(x, y)| at(x, y)).collect();
+        p.add(egui::Shape::line(pts, st));
+    };
+    match s {
+        RoofShape::Flat => {
+            line(&[(0.1, 0.4), (0.9, 0.4), (0.9, 0.55), (0.1, 0.55), (0.1, 0.4)]);
+            line(&[(0.2, 0.55), (0.2, 0.85)]);
+            line(&[(0.8, 0.55), (0.8, 0.85)]);
+        }
+        RoofShape::Shed => {
+            line(&[(0.1, 0.85), (0.1, 0.6), (0.9, 0.3), (0.9, 0.85)]);
+        }
+        RoofShape::Gable => {
+            line(&[(0.1, 0.55), (0.5, 0.2), (0.9, 0.55)]);
+            line(&[(0.2, 0.47), (0.2, 0.85), (0.8, 0.85), (0.8, 0.47)]);
+        }
+        RoofShape::Hip => {
+            line(&[
+                (0.1, 0.65),
+                (0.3, 0.3),
+                (0.7, 0.3),
+                (0.9, 0.65),
+                (0.1, 0.65),
+            ]);
+            line(&[(0.2, 0.65), (0.2, 0.85), (0.8, 0.85), (0.8, 0.65)]);
         }
     }
 }

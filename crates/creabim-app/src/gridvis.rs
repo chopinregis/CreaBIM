@@ -395,7 +395,7 @@ impl CreaBimApp {
                     ),
                 Item::new("hidden.colour3d", "Hidden elements in colour")
                     .checked(s.hidden_colour_3d)
-                    .icon("palette")
+                    .icon("hidden-colour")
                     .keep_open()
                     .hint("What is inside walls, slabs and roofs shows through them in its own colours"),
             ]);
@@ -414,7 +414,7 @@ impl CreaBimApp {
                 ),
                 Item::new(format!("vis.colour:{}", id.0), "Hidden elements in colour")
                     .checked(self.shows_hidden_colour(id))
-                    .icon("palette")
+                    .icon("hidden-colour")
                     .keep_open()
                     .hint("For detailing: what is inside others in its material colours, see-through, as well as dashed. Sheets show it too"),
                 Item::new(format!("vis.xray:{}", id.0), "X-ray while working")
@@ -978,22 +978,20 @@ impl CreaBimApp {
                     }
                 });
                 if in_3d {
-                    ui.horizontal_wrapped(|ui| {
+                    ui.vertical(|ui| {
                         let mut ground = self.shell.settings.ground_grid;
-                        if ui.checkbox(&mut ground, "Ground grid").changed() {
+                        if crate::props::switch(ui, &mut ground, "Ground grid").changed() {
                             extra = Some("ground.grid");
                         }
                         let mut xray = self.shell.settings.xray;
-                        if ui
-                            .checkbox(&mut xray, "X-ray")
+                        if crate::props::switch(ui, &mut xray, "X-ray")
                             .on_hover_text("Walls, slabs, roofs and masses see-through (Alt+Z)")
                             .changed()
                         {
                             extra = Some("xray");
                         }
                         let mut colour = self.shell.settings.hidden_colour_3d;
-                        if ui
-                            .checkbox(&mut colour, "Hidden elements in colour")
+                        if crate::props::switch(ui, &mut colour, "Hidden elements in colour")
                             .on_hover_text("What is inside walls, slabs and roofs shows through them in its own colours")
                             .changed()
                         {
@@ -1002,24 +1000,21 @@ impl CreaBimApp {
                     });
                 } else if let VisTarget::View(id) = t {
                     let mut on = self.shows_hidden_elements(id);
-                    if ui
-                        .checkbox(&mut on, "Elements hidden inside others, dashed")
+                    if crate::props::switch(ui, &mut on, "Elements hidden inside others, dashed")
                         .on_hover_text("A beam in a wall, a stud wall in a cavity: drawn with dashed hidden lines")
                         .changed()
                     {
                         reveal = Some(id);
                     }
                     let mut colour = self.shows_hidden_colour(id);
-                    if ui
-                        .checkbox(&mut colour, "…in their material colours")
+                    if crate::props::switch(ui, &mut colour, "…in their material colours")
                         .on_hover_text("For detailing: washed in their own colours over what hides them, as well as dashed")
                         .changed()
                     {
                         colour_of = Some(id);
                     }
                     let mut xray = self.plan.xray.contains(&id);
-                    if ui
-                        .checkbox(&mut xray, "X-ray while working")
+                    if crate::props::switch(ui, &mut xray, "X-ray while working")
                         .on_hover_text("Walls, slabs and roofs see-through here, what is inside them solid and clicked first (Alt+Z). Sheets don't change")
                         .changed()
                     {
@@ -1027,8 +1022,7 @@ impl CreaBimApp {
                     }
                 }
                 let mut guides = !self.shell.settings.guides_hidden;
-                if ui
-                    .checkbox(&mut guides, "Guides in every view")
+                if crate::props::switch(ui, &mut guides, "Guides in every view")
                     .on_hover_text("Hide all guides without deleting them, and bring them back (Shift+G)")
                     .changed()
                 {

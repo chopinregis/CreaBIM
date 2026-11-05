@@ -85,11 +85,86 @@ CUSTOM={
  "detail-component": '<path d="M3 20h18" /> <path d="M3 8c2-3 3 3 5 0s3 3 5 0 3 3 5 0 2 2 3 0" /> <path d="M3 14h18" stroke-width="3" />',
  "join": '<rect x="3" y="3" width="8" height="18" /> <path d="M11 9h10v6H11" /> <path d="M7 3v18M11 12h10" stroke-dasharray="2 1.5" />',
 }
+# Brief 02's final icon set (boards/IconSetFinal.png): Lucide's grammar, a
+# 24 grid, 2.0 stroke, round caps and joins. Lucide icons kept as they are:
+names+="""align-start-vertical lamp-ceiling tree-deciduous circle-dot-dashed square-arrow-out-up-right layout-panel-left arrow-up-to-line align-left settings log-out""".split()
+FINAL={
+ # model
+ "wall": '<rect x="3" y="3" width="18" height="18" rx="2" /> <path d="M3 9h18M3 15h18M9 3v6M15 3v6M12 9v6M7 15v6M17 15v6" />',
+ "door": '<path d="M3 21h18" /> <path d="M6 21V4h11v17" /> <path d="M6 4l6 2v15" /> <path d="M10 12.5v1" />',
+ "shaft": '<path d="M9 3v18M15 3v18" stroke-dasharray="2.5 2" /> <path d="M3 8h6M15 8h6M3 16h6M15 16h6M9 12h6" />',
+ "column": '<rect x="7" y="2" width="10" height="20" rx="2" />',
+ "beam": '<rect x="2" y="7" width="20" height="10" rx="2" />',
+ "slab": '<path d="M2 10 12 5l10 5-10 5z" /> <path d="M2 10v3l10 5 10-5v-3" />',
+ "stair": '<path d="M4 20h3v-3h3v-3h3v-3h3V8h3V5" />',
+ "footing": '<path d="M9 3h6v9H9z" /> <path d="M4 12h16v6H4z" /> <path d="M3 21h18" />',
+ "object": '<path d="M5 11V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3" /> <path d="M3 13a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v4H3z" /> <path d="M5 17v2M19 17v2" />',
+ "extrusion": '<path d="M3 17l9-4.5 9 4.5-9 4.5z" /> <path d="M12 15V3M8.5 6.5 12 3l3.5 3.5" />',
+ "sweep": '<path d="M3 21c5 0 6-10 12-12" /> <rect x="15" y="4" width="5" height="6" rx="1" />',
+ "void": '<path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z" /> <path d="M4 7.5 12 12l8-4.5M12 12v9" /> <path d="M8.5 11v4l3.5 2" stroke-dasharray="1.5 1.5" />',
+ "room": '<rect x="3" y="3" width="18" height="18" rx="1" /> <path d="M3 12h5M14 3v5" /> <path d="M10 16h6M12 19h2" />',
+ "ceiling": '<path d="M3 5h18" /> <path d="M6 5v2M10 5v2M14 5v2M18 5v2" /> <path d="M3 19h18" />',
+ "window": '<rect x="4" y="3" width="16" height="16" rx="1" /> <path d="M12 3v16M4 11h16" /> <path d="M2 21h20" />',
+ "opening": '<path d="M4 21V3h16v18h-5v-7a3 3 0 0 0-6 0v7z" />',
+ "railing": '<path d="M3 5h18M3 19h18" /> <path d="M5 5v14M9 5v14M12 5v14M15 5v14M19 5v14" />',
+ "room-separator": '<rect x="3" y="3" width="18" height="18" rx="1" /> <path d="M12 3v18" stroke-dasharray="2.5 2.5" /> <path d="M6 7h3M15 17h3" />',
+ "curtain-wall": '<rect x="3" y="3" width="18" height="18" rx="1" /> <path d="M12 3v18M3 12h18" /> <path d="m6 9 3-3M15 18l3-3" />',
+ "screen-wall": '<rect x="3" y="3" width="18" height="18" rx="1" /> <path d="m7.5 5 2.5 2.5-2.5 2.5L5 7.5zM16.5 5 19 7.5 16.5 10 14 7.5zM7.5 14l2.5 2.5L7.5 19 5 16.5zM16.5 14l2.5 2.5-2.5 2.5-2.5-2.5z" />',
+ "fixtures": '<path d="M12 3v4" /> <path d="M10 3h4" /> <path d="M4 10h16a8 8 0 0 1-16 0z" />',
+ # site
+ "terrain": '<path d="M2 16c2.5-2 5-2 7.5 0s5 2 7.5 0" /> <path d="M2 20c2.5-2 5-2 7.5 0s5 2 7.5 0s3-1.5 5-1" /> <circle cx="17" cy="6" r="2.5" /> <path d="M17 8.5V13" />',
+ "paving": '<path d="M9 3h6M8.5 3 6 21M15.5 3 18 21" /> <path d="M8 7h8M7.5 11h9M7 15h10" /> <path d="M12 7v4M10 11v4M14 11v4M12 15v6" />',
+ "planting": '<path d="M12 21v-7" /> <path d="M8 21h8" /> <path d="M8 14a4 4 0 0 1-1.5-7.7A5 5 0 0 1 16 5a4 4 0 0 1 0 9z" />',
+ # views
+ "section": '<circle cx="5" cy="6" r="2.5" /> <circle cx="5" cy="18" r="2.5" /> <path d="M7 7.5 14 12M7 16.5l4.5-3" /> <path d="M15 12h2M19.5 12h2" />',
+ "callout": '<rect x="3" y="3" width="11" height="11" rx="1" /> <path d="m14 14 6 6" /> <path d="M20 15v5h-5" />',
+ "elevation": '<path d="M3 21V10l6-6 6 6v11z" /> <path d="M7 21v-5h4v5" /> <path d="M18 12h4M20 10l2 2-2 2" />',
+ "crop-box": '<path d="M12 4.5 18.5 8v8L12 19.5 5.5 16V8z" stroke-dasharray="2 2" /> <path d="M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4" />',
+ "frame-all": '<path d="M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4" /> <rect x="8" y="8" width="8" height="8" rx="1" />',
+ "hidden-elements": '<rect x="4" y="4" width="16" height="16" stroke-dasharray="2 2" /> <path d="m3 3 18 18" />',
+ "hidden-colour": '<rect x="3" y="3" width="18" height="18" rx="1" stroke-dasharray="2.5 2" /> <rect x="8" y="8" width="8" height="8" fill="currentColor" fill-opacity=".4" />',
+ "xray": '<rect x="8" y="3" width="8" height="18" rx="1" stroke-dasharray="2.5 2" /> <path d="M3 10h18v4H3z" />',
+ # annotate
+ "dimension": '<path d="M3 7v10M21 7v10M6 12h12" /> <path d="M8 9.5 5.5 12 8 14.5M16 9.5l2.5 2.5-2.5 2.5" />',
+ "angle": '<circle cx="12" cy="5" r="2" /> <path d="M11 7 5 20M13 7l6 13" /> <path d="M7.5 15a6 6 0 0 0 9 0" />',
+ "arc-length": '<path d="M5 19C5 11 11 5 19 5" /> <circle cx="5" cy="19" r="2" /> <circle cx="19" cy="5" r="2" />',
+ "detail-component": '<path d="M2 12h2l2-4 3 8 3-8 3 8 3-8 2 4h2" />',
+ # drafting and datums
+ "guide": '<path d="m3 21 18-18" stroke-dasharray="2.5 2.5" /> <circle cx="12" cy="12" r="2.5" />',
+ "guide-lines": '<path d="M3 10h9M12 2v9" stroke-dasharray="2 2" /> <path d="m13 13 8 3-3.5 1.5L16 21z" />',
+ "level": '<path d="M3 9h13M3 15h13" /> <path d="M17 6.5 21 9l-4 2.5zM17 12.5l4 2.5-4 2.5z" />',
+ "copy-levels": '<path d="M3 7h9M3 17h9" /> <path d="M7.5 9.5v5M5.5 12.5l2 2 2-2" /> <rect x="15" y="3" width="6" height="6" rx="1" /> <rect x="15" y="14" width="6" height="6" rx="1" stroke-dasharray="2 1.5" />',
+ "switch-join": '<path d="M5 3v18M5 7h12M5 13h8" /> <path d="M9 7v6" /> <path d="M15 17a3 3 0 0 0 5-2l1 1" /> <path d="M20 15v2h-2" />',
+ # view controls
+ "units": '<path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /> <path d="m14.5 12.5 2-2M11.5 9.5l2-2M8.5 6.5l2-2M17.5 15.5l2-2" />',
+ "colour-scheme": '<rect x="3" y="4" width="5" height="5" rx="1" /> <rect x="3" y="15" width="5" height="5" rx="1" /> <path d="M11 6.5h10M11 17.5h10M5.5 9v6" />',
+ "underlay": '<path d="M12 4 21 9l-9 5-9-5z" /> <path d="m3 14 9 5 9-5" stroke-dasharray="2.5 2" />',
+ "frame-selection": '<path d="M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4" /> <circle cx="12" cy="12" r="1.5" />',
+ "maximise": '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />',
+ # element actions
+ "edit-outline": '<path d="M4 20 3 8l8-5 5 5" /> <path d="m13 19 7-7-3-3-7 7v3z" />',
+ "duplicate": '<rect x="8" y="8" width="13" height="13" rx="2" /> <path d="M4 16V5a1 1 0 0 1 1-1h11" /> <path d="M14.5 11.5v6M11.5 14.5h6" />',
+ "select-similar": '<rect x="3" y="3" width="7" height="7" rx="1" /> <rect x="14" y="3" width="7" height="7" rx="1" /> <rect x="3" y="14" width="7" height="7" rx="1" /> <path d="m14 14 7 3-3 1-1 3z" />',
+ "frame": '<path d="M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4" /> <circle cx="12" cy="12" r="1.5" />',
+ "flip": '<path d="M12 3v18" /> <path d="M8 7 3 12l5 5zM16 7l5 5-5 5z" />',
+ "make-type": '<rect x="3" y="3" width="8" height="8" rx="1" /> <rect x="13" y="3" width="8" height="8" rx="1" /> <rect x="3" y="13" width="8" height="8" rx="1" /> <rect x="13" y="13" width="8" height="8" rx="1" />',
+ "attach-top": '<path d="M4 3h16" /> <path d="M7 21V7h10v14" /> <path d="M12 16V8M9.5 10.5 12 8l2.5 2.5" />',
+ "select-tagged": '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l7 7" /> <circle cx="7.5" cy="7.5" r="1" /> <path d="m13 13 8 3-3.5 1.5L16 21z" />',
+ "straighten-leader": '<path d="M4 20 20 4" /> <path d="M4 14c3-1 4-3 5-6" stroke-dasharray="2 2" /> <path d="M15 4h5v5" />',
+ # files
+ "freecad": '<path d="M5 21V3h10M5 11h7" /> <circle cx="17.5" cy="16.5" r="2" /> <path d="M17.5 12v1.5M17.5 19.5V21M13 16.5h1.5M20.5 16.5H22M14.3 13.3l1 1M19.7 18.7l1 1M14.3 19.7l1-1M19.7 14.3l1-1" />',
+ # roof shapes in the Shape list
+ "roof-flat": '<path d="M3 8h18v3H3z" /> <path d="M5 11v9M19 11v9" />',
+ "roof-mono": '<path d="M4 20v-9l16-6v15" /> <path d="M3 20h18" />',
+ "roof-gable": '<path d="M3 11 12 4l9 7" /> <path d="M5 9.5V20h14V9.5" />',
+ "roof-hip": '<path d="M3 13 7 7h10l4 6z" /> <path d="M5 13v7h14v-7" />',
+}
 out={}
 for n in names:
     s=open(src+n+'.svg').read()
     s=re.sub(r'<!--.*?-->','',s,flags=re.S); inner=re.search(r'<svg[^>]*>(.*)</svg>', s, re.S).group(1)
     out[n]=re.sub(r'\s+',' ',inner).strip()
 out.update(CUSTOM)
+out.update(FINAL)
 sys.stdout.write("// Icons from Lucide (https://lucide.dev), ISC License; see LICENSE-lucide.\n")
 sys.stdout.write("window.ICONS = "+json.dumps(out, indent=0)+";\n")

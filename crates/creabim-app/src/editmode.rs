@@ -234,8 +234,8 @@ pub fn outline_handles(model: &Model, id: ElementId, edit: bool) -> Vec<Handle> 
                             point: mid,
                             dir: out_dir,
                         },
-                        // standing off the add-corner grip there
-                        nudge: if edit { EDGE_NUDGE } else { 0.0 },
+                        // standing inside, off the add-corner grip there
+                        nudge: if edit { -EDGE_NUDGE } else { 0.0 },
                     });
                 }
             }
@@ -1094,7 +1094,7 @@ mod tests {
                     ..
                 }
             ))
-            .all(|h| h.nudge > 0.0));
+            .all(|h| h.nudge < 0.0));
     }
 
     #[test]

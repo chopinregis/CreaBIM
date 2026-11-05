@@ -302,12 +302,11 @@ impl CreaBimApp {
             ))
             .weak(),
         );
-        if ui.checkbox(&mut c.enabled, "Crop").changed() {
+        if crate::props::switch(ui, &mut c.enabled, "Crop").changed() {
             label = Some("Crop box on or off");
         }
         let mut shown = !c.frame_hidden;
-        if ui
-            .checkbox(&mut shown, "Show the box")
+        if crate::props::switch(ui, &mut shown, "Show the box")
             .on_hover_text(
                 "Hidden, it still crops; its frame shows again only while it is selected",
             )
@@ -353,11 +352,9 @@ impl CreaBimApp {
         }
         ui.add_space(4.0);
         let num = |ui: &mut egui::Ui, text: &str, v: &mut f64| -> bool {
-            ui.horizontal(|ui| {
-                ui.label(text);
-                ui.add(crate::units::drag(v).range(-1e5..=1e5)).changed()
+            crate::props::row(ui, text, |ui| {
+                crate::props::fill(ui, crate::units::drag(v).range(-1e5..=1e5)).changed()
             })
-            .inner
         };
         egui::Grid::new(("crop extents", id))
             .num_columns(2)

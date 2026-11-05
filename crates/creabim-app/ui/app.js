@@ -121,8 +121,8 @@
       tools += `<button class="tool ${t.active ? "on" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}<span>${esc(t.label)}</span></button>`;
     }
     const html =
-      `<div class="bar1"><div class="brand"><div class="logo">${icon("box")}</div>CreaBIM</div>${menus}<span class="vsep"></span>` +
-      `<div class="quick">${quick}</div><span class="spacer"></span><div class="doc" title="${esc(S.doc.path)}"><b>${esc(S.doc.name)}</b>${S.doc.note ? " · " + esc(S.doc.note) : ""}</div><span class="spacer"></span>${S.right.map(control).join("")}</div>` +
+      `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="About, updates, settings and exit"><span class="logo">${icon("box")}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
+      `<div class="quick">${quick}</div><span class="spacer"></span><div class="doc" title="${esc(S.doc.path)}"><span class="dot"></span>${esc(S.doc.name)}</div>${S.right.map(control).join("")}</div>` +
       `<div class="bar2"><div class="tools">${tools}</div><span class="spacer"></span></div>` +
       // the tool options strip: the tool in use and what it can be set to,
       // then the active view's own settings at the right. What doesn't fit
@@ -344,6 +344,7 @@
   // ---- popup menus ----
 
   function drawPopup() {
+    if (S.dialog) return drawDialog(S.dialog);
     if (S.key === "palette" && S.items && S.items.length) return drawPalette();
     if (S.controls && S.controls.length) return drawPanel(controlsHtml());
     if (S.help) return drawPanel(helpHtml());
@@ -396,6 +397,55 @@
     reportSize();
     showMore();
   }
+
+  // ---- New project: two large choices and the samples to learn from ----
+
+  function drawDialog(d) {
+    if (local.key !== S.key) { local.key = S.key; local.pick = d.starts[0].id; }
+    const all = d.starts.concat(d.samples);
+    if (!all.some((c) => c.id === local.pick)) local.pick = d.starts[0].id;
+    const card = (c, big) => `<button class="${big ? "np-big" : "np-sample"} ${local.pick === c.id ? "on" : ""}" data-pick="${esc(c.id)}" title="${esc(c.line)}">` +
+      (big ? `<span class="np-pic">${icon(c.icon)}</span><span class="np-text"><b>${esc(c.title)}</b><span>${esc(c.line)}</span></span>` :
+        `<span class="np-icon">${icon(c.icon)}</span><span class="np-text"><b>${esc(c.title)}</b><span>${esc(c.line)}</span></span>`) + `</button>`;
+    root.innerHTML = `<div class="np"><div class="np-head"><b>${esc(d.title)}</b><span class="np-esc">Esc to close</span></div>` +
+      `<div class="np-starts">${d.starts.map((c) => card(c, true)).join("")}</div>` +
+      `<div class="np-sub">${esc(d.samples_title)}</div><div class="np-samples">${d.samples.map((c) => card(c, false)).join("")}</div>` +
+      `<div class="np-foot"><span>${esc(d.note)}</span><span class="spacer"></span><button class="np-btn" data-np="cancel">Cancel</button><button class="np-btn primary" data-np="create">Create</button></div></div>`;
+  }
+
+  function dialogKey(e) {
+    const d = S && S.dialog;
+    if (!d) return false;
+    const all = d.starts.concat(d.samples).map((c) => c.id);
+    let i = Math.max(0, all.indexOf(local.pick));
+    if (e.key === "Escape") post({ t: "close" });
+    else if (e.key === "Enter") post({ t: "act", id: local.pick });
+    else if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "Tab") { local.pick = all[(i + 1) % all.length]; drawDialog(d); }
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { local.pick = all[(i + all.length - 1) % all.length]; drawDialog(d); }
+    else return false;
+    e.preventDefault();
+    return true;
+  }
+
+  document.addEventListener("click", (e) => {
+    if (!(S && S.dialog)) return;
+    const pick = e.target.closest && e.target.closest("[data-pick]");
+    if (pick) { local.pick = pick.dataset.pick; drawDialog(S.dialog); return; }
+    const b = e.target.closest && e.target.closest("[data-np]");
+    if (b && b.dataset.np === "cancel") post({ t: "close" });
+    if (b && b.dataset.np === "create") post({ t: "act", id: local.pick });
+  });
+  document.addEventListener("dblclick", (e) => {
+    const pick = S && S.dialog && e.target.closest && e.target.closest("[data-pick]");
+    if (pick) post({ t: "act", id: pick.dataset.pick });
+  });
+
+  // A tool's help card closes when the pointer, having been on it, leaves.
+  document.documentElement.addEventListener("mouseenter", () => { local.inside = true; });
+  document.documentElement.addEventListener("mouseleave", () => {
+    if (pane === "popup" && S && S.help && local.inside) post({ t: "close" });
+    local.inside = false;
+  });
 
   // A popup that is a small panel rather than a list: the strip's
   // overflow, or a tool's quick help.
@@ -913,6 +963,8 @@
       }
       return;
     }
+    if (pane === "popup" && dialogKey(e)) return;
+    if (pane === "popup" && e.key === "Escape" && S && S.help) { post({ t: "close" }); return; }
     if (pane === "popup" && ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Enter", "Escape"].includes(e.key)) {
       e.preventDefault();
       menuKey(e.key);

@@ -9,11 +9,9 @@ use creabim_core::{walls, LocationLine, Opening, OpeningKind, Wall, WallTop};
 
 /// A length field in a row, as the rest of Properties draws them.
 fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
-    ui.horizontal(|ui| {
-        ui.label(text);
-        ui.add(crate::units::drag(v).range(lo..=hi)).changed()
+    crate::props::row(ui, text, |ui| {
+        crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
     })
-    .inner
 }
 
 /// The model's levels, lowest first.
@@ -305,6 +303,11 @@ impl CreaBimApp {
                 }
                 ElementKind::Opening(o) => {
                     walls::flip_facing(o);
+                    true
+                }
+                // furniture turns round about its middle
+                ElementKind::Object(_) if !hand => {
+                    crate::handles::turn_object(model, &mut after, 180.0);
                     true
                 }
                 _ => false,

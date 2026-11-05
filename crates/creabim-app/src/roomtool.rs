@@ -335,11 +335,9 @@ fn text(ui: &mut egui::Ui, label: &str, v: &mut String) -> bool {
 
 /// A length in the project's units, with its label; true when it changed.
 fn length(ui: &mut egui::Ui, label: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
-    ui.horizontal(|ui| {
-        ui.label(label);
-        ui.add(crate::units::drag(v).range(lo..=hi)).changed()
+    crate::props::row(ui, label, |ui| {
+        crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
     })
-    .inner
 }
 
 /// A room's properties: what it measures, then its number, finishes,
@@ -391,8 +389,7 @@ pub fn room_fields(ui: &mut egui::Ui, model: &Model, r: &mut Room) -> &'static s
             ..r.clone()
         },
     );
-    if ui
-        .checkbox(&mut own, "Own height")
+    if crate::props::switch(ui, &mut own, "Own height")
         .on_hover_text("Otherwise it is as high as its ceiling, or its storey")
         .changed()
     {
@@ -447,8 +444,7 @@ pub fn ceiling_fields(ui: &mut egui::Ui, model: &Model, c: &mut Ceiling) -> &'st
         label = "Ceiling thickness";
     }
     let mut grid = c.grid > 0.0;
-    if ui
-        .checkbox(&mut grid, "Suspended grid")
+    if crate::props::switch(ui, &mut grid, "Suspended grid")
         .on_hover_text("Tiles drawn in ceiling plans")
         .changed()
     {
