@@ -18,7 +18,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | --- | ---: | ---: | ---: | ---: |
 | [Plans, sections and drawing quality](#plans-sections-and-drawing-quality) | 14 | 7 | 0 | 21 |
 | [Rooms and ceilings](#rooms-and-ceilings) | 3 | 2 | 0 | 5 |
-| [Walls, joins and details](#walls-joins-and-details) | 9 | 6 | 0 | 15 |
+| [Walls, joins and details](#walls-joins-and-details) | 9 | 5 | 0 | 14 |
 | [Openings](#openings-doors-windows-curtain-walls) | 3 | 2 | 0 | 5 |
 | [Roofs, stairs, structure](#roofs-stairs-structure) | 7 | 3 | 2 | 12 |
 | [Furniture, fixtures, parts and site](#furniture-fixtures-parts-and-site) | 11 | 1 | 1 | 13 |
@@ -31,8 +31,8 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [DXF, SVG and other exchange](#dxf-svg-and-other-exchange) | 3 | 2 | 1 | 6 |
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
-| **Total** | **127** | **58** | **7** | **192** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 5 | 15 | 7 | 27 |
+| **Total** | **127** | **57** | **7** | **191** |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 3 | 11 | 7 | 21 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -45,18 +45,13 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | Item | Gap | Phase | Size | Source |
 | --- | --- | --- | --- | --- |
 | 0 | The waiting branches `claude/demo-player`, `claude/starter-house-polish` and `claude/backlog` were never pushed. Their multi-select Properties edits and `creabim-app <file>` were rebuilt in Phase 1; category names still wrap mid-word in the visibility list. | 1 | S | B01 |
-| 2.1 | No Model / Annotate / View / Manage tabs, and labelled tools that wrap; "· 1 selected" isn't shown by the file name; view controls sit in the options row. (The application menu and the file name at the right landed in Phase 1.) | 2 | M | MU01-08…11 |
 | 2.6 | No view areas: the 3D view has a floating toolbar, view controls are duplicated in the options row, narrow areas squeeze their buttons, the hint line is drawn over the plan. No workspaces, no `/` isolate, Ctrl+Space or Ctrl+PgUp/PgDn. | 3 | L | MU02-02…05 |
-| 2.7 | Edit outline and Delete are text buttons at the bottom of Properties. An element action bar under the name: own actions tinted, then Duplicate, Select similar, Hide, Isolate, Frame, ⋯, Delete in red. | 2 | M | MU05 |
 | 2.10 | The tracker shows Length and Angle while a line is drawn in a plan, but Move, Rotate and Copy show no Δx / Δy in it, and slab and region edges don't use it. No temporary dimensions that drive, no padlock. | 2 (tracker), 3 (temporary dimensions) | M–L | MU09 |
 | 2.11 | Room tags: Stacked (the default) and Inline (the first tag) are drawn; the Number badge and Boxed layouts are not yet. Tags don't yet keep level in rotated views. | 2 | M | MU09 |
 | 2.12 | View markers: Classic (the default) and the first markers are drawn; the Minimal and Bold families are not yet. A single click on a bubble doesn't open its view (a double-click on the selected mark does). | 2 | M | MU09 |
 | 2.13 | Choices have no pictures or live previews; personal settings and the style pack are not kept apart; no marker or tag designer; style packs can't be exported and imported with custom styles. | 3 | M–L | MU10 |
 | 2.14 | Grips have their four states and a live pill (old → new ± change, A3-3), but no gap to the nearest neighbour while dragging, no "Widened D03 by 300 mm" wording in the status bar, and the grip accent doesn't follow a personal setting. | 2 | M | MU11, MU12 |
-| 3.1 | Detail components can be selected but have no grips. | 2 | M | MU01-01 |
-| 3.2 | Plants have no grips (canopy radius in plan; canopy and height in 3D). | 2 | S | MU01-04 |
-| 3.3 | A callout's box can't be resized with grips; views have no linked "Open in 3D" crop box. | 2 | M | MU01-07 |
-| 3.4 | *Fill room* shows no boundary preview and no red gap when walls don't close. | 2 | S | MU01-06 |
+| 3.3 | Views have no linked "Open in 3D" crop box (callouts, sections, elevations, plans). (A callout's box resizes and moves with grips.) | 2 | M | MU01-07 |
 | 3.5 | Only Sketch draws on the active workplane; void, extrusion, sweep, slab, opening and detail region draw in plan XY. | 4 | L | MU01-12 |
 | 3.6 | No edge offset in 3D (offset edge, offset all, insert point). | 4 | M–L | B01-7 |
 | 3.7 | Layers can't be edited by hand: no layer-end handles in plan or section, no corner join presets, no "Draw by this line", no IFC parts where layers differ. | 4 | L | MU08-01 |
@@ -69,7 +64,6 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 5.6 | Stairs: no "Cut a well for this stair", headroom check, short-landing or re-flow warnings. Roofs: no overhang per edge, no offer to attach the walls under a new roof. No Check model panel (openings across joins, beams or footings in slabs, missing wells). | 4 | M | RR |
 | A3-1 | A selected footing has no x-ray outline in 3D, and plans have no "Footings in this plan: Hidden / Dashed / Shown" choice. (Footings show while the tool is on, and a selected one always shows.) | 2 | S | MU13_01, MU13_05 |
 | A3-2 | Railing on a stair, Tag and Attach top don't yet let their host win over snaps before the first click. (Footing, Door, Window and Opening do.) | 2 | S | MU13_02 |
-| A3-7 | Membrane paths can't be finished by Enter, double-click or right-click; Esc loses them; the membrane draws exactly over the line it follows. (Detail component grips are 3.1.) | 2 | M | MU13_08 |
 | 6 | Release basics: Windows installer and portable zip, a file-format version in `.creabim`, README limits, issue templates, the Terrace House sample, CONTRIBUTING. | R | M | RR |
 
 ---
@@ -104,7 +98,7 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 
 | Gap | Size | Found in | Checked |
 | --- | --- | --- | --- |
-| The Slab tool's *Fill room* shows no preview before the click, and fills to wall centrelines rather than inner faces (the Room tool fills to inner faces). | S | workflow | ✓ |
+| The Slab tool's *Fill room* fills to wall centrelines rather than inner faces (the Room tool fills to inner faces); its preview shows which. | S | workflow | ✓ |
 | Rooms in sections are coloured only when *Colour rooms* is on. There are no room tags in sections or elevations. | M | rooms-ceilings | |
 | An `IfcSpace` from another program keeps the outline of its body. It doesn't follow the walls until it is placed again with the Room tool. | M | rooms-ceilings | |
 | A ceiling is drawn only in ceiling plans, sections and 3D. Selecting one in a floor plan doesn't highlight it there. | S | rooms-ceilings | |
@@ -119,7 +113,6 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | A wall attached to a roof that only partly covers it keeps its own height on the uncovered part in 3D; in IFC that part is extruded to the roof's highest point. | M | wall-behaviour | |
 | A junction rule changes how overlapping pieces are cut, not how wall ends are trimmed, so at a wall-to-wall node *Switch join order* may make no visible difference. | M | details-joins | |
 | A slab drawn past the wall's structure into its insulation leaves the part in the insulation as a separate island of concrete. | M | details-joins | |
-| Detail components can't be moved with G or M, or edited with grips. | M | details-joins | |
 | Typing new start or end coordinates in Properties moves only that wall. Joined walls follow drags and moves, not typed values. | S | layered-assemblies | |
 | Where three walls meet and no two are in line (a Y), the third wall's trim can leave a small overlap. | S | details-joins | |
 | Layer priorities can only be overridden in the assembly file. *Edit layers…* has no priority column. | S | details-joins | |
@@ -369,6 +362,12 @@ Gaps reported by work that is still a pull request go here until it merges, then
 - Guide lines from resting on a point or edge go after six seconds unused, instead of staying until Esc (1.8).
 - Ctrl+A, H and the other letter shortcuts stay in a text field; the Catalogue window opens over the other pane, clear of where things are placed; the Materials window closes after *Assign* (1.8).
 
+**In Brief 02, Phase 2, tool tabs and the action bar (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase2](evolution/brief02-phase2)**):**
+
+- The tools row has Model, Annotate, View and Manage tabs, with Select and Align on every tab. Each tab holds its tools and the commands that go with them. A tool picked from a menu or a key brings up its own tab (2.1).
+- The tools row shows icons only, with names in tooltips. The tool in use shows its name in the options row. Nothing wraps, and nothing scrolls sideways at 1366 px (2.1). Moving the view controls out of the options row stays with 2.6.
+- An element action bar sits under the name in Properties. The element's own actions come first, tinted, then Duplicate, Select similar, Hide, Isolate and Frame, then More and a red Delete. A mixed selection shows only the actions all of it shares, and a narrow panel moves actions into More. The Edit and Delete text buttons are gone (2.7).
+
 **In Brief 02, addendum A3 (2026-11-05;** screenshots in [evolution/brief02-phase2](evolution/brief02-phase2)**):**
 
 - Every toolbar and action icon is copied verbatim from the approved set (`ui/approved/icons_final.json` and `icons_actions.json`): Section is the scissors with the dashed line, Grid the straight four-line grid, Shaft has no level lines, Roof is the approved tipi, and Door, Paving, Level, Spot level and Footing are as drawn. A test compares `ui/icons.js` with the JSON, so they can't drift again (A3-6).
@@ -379,6 +378,12 @@ Gaps reported by work that is still a pull request go here until it merges, then
 - *Step* in the status bar and the Snap menu: Off, 10, 50, 100 mm or Custom (imperial: 1/8", 1/2", 1", 6"); free points and grip drags round to it, and Alt ignores it (2.10).
 - While the Footing tool is on, plans show their level's footings dashed and tinted; a selected footing always shows; after placing, the status bar offers *Show in Foundation plan* or *Make a Foundation plan* (A3-1, most of it).
 - The Footing, Door, Window and Opening tools let the wall or column under the pointer win over snaps and guide lines before the first click, with a preview of what a click makes; Tab goes through overlapping hosts; walls are hit across their whole thickness (A3-2, most of it).
+- Detail components have grips: a square on each point, a width bar (batt, flashing, blocking, repeating detail), a unit bar on a repeating detail, corners and edges on a filled region, and Edit mode to add and remove points. They move, turn, mirror and copy with M, G, R, Shift+D and Ctrl+D, on their own view's paper (3.1, A3-7).
+- A detail path finishes with Enter, a double-click or a right-click; Esc or another tool keeps a path with enough points; the hint counts the points (A3-7).
+- A membrane draws 2 mm on paper off the line it follows, on the side it was clicked, with a dashed partner; the style pack can make it a double line or a zig-zag (A3-7).
+- Plants have a canopy grip in plan and a height grip in 3D and sections (3.2).
+- A callout's box has corner and edge grips on its parent view, and its detail view follows; a ringed callout stays round; G and M move the box, not its view's cut line (3.3, most of it).
+- *Fill room* (Room, Ceiling, Slab) shows the space a click fills and its area under the pointer, and the gaps in red where walls don't close it (3.4).
 
 **In Brief 02, addendum A2 (2026-11-05):** the logo, the weaver and its nest, is the brand mark in the top bar, the window and taskbar icon, the Windows .exe icon (not yet tried on a Windows build), the lockup in About, and the full mark in New project and the README. The `.creabim` file icon comes with the installer.
 

@@ -23,6 +23,8 @@ use eframe::egui_wgpu;
 use glam::{DVec2, DVec3, Vec2 as GVec2, Vec3 as GVec3};
 use std::collections::HashMap;
 
+#[path = "actionbar.rs"]
+mod actionbar;
 #[path = "appmenu.rs"]
 pub(crate) mod appmenu;
 #[path = "assemblies.rs"]
@@ -2163,6 +2165,7 @@ impl CreaBimApp {
                 grab_body: &grab_body,
                 grab_snap: &grab_snap,
                 body_normal: DVec3::Z,
+                view: None,
             };
             let mut status = None;
             let edit = self.plan.edit.is_some() && self.plan.edit == self.selection.active;
@@ -3490,6 +3493,8 @@ impl CreaBimApp {
                     .on_hover_text(t.hint())
                     .clicked()
                 {
+                    // a detail path being drawn is kept, not dropped
+                    crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
                     self.plan.tool = t;
                     self.plan.cancel();
                 }
@@ -3984,6 +3989,9 @@ impl CreaBimApp {
             self.report(r, "Renamed.");
         }
         self.mark_field(ui, id);
+        ui.add_space(4.0);
+        // its actions, under its name (brief 02, 2.7)
+        self.action_bar(ui);
         ui.add_space(6.0);
         if creabim_core::types::TypeCategory::of(&e.kind).is_some() {
             self.type_picker(ui, id);
@@ -3992,27 +4000,14 @@ impl CreaBimApp {
         let Some(e) = self.doc.model().get(id).cloned() else {
             return;
         };
-        if self.selection.len() == 1 && editmode::editable(self.doc.model(), id) {
-            let editing = self.plan.edit == Some(id);
-            ui.horizontal(|ui| {
-                let text = if editing { "Finish editing" } else { "Edit" };
-                let b = egui::Button::new(text).selected(editing);
-                if ui
-                    .add(b)
-                    .on_hover_text(
-                        "Edit mode (Enter, or double-click it): all its grips in every view, corners to add and take away. Esc finishes.",
-                    )
-                    .clicked()
-                {
-                    self.toggle_edit_mode();
-                }
-                if editing {
-                    ui.label(egui::RichText::new("Editing").strong().color(ui.visuals().selection.bg_fill));
-                }
-            });
-            if editing {
-                ui.label(egui::RichText::new(editmode::panel_hint(&e.kind)).weak());
-            }
+        if self.plan.edit == Some(id) {
+            // Edit outline in the action bar opened it
+            ui.label(
+                egui::RichText::new("Editing")
+                    .strong()
+                    .color(ui.visuals().selection.bg_fill),
+            );
+            ui.label(egui::RichText::new(editmode::panel_hint(&e.kind)).weak());
             ui.add_space(4.0);
         }
 
@@ -5279,17 +5274,6 @@ impl CreaBimApp {
 
         self.assign_panel(ui, id);
         self.cuts_panel(ui, id);
-
-        ui.add_space(10.0);
-        let deps = self.doc.model().dependents(id).len();
-        let text = if deps > 0 {
-            format!("Delete (and {deps} attached)")
-        } else {
-            "Delete".into()
-        };
-        if ui.button(text).clicked() {
-            self.delete_selected();
-        }
     }
 }
 

@@ -20,8 +20,8 @@
 use crate::modal::LiveEdit;
 use crate::snaps::{Snap, SnapKind};
 use creabim_core::{
-    transform, walls, Document, Element, ElementId, ElementKind, Model, OpeningKind, ViewKind,
-    WallTop, Xform,
+    transform, walls, DetailKind, Document, Element, ElementId, ElementKind, Model, OpeningKind,
+    ViewKind, WallTop, Xform,
 };
 use eframe::egui::{self, Color32, Painter, Pos2, Rect, Stroke, Vec2};
 use glam::{DVec2, DVec3};
@@ -160,6 +160,20 @@ pub enum HandleKind {
     OpeningSlide,
     /// A beam's width, both sides at once.
     BeamWidth,
+    /// A detail component's width across its path, both sides at once.
+    DetailWidth,
+    /// A repeating detail's unit length, at the end of its first unit.
+    DetailSpacing,
+    /// A plant's canopy, at the edge of its crown.
+    PlantCanopy,
+    /// A plant's height, at its top (in 3D and sections).
+    PlantHeight,
+    /// Corner `i` of a callout's box on its parent view (lo, then
+    /// counter-clockwise); the opposite corner stays.
+    CalloutCorner(usize),
+    /// Edge `i` of a callout's box (bottom, right, top, left), pushed out
+    /// or pulled in.
+    CalloutEdge(usize),
 }
 
 impl HandleKind {
@@ -174,6 +188,7 @@ impl HandleKind {
                 | HandleKind::CropMove
                 | HandleKind::Vertex { .. }
                 | HandleKind::AddVertex { .. }
+                | HandleKind::CalloutCorner(_)
         )
     }
 
@@ -190,7 +205,11 @@ impl HandleKind {
             HandleKind::Rotate => "Rotate",
             HandleKind::ColumnSize { .. } => "Resize",
             HandleKind::WallSlide | HandleKind::OpeningSlide => "Slide",
-            HandleKind::BeamWidth => "Change width of",
+            HandleKind::BeamWidth | HandleKind::DetailWidth => "Change width of",
+            HandleKind::DetailSpacing => "Change the unit of",
+            HandleKind::PlantCanopy => "Change the canopy of",
+            HandleKind::PlantHeight => "Change height of",
+            HandleKind::CalloutCorner(_) | HandleKind::CalloutEdge(_) => "Resize the callout of",
             HandleKind::WallFace | HandleKind::SlabUnderside | HandleKind::SlabTop => {
                 "Change thickness of"
             }
@@ -247,7 +266,12 @@ impl HandleKind {
             HandleKind::ColumnSize { depth: true } => "Depth",
             HandleKind::WallSlide => "Wall: slide",
             HandleKind::OpeningSlide => "Slide along the wall",
-            HandleKind::BeamWidth => "Width",
+            HandleKind::BeamWidth | HandleKind::DetailWidth => "Width",
+            HandleKind::DetailSpacing => "Unit",
+            HandleKind::PlantCanopy => "Canopy",
+            HandleKind::PlantHeight => "Height",
+            HandleKind::CalloutCorner(_) => "Callout corner",
+            HandleKind::CalloutEdge(_) => "Callout edge: push",
         }
     }
 
@@ -280,7 +304,14 @@ impl HandleKind {
             HandleKind::ColumnSize { depth: true } => "Drag: change the depth",
             HandleKind::WallSlide => "Drag: slide the wall square to itself (joined walls follow)",
             HandleKind::OpeningSlide => "Drag: slide it along the wall · Tab: type how far",
-            HandleKind::BeamWidth => "Drag: change the width",
+            HandleKind::BeamWidth | HandleKind::DetailWidth => "Drag: change the width",
+            HandleKind::DetailSpacing => "Drag: change the unit's length (the joint stays)",
+            HandleKind::PlantCanopy => "Drag: change how wide the crown is",
+            HandleKind::PlantHeight => "Drag: change how tall it is",
+            HandleKind::CalloutCorner(_) => {
+                "Drag: resize the callout's box (its detail view follows)"
+            }
+            HandleKind::CalloutEdge(_) => "Drag: push the box's edge (its detail view follows)",
             _ => "Drag to change it",
         }
     }
@@ -419,6 +450,8 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
                 line(HandleKind::ShaftTop, c.extend(z1), DVec3::Z),
             ]
         }
+        // a detail view's box on its parent, not the line it was cut on
+        ElementKind::View(v) if v.callout.is_some() => callout_grips(model, v),
         ElementKind::View(v) => match v.kind {
             ViewKind::Section {
                 start, end, depth, ..
@@ -446,6 +479,32 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             out.push(flat(HandleKind::CropMove, c.min));
             out
         }
+        ElementKind::Detail(d) => detail_grips(model, d),
+        ElementKind::Site(s) => match s.form {
+            creabim_core::SiteForm::Plant {
+                position,
+                base,
+                canopy,
+                height,
+                ..
+            } => {
+                let z = elevation(model, Some(s.level)) + base;
+                vec![
+                    line(
+                        HandleKind::PlantCanopy,
+                        (position + DVec2::X * canopy / 2.0).extend(z),
+                        DVec3::X,
+                    ),
+                    line(
+                        HandleKind::PlantHeight,
+                        position.extend(z + height),
+                        DVec3::Z,
+                    ),
+                ]
+            }
+            // its outline's grips are every outline's (see handles_in)
+            _ => vec![],
+        },
         ElementKind::Grid(g) => vec![
             flat(HandleKind::GridEnd { end: false }, g.start.extend(0.0)),
             flat(HandleKind::GridEnd { end: true }, g.end.extend(0.0)),
@@ -491,6 +550,102 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             .chain(member_extras(model, e))
             .collect(),
     }
+}
+
+/// Is a callout on `parent` drawn as a ring? (See the parent's annotations.)
+fn callout_is_round(model: &Model, parent: ElementId) -> bool {
+    matches!(
+        model.get(parent).map(|e| &e.kind),
+        Some(ElementKind::View(v)) if matches!(v.kind, ViewKind::Section { .. })
+    ) && creabim_core::styles::active_pack(model).markers
+        == creabim_core::styles::MarkerFamily::Classic
+}
+
+/// The corners of a callout's box, `lo` first and counter-clockwise.
+fn box_corners(lo: DVec2, hi: DVec2) -> [DVec2; 4] {
+    [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)]
+}
+
+/// A callout's grips on its parent view: a square on each corner of its
+/// box and a bar on each edge.
+fn callout_grips(model: &Model, v: &creabim_core::View) -> Vec<Handle> {
+    let Some(c) = v.callout else { return vec![] };
+    let Some(frame) = creabim_core::DrawingFrame::of(model, c.parent) else {
+        return vec![];
+    };
+    let normal = frame.normal();
+    let k = box_corners(c.lo, c.hi);
+    let dir = |d: DVec2| (frame.to_model(d) - frame.to_model(DVec2::ZERO)).normalize_or_zero();
+    let outs = [-DVec2::Y, DVec2::X, DVec2::Y, -DVec2::X];
+    let mut out: Vec<Handle> = (0..4)
+        .map(|i| {
+            let at = frame.to_model(k[i]);
+            Handle {
+                kind: HandleKind::CalloutCorner(i),
+                at,
+                constraint: Constraint::Plane { point: at, normal },
+                nudge: 0.0,
+            }
+        })
+        .collect();
+    for (i, o) in outs.iter().enumerate() {
+        let at = frame.to_model((k[i] + k[(i + 1) % 4]) / 2.0);
+        out.push(Handle {
+            kind: HandleKind::CalloutEdge(i),
+            at,
+            constraint: Constraint::Line {
+                point: at,
+                dir: dir(*o),
+            },
+            nudge: 0.0,
+        });
+    }
+    out
+}
+
+/// A detail component's own grips besides its points (see handles_in): a
+/// width grip off the middle of its first stretch, and a repeating
+/// detail's unit grip at the end of its first unit.
+fn detail_grips(model: &Model, d: &creabim_core::DetailItem) -> Vec<Handle> {
+    let Some(frame) = creabim_core::DrawingFrame::of(model, d.view) else {
+        return vec![];
+    };
+    let mut out = vec![];
+    let (Some(a), Some(b)) = (d.points.first(), d.points.get(1)) else {
+        return out;
+    };
+    let across = d.across();
+    let dir = |v: DVec2| (frame.to_model(v) - frame.to_model(DVec2::ZERO)).normalize_or_zero();
+    let widened = !matches!(
+        d.kind,
+        DetailKind::Membrane | DetailKind::Region { .. } | DetailKind::BreakLine
+    );
+    if widened {
+        let at = frame.to_model((*a + *b) / 2.0 + across * d.width / 2.0);
+        out.push(Handle {
+            kind: HandleKind::DetailWidth,
+            at,
+            constraint: Constraint::Line {
+                point: at,
+                dir: dir(across),
+            },
+            nudge: 0.0,
+        });
+    }
+    if let DetailKind::Repeat { module, .. } = d.kind {
+        let along = (*b - *a).normalize_or_zero();
+        let at = frame.to_model(d.at_length(module));
+        out.push(Handle {
+            kind: HandleKind::DetailSpacing,
+            at,
+            constraint: Constraint::Line {
+                point: at,
+                dir: dir(along),
+            },
+            nudge: 0.0,
+        });
+    }
+    out
 }
 
 /// The grips a column and a stair have besides their members' own: a
@@ -819,6 +974,85 @@ pub fn apply(
             let n = (b.end - b.start).normalize_or_zero().perp();
             b.width = round(b.width + 2.0 * d.truncate().dot(n), step / 5.0).max(0.05);
         }
+        (ElementKind::Detail(dt), HandleKind::DetailWidth | HandleKind::DetailSpacing) => {
+            let frame = creabim_core::DrawingFrame::of(model, dt.view).ok_or("its view is gone")?;
+            let moved = frame.to_drawing(now) - frame.to_drawing(grab);
+            if kind == HandleKind::DetailWidth {
+                let by = round(2.0 * moved.dot(dt.across()), step / 5.0);
+                dt.width = (dt.width + by).max(0.001);
+            } else if let (DetailKind::Repeat { module, .. }, [a, b, ..]) =
+                (&mut dt.kind, dt.points.as_slice())
+            {
+                let along = (*b - *a).normalize_or_zero();
+                *module = round(*module + moved.dot(along), step / 5.0).max(0.01);
+            }
+        }
+        (ElementKind::View(v), HandleKind::CalloutCorner(_) | HandleKind::CalloutEdge(_)) => {
+            let c = v.callout.as_mut().ok_or("not a callout")?;
+            let frame =
+                creabim_core::DrawingFrame::of(model, c.parent).ok_or("its view is gone")?;
+            let to = frame.to_drawing(now);
+            let moved = to - frame.to_drawing(grab);
+            let r = |x: f64| round(x, step);
+            let (mut lo, mut hi) = (c.lo, c.hi);
+            match kind {
+                HandleKind::CalloutCorner(i) => {
+                    // the opposite corner stays where it is
+                    let k = box_corners(lo, hi);
+                    let stay = k[(i + 2) % 4];
+                    let p = k[i] + DVec2::new(r(moved.x), r(moved.y));
+                    lo = stay.min(p);
+                    hi = stay.max(p);
+                }
+                HandleKind::CalloutEdge(0) => lo.y += r(moved.y),
+                HandleKind::CalloutEdge(1) => hi.x += r(moved.x),
+                HandleKind::CalloutEdge(2) => hi.y += r(moved.y),
+                _ => lo.x += r(moved.x),
+            }
+            if hi.x - lo.x < 0.05 || hi.y - lo.y < 0.05 {
+                return Err("a callout needs some size".into());
+            }
+            // a ringed callout (on a section, in the Classic family) stays
+            // a circle: its box stays square
+            if callout_is_round(model, c.parent) {
+                let side = match kind {
+                    HandleKind::CalloutEdge(0 | 2) => hi.y - lo.y,
+                    HandleKind::CalloutEdge(_) => hi.x - lo.x,
+                    _ => (hi - lo).max_element(),
+                };
+                match kind {
+                    HandleKind::CalloutCorner(i) => {
+                        let stay = box_corners(c.lo, c.hi)[(i + 2) % 4];
+                        let away = (lo + hi) / 2.0 - stay;
+                        let far = stay + DVec2::new(side * away.x.signum(), side * away.y.signum());
+                        lo = stay.min(far);
+                        hi = stay.max(far);
+                    }
+                    HandleKind::CalloutEdge(0 | 2) => {
+                        let mid = (lo.x + hi.x) / 2.0;
+                        lo.x = mid - side / 2.0;
+                        hi.x = mid + side / 2.0;
+                    }
+                    _ => {
+                        let mid = (lo.y + hi.y) / 2.0;
+                        lo.y = mid - side / 2.0;
+                        hi.y = mid + side / 2.0;
+                    }
+                }
+            }
+            c.lo = lo;
+            c.hi = hi;
+        }
+        (ElementKind::Site(st), HandleKind::PlantCanopy | HandleKind::PlantHeight) => {
+            let creabim_core::SiteForm::Plant { canopy, height, .. } = &mut st.form else {
+                return Err("only plants have that grip".into());
+            };
+            if kind == HandleKind::PlantCanopy {
+                *canopy = round(*canopy + 2.0 * d.x, step).max(0.1);
+            } else {
+                *height = round(*height + d.z, step).max(0.1);
+            }
+        }
         (ElementKind::Wall(w), HandleKind::WallSlide) => {
             let n = w.direction().perp();
             let by = n * round(d.truncate().dot(n), step);
@@ -911,6 +1145,16 @@ pub fn readout(changed: &[Element]) -> String {
             crate::units::len(o.height),
             crate::units::len(o.sill)
         ),
+        Some(ElementKind::View(v)) if v.callout.is_some() => v
+            .callout
+            .map(|c| {
+                format!(
+                    "its box {} × {}",
+                    crate::units::len(c.hi.x - c.lo.x),
+                    crate::units::len(c.hi.y - c.lo.y)
+                )
+            })
+            .unwrap_or_default(),
         Some(ElementKind::View(v)) => match v.kind {
             ViewKind::Section {
                 start, end, depth, ..
@@ -998,6 +1242,8 @@ pub struct PaneInput<'a> {
     /// The plane a grabbed element slides on: level in plans and 3D, the
     /// section plane in sections.
     pub body_normal: DVec3,
+    /// The view the pane shows: drafting has grips only in its own.
+    pub view: Option<ElementId>,
 }
 
 /// A handle or a whole element being dragged.
@@ -1231,6 +1477,10 @@ pub fn values(e: &Element) -> Vec<(&'static str, f64)> {
             ("Sill", o.sill),
             ("Offset", o.offset),
         ],
+        ElementKind::View(v) if v.callout.is_some() => v
+            .callout
+            .map(|c| vec![("Width", c.hi.x - c.lo.x), ("Height", c.hi.y - c.lo.y)])
+            .unwrap_or_default(),
         ElementKind::View(v) => match v.kind {
             ViewKind::Section {
                 start, end, depth, ..
@@ -1240,6 +1490,19 @@ pub fn values(e: &Element) -> Vec<(&'static str, f64)> {
         ElementKind::Slab(s) => vec![("Thickness", s.thickness), ("Top", s.top_offset)],
         ElementKind::Column(c) => c.height.map(|h| vec![("Height", h)]).unwrap_or_default(),
         ElementKind::Beam(b) => vec![("Length", b.start.distance(b.end))],
+        ElementKind::Detail(d) => {
+            let mut out = vec![("Length", d.length()), ("Width", d.width)];
+            if let DetailKind::Repeat { module, .. } = d.kind {
+                out.push(("Unit", module));
+            }
+            out
+        }
+        ElementKind::Site(s) => match s.form {
+            creabim_core::SiteForm::Plant { canopy, height, .. } => {
+                vec![("Canopy", canopy), ("Height", height)]
+            }
+            _ => vec![],
+        },
         _ => vec![],
     }
 }
@@ -1913,8 +2176,15 @@ pub fn interact(
     }
     let ctx = painter.ctx().clone();
     let shift = ctx.input(|i| i.modifiers.shift);
+    // drafting is on its own view's paper only
+    let elsewhere = match doc.model().get(id).map(|e| &e.kind) {
+        Some(ElementKind::Detail(d)) => Some(d.view) != input.view,
+        Some(ElementKind::View(v)) => v.callout.is_some_and(|c| Some(c.parent) != input.view),
+        _ => false,
+    };
     let shown: Vec<Handle> = handles_in(doc.model(), id, face, edit)
         .into_iter()
+        .filter(|_| !elsewhere)
         .map(|h| in_section(h, input.look))
         .filter(|h| h.constraint.usable(input.look))
         // grips sit on the element: a wall slides by its body
@@ -2789,6 +3059,163 @@ mod tests {
                 _ => None,
             })
             .unwrap()
+    }
+
+    #[test]
+    fn detail_components_have_points_a_width_and_a_unit_to_drag() {
+        use creabim_core::{DetailItem, View};
+        let mut doc = Document::new();
+        let section = Element::new(
+            "Section",
+            ElementKind::View(View::section(DVec2::ZERO, DVec2::new(5.0, 0.0), 3.0, true)),
+        );
+        let sid = section.id;
+        let p = DVec2::new;
+        let mut batt = DetailItem::new(
+            sid,
+            DetailKind::Repeat {
+                module: 0.215,
+                joint: 0.01,
+            },
+            vec![p(0.0, 0.0), p(2.0, 0.0)],
+        );
+        batt.width = 0.1;
+        let d = Element::new("Brick", ElementKind::Detail(batt));
+        let did = d.id;
+        doc.commit(
+            creabim_core::Transaction::new("setup")
+                .insert(section)
+                .insert(d),
+        )
+        .unwrap();
+        let m = doc.model().clone();
+        let hs = handles_in(&m, did, None, false);
+        let kinds: Vec<HandleKind> = hs.iter().map(|h| h.kind).collect();
+        assert!(kinds.contains(&HandleKind::Vertex {
+            ring: Ring::Outline,
+            i: 1
+        }));
+        assert!(kinds.contains(&HandleKind::DetailWidth));
+        assert!(kinds.contains(&HandleKind::DetailSpacing));
+        let get = |k| *hs.iter().find(|h| h.kind == k).unwrap();
+        let drag = |h: Handle, by: DVec3| {
+            let (orig, joined) = originals(&m, did, h.kind);
+            let out = apply(&m, &orig, &joined, h.kind, h.at, h.at + by, 0.0).unwrap();
+            match &out[0].kind {
+                ElementKind::Detail(d) => d.clone(),
+                _ => panic!(),
+            }
+        };
+        // the section looks along +Y: up on its paper is +Z in the model
+        let w = drag(get(HandleKind::DetailWidth), DVec3::Z * 0.05);
+        assert!((w.width - 0.2).abs() < 1e-9);
+        let u = drag(get(HandleKind::DetailSpacing), DVec3::X * 0.1);
+        assert!(
+            matches!(u.kind, DetailKind::Repeat { module, .. } if (module - 0.315).abs() < 1e-9)
+        );
+        let end = get(HandleKind::Vertex {
+            ring: Ring::Outline,
+            i: 1,
+        });
+        let e = drag(end, DVec3::new(0.5, 0.0, 1.0));
+        assert!(e.points[1].distance(p(2.5, 1.0)) < 1e-9);
+        // a plant: its crown and its height
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let lid = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let tree = Element::new(
+            "Tree",
+            ElementKind::Site(creabim_core::Site::plant(
+                lid,
+                p(20.0, 20.0),
+                creabim_core::PlantForm::Tree,
+                4.0,
+                6.0,
+            )),
+        );
+        let tid = tree.id;
+        doc.commit(creabim_core::Transaction::new("tree").insert(tree))
+            .unwrap();
+        let m = doc.model().clone();
+        let hs = handles(&m, tid, None);
+        let canopy = *hs
+            .iter()
+            .find(|h| h.kind == HandleKind::PlantCanopy)
+            .unwrap();
+        let (orig, _) = originals(&m, tid, canopy.kind);
+        let out = apply(
+            &m,
+            &orig,
+            &[],
+            canopy.kind,
+            canopy.at,
+            canopy.at + DVec3::X * 0.5,
+            0.0,
+        )
+        .unwrap();
+        assert!(matches!(
+            out[0].kind,
+            ElementKind::Site(creabim_core::Site {
+                form: creabim_core::SiteForm::Plant { canopy, .. },
+                ..
+            }) if (canopy - 5.0).abs() < 1e-9
+        ));
+        assert!(hs.iter().any(|h| h.kind == HandleKind::PlantHeight));
+    }
+
+    #[test]
+    fn a_callouts_box_resizes_with_its_grips_and_moves_with_its_body() {
+        use creabim_core::View;
+        let mut doc = Document::new();
+        let p = DVec2::new;
+        let section = View::section(DVec2::ZERO, DVec2::new(5.0, 0.0), 3.0, true);
+        let s = Element::new("Section", ElementKind::View(section.clone()));
+        let sid = s.id;
+        let d = Element::new(
+            "Detail 1",
+            ElementKind::View(View::callout(sid, &section, p(1.0, 0.0), p(2.0, 1.0), 10.0)),
+        );
+        let did = d.id;
+        doc.commit(creabim_core::Transaction::new("setup").insert(s).insert(d))
+            .unwrap();
+        let m = doc.model().clone();
+        let hs = handles(&m, did, None);
+        // four corners and four edges, none of the section line's
+        assert_eq!(hs.len(), 8);
+        assert!(hs
+            .iter()
+            .all(|h| !matches!(h.kind, HandleKind::ViewEnd { .. })));
+        let get = |k| *hs.iter().find(|h| h.kind == k).unwrap();
+        let drag = |h: Handle, by: DVec3| {
+            let (orig, joined) = originals(&m, did, h.kind);
+            let out = apply(&m, &orig, &joined, h.kind, h.at, h.at + by, 0.0).unwrap();
+            match &out[0].kind {
+                ElementKind::View(v) => v.callout.unwrap(),
+                _ => panic!(),
+            }
+        };
+        // on a section it is a ring: pushing the top up widens it about its middle
+        let c = drag(get(HandleKind::CalloutEdge(2)), DVec3::Z * 0.5);
+        assert!(c.lo.distance(p(0.75, 0.0)) < 1e-9 && c.hi.distance(p(2.25, 1.5)) < 1e-9);
+        // a corner: the opposite one stays
+        let c = drag(get(HandleKind::CalloutCorner(2)), DVec3::new(0.5, 0.0, 0.5));
+        assert!(c.lo.distance(p(1.0, 0.0)) < 1e-9 && c.hi.distance(p(2.5, 1.5)) < 1e-9);
+        // its body moves the box, not the line its view was cut on
+        let moved = transform::transformed(
+            &m,
+            m.get(did).unwrap(),
+            &Xform::Move(DVec3::new(0.25, 0.0, 0.5)),
+        )
+        .unwrap();
+        let ElementKind::View(v) = moved.kind else {
+            panic!()
+        };
+        assert!(v.callout.unwrap().lo.distance(p(1.25, 0.5)) < 1e-9);
+        assert_eq!(v.kind, section.kind);
     }
 
     #[test]

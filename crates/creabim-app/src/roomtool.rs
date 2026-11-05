@@ -167,7 +167,7 @@ pub fn fill(
                 ));
             }
             let Some(shape) = room::enclosed(model, level, p) else {
-                return Ok("That spot isn't closed in by walls or room separators on this level. Click inside a room, or draw its outline (1 Polygon, 2 Rectangle).".into());
+                return Ok("Not closed: the walls and room separators here leave a gap (shown in red). Close it, or draw the room's outline (1 Polygon, 2 Rectangle, 4 From sketch).".into());
             };
             let id = commit_room(doc, Room::new(level, p), "Place room", selection)?;
             Ok(format!(
@@ -191,7 +191,7 @@ pub fn fill(
                 None => match room::enclosed(model, level, p) {
                     Some(shape) => Ceiling::drawn(level, shape.outline, height),
                     None => {
-                        return Ok("That spot isn't closed in by walls on this level. Click inside a room, or draw the ceiling's outline (1 Polygon, 2 Rectangle).".into())
+                        return Ok("Not closed: the walls here leave a gap (shown in red). Close it, or draw the ceiling's outline (1 Polygon, 2 Rectangle, 4 From sketch).".into())
                     }
                 },
             };

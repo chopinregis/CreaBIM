@@ -537,6 +537,9 @@ pub struct StylePack {
     /// so a project never mixes them.
     #[serde(default, skip_serializing_if = "MarkerFamily::is_default")]
     pub markers: MarkerFamily,
+    /// How membranes are drawn in details.
+    #[serde(default, skip_serializing_if = "crate::MembraneLook::is_default")]
+    pub membranes: crate::MembraneLook,
 }
 
 /// How a room tag lays out its fields.

@@ -646,7 +646,13 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
     for e in model.iter() {
         match &e.kind {
             ElementKind::Detail(d) if d.view == view_id => {
-                out.extend(crate::detail::detail_items(e.id, d));
+                let look = creabim_core::styles::active_pack(model).membranes;
+                out.extend(crate::detail::detail_items(
+                    e.id,
+                    d,
+                    view.scale / 1000.0,
+                    look,
+                ));
             }
             ElementKind::View(v) => {
                 if let Some(c) = v.callout.filter(|c| c.parent == view_id) {

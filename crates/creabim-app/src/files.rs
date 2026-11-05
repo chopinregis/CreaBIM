@@ -183,6 +183,8 @@ pub struct Settings {
     /// from how each opens at first.
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub props_open: std::collections::BTreeMap<String, bool>,
+    /// The tab the tools row shows: Model, Annotate, View or Manage.
+    pub tools_tab: usize,
 }
 
 impl Default for Settings {
@@ -203,6 +205,7 @@ impl Default for Settings {
             render_3d: Default::default(),
             help_width: 400.0,
             props_open: Default::default(),
+            tools_tab: 0,
         }
     }
 }

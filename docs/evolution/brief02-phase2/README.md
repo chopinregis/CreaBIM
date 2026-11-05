@@ -38,6 +38,26 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | 2.10 (2) | Steps | **Done.** The status bar has *Step* (Off, 10, 50 or 100 mm, or Custom…; in imperial projects 1/8", 1/2", 1" or 6"), and the Snap menu lists the same choices. The step in use always shows there and in the tracker. Free points and grip drags round to it, and Alt ignores it for one move. | see PR |
 | 2.14 | Live dimensions | **Partly.** Old → new and the change show while dragging (A3-3), and D hides or shows them. The distance to the nearest neighbour and the "Widened D03 by 300 mm" wording are not done yet. | see PR |
 
+## Phase 2 item 2.5 with A3-7: detail components and plants
+
+| Brief | What | Status | Commit |
+| --- | --- | --- | --- |
+| 3.1 / A3-7 | Grips on detail components | **Done.** A selected component shows a square on each of its points and, on a batt, flashing, blocking or repeating detail, a width bar off the middle of its first stretch (both sides move). A repeating detail has a unit bar at the end of its first unit. A filled region has corner squares and edge bars like a slab's, and Edit mode (double-click, or Enter) adds and removes corners and points. The grips show only in the view the component is drawn in. M, G, R, mirror, Shift+D and Ctrl+D work on components in plans and sections, each laid back on its view's paper, and the pill shows the length, width or unit as it changes. Properties shows the length (with the point count) and the width. | see PR |
+| A3-7 | Finishing a path | **Done.** Enter, a double-click or a right-click finishes a path. Esc, or picking another tool, keeps a path that has enough points ("Membrane kept with its 2 points. Ctrl+Z takes it away."), and drops it only when it has too few. The hint says how many points there are and "Enter to finish". | see PR |
+| A3-7 | Membrane look | **Done.** A membrane is a heavy line 2 mm on paper off the line it follows, so it never draws over that line, with a thin dashed partner 3.5 mm off. It goes on the side of the line the pointer was on when the points were clicked; Space while drawing, or *On the other side* in Properties, swaps it. The style pack (Annotation › Membranes in details) chooses the partner: dashed (the default), a double line or a zig-zag. Membranes already in a project move off their line by the same 2 mm. | see PR |
+| 3.2 | Grips on plants | **Done.** A selected tree or shrub has a canopy bar at the edge of its crown in plan (dragging it changes the canopy's width, both sides), and a height bar at its top in 3D and sections. | see PR |
+| 3.3 | Callout boxes | **Partly.** A selected callout shows, on the view it was called out from, a square on each corner of its box and a bar on each edge. Dragging one resizes the box and the detail view follows; a ringed callout (on a section) stays round. Its body moves the box with G or M, no longer the line its view was cut on. The pill shows the box's width or height as it changes. *Not yet:* the linked *Open in 3D* crop box for callouts, sections, elevations and plans. | see PR |
+| 3.4 | Fill room preview | **Done.** With the Room, Ceiling or Slab tool in *Fill room* (3), the space a click would fill is tinted and outlined under the pointer, with "Room 21.60 m² · click to add" by it (a slab's to the walls' centre lines, as it fills). Over a room that is already there it says so. Where the walls and room separators don't close the space, the gaps are drawn in red, wall end to wall end (or to the nearest face), and the pill says "Not closed: draw its outline (1, 2, 4)"; a click says the same in the status bar. | see PR |
+
+## Phase 2 items 2.1 and 2.2: tool tabs and the element action bar
+
+| Brief | What | Status | Commit |
+| --- | --- | --- | --- |
+| 2.1 | Tabs | **Done.** The tools row starts with four tabs: *Model*, *Annotate*, *View* and *Manage*. Each tab shows its own tools, plus the commands that belong with them: *Catalogue* on Model, *Annotation styles* and *Mark numbering* on Annotate, *Crop box*, *New sheet*, *New schedule ▾* and *Graphic styles* on View, and *Levels*, *Types*, *Materials*, *Style packs*, *Units* and *IFC ▾* on Manage. Select and Align stay at the left on every tab, and Move, Undo and Redo stay in the row above. The callout is on both Annotate and View. When a tool is picked from a menu, the palette or a key, and it isn't on the tab shown, its own tab comes up. The tab chosen is kept between sessions. | see PR |
+| 2.1 | Icons only | **Done.** The tools row has icons only, with each tool's name and what it does in its tooltip. The tool in use shows as a pressed icon, with its name in the options row below. Nothing wraps, and nothing scrolls sideways at 1366 px: the fullest tab, Model, ends at about 1310 px. | see PR |
+| 2.1 | View controls out of the options row | **Not started.** This goes with 2.6, where each view gets its own header. Until then the view's settings stay at the right of the options row. | |
+| 2.2 (brief 2.7) | Action bar | **Done.** A row of icon buttons sits under the element's name (and its mark) in Properties. The element's own actions come first, tinted: *Edit outline* (Enter) for anything Edit mode opens; *Flip*, *Attach top* (greyed when nothing is overhead) and *Make a type* for walls; *Flip* and *Flip hand* for doors; *Flip* for windows; *Open view* and *Flip* for sections and elevations; *Select tagged* and *Straighten leader* (greyed when the leader is straight) for tags. The common actions follow in a fixed order: *Duplicate*, *Select similar*, *Hide*, *Isolate* and *Frame*. Isolate is left out for annotation. Then come *More* (⋯) and *Delete*, set apart at the right, in red. Tooltips give each action's name and key. With several elements selected, only the actions that apply to all of them show: walls with a door keep *Flip*. When the panel is too narrow, actions move into More, the common ones first. More also holds Move, Rotate, Scale, Copy, Cut and *select similar in the project*. The right-click menu is unchanged. The old *Edit* and *Delete* text buttons are gone. | see PR |
+
 ## Addendum A3: the review of main 889c32c
 
 | A3 | What | Status | Commit |
@@ -82,6 +102,23 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | [26-footings-shown-while-the-tool-is-on.png](26-footings-shown-while-the-tool-is-on.png) | The Ground Floor plan with the Footing tool on: the level's footings dashed and tinted, and a wall that already has one says so. |
 | [27-show-in-foundation-plan.png](27-show-in-foundation-plan.png) | After placing: *Show in Foundation plan* in the status bar. |
 | [28-foundation-plan-opened.png](28-foundation-plan-opened.png) | It opens the Foundation plan with the new footing selected. |
+| [29-detail-region-grips.png](29-detail-region-grips.png) | 3.1: the perimeter insulation (a filled region) in Detail 1 Wall base. Before, selected but no grips; after, corner squares and edge bars. |
+| [30-membrane-off-its-line.png](30-membrane-off-its-line.png) | A3-7: a membrane drawn along the slab's top. Before, it lay on the slab's line and couldn't be seen; after, a heavy line just above it with its dashed partner. The DPC under the wall is drawn the same way. |
+| [31-esc-or-right-click-keeps-the-path.png](31-esc-or-right-click-keeps-the-path.png) | A right-click finished the batt's path, and the status bar says so. |
+| [32-batt-width-grip.png](32-batt-width-grip.png) | A batt selected, then its width bar dragged: "Width 100 → 190 +90". |
+| [33-detail-moves-with-g.png](33-detail-moves-with-g.png) | G on a detail component: before, "can't be moved this way"; after, it moves. |
+| [34-plant-canopy-grip.png](34-plant-canopy-grip.png) | 3.2: a tree in the garden sample. Before, no grips; after, its canopy bar dragged, "Canopy 6000 → 8450 +2450". |
+| [35-callout-box-grips.png](35-callout-box-grips.png) | 3.3: Detail 2 Window's ring in Section C-C. Before, selected without grips; after, its top edge dragged ("Width 1200 → 2700": it stays round), then let go. |
+| [36-fill-room-preview.png](36-fill-room-preview.png) | 3.4: the Room tool in *Fill room* over the simple house's east room. Before, nothing until the click; after, the room it would make and its area. |
+| [37-fill-room-not-closed.png](37-fill-room-not-closed.png) | The west wall deleted: before, nothing shows why a click fails; after, the gap in red and "Not closed: draw its outline (1, 2, 4)". |
+| [38-tabs-1366.png](38-tabs-1366.png) | 2.1 at 1366 px. Before, one long row of every tool that ran off the right edge. After, each of the four tabs. |
+| [39-tabs-1600.png](39-tabs-1600.png) | The same at 1600 px. |
+| [40-tabs-1920.png](40-tabs-1920.png) | The same at 1920 px. |
+| [41-tab-menu.png](41-tab-menu.png) | The Manage tab's *IFC* button and its menu. |
+| [42-tab-follows-tool.png](42-tab-follows-tool.png) | Wall picked from the Create menu while the Manage tab showed: the Model tab comes up with it. |
+| [43-action-bar.png](43-action-bar.png) | 2.2. Before, a window's Properties with *Edit* as a text button (Delete was at the very bottom). After, the bar for a wall, a section, a tag, a room and a mixed box selection. |
+| [44-action-bar-zoom.png](44-action-bar-zoom.png) | The wall's bar at three times its size. |
+| [45-action-bar-more.png](45-action-bar-more.png) | The bar's More menu. |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 
@@ -103,7 +140,10 @@ There are no screenshots of the footing and beam heights, the click through a do
 - underlay faces and centrelines (`snaps.rs`);
 - widening about the centre or a corner jamb, and running into a join (`walls.rs`);
 - Frame all in one pane, and export then *Open the folder* (`appmenu.rs`);
-- *Keep only…* after a box (`selectsimilar.rs`).
+- *Keep only…* after a box (`selectsimilar.rs`);
+- every tool on a tab, and the tab each tool is on (`tooltabs.rs`);
+- the action bar for a wall alone and for walls with a door, and every action having an icon (`actionbar.rs`);
+- the line icons turned into strokes for the Properties panel, circles staying round (`svgicon.rs`).
 
 ## Known gaps
 

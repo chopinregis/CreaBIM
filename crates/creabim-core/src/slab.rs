@@ -38,8 +38,9 @@ pub fn room_outline(model: &Model, level: ElementId, p: DVec2) -> Option<Vec<DVe
 }
 
 /// The smallest closed face of the line arrangement `segs` around `p`.
-pub(crate) fn room_in_lines(segs: &[(DVec2, DVec2)], p: DVec2) -> Option<Vec<DVec2>> {
-    // split every segment where others cross it
+/// The segments split where others cross them or end on them: the nodes,
+/// and the edges between them.
+fn split(segs: &[(DVec2, DVec2)]) -> (Vec<DVec2>, HashSet<(usize, usize)>) {
     let mut nodes: Vec<DVec2> = Vec::new();
     let mut node = |q: DVec2| -> usize {
         match nodes.iter().position(|n| n.distance(q) < 1e-6) {
@@ -77,9 +78,13 @@ pub(crate) fn room_in_lines(segs: &[(DVec2, DVec2)], p: DVec2) -> Option<Vec<DVe
             }
         }
     }
-    // loose ends bound nothing
+    (nodes, edges)
+}
+
+/// Edges with a loose end taken away until none is left: what bounds a space.
+fn prune(nodes: usize, mut edges: HashSet<(usize, usize)>) -> HashSet<(usize, usize)> {
     loop {
-        let mut degree = vec![0usize; nodes.len()];
+        let mut degree = vec![0usize; nodes];
         for &(u, v) in &edges {
             degree[u] += 1;
             degree[v] += 1;
@@ -87,9 +92,54 @@ pub(crate) fn room_in_lines(segs: &[(DVec2, DVec2)], p: DVec2) -> Option<Vec<DVe
         let before = edges.len();
         edges.retain(|&(u, v)| degree[u] > 1 && degree[v] > 1);
         if edges.len() == before {
-            break;
+            return edges;
         }
     }
+}
+
+/// The ends of `segs` that run on into nothing for more than `stub`: where
+/// a wall stops short of closing a space. Each is the end's point and the
+/// segment it ends.
+pub(crate) fn loose_ends(segs: &[(DVec2, DVec2)], stub: f64) -> Vec<(DVec2, usize)> {
+    let (nodes, edges) = split(segs);
+    let kept = prune(nodes.len(), edges);
+    let mut on = vec![false; nodes.len()];
+    for &(u, v) in &kept {
+        on[u] = true;
+        on[v] = true;
+    }
+    let mut out = vec![];
+    for (k, &(a, b)) in segs.iter().enumerate() {
+        let len = a.distance(b);
+        if len < 1e-9 {
+            continue;
+        }
+        let dir = (b - a) / len;
+        // how far along the segment the nearest node still bounding something is
+        let along: Vec<f64> = nodes
+            .iter()
+            .zip(&on)
+            .filter(|(q, on)| **on && (**q - a).perp_dot(dir).abs() < 1e-6)
+            .map(|(q, _)| (*q - a).dot(dir))
+            .filter(|t| (-1e-6..=len + 1e-6).contains(t))
+            .collect();
+        let first = along.iter().copied().fold(f64::INFINITY, f64::min);
+        let last = along.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        if first > stub {
+            out.push((a, k));
+        }
+        if len - last > stub {
+            out.push((b, k));
+        }
+    }
+    out
+}
+
+pub(crate) fn room_in_lines(segs: &[(DVec2, DVec2)], p: DVec2) -> Option<Vec<DVec2>> {
+    // split every segment where others cross it
+    let (nodes, edges) = split(segs);
+    // loose ends bound nothing
+    let edges = prune(nodes.len(), edges);
     let mut around: Vec<Vec<usize>> = vec![vec![]; nodes.len()];
     for &(u, v) in &edges {
         around[u].push(v);

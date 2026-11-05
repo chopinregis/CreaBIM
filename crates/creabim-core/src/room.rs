@@ -385,6 +385,102 @@ pub fn enclosed(model: &Model, level: ElementId, p: DVec2) -> Option<RoomShape> 
     })
 }
 
+/// Where the walls round `p` leave its space open, when they don't close
+/// it: a line across each gap between two walls that stop short of each
+/// other, in sight of `p`, or from a wall that stops in the open to the
+/// nearest face. Empty when nothing is near enough to say.
+pub fn gaps(model: &Model, level: ElementId, p: DVec2) -> Vec<(DVec2, DVec2)> {
+    let lines = bounding_lines(model, level);
+    let segs: Vec<(DVec2, DVec2)> = lines.iter().map(|l| (l.0, l.1)).collect();
+    let reach = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) if w.level == level => Some(w.thickness / 2.0),
+            _ => None,
+        })
+        .fold(0.0, f64::max)
+        + 0.01;
+    // a line crossing nothing on its way from p
+    let clear = |q: DVec2, own: Option<usize>| {
+        segs.iter()
+            .enumerate()
+            .all(|(k, &(a, b))| Some(k) == own || !crosses_before(p, q, a, b))
+    };
+    // the loose ends, back at the walls' real ends
+    let mut ends: Vec<(DVec2, usize)> = crate::slab::loose_ends(&segs, reach * 1.5)
+        .into_iter()
+        .map(|(q, k)| {
+            let (a, b) = segs[k];
+            let out = if q.distance(a) < q.distance(b) {
+                a - b
+            } else {
+                b - a
+            };
+            let back = reach.min(out.length() / 2.0);
+            (q - out.normalize_or_zero() * back, k)
+        })
+        .filter(|(q, k)| q.distance(p) < 30.0 && clear(*q, Some(*k)))
+        .collect();
+    ends.sort_by(|x, y| x.0.distance(p).total_cmp(&y.0.distance(p)));
+    let mut used = vec![false; ends.len()];
+    let mut out = vec![];
+    // the nearest pairs first
+    let mut pairs: Vec<(f64, usize, usize)> = vec![];
+    for i in 0..ends.len() {
+        for j in i + 1..ends.len() {
+            if lines[ends[i].1].2 != lines[ends[j].1].2 {
+                pairs.push((ends[i].0.distance(ends[j].0), i, j));
+            }
+        }
+    }
+    pairs.sort_by(|x, y| x.0.total_cmp(&y.0));
+    for (d, i, j) in pairs {
+        if d < 6.0 && !used[i] && !used[j] {
+            used[i] = true;
+            used[j] = true;
+            out.push((ends[i].0, ends[j].0));
+        }
+    }
+    // one left over runs to the nearest face
+    for (i, &(q, k)) in ends.iter().enumerate() {
+        if used[i] {
+            continue;
+        }
+        let near = segs
+            .iter()
+            .enumerate()
+            .filter(|(m, _)| *m != k && lines[*m].2 != lines[k].2)
+            .map(|(_, &(a, b))| closest_on_segment(q, a, b))
+            .filter(|c| c.distance(q) > 1e-3)
+            .min_by(|x, y| x.distance(q).total_cmp(&y.distance(q)));
+        if let Some(c) = near.filter(|c| c.distance(q) < 6.0) {
+            out.push((q, c));
+        }
+    }
+    out
+}
+
+/// Does segment pq cross segment ab before reaching q?
+fn crosses_before(p: DVec2, q: DVec2, a: DVec2, b: DVec2) -> bool {
+    let (r, s) = (q - p, b - a);
+    let den = r.perp_dot(s);
+    if den.abs() < 1e-12 {
+        return false;
+    }
+    let t = (a - p).perp_dot(s) / den;
+    let u = (a - p).perp_dot(r) / den;
+    (1e-9..0.98).contains(&t) && (-1e-9..=1.0 + 1e-9).contains(&u)
+}
+
+fn closest_on_segment(q: DVec2, a: DVec2, b: DVec2) -> DVec2 {
+    let ab = b - a;
+    let len2 = ab.length_squared();
+    if len2 < 1e-18 {
+        return a;
+    }
+    a + ab * ((q - a).dot(ab) / len2).clamp(0.0, 1.0)
+}
+
 fn point_on_segment(p: DVec2, a: DVec2, b: DVec2) -> bool {
     let ab = b - a;
     let len2 = ab.length_squared();
@@ -928,5 +1024,34 @@ mod tests {
         .unwrap();
         assert!(c.room.is_none() && c.material.is_none());
         c.validate().unwrap();
+    }
+
+    #[test]
+    fn an_open_room_shows_where_its_walls_stop_short() {
+        let (mut doc, l, ids) = house();
+        let p = DVec2::new(3.0, 2.0);
+        assert!(enclosed(doc.model(), l, p).is_some());
+        // the north wall stops 1 m short of the west wall
+        let before = doc.model().get(ids[2]).unwrap().clone();
+        let mut north = before.clone();
+        if let ElementKind::Wall(w) = &mut north.kind {
+            w.end = DVec2::new(1.0, 4.0);
+        }
+        doc.commit(Transaction::new("shorten").replace(before, north))
+            .unwrap();
+        assert!(enclosed(doc.model(), l, p).is_none());
+        let g = gaps(doc.model(), l, p);
+        assert_eq!(g.len(), 1, "{g:?}");
+        let (a, b) = g[0];
+        // across the gap, from the north wall's end to the west wall's end
+        let xs = (a.x.min(b.x), a.x.max(b.x));
+        assert!(
+            (xs.0 - 0.1).abs() < 0.02 && (xs.1 - 1.0).abs() < 0.02,
+            "{g:?}"
+        );
+        assert!(
+            [a.y, b.y].iter().all(|y| (3.89..=4.01).contains(y)),
+            "{g:?}"
+        );
     }
 }

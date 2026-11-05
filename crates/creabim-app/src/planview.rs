@@ -223,7 +223,7 @@ impl Tool {
             Tool::Room => "Click inside walls for a room that follows them (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch) where no walls close it off. Its name, number and finishes are in Properties.",
             Tool::RoomSeparator => "Click two points for a line that splits a room in two where there is no wall, such as between a kitchen and a dining room.",
             Tool::Callout => "On a plan or section, click two corners of a box round what to detail: it becomes a detail view at the scale in the top bar, numbered in a bubble on this view.",
-            Tool::Detail => "Pick what to draw in the top bar, then click its points; click the last point again (or Enter) to finish, the first again to close a region. Detail components show in this view only.",
+            Tool::Detail => "Pick what to draw in the top bar, then click its points; Enter, a double-click or a right-click finishes (the first point again closes a region). Esc keeps what is drawn. Detail components show in this view only.",
             Tool::Ceiling => "Click inside a room for a ceiling over it that follows its walls (3, Fill room), or draw its outline (1 Polygon, 2 Rectangle, 4 From sketch). Set its height and thickness in the top bar or Properties.",
         }
     }
@@ -472,6 +472,8 @@ pub struct PlanState {
     /// A footing was just placed on a host: the status bar offers the
     /// Foundation plan.
     pub footing_placed: bool,
+    /// What a Fill room click would fill, under the pointer.
+    pub fill_look: Option<crate::fillpreview::Cached>,
 }
 
 impl PlanState {
@@ -557,6 +559,7 @@ impl Default for PlanState {
             host_pick: None,
             host_cycle: 0,
             footing_placed: false,
+            fill_look: None,
         }
     }
 }
@@ -1340,6 +1343,7 @@ pub fn show(
                 } else {
                     DVec3::Z
                 },
+                view: Some(view),
             };
             let mut status = None;
             let edit = state.edit.is_some() && state.edit == selection.active;
@@ -1603,13 +1607,40 @@ pub fn show(
     // a callout's box or a detail component being drawn, and Enter to
     // finish the component
     if matches!(tool, Tool::Callout | Tool::Detail) {
-        crate::detailtool::preview(&painter, &xf, tool, state, view, hover_world, mm);
+        crate::detailtool::preview(
+            doc.model(),
+            &painter,
+            &xf,
+            tool,
+            state,
+            view,
+            hover_world,
+            mm,
+        );
         let enter = response.hovered()
             && ui.input(|i| i.key_pressed(egui::Key::Enter))
             && !ui.ctx().egui_wants_keyboard_input();
-        if tool == Tool::Detail && enter && state.details.view == Some(view) {
+        // a double-click finishes too (its first click put the last point)
+        let space = response.hovered()
+            && ui.input(|i| i.key_pressed(egui::Key::Space))
+            && !ui.ctx().egui_wants_keyboard_input();
+        if tool == Tool::Detail
+            && space
+            && state.details.kind == creabim_core::DetailKind::Membrane
+            && state.details.view == Some(view)
+            && !state.details.path.is_empty()
+        {
+            state.details.swap = !state.details.swap;
+            state.status = Some("The membrane goes on the other side.".into());
+        }
+        let double = response.double_clicked() && crate::detailtool::finishable(state);
+        if tool == Tool::Detail && (enter || double) && state.details.view == Some(view) {
             if let Err(e) = crate::detailtool::finish(doc, state, selection) {
                 return Some(e.to_string());
+            }
+            // the double-click's second click is not a new path's first
+            if double {
+                return None;
             }
         }
     }
@@ -1770,7 +1801,17 @@ pub fn show(
         draw_cursor(&painter, xf.to_screen(model_to_pane(space, c)));
     }
     let right = response.secondary_clicked() && !shift;
-    if ui.input(|i| i.key_pressed(egui::Key::Escape)) && !ui.ctx().egui_wants_keyboard_input() {
+    let esc =
+        ui.input(|i| i.key_pressed(egui::Key::Escape)) && !ui.ctx().egui_wants_keyboard_input();
+    // a detail path that can be made is finished, never dropped
+    if tool == Tool::Detail
+        && (esc || right)
+        && state.details.view == Some(view)
+        && crate::detailtool::keep(doc, state, selection)
+    {
+        return None;
+    }
+    if esc {
         state.step_back();
     }
     let menu = right && !state.step_back() && tool == Tool::Select;
@@ -1817,6 +1858,17 @@ pub fn show(
         }
     }
 
+    // Fill room: what a click would fill, or where the walls are open
+    if let (PaneKind::Plan { level }, Some(p), Some(at), true) = (
+        kind,
+        hover_world,
+        response.hover_pos(),
+        crate::fillpreview::on(state),
+    ) {
+        let look = crate::fillpreview::cached(&mut state.fill_look, doc, level, tool, p).clone();
+        let units = doc.model().units();
+        crate::fillpreview::draw(&painter, &xf, &look, at, &units, tool);
+    }
     // the host a click would go on, and what it would make there
     if let (Some(h), Some(at)) = (host, response.hover_pos()) {
         if hovered != Some(h) {
@@ -1936,7 +1988,7 @@ pub fn show(
                 crate::detailtool::callout_click(doc, view, p, state, selection).map(|_| ())
             }
             (PaneKind::Plan { .. } | PaneKind::Section { .. }, Tool::Detail) => {
-                crate::detailtool::detail_click(doc, view, p, state, selection)
+                crate::detailtool::detail_click(doc, view, p, raw, state, selection)
             }
             (_, t) if crate::annotate::is_tool(t) => match &view_def {
                 Some(v) => crate::annotate::click(
@@ -3367,8 +3419,10 @@ fn drag_section_line(
     selection: Option<ElementId>,
 ) -> Option<Option<String>> {
     let id = selection?;
+    // a detail view's box has grips of its own, not its parent's line
     let Some(ElementKind::View(View {
         kind: ViewKind::Section { start, end, .. },
+        callout: None,
         ..
     })) = doc.model().get(id).map(|e| &e.kind)
     else {
@@ -4722,7 +4776,7 @@ fn slab_at(slabs: &[(ElementId, Vec<DVec2>)], p: DVec2) -> Option<ElementId> {
         .map(|(id, _)| *id)
 }
 
-fn fill_polygon(painter: &egui::Painter, xf: &Xf, points: &[DVec2], fill: Color32) {
+pub fn fill_polygon(painter: &egui::Painter, xf: &Xf, points: &[DVec2], fill: Color32) {
     let mut mesh = egui::Mesh::default();
     for p in points {
         mesh.colored_vertex(xf.to_screen(*p), fill);

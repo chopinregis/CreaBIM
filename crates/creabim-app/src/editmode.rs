@@ -147,6 +147,19 @@ pub fn rings(model: &Model, e: &Element) -> Vec<RingInfo> {
                 SiteForm::Plant { .. } => vec![],
             }
         }
+        // drafting, on its view's paper: a region's outline, a path's points
+        ElementKind::Detail(d) => {
+            let Some(frame) = creabim_core::DrawingFrame::of(model, d.view) else {
+                return vec![];
+            };
+            vec![RingInfo {
+                ring: Ring::Outline,
+                corners: d.model_points(frame),
+                closed: d.kind.is_area(),
+                normal: frame.normal(),
+                reshapes: !matches!(d.kind, creabim_core::DetailKind::BreakLine),
+            }]
+        }
         ElementKind::Sketch(sk) if sk.circle.is_none() => {
             let lift = DVec3::Z * elevation(model, sk.level);
             let straight = (0..sk.segment_count())
@@ -274,6 +287,7 @@ pub fn ring_mut(kind: &mut ElementKind, ring: Ring) -> Option<&mut Vec<DVec2>> {
         (ElementKind::Roof(r), Ring::Outline) => Some(&mut r.boundary),
         (ElementKind::Roof(r), Ring::Hole(k)) => r.holes.get_mut(k),
         (ElementKind::Sketch(sk), Ring::Outline) => Some(&mut sk.points),
+        (ElementKind::Detail(d), Ring::Outline) => Some(&mut d.points),
         (ElementKind::Part(p), ring) => match (&mut p.form, ring) {
             (Form::Extrusion { outline, .. }, Ring::Outline) => Some(outline),
             (Form::Extrusion { holes, .. }, Ring::Hole(k)) => holes.get_mut(k),
@@ -324,6 +338,9 @@ fn set_corner(e: &mut Element, ring: Ring, i: usize, p: DVec2) -> Result<(), Str
 fn local(model: &Model, e: &Element, p: DVec3) -> DVec2 {
     match &e.kind {
         ElementKind::Sketch(sk) => sk.plane.to_plane(p - DVec3::Z * elevation(model, sk.level)),
+        ElementKind::Detail(d) => {
+            creabim_core::DrawingFrame::of(model, d.view).map_or(p.truncate(), |f| f.to_drawing(p))
+        }
         _ => p.truncate(),
     }
 }
@@ -617,6 +634,7 @@ fn shape_problem(e: &Element, disc: bool) -> Option<String> {
             (r.path.iter().map(|p| p.truncate()).collect(), false, vec![])
         }
         ElementKind::Sketch(sk) if sk.circle.is_none() => (sk.points.clone(), sk.closed, vec![]),
+        ElementKind::Detail(d) if d.kind.is_area() => (d.points.clone(), true, vec![]),
         ElementKind::Part(p) => match &p.form {
             Form::Extrusion { outline, holes, .. } => (outline.clone(), true, holes.clone()),
             Form::Sweep {
@@ -838,6 +856,9 @@ pub fn panel_hint(kind: &ElementKind) -> &'static str {
         }
         ElementKind::Part(_) | ElementKind::Site(_) => {
             "Click a corner (Shift+click or a box for more) and press Delete to remove it. Drag corners and edges of the outline and of each hole, a ◇ to add a corner. Right-click a corner, an edge or a hole for more."
+        }
+        ElementKind::Detail(_) => {
+            "Click a point and press Delete to remove it; drag points to move them, a ◇ to add one. In this view only."
         }
         ElementKind::Sketch(_) | ElementKind::Railing(_) => {
             "Click a corner and press Delete to remove it; drag corners to move them, a ◇ to add one. Right-click for more."
