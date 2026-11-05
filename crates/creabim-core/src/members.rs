@@ -1025,7 +1025,8 @@ pub fn is_member(kind: &ElementKind) -> bool {
 
 /// Move, turn or scale a member. `None` when it can't take `t`.
 pub fn transform(model: &Model, kind: &mut ElementKind, t: &Xform) -> Option<()> {
-    if !t.keeps_upright() {
+    // a part can tilt: it then stands on a plane of its own
+    if !t.keeps_upright() && !matches!(kind, ElementKind::Part(_)) {
         return None;
     }
     let dz = match t {
@@ -1049,7 +1050,11 @@ pub fn transform(model: &Model, kind: &mut ElementKind, t: &Xform) -> Option<()>
                     }
                     Profile::Round { diameter } => *diameter *= factor,
                 },
-                Xform::Stretch { .. } => return None,
+                // a mirror in plan: square and round columns look the same
+                // turned over, so it only goes to the mirrored place
+                Xform::Stretch { factor, .. } => {
+                    c.rotation = crate::transform::mirrored_angle(c.rotation, *factor)?;
+                }
                 _ => {}
             }
         }
@@ -1112,7 +1117,10 @@ pub fn transform(model: &Model, kind: &mut ElementKind, t: &Xform) -> Option<()>
                 *p = t.point3(*p + DVec3::Z * z) - DVec3::Z * z;
             }
         }
-        ElementKind::Part(p) => crate::parts::transform(p, t)?,
+        ElementKind::Part(p) => {
+            let lift = elevation(model, p.level);
+            crate::parts::transform(p, t, lift)?
+        }
         ElementKind::Site(s) => crate::site::transform(s, t)?,
         _ => return None,
     }

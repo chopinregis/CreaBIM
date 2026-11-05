@@ -827,7 +827,12 @@ impl CreaBimApp {
                     self.set_workplane(plane, format!("level at {}", crate::units::elevation(p.z)));
                 }
             }
-            Command::Move | Command::Rotate | Command::Scale | Command::Duplicate => {}
+            Command::Move
+            | Command::Rotate
+            | Command::Scale
+            | Command::Mirror
+            | Command::Offset
+            | Command::Duplicate => {}
         }
     }
 
@@ -860,6 +865,12 @@ impl CreaBimApp {
             }
             (Mode::Rotate, true) => {
                 "Rotate: click the centre in a view, then a reference direction, then the new direction.".into()
+            }
+            (Mode::Mirror, _) => {
+                "Mirror: click the first point of the line to mirror across, then the second. In 3D it lies on the workplane (a face, or the level). A mirrored copy is made; Ctrl keeps only the mirrored one.".into()
+            }
+            (Mode::Offset, _) => {
+                "Offset: point at a view and move the pointer to the side to offset to, or type a distance; click to place a copy. Ctrl moves the original instead.".into()
             }
             _ if c == Command::Duplicate => {
                 "Duplicate: point at a view and click a base point; the copy follows to where you click next. Esc leaves it in place.".into()
@@ -1863,6 +1874,16 @@ impl CreaBimApp {
             }
             let eye = cam.eye().as_dvec3();
             let work_z = self.work_level().map_or(0.0, |(_, z)| z);
+            // a sloped or upright workplane (a face): edits slide on it
+            let face_plane = self
+                .workplane
+                .as_ref()
+                .map(|w| w.0)
+                .filter(|w| w.normal().z.abs() < 0.999);
+            let parallel = |at: DVec3| match face_plane {
+                Some(w) => Workplane { origin: at, ..w },
+                None => Workplane::ground(at.z),
+            };
             let to_model = |pos: egui::Pos2, axis: Option<Axis>, pivot: DVec3| {
                 let (o, d) = ray(pos);
                 let plane = if axis == Some(Axis::Z) {
@@ -1870,7 +1891,7 @@ impl CreaBimApp {
                     let f = (pivot - eye).truncate().normalize_or(DVec2::X);
                     Workplane::facing(pivot, -f.extend(0.0))
                 } else {
-                    Workplane::ground(pivot.z)
+                    parallel(pivot)
                 };
                 plane.intersect(o, d)
             };
@@ -1882,7 +1903,7 @@ impl CreaBimApp {
                 // from a base point: on its level; else on what is under
                 // the pointer, or the working level
                 let free = match from {
-                    Some(f) => Workplane::ground(f.z).intersect(o, d),
+                    Some(f) => parallel(f).intersect(o, d),
                     None => pick::pick(scene, o.as_vec3(), d.as_vec3())
                         .map(|h| o + d * h.t as f64)
                         .or_else(|| Workplane::ground(work_z).intersect(o, d)),
@@ -2015,6 +2036,7 @@ impl CreaBimApp {
                         self.plan.cursor,
                         flow,
                         self.plan.move_target,
+                        self.workplane.as_ref().map(|w| w.0),
                     ) {
                         Ok((m, targets)) => {
                             if targets != ids {
@@ -2765,6 +2787,8 @@ impl CreaBimApp {
         project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
         ray: &dyn Fn(egui::Pos2) -> (DVec3, DVec3),
     ) {
+        // on a sloped or upright workplane, things turn on it to line up
+        self.plan.align.workplane = self.workplane.as_ref().map(|w| w.0);
         // the tool's hint, for 3D, once the pointer is here
         if response.hovered() && self.plan.align.reference_3d.is_none() {
             self.status = crate::align3d::hint(&self.plan.align);

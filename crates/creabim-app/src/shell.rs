@@ -300,6 +300,8 @@ fn command_icon(c: Command) -> &'static str {
         Command::Move => "move",
         Command::Rotate => "rotate-cw",
         Command::Scale => "scaling",
+        Command::Mirror => "flip-horizontal-2",
+        Command::Offset => "copy-plus",
         Command::Duplicate => "duplicate",
         Command::Copy => "copy",
         Command::Cut => "scissors",
@@ -485,6 +487,8 @@ impl CreaBimApp {
                             Command::Move,
                             Command::Rotate,
                             Command::Scale,
+                            Command::Mirror,
+                            Command::Offset,
                             Command::Duplicate,
                         ][..],
                         &[Command::Copy, Command::Cut, Command::Delete],
@@ -712,6 +716,8 @@ impl CreaBimApp {
                 Command::Move,
                 Command::Rotate,
                 Command::Scale,
+                Command::Mirror,
+                Command::Offset,
                 Command::Duplicate,
             ],
             &[Command::Copy, Command::Cut, Command::Paste, Command::Delete],
@@ -1955,6 +1961,8 @@ impl CreaBimApp {
                 crate::modal::Mode::Move => "move",
                 crate::modal::Mode::Rotate => "rotate-cw",
                 crate::modal::Mode::Scale => "scaling",
+                crate::modal::Mode::Mirror => "flip-horizontal-2",
+                crate::modal::Mode::Offset => "copy-plus",
             };
             return (json!({"label": verb, "icon": icon}), options);
         }

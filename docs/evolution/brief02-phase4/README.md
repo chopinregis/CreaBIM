@@ -28,7 +28,7 @@ The screenshots were taken in the running app on a small L corner cut out of the
 | 2 (3.5) | Sweep path drawn on a face, its profile standing out of the face | **Done** (below). |
 | 2 (3.5) | Slab on a level face; wall opening drawn on a wall face | **Done** (below). |
 | 2 (3.5) | Room outline and detail region on a face | Not started: a detail region is drawn in its section or detail view already, and a room follows its walls. |
-| 2 | Align, mirror, offset, move, rotate on the face | Partly done: Edit mode corners stay on the plane, and move and rotate take the plane along. Mirror and offset don't exist yet, and Align doesn't use the workplane. |
+| 2 | Align, mirror, offset, move, rotate on the face | **Done** (below): new Mirror and Offset commands, in plan and on a face; Move, Rotate and Align follow a face workplane; push/pull on an extrusion drawn on a face. |
 | 3–7 | | Not started. |
 
 ## 1. Layer editing
@@ -149,10 +149,43 @@ A slab can only go on a level face, and its top sits on that face. A wall openin
 
 Edit mode moves an extrusion's or sweep's corners on its own plane. Move and rotate take the plane with them, and a scale scales the outline on it.
 
+### Mirror, offset, move, rotate and align on the face
+
+Two new commands sit in the Edit menu, the right-click menu and the modify bar: **Mirror** and **Offset**. Both make a copy by default; Ctrl turns the copy off, so the original changes instead.
+
+- **Mirror**: click two points for the mirror line. With a workplane on a face, the line lies on that face and the selection flips across it, so a part on a wall still stands out of the wall afterwards. Shift keeps the line along the plane's axes, Ctrl snaps it to 15° steps, and a typed angle sets it. In plan, it mirrors across a line in the level. Walls keep their outside out, and columns and objects are turned to match.
+- **Offset**: the side of the pointer and its distance from the original set the offset; type a distance and press Enter, and Ctrl snaps to 50 mm. Walls, beams, grids, room separators, strip footings, railings, slabs, roofs, ceilings, shafts and extrusions offset in plan; a sketch, an extrusion drawn on a face and a sweep offset on their own plane. A closed outline grows or shrinks; a line moves sideways.
+- **Move** with a workplane on a face slides along the face. **Rotate** turns about the face's normal, by the pointer or by typed degrees.
+- **Align** with a workplane on a face turns the part on that face, so its edge runs parallel to the reference edge.
+- **Push/pull** now works on an extrusion drawn on a face: its outer face makes it deeper or shallower square to the face, and a side face makes it wider.
+
+![Mirror on a face](24-mirror-on-face.png)
+
+![Mirrored copy](25-mirror-placed.png)
+
+![Rotate on a face](26-rotate-on-face.png)
+
+![Push/pull on a face](27-pushpull-on-face.png)
+
+![Offset preview](28-offset-preview.png)
+
+![Offset placed](29-offset-placed.png)
+
+### Acceptance
+
+| Check | Result |
+| --- | --- |
+| A part drawn on the south wall face, mirrored across a line on the face, copy stands out of the wall | Pass (24, 25; test `a_part_on_a_face_mirrors_square_to_it_and_still_stands_out_of_it`). |
+| A wall mirrored across a slanted line keeps its outside out | Pass (test). |
+| Rotate 30° on the face workplane turns about the face normal | Pass (26; test). |
+| Push/pull of a part on a sloped face gets deeper square to it | Pass (27; test). |
+| Offset a slab by a typed 600 mm in plan | Pass (28, 29; test with a typed "1.5m"). |
+| Align a part on a wall face to a sloped edge | Pass (test `on_a_wall_face_workplane_a_part_turns_on_it_to_a_sloped_edge`). |
+
 **Gaps still open** (in [KNOWN_GAPS](../../KNOWN_GAPS.md)):
 
-- There is no mirror or offset command yet, on faces or in plan. Align doesn't use the workplane.
+- Room outline and detail region on a face.
 - The plan's 2D tools still draw in the level's plane, as before.
-- An extrusion on a face has no push/pull handle for its depth; set the depth in Properties.
-- The sketch hint shows while a face tool draws.
-
+- An object (furniture, fixture) mirrored keeps its own shape: only its position and facing are mirrored. An asymmetric column is not mirrored either, only turned.
+- Mirror and Offset reuse two existing icons for now; new icons wait for the owner's OK.
+- Thin grey slivers can show in the 3D view while a workplane sits on a face.

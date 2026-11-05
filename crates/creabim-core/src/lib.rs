@@ -30,6 +30,7 @@ pub mod members;
 pub mod model;
 pub mod modifiers;
 pub mod objects;
+pub mod offset;
 pub mod ops;
 pub mod parts;
 pub mod polygon;

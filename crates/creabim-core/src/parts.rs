@@ -529,23 +529,52 @@ pub fn is_void(model: &Model, id: ElementId) -> bool {
 
 // ---- editing ----
 
-/// Move, turn or scale a part. `None` when it can't take `t` (it stays
-/// upright, and a sweep along a wall moves only with its wall).
-pub fn transform(part: &mut Part, t: &Xform) -> Option<()> {
+/// Move, turn, mirror or scale a part standing on a level at height
+/// `lift`. `None` when it can't take `t` (a sweep along a wall moves only
+/// with its wall). Turning one about a level axis (a tilt) or mirroring
+/// it upside down stands it on a plane of its own, as if drawn on a face.
+pub fn transform(part: &mut Part, t: &Xform, lift: f64) -> Option<()> {
+    let up = DVec3::Z * lift;
+    // points are relative to the level, the change is in the model
+    let p3 = |p: DVec3| t.point3(p + up) - up;
     let dz = match t {
         Xform::Move(d) => d.z,
         _ => 0.0,
     };
     let factor = match t {
         Xform::Scale { factor, .. } => Some(*factor),
-        Xform::Stretch { .. } => return None,
         _ => None,
     };
-    let mirror = |pts: &mut Vec<DVec2>| {
+    // a mirror: a stretch that keeps sizes, turning one or three axes over
+    let reflect = match t {
+        Xform::Stretch { factor, .. } => {
+            if (factor.abs() - DVec3::ONE).abs().max_element() > 1e-9 {
+                return None;
+            }
+            Some(*factor)
+        }
+        _ => None,
+    };
+    let flips = reflect.is_some_and(|f| f.x * f.y * f.z < 0.0);
+    let ccw = |pts: &mut Vec<DVec2>| {
         if crate::polygon::signed_area2(pts) < 0.0 {
             pts.reverse();
         }
     };
+    // a tilt, or a mirror that turns it upside down, takes it off the level
+    let leaves_level = !t.keeps_upright() || reflect.is_some_and(|f| f.z < 0.0);
+    if leaves_level {
+        match &mut part.form {
+            Form::Extrusion { plane, .. } if plane.is_none() => {
+                *plane = Some(crate::Workplane::ground(0.0));
+            }
+            Form::Sweep {
+                path: Path::Points { normal, .. },
+                ..
+            } if normal.is_none() => *normal = Some(DVec3::Z),
+            _ => {}
+        }
+    }
     match &mut part.form {
         Form::Extrusion {
             outline,
@@ -556,11 +585,25 @@ pub fn transform(part: &mut Part, t: &Xform) -> Option<()> {
         } => {
             // drawn on a face: the plane goes where the change takes it,
             // the outline stays as drawn on it (a scale scales it too)
-            pl.origin = t.point3(pl.origin);
+            pl.origin = p3(pl.origin);
             if t.is_rigid() {
                 pl.x = t.direction(pl.x).normalize();
                 pl.y = t.direction(pl.y).normalize();
-            } else if let Some(f) = factor {
+            } else if let Some(f) = reflect {
+                pl.x *= f;
+                pl.y *= f;
+                if flips {
+                    // keep the plane right-handed, so the solid still
+                    // stands out of the mirrored face: its y turns over,
+                    // and the outline with it
+                    pl.y = -pl.y;
+                    for p in outline.iter_mut().chain(holes.iter_mut().flatten()) {
+                        p.y = -p.y;
+                    }
+                    ccw(outline);
+                }
+            } else {
+                let f = factor?;
                 for p in outline.iter_mut().chain(holes.iter_mut().flatten()) {
                     *p *= f;
                 }
@@ -578,7 +621,7 @@ pub fn transform(part: &mut Part, t: &Xform) -> Option<()> {
             for p in outline.iter_mut().chain(holes.iter_mut().flatten()) {
                 *p = t.point2(*p);
             }
-            mirror(outline);
+            ccw(outline);
             *base += dz;
             if let Some(f) = factor {
                 *height *= f;
@@ -592,9 +635,12 @@ pub fn transform(part: &mut Part, t: &Xform) -> Option<()> {
                     ..
                 } => {
                     for p in points.iter_mut() {
-                        *p = t.point3(*p);
+                        *p = p3(*p);
                     }
-                    *n = t.direction(*n).normalize_or(*n);
+                    *n = match reflect {
+                        Some(f) => (*n * f).normalize_or(*n),
+                        None => t.direction(*n).normalize_or(*n),
+                    };
                 }
                 Path::Points { points, .. } => {
                     for p in points.iter_mut() {
@@ -603,6 +649,14 @@ pub fn transform(part: &mut Part, t: &Xform) -> Option<()> {
                 }
                 // it goes where its wall goes
                 Path::Wall { .. } => return Some(()),
+            }
+            if flips {
+                // the profile's across axis is the path's left, which a
+                // mirror turns to its right
+                for p in profile.iter_mut() {
+                    p.x = -p.x;
+                }
+                ccw(profile);
             }
             if let Some(f) = factor {
                 for p in profile.iter_mut() {
@@ -725,13 +779,14 @@ mod tests {
         if let Form::Extrusion { plane, .. } = &mut p.form {
             *plane = Some(pl);
         }
-        transform(&mut p, &Xform::Move(DVec3::new(0.0, 2.0, 0.5))).unwrap();
+        transform(&mut p, &Xform::Move(DVec3::new(0.0, 2.0, 0.5)), 0.0).unwrap();
         transform(
             &mut p,
             &Xform::Rotate {
                 center: DVec2::ZERO,
                 degrees: 90.0,
             },
+            0.0,
         )
         .unwrap();
         let Form::Extrusion {
@@ -760,7 +815,7 @@ mod tests {
             0.0,
             1.0,
         );
-        transform(&mut p, &Xform::Move(DVec3::new(1.0, 0.0, 0.5))).unwrap();
+        transform(&mut p, &Xform::Move(DVec3::new(1.0, 0.0, 0.5)), 0.0).unwrap();
         let Form::Extrusion { outline, base, .. } = &p.form else {
             unreachable!()
         };
@@ -770,8 +825,9 @@ mod tests {
             &mut p,
             &Xform::Stretch {
                 center: DVec3::ZERO,
-                factor: DVec3::ONE
-            }
+                factor: DVec3::new(2.0, 1.0, 1.0)
+            },
+            0.0
         )
         .is_none());
     }

@@ -9,6 +9,10 @@ pub enum Command {
     Move,
     Rotate,
     Scale,
+    /// Mirror across a line of two clicks.
+    Mirror,
+    /// Offset a line or an outline to one side.
+    Offset,
     Duplicate,
     Copy,
     Cut,
@@ -29,10 +33,12 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Command; 17] = [
+    pub const ALL: [Command; 19] = [
         Command::Move,
         Command::Rotate,
         Command::Scale,
+        Command::Mirror,
+        Command::Offset,
         Command::Duplicate,
         Command::Copy,
         Command::Cut,
@@ -54,6 +60,8 @@ impl Command {
             Command::Move => "Move",
             Command::Rotate => "Rotate",
             Command::Scale => "Scale",
+            Command::Mirror => "Mirror",
+            Command::Offset => "Offset",
             Command::Duplicate => "Duplicate",
             Command::Copy => "Copy",
             Command::Cut => "Cut",
@@ -76,6 +84,7 @@ impl Command {
             Command::Move => "M",
             Command::Rotate => "R",
             Command::Scale => "S",
+            Command::Mirror | Command::Offset => "",
             Command::Duplicate => "Shift+D",
             Command::Copy => "Ctrl+C",
             Command::Cut => "Ctrl+X",
@@ -99,6 +108,8 @@ impl Command {
         matches!(
             self,
             Command::Scale
+                | Command::Mirror
+                | Command::Offset
                 | Command::Duplicate
                 | Command::Copy
                 | Command::Cut
@@ -115,6 +126,8 @@ impl Command {
             Command::Move => Some((Mode::Move, false)),
             Command::Rotate => Some((Mode::Rotate, false)),
             Command::Scale => Some((Mode::Scale, false)),
+            Command::Mirror => Some((Mode::Mirror, false)),
+            Command::Offset => Some((Mode::Offset, false)),
             Command::Duplicate => Some((Mode::Move, true)),
             _ => None,
         }
@@ -154,6 +167,8 @@ pub fn context_menu(ui: &mut egui::Ui, selected: usize) -> Option<Command> {
             Command::Move,
             Command::Rotate,
             Command::Scale,
+            Command::Mirror,
+            Command::Offset,
             Command::Duplicate,
         ] {
             item(ui, c);
@@ -189,6 +204,8 @@ pub fn modify_bar(ui: &mut egui::Ui, selected: bool) -> Option<Command> {
             Command::Move,
             Command::Rotate,
             Command::Scale,
+            Command::Mirror,
+            Command::Offset,
             Command::Duplicate,
         ],
         &[Command::Copy, Command::Cut, Command::Paste, Command::Delete],

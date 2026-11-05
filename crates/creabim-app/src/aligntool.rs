@@ -75,6 +75,9 @@ pub struct AlignState {
     /// holds in every 3D pane.
     pub reference_3d: Option<crate::align3d::Reference>,
     pub mode: AlignMode,
+    /// The 3D view's workplane: on a sloped or upright one, what is drawn
+    /// on it turns on it to line up.
+    pub workplane: Option<creabim_core::Workplane>,
 }
 
 impl AlignState {

@@ -3215,6 +3215,7 @@ fn keyboard_edits(
         state.cursor,
         flow,
         state.move_target,
+        None,
     ) {
         Ok((m, copies)) => {
             if copies != ids {
@@ -3266,7 +3267,16 @@ pub fn restart_modal(
         return "Nothing selected: click what to move.".into();
     }
     match Modal::start(
-        doc, old.mode, ids, None, old.space, old.pane, grab, pivot, cursor,
+        doc,
+        old.mode,
+        ids,
+        None,
+        old.space,
+        old.pane,
+        grab,
+        pivot,
+        cursor,
+        old.plane(),
     ) {
         Ok(m) => {
             let n = ids.len();
@@ -3318,6 +3328,7 @@ pub fn start_modal(
     cursor: Option<DVec3>,
     flow: Flow,
     works_on: modal::Target,
+    plane: Option<creabim_core::Workplane>,
 ) -> Result<(Modal, Vec<ElementId>), String> {
     let targets = if duplicate {
         modal::duplicate(doc, ids)?
@@ -3327,7 +3338,9 @@ pub fn start_modal(
     // a selected mass face is what G moves; the Move tool picks its face
     // itself when it works on faces
     let face = face.filter(|_| !duplicate && flow == Flow::Keys);
-    match Modal::start(doc, mode, &targets, face, space, pane, grab, pivot, cursor) {
+    match Modal::start(
+        doc, mode, &targets, face, space, pane, grab, pivot, cursor, plane,
+    ) {
         Ok(mut m) => {
             m.duplicated = duplicate;
             Ok((m.with_flow(flow).with_works_on(works_on), targets))
