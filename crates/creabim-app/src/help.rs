@@ -479,6 +479,10 @@ const EDITING: &str = "In Edit mode";
 pub const KEYS: &[Binding] = &[
     key(VIEWS, "Home", "Frame everything in the 3D view"),
     key(VIEWS, ".", "Frame the selection in the 3D view"),
+    key(VIEWS, "Ctrl+Space", "Show the area under the pointer alone, and back"),
+    key(VIEWS, "Ctrl+PgUp", "The previous workspace"),
+    key(VIEWS, "Ctrl+PgDn", "The next workspace"),
+    key(VIEWS, "/", "Show the selection alone, and back"),
     key(VIEWS, "F3", "Snapping on or off"),
     key(VIEWS, "Alt (hold)", "Suspend snapping while you click"),
     key(VIEWS, "Shift+G", "Show or hide the guides in every view"),
@@ -622,6 +626,8 @@ pub fn key_names(keys: &str) -> Vec<String> {
         "." => vec!["Period".into()],
         "," => vec!["Comma".into()],
         "/" => vec!["Slash".into()],
+        "PgUp" => vec!["PageUp".into()],
+        "PgDn" => vec!["PageDown".into()],
         "1–4" => (1..=4).map(|n| format!("Num{n}")).collect(),
         "Arrow keys" => ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]
             .map(String::from)

@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **57** | **7** | **191** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 3 | 11 | 7 | 21 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 4 | 11 | 6 | 21 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -45,7 +45,7 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | Item | Gap | Phase | Size | Source |
 | --- | --- | --- | --- | --- |
 | 0 | The waiting branches `claude/demo-player`, `claude/starter-house-polish` and `claude/backlog` were never pushed. Their multi-select Properties edits and `creabim-app <file>` were rebuilt in Phase 1; category names still wrap mid-word in the visibility list. | 1 | S | B01 |
-| 2.6 | No view areas: the 3D view has a floating toolbar, view controls are duplicated in the options row, narrow areas squeeze their buttons, the hint line is drawn over the plan. No workspaces, no `/` isolate, Ctrl+Space or Ctrl+PgUp/PgDn. | 3 | L | MU02-02…05 |
+| 2.6 | View areas and workspaces are in. Still to do: saved workspaces live in the user's settings, not in the project; only one area can show the 3D view; a number control (such as *Cut height*) that doesn't fit an area header has no place in its ⋯ menu; a sheet has no *Open in area ▾* (double-click opens it in place); a corner join always closes the area dragged into. | 3 | S | MU02-02…05 |
 | 2.10 | The tracker shows Length and Angle while a line is drawn in a plan, but Move, Rotate and Copy show no Δx / Δy in it, and slab and region edges don't use it. No temporary dimensions that drive, no padlock. | 2 (tracker), 3 (temporary dimensions) | M–L | MU09 |
 | 2.11 | Room tags: Stacked (the default) and Inline (the first tag) are drawn; the Number badge and Boxed layouts are not yet. Tags don't yet keep level in rotated views. | 2 | M | MU09 |
 | 2.12 | View markers: Classic (the default) and the first markers are drawn; the Minimal and Bold families are not yet. A single click on a bubble doesn't open its view (a double-click on the selected mark does). | 2 | M | MU09 |
@@ -347,6 +347,15 @@ Gaps reported by work that is still a pull request go here until it merges, then
 ---
 
 ## Recently fixed
+
+**In Brief 02, Phase 3, view areas and workspaces (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase3](evolution/brief02-phase3)**):**
+
+- The middle of the window is split into view areas. Each has its own header: what it shows (3D, a view, or a sheet) and that view's controls. The 3D view's floating toolbar and the view controls in the options row are gone (2.6).
+- A narrow area moves the controls that don't fit into its ⋯ menu, with Split, Close and *Show this area alone* (2.6).
+- Four workspaces, Model, Drawing, Document and Sheets, are in the top-right menu. Ctrl+PgUp and Ctrl+PgDn step through them, and *Save current layout…* keeps your own (2.6).
+- Ctrl+Space shows the area under the pointer alone, and again brings the others back; `/` isolates the selection or shows everything again (2.6).
+- Dragging an area's corner grip into itself splits it, and into the area beside it joins the two, with a preview while dragging. Dividers resize the areas, and a double-click evens them out (2.6).
+- The hint for where the pointer is now sits in the status bar after the message, instead of over the plan (2.6).
 
 **In Brief 02, Phase 2, first-hour fixes (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase2](evolution/brief02-phase2)**):**
 

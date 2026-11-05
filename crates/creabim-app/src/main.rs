@@ -4,6 +4,7 @@ mod align3d;
 mod aligntool;
 mod annotate;
 mod app;
+mod areas;
 mod boxsel;
 mod browser;
 mod camera;

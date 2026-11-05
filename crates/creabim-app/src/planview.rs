@@ -314,6 +314,8 @@ enum Handle {
 pub struct PlanState {
     /// Pan and zoom per view: centre in drawing units, pixels per metre.
     pub cameras: HashMap<ElementId, (DVec2, f32)>,
+    /// What the pane under the pointer does, for the status bar.
+    pub hint: Option<&'static str>,
     pub tool: Tool,
     /// First click of a two-click tool (wall start, slab corner).
     pub pending: Option<DVec2>,
@@ -492,6 +494,7 @@ impl Default for PlanState {
     fn default() -> Self {
         Self {
             cameras: HashMap::new(),
+            hint: None,
             tool: Tool::Select,
             pending: None,
             wall_thickness: 0.2,
@@ -1591,7 +1594,9 @@ pub fn show(
 
     // the object about to be placed, under the pointer
     if let (Tool::Object, PaneKind::Plan { level }, Some(h)) = (tool, kind, hover_world) {
-        if ui.input(|i| i.key_pressed(egui::Key::Space)) && !ui.ctx().egui_wants_keyboard_input() {
+        if ui.input(|i| !i.modifiers.command && i.key_pressed(egui::Key::Space))
+            && !ui.ctx().egui_wants_keyboard_input()
+        {
             state.objects.rotation = (state.objects.rotation + 90.0).rem_euclid(360.0);
         }
         crate::objecttool::preview(
@@ -1622,7 +1627,7 @@ pub fn show(
             && !ui.ctx().egui_wants_keyboard_input();
         // a double-click finishes too (its first click put the last point)
         let space = response.hovered()
-            && ui.input(|i| i.key_pressed(egui::Key::Space))
+            && ui.input(|i| !i.modifiers.command && i.key_pressed(egui::Key::Space))
             && !ui.ctx().egui_wants_keyboard_input();
         if tool == Tool::Detail
             && space
@@ -2037,10 +2042,10 @@ pub fn show(
         }
     }
 
-    if style.decorations {
-        painter.text(
-            rect.left_bottom() + Vec2::new(8.0, -8.0),
-            egui::Align2::LEFT_BOTTOM,
+    // what the pane under the pointer does is said in the status bar,
+    // never over the drawing
+    if style.decorations && ui.rect_contains_pointer(rect) {
+        state.hint = Some(
             match (kind, tool) {
                 (PaneKind::Plan { .. }, Tool::Select) => {
                     "Click to select, Shift+click to add, drag on empty paper for a box. Drag grips to stretch; Enter or a double-click opens Edit mode to add and remove corners. M move, G grab, R rotate, S scale, Shift+D duplicate."
@@ -2059,8 +2064,6 @@ pub fn show(
                     "Click a row to select its element."
                 }
             },
-            egui::FontId::proportional(12.0),
-            Color32::from_gray(90),
         );
     }
     error

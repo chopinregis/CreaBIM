@@ -605,17 +605,14 @@ pub fn show(
         }
     }
 
-    painter.text(
-        rect.left_bottom() + Vec2::new(8.0, -8.0),
-        egui::Align2::LEFT_BOTTOM,
-        if state.active.is_some() {
+    // said in the status bar, never over the sheet
+    if ui.rect_contains_pointer(rect) {
+        plan.hint = Some(if state.active.is_some() {
             "Edits here change the model: every view, sheet and the 3D update at once."
         } else {
             "Drag a view to move it, or its orange handles to crop it. Double-click a view to work on the model through it. Right-drag pans, the wheel zooms."
-        },
-        egui::FontId::proportional(12.0),
-        Color32::from_gray(60),
-    );
+        });
+    }
     error
 }
 

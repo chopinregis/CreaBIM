@@ -27,6 +27,8 @@ use std::collections::HashMap;
 mod actionbar;
 #[path = "appmenu.rs"]
 pub(crate) mod appmenu;
+#[path = "areasui.rs"]
+mod areasui;
 #[path = "assemblies.rs"]
 mod assemblies;
 #[path = "cropui.rs"]
@@ -98,28 +100,6 @@ enum PlanPlacement {
     Hidden,
 }
 
-/// How the 3D view and the 2D pane share the window when docked. The
-/// divider between them drags like Blender's area borders.
-#[derive(Clone, Copy)]
-struct PaneLayout {
-    /// Share of the width (or height, when stacked) given to the first pane.
-    split: f32,
-    /// One above the other instead of side by side.
-    stacked: bool,
-    /// The 2D pane first (left or top) instead of the 3D view.
-    swapped: bool,
-}
-
-impl Default for PaneLayout {
-    fn default() -> Self {
-        Self {
-            split: 0.5,
-            stacked: false,
-            swapped: false,
-        }
-    }
-}
-
 pub struct CreaBimApp {
     doc: Document,
     selection: Selection,
@@ -143,7 +123,10 @@ pub struct CreaBimApp {
     plan: PlanState,
     placement: PlanPlacement,
     plan_in_3d: bool,
-    layout: PaneLayout,
+    /// The view areas and the workspace (brief 02, 2.6).
+    areas: areasui::AreaState,
+    /// The focused area's header controls that didn't fit, for its More menu.
+    areas_over: Vec<serde_json::Value>,
     /// A handle or element being dragged in the 3D view.
     handle_drag: Option<handles::Drag>,
     /// B pressed in 3D: the next drag draws a selection box; and where it began.
@@ -239,6 +222,10 @@ impl CreaBimApp {
         let mut app = Self::blank(viewport);
         app.shell.theme = theme;
         app.vis3d.categories = settings.hidden_3d.clone();
+        app.areas.workspace = settings.workspace.clone();
+        if let Some(root) = settings.areas.clone() {
+            app.areas.root = root;
+        }
         app.shell.settings = settings;
         app.load_model(creabim_core::starter::starter_house());
         app.status = STARTER_LOADED.into();
@@ -269,7 +256,8 @@ impl CreaBimApp {
             plan: PlanState::default(),
             placement: PlanPlacement::Docked,
             plan_in_3d: false,
-            layout: PaneLayout::default(),
+            areas: Default::default(),
+            areas_over: vec![],
             handle_drag: None,
             box_armed: false,
             box_3d: None,
@@ -546,7 +534,7 @@ impl CreaBimApp {
     }
 
     /// Sheets in number order, as (id, "A101 Floor Plans").
-    fn sheet_list(&self) -> Vec<(ElementId, String)> {
+    pub(super) fn sheet_list(&self) -> Vec<(ElementId, String)> {
         sheets::sheets(self.doc.model())
             .into_iter()
             .map(|(id, s)| {
@@ -556,7 +544,7 @@ impl CreaBimApp {
             .collect()
     }
 
-    fn is_sheet(&self, id: ElementId) -> bool {
+    pub(super) fn is_sheet(&self, id: ElementId) -> bool {
         sheets::sheet_of(self.doc.model(), id).is_some()
     }
 
@@ -907,7 +895,11 @@ impl CreaBimApp {
         // Space flips: the wall being drawn, else the selected walls, doors
         // and windows; Shift+Space a door's hand
         let flip = ctx.input(|i| {
-            (!i.modifiers.command && !i.modifiers.alt && i.key_pressed(egui::Key::Space))
+            // Ctrl+Space shows an area alone instead
+            let ctrl = i.events.iter().any(|e| {
+                matches!(e, egui::Event::Key { key: egui::Key::Space, modifiers, .. } if modifiers.command)
+            });
+            (!ctrl && !i.modifiers.command && !i.modifiers.alt && i.key_pressed(egui::Key::Space))
                 .then_some(i.modifiers.shift)
         });
         if let Some(hand) = flip.filter(|_| self.plan.modal.is_none()) {
@@ -2859,7 +2851,7 @@ impl CreaBimApp {
             }
         }
         if tool == Tool::Object {
-            if ui.input(|i| i.key_pressed(egui::Key::Space))
+            if ui.input(|i| !i.modifiers.command && i.key_pressed(egui::Key::Space))
                 && !ui.ctx().egui_wants_keyboard_input()
             {
                 self.plan.objects.rotation = (self.plan.objects.rotation + 90.0).rem_euclid(360.0);
@@ -5337,6 +5329,8 @@ impl eframe::App for CreaBimApp {
             0.0
         });
         self.step_prompt(&ctx);
+        self.workspace_prompt(&ctx);
+        self.area_keys(&ctx);
         self.shortcuts(&ctx);
         self.keep_edit_mode();
         self.refresh_spotlight();
@@ -5365,6 +5359,8 @@ impl eframe::App for CreaBimApp {
         }
 
         let web = self.web_panels(ui, frame);
+        // the panes say again this frame what the one under the pointer does
+        self.plan.hint = None;
         self.rect_3d = None;
         self.rect_2d = None;
         self.plan.web_menus = web;
@@ -5433,28 +5429,7 @@ impl eframe::App for CreaBimApp {
             self.mat.area = Some(full);
             let plan_bg = Color32::from_rgb(252, 252, 250);
             match self.placement {
-                PlanPlacement::Docked if self.shell.settings.single_view => {
-                    // one view at a time, with tabs to switch
-                    let tabs =
-                        Rect::from_min_max(full.min, egui::pos2(full.max.x, full.min.y + 30.0));
-                    let body = Rect::from_min_max(egui::pos2(full.min.x, tabs.max.y), full.max);
-                    self.view_tabs(ui, tabs);
-                    if self.shell.settings.single_shows_3d {
-                        self.show_3d(ui, body, frame);
-                    } else {
-                        self.show_plan(ui, body, plan_bg);
-                    }
-                }
-                PlanPlacement::Docked => {
-                    let (first, second) = split_panes(&mut self.layout, ui, full);
-                    let (a, b) = if self.layout.swapped {
-                        (second, first)
-                    } else {
-                        (first, second)
-                    };
-                    self.show_3d(ui, a, frame);
-                    self.show_plan(ui, b, plan_bg);
-                }
+                PlanPlacement::Docked => self.show_areas(ui, full, frame, plan_bg),
                 PlanPlacement::Overlay => {
                     self.show_3d(ui, full, frame);
                     let inset = Rect::from_min_size(
@@ -5549,81 +5524,6 @@ impl eframe::App for CreaBimApp {
             }
         }
     }
-}
-
-/// Split `full` in two at the divider and let the divider be dragged.
-/// Double-clicking it evens the two halves out again.
-fn split_panes(l: &mut PaneLayout, ui: &mut egui::Ui, full: Rect) -> (Rect, Rect) {
-    let gap = 3.0;
-    let along = |r: Rect| if l.stacked { r.height() } else { r.width() };
-    let size = along(full);
-    let at = |f: f32| {
-        if l.stacked {
-            full.min.y + f * size
-        } else {
-            full.min.x + f * size
-        }
-    };
-    let cut = at(l.split);
-    let handle = if l.stacked {
-        Rect::from_min_max(
-            egui::pos2(full.min.x, cut - gap),
-            egui::pos2(full.max.x, cut + gap),
-        )
-    } else {
-        Rect::from_min_max(
-            egui::pos2(cut - gap, full.min.y),
-            egui::pos2(cut + gap, full.max.y),
-        )
-    };
-    let r = ui.interact(
-        handle,
-        ui.id().with("pane_divider"),
-        Sense::click_and_drag(),
-    );
-    if r.hovered() || r.dragged() {
-        ui.ctx().set_cursor_icon(if l.stacked {
-            egui::CursorIcon::ResizeVertical
-        } else {
-            egui::CursorIcon::ResizeHorizontal
-        });
-    }
-    if r.dragged() {
-        let d = if l.stacked {
-            r.drag_delta().y
-        } else {
-            r.drag_delta().x
-        };
-        l.split = (l.split + d / size).clamp(0.15, 0.85);
-    }
-    if r.double_clicked() {
-        l.split = 0.5;
-    }
-    let cut = at(l.split);
-    let color = if r.hovered() || r.dragged() {
-        Color32::from_rgb(90, 140, 220)
-    } else {
-        Color32::from_gray(200)
-    };
-    let (a, b) = if l.stacked {
-        (
-            Rect::from_min_max(full.min, egui::pos2(full.max.x, cut - gap)),
-            Rect::from_min_max(egui::pos2(full.min.x, cut + gap), full.max),
-        )
-    } else {
-        (
-            Rect::from_min_max(full.min, egui::pos2(cut - gap, full.max.y)),
-            Rect::from_min_max(egui::pos2(cut + gap, full.min.y), full.max),
-        )
-    };
-    let line = if l.stacked {
-        [egui::pos2(full.min.x, cut), egui::pos2(full.max.x, cut)]
-    } else {
-        [egui::pos2(cut, full.min.y), egui::pos2(cut, full.max.y)]
-    };
-    ui.painter()
-        .line_segment(line, egui::Stroke::new(2.0, color));
-    (a, b)
 }
 
 /// The spacings the 3D ground grid offers, in metres.
