@@ -71,6 +71,20 @@ const CSS: &str = include_str!("../ui/app.css");
 const JS: &str = include_str!("../ui/app.js");
 const ICONS: &str = include_str!("../ui/icons.js");
 
+/// icons.js as name -> markup: one `"name": "markup",` per line.
+pub fn icon_markup() -> Vec<(String, String)> {
+    ICONS
+        .lines()
+        .filter(|l| l.starts_with('"'))
+        .filter_map(|l| {
+            let l = l.trim_end().trim_end_matches(',');
+            let v: serde_json::Value = serde_json::from_str(&format!("{{{l}}}")).ok()?;
+            let (k, v) = v.as_object()?.iter().next()?;
+            Some((k.clone(), v.as_str()?.to_string()))
+        })
+        .collect()
+}
+
 fn page(pane: Pane) -> String {
     // the guide's pages are in its pane from the start, for searching
     let pages = match pane {

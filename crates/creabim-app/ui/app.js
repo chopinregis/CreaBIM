@@ -120,17 +120,17 @@
     const menus = S.menus.map((m) => `<button class="menubtn ${S.popup === m.key ? "open" : ""}" data-popup="${esc(m.key)}" data-menubar="1">${esc(m.name)}</button>`).join("");
     const quick = S.quick.map((q) => q === null ? `<span class="qsep"></span>` :
       `<button class="ibtn" data-act="${esc(q.id)}" title="${esc(q.label)}${q.key ? "  (" + esc(q.key) + ")" : ""}" ${q.enabled ? "" : "disabled"}>${icon(q.icon)}</button>`).join("");
-    let tools = "";
-    let group = null;
-    for (const t of S.tools) {
-      if (group !== null && t.group !== group) tools += `<span class="vsep"></span>`;
-      group = t.group;
-      tools += `<button class="tool ${t.active ? "on" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}<span>${esc(t.label)}</span></button>`;
-    }
+    // the tabs, then Select and Align, then the tab's own buttons: icons
+    // only, the name in the tip and, for the tool in use, in the strip below
+    const tabs = (S.tabs || []).map((t) => `<button class="ttab ${t.on ? "on" : ""}" data-act="${esc(t.id)}">${esc(t.label)}</button>`).join("");
+    const tools = S.tools.map((t) =>
+      t.kind === "sep" ? `<span class="vsep"></span>` :
+      t.kind === "menu" ? `<button class="tool ${t.open ? "on" : ""}" data-popup="${esc(t.key)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}${icon("chevron-down", "tchev")}</button>` :
+      `<button class="tool ${t.active ? "on" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}</button>`).join("");
     const html =
       `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="About, updates, settings and exit"><span class="logo">${mark()}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
       `<div class="quick">${quick}</div><span class="spacer"></span><div class="doc" title="${esc(S.doc.path)}"><span class="dot"></span>${esc(S.doc.name)}</div>${S.right.map(control).join("")}</div>` +
-      `<div class="bar2"><div class="tools">${tools}</div><span class="spacer"></span></div>` +
+      `<div class="bar2"><div class="ttabs">${tabs}</div><div class="tools">${tools}</div><span class="spacer"></span></div>` +
       // the tool options strip: the tool in use and what it can be set to,
       // then the active view's own settings at the right. What doesn't fit
       // goes in a More menu at the end (the app picks what, from the

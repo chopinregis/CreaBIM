@@ -44,6 +44,9 @@ pub(super) struct Shell {
     /// The tool options strip as its page last measured it, for what goes
     /// in its More menu.
     pub bar: Option<crate::optionbar::Measure>,
+    /// The tool the tools row last showed its tab for: a tool picked by
+    /// its key, off the tab shown, brings its own tab.
+    tab_tool: Option<Tool>,
 }
 
 impl Default for Shell {
@@ -63,6 +66,7 @@ impl Default for Shell {
             ground_custom: None,
             help: Default::default(),
             bar: None,
+            tab_tool: None,
         }
     }
 }
@@ -351,6 +355,13 @@ impl CreaBimApp {
             "menu:Materials" => self.materials_menu(),
             "menu:Help" => self.help_menu(),
             "menu:Create" => self.create_menu(),
+            "tab:schedules" => schedule_items(),
+            "tab:ifc" => vec![
+                Item::new("open", "Open an IFC file…").icon("folder-open"),
+                Item::Separator,
+                Item::new("export.ifc4", "Export IFC4 (.ifc)…").icon("upload"),
+                Item::new("export.ifcx", "Export IFC5 (.ifcx, alpha)…").icon("upload"),
+            ],
             "underlay" => self.underlay_items(),
             "keeponly" => self.keep_only_items(),
             "render3d" => self.render_items(),
@@ -1157,6 +1168,12 @@ impl CreaBimApp {
                         }
                     },
                     _ => self.run_command(ctx, c, at),
+                }
+            }
+            "tab" => {
+                if let Some(i) = index.filter(|i| *i < crate::tooltabs::TABS.len()) {
+                    self.shell.settings.tools_tab = i;
+                    self.shell.settings.store();
                 }
             }
             "tool" => {
@@ -2187,15 +2204,49 @@ impl CreaBimApp {
             None => Value::Null,
         })
         .collect();
-        let tools: Vec<Value> = Tool::ALL
+        let tab = self
+            .shell
+            .settings
+            .tools_tab
+            .min(crate::tooltabs::TABS.len() - 1);
+        let tool = |t: Tool| {
+            let i = Tool::ALL.iter().position(|x| *x == t).unwrap_or(0);
+            json!({
+                "kind": "tool", "id": format!("tool:{i}"), "label": t.label(), "hint": t.hint(),
+                "icon": tool_icon(t), "active": self.plan.tool == t,
+            })
+        };
+        let mut tools: Vec<Value> = crate::tooltabs::ALWAYS.iter().map(|t| tool(*t)).collect();
+        tools.push(json!({"kind": "sep"}));
+        for e in crate::tooltabs::entries(tab) {
+            use crate::tooltabs::Entry;
+            tools.push(match e {
+                Entry::Tool(t) => tool(t),
+                Entry::Act {
+                    id,
+                    label,
+                    icon,
+                    hint,
+                } => json!({
+                    "kind": "act", "id": id, "label": label, "hint": hint, "icon": icon,
+                    "active": false,
+                }),
+                Entry::Menu {
+                    key,
+                    label,
+                    icon,
+                    hint,
+                } => json!({
+                    "kind": "menu", "key": key, "label": label, "hint": hint, "icon": icon,
+                    "open": self.popup_key().as_deref() == Some(key),
+                }),
+                Entry::Sep => json!({"kind": "sep"}),
+            });
+        }
+        let tabs: Vec<Value> = crate::tooltabs::TABS
             .iter()
             .enumerate()
-            .map(|(i, t)| {
-                json!({
-                    "id": format!("tool:{i}"), "label": t.label(), "hint": t.hint(),
-                    "icon": tool_icon(*t), "active": self.plan.tool == *t, "group": tool_group(*t),
-                })
-            })
+            .map(|(i, t)| json!({"id": format!("tab:{i}"), "label": t, "on": i == tab}))
             .collect();
         let (tool_head, tool_options, options, more) = self.option_strip(ctx);
         json!({
@@ -2223,6 +2274,7 @@ impl CreaBimApp {
                 "kind": "menu", "key": "views", "label": "", "value": self.active_view_label(),
                 "icon": "map", "big": true, "hint": "The view or sheet the 2D pane shows",
             }],
+            "tabs": tabs,
             "tools": tools,
             "tool": tool_head,
             "tool_options": tool_options,
@@ -2922,6 +2974,14 @@ impl CreaBimApp {
             .unwrap_or_default();
         for m in msgs {
             self.handle_web(&ctx, m);
+        }
+        // a tool picked off the tab shown (by its key, a menu or the
+        // palette) brings its own tab
+        if self.shell.tab_tool != Some(self.plan.tool) {
+            self.shell.tab_tool = Some(self.plan.tool);
+            if !crate::tooltabs::holds(self.shell.settings.tools_tab, self.plan.tool) {
+                self.shell.settings.tools_tab = crate::tooltabs::home_of(self.plan.tool);
+            }
         }
         if self.shell.classic {
             // just switched to the classic panels

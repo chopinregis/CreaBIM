@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **57** | **7** | **191** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 3 | 13 | 7 | 23 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S; with addendum A3) | 3 | 11 | 7 | 21 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -45,9 +45,7 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | Item | Gap | Phase | Size | Source |
 | --- | --- | --- | --- | --- |
 | 0 | The waiting branches `claude/demo-player`, `claude/starter-house-polish` and `claude/backlog` were never pushed. Their multi-select Properties edits and `creabim-app <file>` were rebuilt in Phase 1; category names still wrap mid-word in the visibility list. | 1 | S | B01 |
-| 2.1 | No Model / Annotate / View / Manage tabs, and labelled tools that wrap; "· 1 selected" isn't shown by the file name; view controls sit in the options row. (The application menu and the file name at the right landed in Phase 1.) | 2 | M | MU01-08…11 |
 | 2.6 | No view areas: the 3D view has a floating toolbar, view controls are duplicated in the options row, narrow areas squeeze their buttons, the hint line is drawn over the plan. No workspaces, no `/` isolate, Ctrl+Space or Ctrl+PgUp/PgDn. | 3 | L | MU02-02…05 |
-| 2.7 | Edit outline and Delete are text buttons at the bottom of Properties. An element action bar under the name: own actions tinted, then Duplicate, Select similar, Hide, Isolate, Frame, ⋯, Delete in red. | 2 | M | MU05 |
 | 2.10 | The tracker shows Length and Angle while a line is drawn in a plan, but Move, Rotate and Copy show no Δx / Δy in it, and slab and region edges don't use it. No temporary dimensions that drive, no padlock. | 2 (tracker), 3 (temporary dimensions) | M–L | MU09 |
 | 2.11 | Room tags: Stacked (the default) and Inline (the first tag) are drawn; the Number badge and Boxed layouts are not yet. Tags don't yet keep level in rotated views. | 2 | M | MU09 |
 | 2.12 | View markers: Classic (the default) and the first markers are drawn; the Minimal and Bold families are not yet. A single click on a bubble doesn't open its view (a double-click on the selected mark does). | 2 | M | MU09 |
@@ -363,6 +361,12 @@ Gaps reported by work that is still a pull request go here until it merges, then
 - A box selection that takes several kinds says what it took and offers *Keep only…* in the status bar (1.8).
 - Guide lines from resting on a point or edge go after six seconds unused, instead of staying until Esc (1.8).
 - Ctrl+A, H and the other letter shortcuts stay in a text field; the Catalogue window opens over the other pane, clear of where things are placed; the Materials window closes after *Assign* (1.8).
+
+**In Brief 02, Phase 2, tool tabs and the action bar (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase2](evolution/brief02-phase2)**):**
+
+- The tools row has Model, Annotate, View and Manage tabs, with Select and Align on every tab. Each tab holds its tools and the commands that go with them. A tool picked from a menu or a key brings up its own tab (2.1).
+- The tools row shows icons only, with names in tooltips. The tool in use shows its name in the options row. Nothing wraps, and nothing scrolls sideways at 1366 px (2.1). Moving the view controls out of the options row stays with 2.6.
+- An element action bar sits under the name in Properties. The element's own actions come first, tinted, then Duplicate, Select similar, Hide, Isolate and Frame, then More and a red Delete. A mixed selection shows only the actions all of it shares, and a narrow panel moves actions into More. The Edit and Delete text buttons are gone (2.7).
 
 **In Brief 02, addendum A3 (2026-11-05;** screenshots in [evolution/brief02-phase2](evolution/brief02-phase2)**):**
 

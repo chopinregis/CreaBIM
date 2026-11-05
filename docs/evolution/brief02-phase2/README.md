@@ -49,6 +49,15 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | 3.3 | Callout boxes | **Partly.** A selected callout shows, on the view it was called out from, a square on each corner of its box and a bar on each edge. Dragging one resizes the box and the detail view follows; a ringed callout (on a section) stays round. Its body moves the box with G or M, no longer the line its view was cut on. The pill shows the box's width or height as it changes. *Not yet:* the linked *Open in 3D* crop box for callouts, sections, elevations and plans. | see PR |
 | 3.4 | Fill room preview | **Done.** With the Room, Ceiling or Slab tool in *Fill room* (3), the space a click would fill is tinted and outlined under the pointer, with "Room 21.60 m² · click to add" by it (a slab's to the walls' centre lines, as it fills). Over a room that is already there it says so. Where the walls and room separators don't close the space, the gaps are drawn in red, wall end to wall end (or to the nearest face), and the pill says "Not closed: draw its outline (1, 2, 4)"; a click says the same in the status bar. | see PR |
 
+## Phase 2 items 2.1 and 2.2: tool tabs and the element action bar
+
+| Brief | What | Status | Commit |
+| --- | --- | --- | --- |
+| 2.1 | Tabs | **Done.** The tools row starts with four tabs: *Model*, *Annotate*, *View* and *Manage*. Each tab shows its own tools, plus the commands that belong with them: *Catalogue* on Model, *Annotation styles* and *Mark numbering* on Annotate, *Crop box*, *New sheet*, *New schedule ▾* and *Graphic styles* on View, and *Levels*, *Types*, *Materials*, *Style packs*, *Units* and *IFC ▾* on Manage. Select and Align stay at the left on every tab, and Move, Undo and Redo stay in the row above. The callout is on both Annotate and View. When a tool is picked from a menu, the palette or a key, and it isn't on the tab shown, its own tab comes up. The tab chosen is kept between sessions. | see PR |
+| 2.1 | Icons only | **Done.** The tools row has icons only, with each tool's name and what it does in its tooltip. The tool in use shows as a pressed icon, with its name in the options row below. Nothing wraps, and nothing scrolls sideways at 1366 px: the fullest tab, Model, ends at about 1310 px. | see PR |
+| 2.1 | View controls out of the options row | **Not started.** This goes with 2.6, where each view gets its own header. Until then the view's settings stay at the right of the options row. | |
+| 2.2 (brief 2.7) | Action bar | **Done.** A row of icon buttons sits under the element's name (and its mark) in Properties. The element's own actions come first, tinted: *Edit outline* (Enter) for anything Edit mode opens; *Flip*, *Attach top* (greyed when nothing is overhead) and *Make a type* for walls; *Flip* and *Flip hand* for doors; *Flip* for windows; *Open view* and *Flip* for sections and elevations; *Select tagged* and *Straighten leader* (greyed when the leader is straight) for tags. The common actions follow in a fixed order: *Duplicate*, *Select similar*, *Hide*, *Isolate* and *Frame*. Isolate is left out for annotation. Then come *More* (⋯) and *Delete*, set apart at the right, in red. Tooltips give each action's name and key. With several elements selected, only the actions that apply to all of them show: walls with a door keep *Flip*. When the panel is too narrow, actions move into More, the common ones first. More also holds Move, Rotate, Scale, Copy, Cut and *select similar in the project*. The right-click menu is unchanged. The old *Edit* and *Delete* text buttons are gone. | see PR |
+
 ## Addendum A3: the review of main 889c32c
 
 | A3 | What | Status | Commit |
@@ -102,6 +111,14 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | [35-callout-box-grips.png](35-callout-box-grips.png) | 3.3: Detail 2 Window's ring in Section C-C. Before, selected without grips; after, its top edge dragged ("Width 1200 → 2700": it stays round), then let go. |
 | [36-fill-room-preview.png](36-fill-room-preview.png) | 3.4: the Room tool in *Fill room* over the simple house's east room. Before, nothing until the click; after, the room it would make and its area. |
 | [37-fill-room-not-closed.png](37-fill-room-not-closed.png) | The west wall deleted: before, nothing shows why a click fails; after, the gap in red and "Not closed: draw its outline (1, 2, 4)". |
+| [38-tabs-1366.png](38-tabs-1366.png) | 2.1 at 1366 px. Before, one long row of every tool that ran off the right edge. After, each of the four tabs. |
+| [39-tabs-1600.png](39-tabs-1600.png) | The same at 1600 px. |
+| [40-tabs-1920.png](40-tabs-1920.png) | The same at 1920 px. |
+| [41-tab-menu.png](41-tab-menu.png) | The Manage tab's *IFC* button and its menu. |
+| [42-tab-follows-tool.png](42-tab-follows-tool.png) | Wall picked from the Create menu while the Manage tab showed: the Model tab comes up with it. |
+| [43-action-bar.png](43-action-bar.png) | 2.2. Before, a window's Properties with *Edit* as a text button (Delete was at the very bottom). After, the bar for a wall, a section, a tag, a room and a mixed box selection. |
+| [44-action-bar-zoom.png](44-action-bar-zoom.png) | The wall's bar at three times its size. |
+| [45-action-bar-more.png](45-action-bar-more.png) | The bar's More menu. |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 
@@ -123,7 +140,10 @@ There are no screenshots of the footing and beam heights, the click through a do
 - underlay faces and centrelines (`snaps.rs`);
 - widening about the centre or a corner jamb, and running into a join (`walls.rs`);
 - Frame all in one pane, and export then *Open the folder* (`appmenu.rs`);
-- *Keep only…* after a box (`selectsimilar.rs`).
+- *Keep only…* after a box (`selectsimilar.rs`);
+- every tool on a tab, and the tab each tool is on (`tooltabs.rs`);
+- the action bar for a wall alone and for walls with a door, and every action having an icon (`actionbar.rs`);
+- the line icons turned into strokes for the Properties panel, circles staying round (`svgicon.rs`).
 
 ## Known gaps
 
