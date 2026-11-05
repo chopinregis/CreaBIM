@@ -69,7 +69,9 @@ pub use element::{
 pub use footing::{Footing, FootingKind};
 pub use graphics::{LineWeights, PlanGraphics};
 pub use id::ElementId;
-pub use joins::{wall_joins, Gap, JoinRule, JoinWinner, WallEnds};
+pub use joins::{
+    corner_partner, wall_joins, CornerJoin, CornerPreset, Gap, JoinRule, JoinWinner, WallEnds,
+};
 pub use marks::{marks, material_of, MarkClass, MarkOrder, MarkRule, MarkRules};
 pub use members::{Beam, Column, Landing, Profile, Railing, Roof, RoofShape, Stair, StairSide};
 pub use model::Model;

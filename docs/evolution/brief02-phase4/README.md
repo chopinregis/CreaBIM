@@ -20,7 +20,7 @@ The screenshots were taken in the running app on a small L corner cut out of the
 | --- | --- | --- |
 | 1 (3.7) | Wall layer ends: grips in Layers, drag or type, a dot on edited ends, reset one or all, kept through move, stretch and retype | **Done** (below). |
 | 1 (3.7) | Slab and roof layer edges: a grip on each edge of each layer, drag or type, reset | **Done** (below). |
-| 1 (3.7) | Corner join presets | Not started. |
+| 1 (3.7) | Corner join presets: Auto, Cores lap and finishes stop, This or the other wall runs through, Mitre every layer, Not joined | **Done** (below). |
 | 1 (3.7) | *Draw by this line* on any layer boundary | Not started. |
 | 1 (3.7) | Check model warnings for gaps and overlaps; IFC parts where layers differ | Not started. |
 | 2–7 | | Not started. |
@@ -74,6 +74,6 @@ Each edit is kept on the slab or roof (`layer_edges` in the file) as a distance 
 - A slab's arc edge is moved by its corners, so its bulge keeps its ratio rather than staying parallel.
 - Adding or removing a corner of the outline renumbers its edges, and edits on edges after it move to the next edge.
 
-- A layer run on into the wall it meets overlaps that wall's layers, and the plan draws one over the other; the corner join presets (next) will decide which wins.
+- A layer run on by hand into the wall it meets overlaps that wall's layers, and the plan draws one over the other.
 - While a grip is dragged, the preview is drawn without the joins of the walls around it.
 - Grips of thin layers sit close together in plan at small scales: zoom in, or use the 3D view, where they are stepped up the end face.

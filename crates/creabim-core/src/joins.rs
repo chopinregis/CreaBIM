@@ -66,6 +66,122 @@ pub struct JoinRule {
     /// Off leaves the two overlapping as they are, each drawn whole.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub cleanup: bool,
+    /// How the layers meet where two wall ends make a corner, when
+    /// neither runs through.
+    #[serde(default, skip_serializing_if = "CornerJoin::is_auto")]
+    pub corner: CornerJoin,
+}
+
+/// How two layered walls' layers meet at a corner when neither wall runs
+/// through the other.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CornerJoin {
+    /// As the walls join by themselves: every layer meets on the mitre.
+    #[default]
+    Auto,
+    /// The finishes meet on the mitre, the cores lap: the stronger wall's
+    /// core runs on to the far face of the other's, whose core stops at
+    /// it.
+    Lap,
+    /// Every layer meets its partner on the mitre.
+    Mitre,
+}
+
+impl CornerJoin {
+    fn is_auto(&self) -> bool {
+        *self == CornerJoin::Auto
+    }
+}
+
+/// The corner join presets (3.7), as a wall's end offers them for the
+/// one wall it meets there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CornerPreset {
+    Auto,
+    CoresLap,
+    ThisRunsThrough,
+    OtherRunsThrough,
+    MitreEveryLayer,
+    NotJoined,
+}
+
+impl CornerPreset {
+    pub const ALL: [CornerPreset; 6] = [
+        CornerPreset::Auto,
+        CornerPreset::CoresLap,
+        CornerPreset::ThisRunsThrough,
+        CornerPreset::OtherRunsThrough,
+        CornerPreset::MitreEveryLayer,
+        CornerPreset::NotJoined,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            CornerPreset::Auto => "Auto",
+            CornerPreset::CoresLap => "Cores lap, finishes stop",
+            CornerPreset::ThisRunsThrough => "This wall runs through",
+            CornerPreset::OtherRunsThrough => "The other wall runs through",
+            CornerPreset::MitreEveryLayer => "Mitre every layer",
+            CornerPreset::NotJoined => "Not joined",
+        }
+    }
+
+    /// The preset rule `r` (none: automatic) makes for wall `me`.
+    pub fn of(r: Option<&JoinRule>, me: ElementId) -> CornerPreset {
+        let Some(r) = r else {
+            return CornerPreset::Auto;
+        };
+        if !r.cleanup {
+            return CornerPreset::NotJoined;
+        }
+        match r.winner {
+            JoinWinner::First if r.a == me => return CornerPreset::ThisRunsThrough,
+            JoinWinner::Second if r.b == me => return CornerPreset::ThisRunsThrough,
+            JoinWinner::First | JoinWinner::Second => return CornerPreset::OtherRunsThrough,
+            JoinWinner::Auto => {}
+        }
+        match r.corner {
+            CornerJoin::Auto => CornerPreset::Auto,
+            CornerJoin::Lap => CornerPreset::CoresLap,
+            CornerJoin::Mitre => CornerPreset::MitreEveryLayer,
+        }
+    }
+
+    /// Make rule `r` this preset, seen from wall `me`.
+    pub fn apply(self, r: &mut JoinRule, me: ElementId) {
+        r.cleanup = self != CornerPreset::NotJoined;
+        let me_first = r.a == me;
+        r.winner = match self {
+            CornerPreset::ThisRunsThrough if me_first => JoinWinner::First,
+            CornerPreset::ThisRunsThrough => JoinWinner::Second,
+            CornerPreset::OtherRunsThrough if me_first => JoinWinner::Second,
+            CornerPreset::OtherRunsThrough => JoinWinner::First,
+            _ => JoinWinner::Auto,
+        };
+        r.corner = match self {
+            CornerPreset::CoresLap => CornerJoin::Lap,
+            CornerPreset::MitreEveryLayer => CornerJoin::Mitre,
+            _ => CornerJoin::Auto,
+        };
+    }
+}
+
+/// The one wall whose end meets the start (`at_end` false) or end of
+/// wall `id` at a corner, if exactly one does.
+pub fn corner_partner(model: &Model, id: ElementId, at_end: bool) -> Option<ElementId> {
+    let walls = joinables(model);
+    let me = walls.iter().find(|j| j.id == id)?;
+    let w = me.wall;
+    let (p, other) = if at_end {
+        (w.end, w.start)
+    } else {
+        (w.start, w.end)
+    };
+    let d_in = (p - other).normalize_or_zero();
+    match meeting(&walls, me, p, d_in).as_slice() {
+        [(o, _)] => Some(o.id),
+        _ => None,
+    }
 }
 
 fn yes() -> bool {
@@ -83,6 +199,7 @@ impl JoinRule {
             b,
             winner: JoinWinner::Auto,
             cleanup: true,
+            corner: CornerJoin::Auto,
         }
     }
 
@@ -103,7 +220,7 @@ impl JoinRule {
 
     /// The same rule as an automatic join: nothing left to keep.
     pub fn is_default(&self) -> bool {
-        self.winner == JoinWinner::Auto && self.cleanup
+        self.winner == JoinWinner::Auto && self.cleanup && self.corner == CornerJoin::Auto
     }
 }
 
@@ -244,6 +361,11 @@ pub struct WallEnds {
     /// start and at the end: where it meets another layered wall's core
     /// through that wall's finishes.
     pub core: [f64; 2],
+    /// Where the core ends instead, at the start and at the end, when its
+    /// cores lap with the wall it meets: the line `u = a + b·s` along the
+    /// wall (`s` across it, left positive), on the face of the other's
+    /// core.
+    pub core_line: [Option<(f64, f64)>; 2],
     /// Where walls crossing this one run through it, along it in order.
     pub gaps: Vec<Gap>,
 }
@@ -388,12 +510,18 @@ impl WallEnds {
 
     /// The start of a layer at `s`: the end line, or past it for the core.
     pub fn layer_start(&self, wall: &Wall, s: f64, core: bool) -> f64 {
-        self.start_at(wall, s) - if core { self.core[0] } else { 0.0 }
+        match self.core_line[0] {
+            Some((a, b)) if core => a + b * s,
+            _ => self.start_at(wall, s) - if core { self.core[0] } else { 0.0 },
+        }
     }
 
     /// The far end of a layer at `s`.
     pub fn layer_end(&self, wall: &Wall, s: f64, core: bool) -> f64 {
-        self.end_at(wall, s) + if core { self.core[1] } else { 0.0 }
+        match self.core_line[1] {
+            Some((a, b)) if core => a + b * s,
+            _ => self.end_at(wall, s) + if core { self.core[1] } else { 0.0 },
+        }
     }
 
     /// The wall's footprint as a polygon (left start, left end, right end, right start).
@@ -559,7 +687,7 @@ fn joinables(model: &Model) -> Vec<Joinable<'_>> {
 
 /// Join every wall in the model with its neighbours on the same level.
 pub fn wall_joins(model: &Model) -> HashMap<ElementId, WallEnds> {
-    joins_among(&joinables(model))
+    joins_among(&joinables(model), &rules(model))
 }
 
 /// Join walls that are not in a model (all without layers), as walls of
@@ -575,10 +703,10 @@ pub fn plain_joins(walls: &[(ElementId, Wall)]) -> HashMap<ElementId, WallEnds> 
             core: None,
         })
         .collect();
-    joins_among(&walls)
+    joins_among(&walls, &[])
 }
 
-fn joins_among(walls: &[Joinable]) -> HashMap<ElementId, WallEnds> {
+fn joins_among(walls: &[Joinable], rules: &[JoinRule]) -> HashMap<ElementId, WallEnds> {
     let mut out = HashMap::new();
     for (i, me) in walls.iter().enumerate() {
         let w = me.wall;
@@ -605,6 +733,7 @@ fn joins_among(walls: &[Joinable]) -> HashMap<ElementId, WallEnds> {
                 false
             }
         });
+        let mut lapped = [None; 2];
         for at_end in [false, true] {
             if w.disallow_join[usize::from(at_end)] {
                 continue; // a square end, butting into what it meets
@@ -624,13 +753,34 @@ fn joins_among(walls: &[Joinable]) -> HashMap<ElementId, WallEnds> {
             // extensions of the faces left and right of d_in, and of the core
             let ext = match neighbours.as_slice() {
                 [(o, d_out)] => {
-                    // mitre about where the centrelines cross
                     let q = if o.wall.start.distance(p) <= o.wall.end.distance(p) {
                         o.wall.start
                     } else {
                         o.wall.end
                     };
-                    miter(p, d_in, t, q, *d_out, o.wall.thickness / 2.0).map(|(l, r)| (l, r, 0.0))
+                    let t_o = o.wall.thickness / 2.0;
+                    let rule = rules.iter().find(|r| r.joins(me.id, o.id));
+                    match rule.map(|r| (r.cleanup, r.wins(me.id, o.id), r.corner)) {
+                        // not joined: a square end, the two overlapping
+                        Some((false, _, _)) => None,
+                        // one runs through, every layer of the other stops at it
+                        Some((_, Some(through), _)) => {
+                            butt(p, d_in, t, q, *d_out, t_o, through).map(|(l, r)| (l, r, 0.0))
+                        }
+                        // the cores lap, the finishes meet on the mitre
+                        Some((_, None, CornerJoin::Lap)) => {
+                            let j = walls
+                                .iter()
+                                .position(|w| w.id == o.id)
+                                .unwrap_or(usize::MAX);
+                            let stronger = o.wall.thickness < w.thickness - 1e-9
+                                || ((o.wall.thickness - w.thickness).abs() <= 1e-9 && i < j);
+                            lapped[usize::from(at_end)] = lap(me, o, p, d_in, at_end, stronger);
+                            miter(p, d_in, t, q, *d_out, t_o).map(|(l, r)| (l, r, 0.0))
+                        }
+                        // mitre about where the centrelines cross
+                        _ => miter(p, d_in, t, q, *d_out, t_o).map(|(l, r)| (l, r, 0.0)),
+                    }
                 }
                 [] => walls
                     .iter()
@@ -664,6 +814,7 @@ fn joins_among(walls: &[Joinable]) -> HashMap<ElementId, WallEnds> {
                 ends.core[0] = core;
             }
         }
+        ends.core_line = lapped;
         out.insert(me.id, ends);
     }
     out
@@ -819,6 +970,64 @@ fn miter(
     let right = meet(p - n_in * t, d_in, q - n_out * t_other, d_out)?;
     let limit = 4.0 * t.max(t_other) + p.distance(q);
     (left.abs() < limit && right.abs() < limit).then_some((left, right))
+}
+
+/// Butt a wall arriving at `p` along `d_in` against one leaving `q` along
+/// `d_out`: how far each face runs past `p`, to the other's far face when
+/// it runs `through`, else to its near face.
+fn butt(
+    p: DVec2,
+    d_in: DVec2,
+    t: f64,
+    q: DVec2,
+    d_out: DVec2,
+    t_other: f64,
+    through: bool,
+) -> Option<(f64, f64)> {
+    if d_in.perp_dot(d_out).abs() < 1e-6 {
+        return None;
+    }
+    let (n_in, n_out) = (d_in.perp(), d_out.perp());
+    // the side of the other wall this one comes from
+    let side = if (-d_in).dot(n_out) > 0.0 { 1.0 } else { -1.0 };
+    let face = q + n_out * (t_other * if through { -side } else { side });
+    let left = meet(p + n_in * t, d_in, face, d_out)?;
+    let right = meet(p - n_in * t, d_in, face, d_out)?;
+    let limit = 4.0 * t.max(t_other) + p.distance(q);
+    (left.abs() < limit && right.abs() < limit).then_some((left, right))
+}
+
+/// Where the core of `me` ends at its start or end (`at_end`) where its
+/// core laps with `o`'s: the stronger on the far face of the other's core,
+/// the other on its near face, as a line `u = a + b·s` along `me`. `None`
+/// unless both are layered.
+fn lap(
+    me: &Joinable,
+    o: &Joinable,
+    p: DVec2,
+    d_in: DVec2,
+    at_end: bool,
+    stronger: bool,
+) -> Option<(f64, f64)> {
+    let (Some((m0, m1)), Some((c0, c1))) = (me.core, o.core) else {
+        return None;
+    };
+    let w = me.wall;
+    let n = w.direction().perp();
+    let (od, on) = (o.wall.direction(), o.wall.direction().perp());
+    // how far along d_in from p the line `s` across me meets the face of
+    // o's core at offset `c`
+    let reach = |s: f64, c: f64| meet(p + n * s, d_in, o.wall.start + on * c, od);
+    let mid = (m0 + m1) / 2.0;
+    let (x0, x1) = (reach(mid, c0)?, reach(mid, c1)?);
+    let face = if (x0 > x1) == stronger { c0 } else { c1 };
+    let u = |s: f64| reach(s, face).map(|x| if at_end { w.length() + x } else { -x });
+    let (u0, u1) = (u(m0)?, u(m1)?);
+    if (m1 - m0).abs() < 1e-9 {
+        return None;
+    }
+    let b = (u1 - u0) / (m1 - m0);
+    Some((u0 - b * m0, b))
 }
 
 /// Trim a wall that ends at `p` on the body of wall `o` back to `o`'s
@@ -1133,6 +1342,99 @@ mod tests {
             ElementKind::Wall(w) => w.clone(),
             _ => unreachable!(),
         }
+    }
+
+    /// Add a rule for the junction of `a` and `b`, preset `p` from `a`.
+    fn with_preset(m: &Model, a: ElementId, b: ElementId, p: CornerPreset) -> Model {
+        let mut doc = crate::Document::from_model(m.clone());
+        doc.commit(set_rule(doc.model(), a, b, "preset", |r| p.apply(r, a)))
+            .unwrap();
+        doc.model().clone()
+    }
+
+    #[test]
+    fn corner_presets_butt_or_free_the_corner() {
+        let (m, ids) = model(&[
+            (DVec2::ZERO, DVec2::new(4.0, 0.0)),
+            (DVec2::new(4.0, 0.0), DVec2::new(4.0, 3.0)),
+        ]);
+        assert_eq!(corner_partner(&m, ids[0], true), Some(ids[1]));
+        assert_eq!(corner_partner(&m, ids[0], false), None);
+        // the first runs through: both its faces reach the other's far face
+        let through = with_preset(&m, ids[0], ids[1], CornerPreset::ThisRunsThrough);
+        let j = wall_joins(&through);
+        assert!((j[&ids[0]].end[0] - 0.1).abs() < 1e-9 && (j[&ids[0]].end[1] - 0.1).abs() < 1e-9);
+        // and the other stops at its near face
+        assert!(
+            (j[&ids[1]].start[0] + 0.1).abs() < 1e-9 && (j[&ids[1]].start[1] + 0.1).abs() < 1e-9
+        );
+        let rule = rule_for(&through, ids[0], ids[1]).unwrap().1;
+        assert_eq!(
+            CornerPreset::of(Some(&rule), ids[0]),
+            CornerPreset::ThisRunsThrough
+        );
+        assert_eq!(
+            CornerPreset::of(Some(&rule), ids[1]),
+            CornerPreset::OtherRunsThrough
+        );
+        // seen from the other, the other way round
+        let other = with_preset(&m, ids[1], ids[0], CornerPreset::OtherRunsThrough);
+        assert_eq!(wall_joins(&other), j);
+        // not joined: square ends at the corner point
+        let free = with_preset(&m, ids[0], ids[1], CornerPreset::NotJoined);
+        let j = wall_joins(&free);
+        assert_eq!(j[&ids[0]].end, [0.0; 2]);
+        assert_eq!(j[&ids[1]].start, [0.0; 2]);
+        // and back to Auto leaves no rule
+        let back = with_preset(&free, ids[0], ids[1], CornerPreset::Auto);
+        assert!(rule_for(&back, ids[0], ids[1]).is_none());
+        assert_eq!(wall_joins(&back), wall_joins(&m));
+    }
+
+    #[test]
+    fn lapped_cores_run_one_on_and_stop_the_other() {
+        let (mut m, ids) = model(&[
+            (DVec2::ZERO, DVec2::new(4.0, 0.0)),
+            (DVec2::new(4.0, 0.0), DVec2::new(4.0, 3.0)),
+        ]);
+        // 50 finish, 100 core, 50 finish: the core from -0.05 to 0.05
+        let a = Element::new(
+            "A",
+            ElementKind::Assembly(crate::Assembly {
+                usage: Default::default(),
+                layers: vec![
+                    crate::Layer::new(LayerFunction::Finish, None, 0.05),
+                    crate::Layer::new(LayerFunction::Structure, None, 0.1),
+                    crate::Layer::new(LayerFunction::Finish, None, 0.05),
+                ],
+                description: String::new(),
+            }),
+        );
+        let aid = a.id;
+        let mut doc = crate::Document::from_model(m.clone());
+        let mut tx = Transaction::new("layers").insert(a);
+        for id in &ids {
+            let before = doc.model().get(*id).unwrap().clone();
+            let mut after = before.clone();
+            if let ElementKind::Wall(w) = &mut after.kind {
+                w.assembly = Some(aid);
+            }
+            tx = tx.replace(before, after);
+        }
+        doc.commit(tx).unwrap();
+        m = doc.model().clone();
+        let lap = with_preset(&m, ids[0], ids[1], CornerPreset::CoresLap);
+        let (plain, j) = (wall_joins(&m), wall_joins(&lap));
+        // the faces stay on the mitre
+        assert_eq!(plain[&ids[0]].end, j[&ids[0]].end);
+        // the first drawn runs its core to the far face of the other's
+        // core (0.05 past the corner), the other stops at its near face
+        let w0 = wall(&lap, ids[0]);
+        let core0 = j[&ids[0]].layer_end(&w0, 0.0, true) - w0.length();
+        assert!((core0 - 0.05).abs() < 1e-9, "{core0}");
+        let w1 = wall(&lap, ids[1]);
+        let core1 = j[&ids[1]].layer_start(&w1, 0.0, true);
+        assert!((core1 - 0.05).abs() < 1e-9, "{core1}");
     }
 
     #[test]

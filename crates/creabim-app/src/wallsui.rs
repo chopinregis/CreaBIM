@@ -488,6 +488,21 @@ impl CreaBimApp {
                     .icon("link")
                     .hint("A disallowed end stays square and free: it doesn't join, and isn't pulled along"),
             );
+            // the corner at that end, if it meets one wall there
+            let model = self.doc.model();
+            if let Some(other) = creabim_core::corner_partner(model, *id, end == 1) {
+                let rule = creabim_core::joins::rule_for(model, *id, other).map(|(_, r)| r);
+                let now = creabim_core::CornerPreset::of(rule.as_ref(), *id);
+                let presets = creabim_core::CornerPreset::ALL
+                    .iter()
+                    .enumerate()
+                    .map(|(k, p)| {
+                        Item::new(format!("wall.corner:{}:{end}:{k}", id.0), p.label())
+                            .checked(*p == now)
+                    })
+                    .collect();
+                items.push(Item::sub("Corner join", presets).icon("link"));
+            }
             items.push(
                 Item::new(format!("wall.split:{}", id.0), "Split wall here")
                     .icon("scissors")
@@ -547,6 +562,39 @@ impl CreaBimApp {
                 self.report(r, "Split the wall in two. Ctrl+Z to undo.");
             }
             "wall.detach" => self.attach_selected(false),
+            "wall.corner" => {
+                let mut parts = arg.split(':');
+                let (id, end, k) = (parts.next(), parts.next(), parts.next());
+                let id = self
+                    .doc
+                    .model()
+                    .iter()
+                    .find(|e| Some(e.id.0.to_string().as_str()) == id)
+                    .map(|e| e.id);
+                let preset = k
+                    .and_then(|k| k.parse::<usize>().ok())
+                    .and_then(|k| creabim_core::CornerPreset::ALL.get(k).copied());
+                if let (Some(id), Some(p)) = (id, preset) {
+                    let at_end = end == Some("1");
+                    match creabim_core::corner_partner(self.doc.model(), id, at_end) {
+                        Some(other) => {
+                            let tx = creabim_core::joins::set_rule(
+                                self.doc.model(),
+                                id,
+                                other,
+                                "Corner join",
+                                |r| p.apply(r, id),
+                            );
+                            let r = self.doc.commit(tx);
+                            self.report(
+                                r,
+                                format!("Corner: {}. Ctrl+Z to undo.", p.label().to_lowercase()),
+                            );
+                        }
+                        None => self.status = "That end meets no one wall.".into(),
+                    }
+                }
+            }
             "wall.join" => {
                 let (id, end) = arg.rsplit_once(':').unwrap_or((arg, "0"));
                 let id = self

@@ -105,7 +105,56 @@ impl CreaBimApp {
 
     /// The junctions set by hand for element `id`, in its Properties: each
     /// with its winner and cleanup, and a button back to automatic.
+    /// A wall's corners: for each end that meets one other wall, how the
+    /// two join there, as a preset (3.7). The walls met, so their rules
+    /// are not listed again.
+    fn corner_rows(&mut self, ui: &mut egui::Ui, id: ElementId) -> Vec<ElementId> {
+        let model = self.doc.model();
+        if !matches!(model.get(id).map(|e| &e.kind), Some(ElementKind::Wall(_))) {
+            return vec![];
+        }
+        let mut met = vec![];
+        let mut pick = None;
+        for (at_end, which) in [(false, "Start"), (true, "End")] {
+            let Some(other) = creabim_core::corner_partner(model, id, at_end) else {
+                continue;
+            };
+            met.push(other);
+            let rule = joins::rule_for(model, id, other).map(|(_, r)| r);
+            let now = creabim_core::CornerPreset::of(rule.as_ref(), id);
+            let name = model
+                .get(other)
+                .map_or("(missing)".into(), |e| e.name.clone());
+            ui.horizontal(|ui| {
+                ui.label(format!("{which}, with {name}"));
+                egui::ComboBox::from_id_salt(("corner", id, at_end))
+                    .selected_text(now.label())
+                    .show_ui(ui, |ui| {
+                        for p in creabim_core::CornerPreset::ALL {
+                            if ui.selectable_label(p == now, p.label()).clicked() && p != now {
+                                pick = Some((other, p));
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text("How the two walls' layers meet at this corner. Auto mitres every layer; Cores lap runs the stronger wall's core on past the other's; a wall running through has every layer of the other stop at it; Not joined leaves both ends square.");
+            });
+        }
+        if let Some((other, p)) = pick {
+            let tx = joins::set_rule(self.doc.model(), id, other, "Corner join", |r| {
+                p.apply(r, id)
+            });
+            let res = self.doc.commit(tx);
+            self.report(
+                res,
+                format!("Corner: {}. Ctrl+Z to undo.", p.label().to_lowercase()),
+            );
+        }
+        met
+    }
+
     pub(super) fn joins_section(&mut self, ui: &mut egui::Ui, id: ElementId) {
+        let corners = self.corner_rows(ui, id);
         let model = self.doc.model();
         let mine: Vec<(ElementId, JoinRule)> = model
             .iter()
@@ -113,7 +162,12 @@ impl CreaBimApp {
                 ElementKind::Join(r) if r.a == id || r.b == id => Some((e.id, *r)),
                 _ => None,
             })
+            // a corner's rule is set by its preset above
+            .filter(|(_, r)| !corners.iter().any(|o| r.joins(id, *o)))
             .collect();
+        if mine.is_empty() && !corners.is_empty() {
+            return;
+        }
         if mine.is_empty() {
             ui.label(
                 egui::RichText::new(
