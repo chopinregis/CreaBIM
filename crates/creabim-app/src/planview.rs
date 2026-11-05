@@ -461,6 +461,10 @@ pub struct PlanState {
     pub details: crate::detailtool::DetailSettings,
     /// A view made in a pane that the app should open: a new detail view.
     pub want_view: Option<ElementId>,
+    /// The Snap menu's Custom step being typed.
+    pub step_prompt: Option<String>,
+    /// The tracker's typed length and angle while a line is drawn (2.10).
+    pub tracker: crate::tracker::Tracker,
 }
 
 impl PlanState {
@@ -541,6 +545,8 @@ impl Default for PlanState {
             types: HashMap::new(),
             details: Default::default(),
             want_view: None,
+            step_prompt: None,
+            tracker: Default::default(),
         }
     }
 }
@@ -986,7 +992,7 @@ pub fn show(
             });
         }
     }
-    let hover_world = response.hover_pos().map(|p| match kind {
+    let pointer_world = response.hover_pos().map(|p| match kind {
         PaneKind::Plan { .. } | PaneKind::Section { .. } if !shift => {
             tool_snap.map_or(xf.to_world(p), |s| s.p.truncate())
         }
@@ -1011,13 +1017,43 @@ pub fn show(
                     DVec2::new(a.x, p.y)
                 };
             }
-            if snap_cfg.allows(SnapKind::Grid) {
-                (p / 0.05).round() * 0.05
+            if snap_cfg.allows(SnapKind::Grid) && snap_cfg.step_len() > 0.0 {
+                let s = snap_cfg.step_len();
+                (p / s).round() * s
             } else {
                 p
             }
         }
     });
+
+    // the tracker: a typed length and angle take over from the pointer
+    // while a line is being drawn, and Enter places it (2.10)
+    let line_tool = matches!(
+        tool,
+        Tool::Wall
+            | Tool::Section
+            | Tool::Elevation
+            | Tool::Grid
+            | Tool::Beam
+            | Tool::Railing
+            | Tool::Footing
+            | Tool::RoomSeparator
+    ) && matches!(kind, PaneKind::Plan { .. });
+    let mut tracker_enter = false;
+    let hover_world = match (state.pending, pointer_world, line_tool) {
+        (Some(a), Some(b), true) if response.hovered() => {
+            if state.tracker.keys(ui.ctx()) == crate::tracker::Keys::Enter {
+                tracker_enter = true;
+            }
+            Some(state.tracker.end(a, b))
+        }
+        _ => {
+            if state.pending.is_none() && !state.tracker.fields.iter().all(String::is_empty) {
+                state.tracker.clear();
+            }
+            pointer_world
+        }
+    };
 
     // the Slab tool's modes, and Line / Arc while clicking a slab outline
     if let PaneKind::Plan { level } = kind {
@@ -1738,8 +1774,31 @@ pub fn show(
         }
     }
 
+    // the tracker's pill by the pointer
+    if let (true, Some(a), Some(b), Some(at)) =
+        (line_tool, state.pending, hover_world, response.hover_pos())
+    {
+        let look = crate::handles::PillLook::of(&crate::theme::Palette::of(ui.ctx()));
+        crate::tracker::draw(
+            &painter,
+            at,
+            &state.tracker,
+            a.distance(b),
+            crate::tracker::angle_of(a, b),
+            &snap_cfg.step_label(),
+            &look,
+        );
+    }
+
     let mut error = None;
+    if let (true, Some(p), PaneKind::Plan { level }) = (tracker_enter, hover_world, kind) {
+        state.tracker.clear();
+        if let Err(e) = plan_tool(doc, level, tool, p, state, selection) {
+            error = Some(e.to_string());
+        }
+    }
     if response.clicked() {
+        state.tracker.clear();
         let p = hover_world?;
         let at = response.interact_pointer_pos().unwrap_or_default();
         let raw = xf.to_world(at);

@@ -5300,6 +5300,26 @@ impl eframe::App for CreaBimApp {
             ctx.request_repaint();
         }
         self.palette_keys(raw_input);
+        // Tab while a line is drawn moves the tracker to its next field
+        // (2.10): taken here, before egui moves the keyboard focus with it
+        if self.plan.pending.is_some() && !ctx.egui_wants_keyboard_input() {
+            let mut presses = 0;
+            raw_input.events.retain(|e| match e {
+                egui::Event::Key {
+                    key: egui::Key::Tab,
+                    modifiers,
+                    pressed,
+                    ..
+                } if modifiers.is_none() => {
+                    presses += usize::from(*pressed);
+                    false
+                }
+                _ => true,
+            });
+            for _ in 0..presses {
+                self.plan.tracker.next_field();
+            }
+        }
         // the web bars cover the top and bottom of the window: egui's own
         // drop-downs and windows keep out from under them, opening upwards
         // when there is no room below
@@ -5318,6 +5338,14 @@ impl eframe::App for CreaBimApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         crate::units::set(self.doc.model().units());
+        // the step drags round to: none while Alt is held (2.10)
+        let live = self.plan.snap.live(ctx.input(|i| i.modifiers.alt));
+        crate::snaps::set_current_step(if live.allows(crate::snaps::SnapKind::Grid) {
+            live.step_len()
+        } else {
+            0.0
+        });
+        self.step_prompt(&ctx);
         self.shortcuts(&ctx);
         self.keep_edit_mode();
         self.refresh_spotlight();
@@ -5970,4 +5998,44 @@ pub(crate) fn test_app() -> CreaBimApp {
     let mut app = CreaBimApp::blank(None);
     app.load_model(sample_house());
     app
+}
+
+impl CreaBimApp {
+    /// The Snap menu's Custom step: a small window to type it in.
+    fn step_prompt(&mut self, ctx: &egui::Context) {
+        let Some(mut text) = self.plan.step_prompt.take() else {
+            return;
+        };
+        let mut open = true;
+        let mut done = false;
+        egui::Window::new("Step")
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.label("What points and drags round to: 25 mm, 1/4\", 2 cm.");
+                let r = ui.add(egui::TextEdit::singleline(&mut text).desired_width(140.0));
+                r.request_focus();
+                let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if (enter || ui.button("Use it").clicked()) && !text.trim().is_empty() {
+                    match crate::units::parse(&text) {
+                        Some(m) if m > 0.0 && m < 100.0 => {
+                            self.plan.snap.increment = true;
+                            self.plan.snap.step_um = (m * 1e6).round() as u32;
+                            self.status = format!(
+                                "Step {}: points and drags round to it. Alt ignores it for a move.",
+                                self.plan.snap.step_label()
+                            );
+                            done = true;
+                        }
+                        _ => {
+                            self.status = format!("\"{text}\" isn't a length: try 25 mm or 1/4\".")
+                        }
+                    }
+                }
+            });
+        if open && !done && !ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.plan.step_prompt = Some(text);
+        }
+    }
 }

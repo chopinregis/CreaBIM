@@ -2529,11 +2529,24 @@ fn follow(
 ) {
     let model = doc.model().clone();
     let result = match d.kind {
-        Some(k) => apply(&model, d.edit.originals(), &d.joined, k, d.grab, now, 0.05),
+        Some(k) => apply(
+            &model,
+            d.edit.originals(),
+            &d.joined,
+            k,
+            d.grab,
+            now,
+            crate::snaps::current_step(),
+        ),
         None => {
             let delta = now - d.grab;
             let delta = if grid {
-                (delta / 0.05).round() * 0.05
+                let s = crate::snaps::current_step();
+                if s > 0.0 {
+                    (delta / s).round() * s
+                } else {
+                    delta
+                }
             } else {
                 delta
             };
@@ -2613,8 +2626,15 @@ fn follow(
             // the broken shape in red, never kept: the last good one stays
             if let (true, Some(k), Some(orig)) = (outline, d.kind, d.edit.originals().first()) {
                 let mut broken = orig.clone();
-                if crate::editmode::reshape_unchecked(&model, &mut broken, k, d.grab, now, 0.05)
-                    .is_ok()
+                if crate::editmode::reshape_unchecked(
+                    &model,
+                    &mut broken,
+                    k,
+                    d.grab,
+                    now,
+                    crate::snaps::current_step(),
+                )
+                .is_ok()
                 {
                     draw_rings(
                         &model,

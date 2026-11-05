@@ -30,6 +30,14 @@ Reference screenshots for the first part of Phase 2 of *CreaBIM brief 02: consol
 
 The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/assets/logo), with a README of their uses and rules.
 
+## Phase 2 item 2.3: the tracker and steps
+
+| Brief | What | Status | Commit |
+| --- | --- | --- | --- |
+| 2.10 (1) | Tracker | **Done for lines drawn in plans.** While a wall, beam, grid line, section, elevation, railing, footing or room separator is being drawn, a pill by the pointer shows its Length, its Angle and the step. Typing fills Length; Tab moves to Angle; Enter places the point and the chain goes on; Backspace takes a character back and Esc clears what was typed. A field left empty follows the pointer. Grip drags already took Tab or a digit for a length. *Partly:* Move, Rotate and Copy don't show Δx / Δy in the pill yet, and slab and region edges don't use it. | see PR |
+| 2.10 (2) | Steps | **Done.** The status bar has *Step* (Off, 10, 50 or 100 mm, or Custom…; in imperial projects 1/8", 1/2", 1" or 6"), and the Snap menu lists the same choices. The step in use always shows there and in the tracker. Free points and grip drags round to it, and Alt ignores it for one move. | see PR |
+| 2.14 | Live dimensions | **Partly.** Old → new and the change show while dragging (A3-3), and D hides or shows them. The distance to the nearest neighbour and the "Widened D03 by 300 mm" wording are not done yet. | see PR |
+
 ## Addendum A3: the review of main 889c32c
 
 | A3 | What | Status | Commit |
@@ -65,6 +73,8 @@ The files are in [crates/creabim-app/assets/logo](../../crates/creabim-app/asset
 | [19-no-floating-slide-grip.png](19-no-floating-slide-grip.png) | A3-4: before, a slide grip off the kitchen wall's face; after, the grips on the wall, and the wall slid 750 mm by its body, the north wall stretching with it. |
 | [20-live-value-pill.png](20-live-value-pill.png) | A3-3: dragging the wall's end. Before, nothing until release; after, "Length 5000 → 5707 +707" by the grip. |
 | [21-full-summary-in-the-status-bar.png](21-full-summary-in-the-status-bar.png) | On release, the status bar has the full summary. |
+| [22-tracker-length-and-angle.png](22-tracker-length-and-angle.png) | 2.10: drawing a wall, 3000, Tab, 90 typed into the tracker; Enter places it, 3000 mm long and straight up. |
+| [23-step-in-the-status-bar.png](23-step-in-the-status-bar.png) | *Step* in the status bar, with its choices. |
 
 There are no screenshots of the footing and beam heights, the click through a door, the guide lines fading or Ctrl+A in a text field. These are covered by tests, listed below. The machine the screenshots were taken on has no file picker, so the export's save window doesn't appear in them. It opens on Windows and on Linux desktops.
 

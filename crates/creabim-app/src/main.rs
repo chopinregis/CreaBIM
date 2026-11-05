@@ -36,6 +36,7 @@ mod slabtool;
 mod snaps;
 mod textures;
 mod theme;
+mod tracker;
 mod ui_model;
 mod units;
 mod webui;

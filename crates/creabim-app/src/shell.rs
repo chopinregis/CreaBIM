@@ -533,6 +533,7 @@ impl CreaBimApp {
                 }
                 items
             }
+            "step" => self.step_items(),
             "snaps" => {
                 let mut s = self.plan.snap;
                 let mut items = vec![
@@ -569,6 +570,11 @@ impl CreaBimApp {
                             .enabled(self.plan.snap.on),
                     );
                 }
+                items.push(Item::Separator);
+                items.push(Item::sub(
+                    format!("Step: {}", self.plan.snap.step_label()),
+                    self.step_items(),
+                ));
                 items
             }
             key => self
@@ -1052,6 +1058,30 @@ impl CreaBimApp {
         ]
     }
 
+    /// The Step choices: Off, three in the project's units, and Custom.
+    pub(super) fn step_items(&self) -> Vec<Item> {
+        let s = self.plan.snap;
+        let steps: &[u32] = if crate::units::get().is_imperial() {
+            &crate::snaps::STEPS_IMPERIAL
+        } else {
+            &crate::snaps::STEPS_METRIC
+        };
+        let mut items = vec![Item::new("step.off", "Off").checked(!s.increment)];
+        for um in steps {
+            items.push(
+                Item::new(format!("step:{um}"), crate::units::len(*um as f64 / 1e6))
+                    .checked(s.increment && s.step_um == *um),
+            );
+        }
+        let custom = s.increment && !steps.contains(&s.step_um);
+        items.push(
+            Item::new("step.custom", "Custom…")
+                .checked(custom)
+                .hint("Type any step: 25 mm, 1/4\", 2 cm"),
+        );
+        items
+    }
+
     /// Run an action picked in a menu, a toolbar or the project browser.
     pub(super) fn run_action(&mut self, ctx: &egui::Context, id: &str) {
         let (head, arg) = id.split_once(':').unwrap_or((id, ""));
@@ -1183,6 +1213,24 @@ impl CreaBimApp {
                 }
             }
             "snap.on" => self.plan.snap.on = !self.plan.snap.on,
+            "step.off" => {
+                self.plan.snap.increment = false;
+                self.status = "Step off: free points and drags go where the pointer is.".into();
+            }
+            "step.custom" => {
+                self.plan.step_prompt =
+                    Some(crate::units::len(self.plan.snap.step_um as f64 / 1e6));
+            }
+            "step" => {
+                if let Some(um) = index.and_then(|i| u32::try_from(i).ok()) {
+                    self.plan.snap.increment = true;
+                    self.plan.snap.step_um = um;
+                    self.status = format!(
+                        "Step {}: points and drags round to it. Alt ignores it for a move.",
+                        self.plan.snap.step_label()
+                    );
+                }
+            }
             "snap.all" | "snap.none" => {
                 let on = head == "snap.all";
                 self.plan
@@ -2424,6 +2472,8 @@ impl CreaBimApp {
                 {"kind": "toggle", "id": "snap.on", "label": "Snap", "on": self.plan.snap.on, "icon": "magnet",
                  "hint": "Object snaps on or off (F3). Hold Alt while picking to suspend them."},
                 {"kind": "menu", "key": "snaps", "label": "", "value": snaps, "hint": "Which snaps are on"},
+                {"kind": "menu", "key": "step", "label": "Step", "value": self.plan.snap.step_label(),
+                 "hint": "What points and drags round to. Alt while dragging ignores it for one move."},
                 {"kind": "sep"},
                 {"kind": "menu", "key": "workplane", "label": "Workplane", "value": workplane, "icon": "square-dashed",
                  "hint": "Where sketches and guides drawn in 3D go"},

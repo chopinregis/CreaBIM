@@ -48,7 +48,7 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | 2.1 | No Model / Annotate / View / Manage tabs, and labelled tools that wrap; "· 1 selected" isn't shown by the file name; view controls sit in the options row. (The application menu and the file name at the right landed in Phase 1.) | 2 | M | MU01-08…11 |
 | 2.6 | No view areas: the 3D view has a floating toolbar, view controls are duplicated in the options row, narrow areas squeeze their buttons, the hint line is drawn over the plan. No workspaces, no `/` isolate, Ctrl+Space or Ctrl+PgUp/PgDn. | 3 | L | MU02-02…05 |
 | 2.7 | Edit outline and Delete are text buttons at the bottom of Properties. An element action bar under the name: own actions tinted, then Duplicate, Select similar, Hide, Isolate, Frame, ⋯, Delete in red. | 2 | M | MU05 |
-| 2.10 | No tracker (Length / Angle with Tab while drawing or dragging), no Step in the Snap menu, no temporary dimensions that drive, no padlock. | 2 (tracker, steps), 3 (temporary dimensions) | M–L | MU09 |
+| 2.10 | The tracker shows Length and Angle while a line is drawn in a plan, but Move, Rotate and Copy show no Δx / Δy in it, and slab and region edges don't use it. No temporary dimensions that drive, no padlock. | 2 (tracker), 3 (temporary dimensions) | M–L | MU09 |
 | 2.11 | Room tags: Stacked (the default) and Inline (the first tag) are drawn; the Number badge and Boxed layouts are not yet. Tags don't yet keep level in rotated views. | 2 | M | MU09 |
 | 2.12 | View markers: Classic (the default) and the first markers are drawn; the Minimal and Bold families are not yet. A single click on a bubble doesn't open its view (a double-click on the selected mark does). | 2 | M | MU09 |
 | 2.13 | Choices have no pictures or live previews; personal settings and the style pack are not kept apart; no marker or tag designer; style packs can't be exported and imported with custom styles. | 3 | M–L | MU10 |
@@ -375,6 +375,8 @@ Gaps reported by work that is still a pull request go here until it merges, then
 - Hovering a view mark, text, tag or dimension traces the mark itself, 1.5 times heavier, instead of boxing it; selected, it is traced in the accent with its grips, and a room tag loses its dashed box. A marker's text has the extent of its paper size, so it fits its bubble (A3-5).
 - A grip's drag shows a pill by the grip with only the value changing ("Length 5000 → 5707 +707"), in that pane only, themed and legible in every theme; it fades about a second after release, the full summary goes to the status bar, and D hides or shows it (A3-3).
 - No slide grip floats off a wall: the wall's body slides it, joined walls stretching; Shift frees it, Tab types the distance; a wall too thin on screen shows its thickness grip only near its face (A3-4).
+- The tracker: while a line tool draws in a plan, Length and Angle can be typed (Tab between them, Enter places), and the step shows beside them (2.10).
+- *Step* in the status bar and the Snap menu: Off, 10, 50, 100 mm or Custom (imperial: 1/8", 1/2", 1", 6"); free points and grip drags round to it, and Alt ignores it (2.10).
 
 **In Brief 02, addendum A2 (2026-11-05):** the logo, the weaver and its nest, is the brand mark in the top bar, the window and taskbar icon, the Windows .exe icon (not yet tried on a Windows build), the lockup in About, and the full mark in New project and the README. The `.creabim` file icon comes with the installer.
 
