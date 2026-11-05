@@ -37,6 +37,7 @@ mod sketch;
 mod slabtool;
 mod snaps;
 mod svgicon;
+mod tempdims;
 mod textures;
 mod theme;
 mod tooltabs;

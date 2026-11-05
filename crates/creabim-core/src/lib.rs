@@ -20,6 +20,7 @@ pub mod footing;
 pub mod garden;
 pub mod graphics;
 pub mod grids;
+pub mod holds;
 pub mod id;
 pub mod joins;
 pub mod levels;

@@ -127,6 +127,12 @@ impl Document {
                 tx.ops.extend(extra.ops);
             }
         }
+        // held dimensions move the other end of what moved (the padlock)
+        for round in crate::holds::settle(&self.model, tx) {
+            if round.apply(&mut self.model).is_ok() {
+                tx.ops.extend(round.ops);
+            }
+        }
         Ok(())
     }
 

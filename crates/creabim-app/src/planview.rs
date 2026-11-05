@@ -467,6 +467,8 @@ pub struct PlanState {
     pub step_prompt: Option<String>,
     /// The tracker's typed length and angle while a line is drawn (2.10).
     pub tracker: crate::tracker::Tracker,
+    /// The temporary dimension being typed into (2.10 part 3).
+    pub temp: crate::tempdims::TempState,
     /// The host a host tool's click goes on, as the pointer shows it, and
     /// how many times Tab has moved past the first (A3-2).
     pub host_pick: Option<ElementId>,
@@ -558,6 +560,7 @@ impl Default for PlanState {
             details: Default::default(),
             want_view: None,
             step_prompt: None,
+            temp: Default::default(),
             tracker: Default::default(),
             host_pick: None,
             host_cycle: 0,
@@ -583,6 +586,7 @@ impl PlanState {
         self.rested.1.clear();
         self.align.clear();
         self.details.path.clear();
+        self.temp = Default::default();
     }
 
     /// Is a tool part way through, with clicks to undo?
@@ -645,6 +649,7 @@ impl PlanState {
             || self.sketch.is_some()
             || self.modal.is_some()
             || !self.details.path.is_empty()
+            || self.temp.editing.is_some()
     }
 }
 
@@ -1180,6 +1185,32 @@ pub fn show(
         PaneKind::Section { start, end } => Some(Space::Section { start, end }),
         PaneKind::Axonometric | PaneKind::Schedule => None,
     };
+    // temporary dimensions of the one element selected: click a value
+    // and type, or click its padlock (2.10 part 3)
+    if let (PaneKind::Plan { level }, Tool::Select) = (kind, tool) {
+        let quiet = state.modal.is_some()
+            || state.grip.is_some()
+            || state.edit.is_some()
+            || state.anno_drag.is_some()
+            || state.boxsel.is_some()
+            || response.dragged();
+        if let Some(r) = crate::tempdims::interact(
+            ui,
+            doc,
+            view,
+            level,
+            &xf,
+            &painter,
+            &response,
+            &mut state.temp,
+            selection,
+            &mut state.status,
+            &mut state.hint,
+            quiet,
+        ) {
+            return r;
+        }
+    }
     if let Some(space) = space {
         let to_model = |pos: Pos2, _axis: Option<creabim_core::Axis>, pivot: DVec3| {
             Some(pane_to_model(space, xf.to_world(pos), pivot.z))
