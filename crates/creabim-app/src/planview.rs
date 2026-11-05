@@ -210,7 +210,7 @@ impl Tool {
             Tool::Roof => "Draw the roof's outline like a slab (1–4: Polygon, Rectangle, Fill room, From sketch). Pick Flat, Mono-pitch, Gable or Hip in the bar first.",
             Tool::Stair => "Click where the stair starts, then click the way it climbs. It rises to the next level in equal risers.",
             Tool::Railing => "Click inside a stair to rail both its sides, or click the points of a path; click the last point again to finish.",
-            Tool::Footing => "Strip: click a wall to put a strip footing under it, or click two points for one on its own. Pad: click a column to put a pad under it, or click anywhere for one on its own. Keep clicking for more, or drag a box over walls or columns for all of them at once. Pick Strip or Pad, and the size, in the top bar.",
+            Tool::Footing => "Showing footings while the tool is on. Strip: click a wall to put a strip footing under it, or click two points for one on its own. Pad: click a column to put a pad under it, or click anywhere for one on its own. Keep clicking for more, or drag a box over walls or columns for all of them at once. Pick Strip or Pad, and the size, in the top bar.",
             Tool::Level => "In a section or elevation, click where the level line starts (its height), then where it ends; its floor plan is made with it. In other views the Levels window opens to add, rename and move levels.",
             Tool::Align => "Click a reference line (a wall face, slab edge, guide or grid line), then the edge of what to align: it turns parallel and moves flush. In Extend mode a wall, beam or grid line end stretches to the reference instead; in Stretch mode the face moves and the rest stays. Centre lines (dashed purple) can be picked too, both ways. In 3D, click a face, edge, corner, centre line or grid line, then a face.",
             Tool::Object => "Click to place the object picked in the Catalogue window. Sinks, WCs, kitchen units, beds and sofas back onto the nearest wall; Space turns the next one a quarter.",
@@ -465,6 +465,13 @@ pub struct PlanState {
     pub step_prompt: Option<String>,
     /// The tracker's typed length and angle while a line is drawn (2.10).
     pub tracker: crate::tracker::Tracker,
+    /// The host a host tool's click goes on, as the pointer shows it, and
+    /// how many times Tab has moved past the first (A3-2).
+    pub host_pick: Option<ElementId>,
+    pub host_cycle: usize,
+    /// A footing was just placed on a host: the status bar offers the
+    /// Foundation plan.
+    pub footing_placed: bool,
 }
 
 impl PlanState {
@@ -547,6 +554,9 @@ impl Default for PlanState {
             want_view: None,
             step_prompt: None,
             tracker: Default::default(),
+            host_pick: None,
+            host_cycle: 0,
+            footing_placed: false,
         }
     }
 }
@@ -796,6 +806,19 @@ pub fn show(
             draw_item(&painter, &xf, item, selected, mm);
         }
     }
+    // footings: an ordinary plan doesn't show them, but while the Footing
+    // tool is on it shows its level's, and a selected one always shows
+    // (A3-1)
+    if let PaneKind::Plan { level } = kind {
+        draw_footings(
+            &painter,
+            &xf,
+            doc.model(),
+            level,
+            tool == Tool::Footing,
+            selection,
+        );
+    }
     // a selected mark is traced in the accent, as a hover traces it
     for item in plan.items.iter().filter(|it| is_mark(it)) {
         if selection.contains(item.id()) && !ghost {
@@ -927,18 +950,37 @@ pub fn show(
         let shape: Vec<DVec3> = shape.iter().map(|p| p.extend(0.0)).collect();
         snaps::track_points(&shape, &rested)
     };
-    let tracked = response.hover_pos().and_then(|p| {
-        let snapper = &state.snaps.get(&view)?.2;
-        snapper.snap_guided(
-            &snap_cfg,
-            p,
-            &pane_project,
-            drawing_from,
-            &track,
-            &guides,
-            Some(xf.to_world(p).extend(0.0)),
-        )
-    });
+    // a host tool's host under the pointer wins over snaps and guides
+    // before the first click; Tab goes through overlapping hosts (A3-2)
+    let host_hits: Vec<ElementId> = match (kind, response.hover_pos()) {
+        (PaneKind::Plan { level }, Some(p)) if crate::memberstool::hosted(tool) => {
+            crate::memberstool::hosts_at(doc.model(), level, tool, state, xf.to_world(p))
+        }
+        _ => vec![],
+    };
+    let host = (!host_hits.is_empty()).then(|| host_hits[state.host_cycle % host_hits.len()]);
+    if response.hovered() {
+        state.host_pick = host;
+        if host_hits.len() < 2 {
+            state.host_cycle = 0;
+        }
+    }
+    let guides = if host.is_some() { vec![] } else { guides };
+    let tracked = response
+        .hover_pos()
+        .filter(|_| host.is_none())
+        .and_then(|p| {
+            let snapper = &state.snaps.get(&view)?.2;
+            snapper.snap_guided(
+                &snap_cfg,
+                p,
+                &pane_project,
+                drawing_from,
+                &track,
+                &guides,
+                Some(xf.to_world(p).extend(0.0)),
+            )
+        });
     let tool_snap = tracked.as_ref().map(|t| t.snap);
     let tool_align = tracked.as_ref().and_then(|t| t.align);
     let now = ui.input(|i| i.time);
@@ -954,6 +996,7 @@ pub fn show(
             && !ui.ctx().egui_wants_keyboard_input()
             && ui.input(|i| i.key_pressed(egui::Key::Q) && !i.modifiers.command);
         click_is_not_a_rest(state, tool, response.clicked(), under, now);
+        let under = under.filter(|_| host.is_none());
         if let Some(msg) = rest_reference(state, view, under, now, q) {
             state.status = Some(msg);
         }
@@ -972,7 +1015,7 @@ pub fn show(
     if guided {
         // the references, and their guides faintly; those a snap follows
         // are drawn again with it
-        if let Some(refs) = state.refs.get(&view) {
+        if let Some(refs) = state.refs.get(&view).filter(|_| host.is_none()) {
             snaps::draw_references(&painter, &pane_project, refs);
         }
         snaps::draw_guides(&painter, &pane_project, &guides, &[]);
@@ -1774,6 +1817,19 @@ pub fn show(
         }
     }
 
+    // the host a click would go on, and what it would make there
+    if let (Some(h), Some(at)) = (host, response.hover_pos()) {
+        if hovered != Some(h) {
+            draw_hover(&painter, &xf, &plan.items, h, mm);
+        }
+        let mut text = crate::memberstool::host_preview(doc.model(), state, tool, h);
+        if host_hits.len() > 1 {
+            let i = state.host_cycle % host_hits.len();
+            text += &format!("   {}/{} · Tab", i + 1, host_hits.len());
+        }
+        let look = crate::handles::PillLook::of(&crate::theme::Palette::of(ui.ctx()));
+        crate::handles::plain_pill(&painter, at + Vec2::new(16.0, 18.0), &text, &look);
+    }
     // the tracker's pill by the pointer
     if let (true, Some(a), Some(b), Some(at)) =
         (line_tool, state.pending, hover_world, response.hover_pos())
@@ -3778,6 +3834,42 @@ fn draw_item_xray(
     }
 }
 
+/// Footings over a plan of `level`, dashed with a light tint in the
+/// accent: all of the level's while the Footing tool is on (`working`),
+/// and any selected one at all times, even below the view's range.
+pub fn draw_footings(
+    painter: &egui::Painter,
+    xf: &Xf,
+    model: &creabim_core::Model,
+    level: ElementId,
+    working: bool,
+    selection: &Selection,
+) {
+    let accent = ACCENT_SELECTED;
+    let strips = creabim_core::footing::strip_outlines(model);
+    for e in model.iter() {
+        let ElementKind::Footing(f) = &e.kind else {
+            continue;
+        };
+        let selected = selection.contains(e.id);
+        if !(selected || working && f.plan_level(model) == level) {
+            continue;
+        }
+        let outlines = match f.kind {
+            creabim_core::FootingKind::Strip => strips.get(&e.id).cloned().unwrap_or_default(),
+            creabim_core::FootingKind::Pad => vec![f.pad_outline(model)],
+        };
+        let tint = accent.gamma_multiply(if selected { 0.22 } else { 0.12 });
+        let stroke = Stroke::new(if selected { 1.8 } else { 1.2 }, accent);
+        for o in outlines.iter().filter(|o| o.len() > 2) {
+            fill_polygon(painter, xf, o, tint);
+            let mut pts: Vec<Pos2> = o.iter().map(|p| xf.to_screen(*p)).collect();
+            pts.push(pts[0]);
+            painter.extend(egui::Shape::dashed_line(&pts, stroke, 6.0, 4.0));
+        }
+    }
+}
+
 /// The selection's colour in a pane: what selected linework is drawn in.
 pub const ACCENT_SELECTED: Color32 = Color32::from_rgb(230, 120, 30);
 
@@ -4924,11 +5016,15 @@ fn place_opening(
     selection: &mut Selection,
 ) -> Result<(), creabim_core::ModelError> {
     let mut best: Option<(f64, ElementId, f64, f64)> = None;
+    // the wall the pointer showed wins (Tab may have moved past the first)
+    let shown = state
+        .host_pick
+        .filter(|h| crate::memberstool::walls_at(doc.model(), level, p).contains(h));
     for e in doc.model().iter() {
         let ElementKind::Wall(w) = &e.kind else {
             continue;
         };
-        if w.level != level {
+        if w.level != level || shown.is_some_and(|h| h != e.id) {
             continue;
         }
         let d = segment_distance(p, w.start, w.end);

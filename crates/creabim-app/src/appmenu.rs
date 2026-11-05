@@ -332,6 +332,45 @@ mod tests {
     }
 
     #[test]
+    fn a_placed_footing_offers_the_foundation_plan_and_makes_one_if_need_be() {
+        let mut app = test_app();
+        assert!(crate::memberstool::foundation_plan(app.doc.model()).is_none());
+        let placed = |app: &mut CreaBimApp| {
+            app.plan.footing_placed = true;
+            app.status = "Strip footing placed under GF East. Ctrl+Z to undo.".into();
+        };
+        let offered = |app: &CreaBimApp| {
+            app.status_state()["controls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["id"] == "footing.foundation")
+                .map(|c| c["label"].as_str().unwrap().to_string())
+        };
+        // without one, it is made: 600 below the lowest level, the floor
+        // above as its underlay, and opened
+        placed(&mut app);
+        assert_eq!(offered(&app).as_deref(), Some("Make a Foundation plan"));
+        app.show_foundation_plan();
+        let made = crate::memberstool::foundation_plan(app.doc.model()).unwrap();
+        assert_eq!(app.active_view, Some(made));
+        let ElementKind::View(v) = &app.doc.model().get(made).unwrap().kind else {
+            panic!()
+        };
+        assert_eq!(v.underlay, creabim_core::Underlay::Above);
+        // once there is one, it is shown
+        app.active_view = None;
+        placed(&mut app);
+        assert_eq!(offered(&app).as_deref(), Some("Show in Foundation plan"));
+        app.show_foundation_plan();
+        assert_eq!(app.active_view, Some(made));
+        // and the button goes once the bar says something else
+        placed(&mut app);
+        app.status = "Moved.".into();
+        assert!(offered(&app).is_none());
+    }
+
+    #[test]
     fn frame_all_reframes_only_the_pane_it_is_asked_in() {
         let mut app = test_app();
         let (a, b) = (ElementId::new(), ElementId::new());

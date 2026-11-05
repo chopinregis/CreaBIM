@@ -270,9 +270,13 @@ fn place_footing(
     use creabim_core::{Footing, FootingKind};
     let model = doc.model();
     let kind = footing_kind(model, state);
+    // the host the pointer showed (Tab may have moved past the first)
+    let shown = state
+        .host_pick
+        .filter(|h| hosts_at(model, level, Tool::Footing, state, p).contains(h));
     let host = match kind {
-        FootingKind::Strip if state.pending.is_none() => wall_at(model, level, p),
-        FootingKind::Pad => column_at(model, level, p),
+        FootingKind::Strip if state.pending.is_none() => shown.or_else(|| wall_at(model, level, p)),
+        FootingKind::Pad => shown.or_else(|| column_at(model, level, p)),
         FootingKind::Strip => None,
     };
     if let Some(h) = host {
@@ -285,10 +289,15 @@ fn place_footing(
                 *e = sized_footing(model, state, f.clone());
             }
         });
-        state.status = Some(match kind {
-            FootingKind::Strip => "Strip footing placed under the wall: it follows the wall, and meets the footings of walls joined to it. Ctrl+Z to undo.".into(),
-            FootingKind::Pad => "Pad footing placed under the column: it moves with it. Ctrl+Z to undo.".into(),
-        });
+        let name = model.get(h).map_or(String::new(), |e| e.name.clone());
+        state.status = Some(format!(
+            "{} footing placed under {name}. Ctrl+Z to undo.",
+            match kind {
+                FootingKind::Strip => "Strip",
+                FootingKind::Pad => "Pad",
+            }
+        ));
+        state.footing_placed = true;
         if let Some(id) = ids.first() {
             selection.only(*id);
         }
@@ -325,15 +334,119 @@ fn place_footing(
 
 /// The wall on `level` under `p` (on it, or within a few centimetres).
 pub fn wall_at(model: &Model, level: ElementId, p: DVec2) -> Option<ElementId> {
+    walls_at(model, level, p).first().copied()
+}
+
+/// Every wall on `level` under `p`, nearest its centre first: across the
+/// wall's whole thickness about its centreline (`start` and `end`), and a
+/// few centimetres round it, whatever line it was drawn on.
+pub fn walls_at(model: &Model, level: ElementId, p: DVec2) -> Vec<ElementId> {
+    let mut hits: Vec<(f64, ElementId)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Wall(w) if w.level == level && w.curtain.is_none() => {
+                let d = w.direction();
+                let u = (p - w.start).dot(d);
+                let s = (p - w.start).perp_dot(d).abs();
+                (u >= -0.05 && u <= w.length() + 0.05 && s <= w.thickness / 2.0 + 0.05)
+                    .then_some((s, e.id))
+            }
+            _ => None,
+        })
+        .collect();
+    hits.sort_by(|a, b| a.0.total_cmp(&b.0));
+    hits.into_iter().map(|(_, id)| id).collect()
+}
+
+/// The project's foundation plan: a plan view whose name says Foundation.
+pub fn foundation_plan(model: &Model) -> Option<ElementId> {
     model.iter().find_map(|e| match &e.kind {
-        ElementKind::Wall(w) if w.level == level && w.curtain.is_none() => {
-            let d = w.direction();
-            let u = (p - w.start).dot(d);
-            let s = (p - w.start).perp_dot(d).abs();
-            (u >= -0.05 && u <= w.length() + 0.05 && s <= w.thickness / 2.0 + 0.05).then_some(e.id)
+        ElementKind::View(v)
+            if matches!(v.kind, creabim_core::ViewKind::Plan { .. })
+                && e.name.to_lowercase().contains("foundation") =>
+        {
+            Some(e.id)
         }
         _ => None,
     })
+}
+
+/// Does `tool` go on a host it is clicked onto (a footing under a wall or
+/// column, a door or window in a wall)?
+pub fn hosted(tool: Tool) -> bool {
+    matches!(
+        tool,
+        Tool::Footing | Tool::Door | Tool::Window | Tool::Opening
+    )
+}
+
+/// The hosts `tool` could go on at `p`, best first, before its first
+/// click: these win over snaps (A3-2). None once a free strip has its
+/// first point.
+pub fn hosts_at(
+    model: &Model,
+    level: ElementId,
+    tool: Tool,
+    state: &PlanState,
+    p: DVec2,
+) -> Vec<ElementId> {
+    use creabim_core::FootingKind;
+    if state.pending.is_some() {
+        return vec![];
+    }
+    match tool {
+        Tool::Footing => match footing_kind(model, state) {
+            FootingKind::Strip => walls_at(model, level, p),
+            FootingKind::Pad => column_at(model, level, p).into_iter().collect(),
+        },
+        Tool::Door | Tool::Window | Tool::Opening => walls_at(model, level, p),
+        _ => vec![],
+    }
+}
+
+/// What a click would do on `host`, as the preview by the pointer says it:
+/// "Strip 600 × 300 under W12", "Door in W12".
+pub fn host_preview(model: &Model, state: &PlanState, tool: Tool, host: ElementId) -> String {
+    let name = model.get(host).map_or(String::new(), |e| e.name.clone());
+    match tool {
+        Tool::Footing => {
+            let kind = footing_kind(model, state);
+            let mut f = match kind {
+                creabim_core::FootingKind::Strip => {
+                    creabim_core::Footing::strip(ElementId::NIL, DVec2::ZERO, DVec2::X)
+                }
+                creabim_core::FootingKind::Pad => {
+                    creabim_core::Footing::pad(ElementId::NIL, DVec2::ZERO)
+                }
+            };
+            f.host = Some(host);
+            if let Some(ElementKind::Wall(w)) = model.get(host).map(|e| &e.kind) {
+                f.width = w.thickness;
+            }
+            let ElementKind::Footing(f) = sized_footing(model, state, f).kind else {
+                return name;
+            };
+            let mm = |v: f64| crate::units::len(v).trim_end_matches(" mm").to_string();
+            let taken = !creabim_core::footing::footings_under(model, host).is_empty();
+            if taken {
+                return format!("{name} already has a footing");
+            }
+            match kind {
+                creabim_core::FootingKind::Strip => {
+                    format!("Strip {} × {} under {name}", mm(f.width), mm(f.thickness))
+                }
+                creabim_core::FootingKind::Pad => format!(
+                    "Pad {} × {} × {} under {name}",
+                    mm(f.width),
+                    mm(f.length),
+                    mm(f.thickness)
+                ),
+            }
+        }
+        Tool::Door => format!("Door in {name}"),
+        Tool::Window => format!("Window in {name}"),
+        _ => format!("Opening in {name}"),
+    }
 }
 
 /// The column standing on `level` under `p`.
@@ -1234,6 +1347,63 @@ fn roof_glyph(p: &egui::Painter, r: egui::Rect, st: egui::Stroke, s: RoofShape) 
 mod tests {
     use super::*;
     use creabim_core::sample::sample_house;
+
+    #[test]
+    fn a_wall_is_hit_across_its_whole_thickness_whatever_its_location_line() {
+        let (doc, level, _, _) = setup();
+        let m = doc.model();
+        // the starter house's walls are drawn on several location lines
+        let walls: Vec<_> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.level == level && w.curtain.is_none() => {
+                    Some((e.id, w.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(!walls.is_empty());
+        for (id, w) in walls {
+            let n = w.direction().perp();
+            let mid = (w.start + w.end) / 2.0;
+            for s in [-0.45, 0.0, 0.45] {
+                let p = mid + n * s * w.thickness;
+                assert!(
+                    walls_at(m, level, p).contains(&id),
+                    "{s} of its thickness off the centre"
+                );
+            }
+            assert!(!walls_at(m, level, mid + n * (w.thickness / 2.0 + 0.2)).contains(&id));
+        }
+    }
+
+    #[test]
+    fn a_host_tool_finds_its_host_before_the_first_click_only() {
+        let (doc, level, mut state, _) = setup();
+        let m = doc.model();
+        let (id, w) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) if w.level == level && w.curtain.is_none() => {
+                    Some((e.id, w.clone()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let p = (w.start + w.end) / 2.0;
+        for tool in [Tool::Footing, Tool::Door, Tool::Window] {
+            assert_eq!(
+                hosts_at(m, level, tool, &state, p).first(),
+                Some(&id),
+                "{tool:?}"
+            );
+        }
+        assert!(host_preview(m, &state, Tool::Footing, id).contains("under"));
+        // a free strip with its first point snaps as usual
+        state.pending = Some(DVec2::ZERO);
+        assert!(hosts_at(m, level, Tool::Footing, &state, p).is_empty());
+        assert!(!hosted(Tool::Wall));
+    }
 
     fn setup() -> (Document, ElementId, PlanState, Selection) {
         let doc = Document::from_model(sample_house());

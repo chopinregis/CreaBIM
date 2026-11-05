@@ -1455,6 +1455,27 @@ fn draw_plus(painter: &Painter, c: Pos2, state: GripState, look: &GripLook) {
     painter.line_segment([c - Vec2::Y * (r - 2.5), c + Vec2::Y * (r - 2.5)], s);
 }
 
+/// A pill with its top-left corner at `at`, in a pill's look: a hint by
+/// the pointer.
+pub fn plain_pill(painter: &Painter, at: Pos2, text: &str, p: &PillLook) {
+    let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(11.5), p.text);
+    let size = galley.size() + Vec2::new(14.0, 6.0);
+    let mut rect = Rect::from_min_size(at, size);
+    let clip = painter.clip_rect().shrink(4.0);
+    rect = rect.translate(Vec2::new(
+        (clip.right() - rect.right()).min(0.0),
+        (clip.bottom() - rect.bottom()).min(0.0),
+    ));
+    painter.rect(
+        rect,
+        6.0,
+        p.ground,
+        Stroke::new(1.0, p.line),
+        egui::StrokeKind::Inside,
+    );
+    painter.galley(rect.min + Vec2::new(7.0, 3.0), galley, p.text);
+}
+
 /// A small pill centred under `at`: `text` in the theme's text colour,
 /// then `number` in the accent.
 fn pill(painter: &Painter, at: Pos2, text: &str, look: &GripLook, alpha: f32) {

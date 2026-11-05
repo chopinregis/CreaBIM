@@ -1082,6 +1082,44 @@ impl CreaBimApp {
         items
     }
 
+    /// Open the Foundation plan, or make one first: a level 600 mm below the
+    /// lowest, its plan showing the level above as underlay (A3-1).
+    pub(super) fn show_foundation_plan(&mut self) {
+        self.plan.footing_placed = false;
+        if let Some(v) = crate::memberstool::foundation_plan(self.doc.model()) {
+            self.active_view = Some(v);
+            self.status = "Foundation plan: the footings, under the floor above.".into();
+            return;
+        }
+        let lowest = creabim_core::levels::sorted(self.doc.model())
+            .first()
+            .map_or(0.0, |(_, _, l)| l.elevation);
+        let level = Element::new(
+            "Foundation",
+            ElementKind::Level(creabim_core::Level {
+                elevation: lowest - 0.6,
+                height: 0.6,
+            }),
+        );
+        let mut view = creabim_core::View::plan(level.id);
+        view.underlay = creabim_core::Underlay::Above;
+        let view = Element::new("Foundation plan", ElementKind::View(view));
+        let plan = view.id;
+        let tx = creabim_core::Transaction::new("Make a Foundation plan")
+            .insert(level)
+            .insert(view);
+        match self.doc.commit(tx) {
+            Ok(()) => {
+                self.active_view = Some(plan);
+                self.status = format!(
+                    "Made a Foundation plan at {}, with the floor above as underlay.",
+                    crate::units::elevation(lowest - 0.6)
+                );
+            }
+            Err(e) => self.status = format!("Couldn't make a Foundation plan: {e}"),
+        }
+    }
+
     /// Run an action picked in a menu, a toolbar or the project browser.
     pub(super) fn run_action(&mut self, ctx: &egui::Context, id: &str) {
         let (head, arg) = id.split_once(':').unwrap_or((id, ""));
@@ -1382,6 +1420,7 @@ impl CreaBimApp {
             "export.glb" | "export.fcstd" | "export.ifcx" | "export.ifc4" | "export.pdf"
             | "export.svg" => self.export(head),
             "export.folder" => self.open_export_folder(),
+            "footing.foundation" => self.show_foundation_plan(),
             "placement" => {
                 self.placement = match index {
                     Some(1) => PlanPlacement::Window,
@@ -2490,6 +2529,18 @@ impl CreaBimApp {
             if let Some(c) = state["controls"].as_array_mut() {
                 c.insert(0, json!({"kind": "menu", "key": "keeponly", "label": "Keep only", "value": "…", "icon": "square-dashed-mouse-pointer",
                     "hint": "Keep only one kind of what the box took: the walls, the doors…"}));
+            }
+        }
+        // right after a footing went on a host, the plan that shows it
+        if self.plan.footing_placed && self.status.contains(" footing placed under ") {
+            let label = if crate::memberstool::foundation_plan(self.doc.model()).is_some() {
+                "Show in Foundation plan"
+            } else {
+                "Make a Foundation plan"
+            };
+            if let Some(c) = state["controls"].as_array_mut() {
+                c.insert(0, json!({"kind": "button", "id": "footing.foundation", "label": label, "icon": "footing",
+                    "hint": "Open the plan where footings are drawn, with the floor above as its underlay"}));
             }
         }
         // right after an export, the way to the file it wrote

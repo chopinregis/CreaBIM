@@ -5302,7 +5302,8 @@ impl eframe::App for CreaBimApp {
         self.palette_keys(raw_input);
         // Tab while a line is drawn moves the tracker to its next field
         // (2.10): taken here, before egui moves the keyboard focus with it
-        if self.plan.pending.is_some() && !ctx.egui_wants_keyboard_input() {
+        let hosting = crate::memberstool::hosted(self.plan.tool) && self.plan.pending.is_none();
+        if (self.plan.pending.is_some() || hosting) && !ctx.egui_wants_keyboard_input() {
             let mut presses = 0;
             raw_input.events.retain(|e| match e {
                 egui::Event::Key {
@@ -5317,7 +5318,13 @@ impl eframe::App for CreaBimApp {
                 _ => true,
             });
             for _ in 0..presses {
-                self.plan.tracker.next_field();
+                if hosting {
+                    // a host tool: the next host under the pointer
+                    self.plan.host_cycle += 1;
+                    ctx.request_repaint();
+                } else {
+                    self.plan.tracker.next_field();
+                }
             }
         }
         // the web bars cover the top and bottom of the window: egui's own
