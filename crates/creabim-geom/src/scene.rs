@@ -498,6 +498,18 @@ const SHARED_SCENES: usize = 4;
 static SHARED: std::sync::Mutex<Vec<(u64, std::sync::Arc<Vec<SceneItem>>)>> =
     std::sync::Mutex::new(Vec::new());
 
+/// The shared scene of `model`'s revision if it is built already, without
+/// waiting: `None` while it isn't, or while another thread holds the
+/// cache (building one).
+pub fn shared_scene_ready(model: &Model) -> Option<std::sync::Arc<Vec<SceneItem>>> {
+    let rev = model.revision();
+    let cache = SHARED.try_lock().ok()?;
+    cache
+        .iter()
+        .find(|(r, _)| *r == rev && rev != 0)
+        .map(|(_, s)| s.clone())
+}
+
 /// [`build_scene`] built once per model revision and shared: the 3D view,
 /// every section, elevation and 3D drawing of the same revision use the
 /// one scene instead of each building its own. Revisions are unique
