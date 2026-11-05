@@ -598,7 +598,7 @@ mod slab_tests {
             };
             let mut m2 = m.clone();
             for f in footings_under(&m2, id) {
-                m2.remove(f);
+                let _ = m2.remove(f);
             }
             let (tx, ids) = under(&m2, &[id], &|_| {});
             let mut doc = crate::Document::from_model(m2);

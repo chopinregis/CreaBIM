@@ -32,7 +32,7 @@ Last checked against `main` on 2026-11-04, after the open JSON import (#44) and 
 | [Interface and help](#interface-and-help) | 13 | 4 | 1 | 18 |
 | [Performance](#performance) | 0 | 2 | 0 | 2 |
 | **Total** | **127** | **58** | **7** | **192** |
-| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S) | 8 | 14 | 7 | 29 |
+| [Brief 02](#brief-02-2026-11-04) (counted on its own; M–L as M, S–M as S) | 3 | 14 | 7 | 24 |
 
 The sweep of 2026-11-04 fixed 8 gaps and found about 25 others already fixed since they were reported; see [Recently fixed](#recently-fixed).
 
@@ -45,11 +45,6 @@ Every item of *CreaBIM brief 02: consolidated*, approved by the owner on 2026-11
 | Item | Gap | Phase | Size | Source |
 | --- | --- | --- | --- | --- |
 | 0 | The waiting branches `claude/demo-player`, `claude/starter-house-polish` and `claude/backlog` were never pushed. Their multi-select Properties edits and `creabim-app <file>` were rebuilt in Phase 1; category names still wrap mid-word in the visibility list. | 1 | S | B01 |
-| 1.4 | A new strip footing's top defaults to the wall base, overlapping a ground slab; it should default to the slab's underside. *Under selected* includes partitions. A plan click on a door picks the dashed footing below. | 2 | S | RR, tour |
-| 1.5 | A new beam's top defaults to the top of the storey, inside the slab above; it should default to the slab's underside. | 2 | S | RR |
-| 1.6 | Over an underlay, snaps prefer wall faces, so traced walls land 100 mm out. Snap to faces and centrelines, and say which in the snap mark. | 2 | S | RR, tour |
-| 1.7 | Widening a door or window from Properties grows it from one jamb. It should grow about its centre or keep the edge nearest a corner. No warning when an opening crosses a wall join. | 2 | S | RR, tour |
-| 1.8 | *Frame all* clears the plan cameras too. Exports write next to the project with no dialog and no "Open the folder". Box selection doesn't offer "Keep only…" directly. Guide lines pinned by resting on a point stay until Esc twice. To check: Ctrl+A in a text field, the Catalogue window over the plan, the Materials window after *Assign material*. | 2 | S | RR |
 | 2.1 | No Model / Annotate / View / Manage tabs, and labelled tools that wrap; "· 1 selected" isn't shown by the file name; view controls sit in the options row. (The application menu and the file name at the right landed in Phase 1.) | 2 | M | MU01-08…11 |
 | 2.6 | No view areas: the 3D view has a floating toolbar, view controls are duplicated in the options row, narrow areas squeeze their buttons, the hint line is drawn over the plan. No workspaces, no `/` isolate, Ctrl+Space or Ctrl+PgUp/PgDn. | 3 | L | MU02-02…05 |
 | 2.7 | Edit outline and Delete are text buttons at the bottom of Properties. An element action bar under the name: own actions tinted, then Duplicate, Select similar, Hide, Isolate, Frame, ⋯, Delete in red. | 2 | M | MU05 |
@@ -354,6 +349,20 @@ None on 2026-11-04. Gaps reported by work that is still a pull request go here u
 ---
 
 ## Recently fixed
+
+**In Brief 02, Phase 2, first-hour fixes (`claude/project-thread-2a2eta`, 2026-11-05;** screenshots in [evolution/brief02-phase2](evolution/brief02-phase2)**):**
+
+- A new strip footing starts under the floor slab on its level instead of at the wall base, so it no longer overlaps a ground slab (1.4).
+- *Under selected* leaves out partitions thinner than 150 mm and says how many; picking only partitions still puts footings under them (1.4).
+- In a plan, what is in the cut wins a click over what is drawn dashed below it: a click in a door's opening takes the door, not the footing under the wall (1.4).
+- A new beam's top starts under the slab above instead of inside it (1.5).
+- Over an underlay, snaps take the traced walls' faces and their centrelines; the snap mark says *Underlay face* or *Underlay centreline* (1.6).
+- Widening a door or window in Properties keeps it centred, or keeps the jamb nearest a wall end within 500 mm; the status bar warns when it then runs into a wall join (1.7).
+- Home frames only the pane under the pointer, and the 3D toolbar's *Frame all* only the 3D view (1.8).
+- Exports ask where to save, starting next to the project, and the status bar then offers *Open the folder* (1.8).
+- A box selection that takes several kinds says what it took and offers *Keep only…* in the status bar (1.8).
+- Guide lines from resting on a point or edge go after six seconds unused, instead of staying until Esc (1.8).
+- Ctrl+A, H and the other letter shortcuts stay in a text field; the Catalogue window opens over the other pane, clear of where things are placed; the Materials window closes after *Assign* (1.8).
 
 **In Brief 02, Phase 1 (`claude/project-thread-2a2eta`, 2026-11-04;** screenshots in [evolution/brief02-phase1](evolution/brief02-phase1)**):**
 
