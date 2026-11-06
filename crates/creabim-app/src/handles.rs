@@ -105,6 +105,15 @@ pub enum HandleKind {
     },
     /// Push or pull a face of a mass along its normal.
     Face(usize),
+    /// Corner `i` of a mass, moved across the plan (A7-9).
+    MeshVertex(usize),
+    /// The edge between corners `a` and `b` of a mass, moved across the
+    /// plan by its middle.
+    MeshEdge(u32, u32),
+    /// A whole mass, by its base point: across the plan.
+    MeshMove,
+    /// A whole mass, up or down.
+    MeshLift,
     /// Grip `i` of a column, beam, roof, stair or railing; `free` ones
     /// move across the plan, others along a line.
     Member {
@@ -201,6 +210,9 @@ impl HandleKind {
                 | HandleKind::Vertex { .. }
                 | HandleKind::AddVertex { .. }
                 | HandleKind::CalloutCorner(_)
+                | HandleKind::MeshVertex(_)
+                | HandleKind::MeshEdge(..)
+                | HandleKind::MeshMove
         )
     }
 
@@ -232,7 +244,8 @@ impl HandleKind {
             HandleKind::Face(_) => "Push/pull",
             HandleKind::ViewDepth => "Change depth of",
             HandleKind::CropFace(_) => "Resize",
-            HandleKind::CropMove => "Move",
+            HandleKind::CropMove | HandleKind::MeshMove | HandleKind::MeshLift => "Move",
+            HandleKind::MeshVertex(_) | HandleKind::MeshEdge(..) => "Reshape",
             _ => "Stretch",
         }
     }
@@ -288,6 +301,10 @@ impl HandleKind {
             HandleKind::CalloutEdge(_) => "Callout edge: push",
             HandleKind::LayerEnd { .. } => "Layer end",
             HandleKind::LayerEdge { .. } => "Layer edge",
+            HandleKind::MeshVertex(_) => "Corner",
+            HandleKind::MeshEdge(..) => "Edge",
+            HandleKind::MeshMove => "Base point: move",
+            HandleKind::MeshLift => "Up or down",
         }
     }
 
@@ -313,6 +330,10 @@ impl HandleKind {
             HandleKind::OpeningHead => "Drag: change the height",
             HandleKind::OpeningSill => "Drag: change the sill",
             HandleKind::Face(_) => "Drag: push or pull the face",
+            HandleKind::MeshVertex(_) => "Drag: move the corner across the plan",
+            HandleKind::MeshEdge(..) => "Drag: move the edge across the plan",
+            HandleKind::MeshMove => "Drag: move the mass across the plan",
+            HandleKind::MeshLift => "Drag: move the mass up or down",
             HandleKind::ViewDepth => "Drag: change how deep it sees",
             HandleKind::CropFace(_) => "Drag: move the crop face",
             HandleKind::Rotate => "Drag: turn it about its middle (steps of 5°; Alt for any angle)",
@@ -826,16 +847,53 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             flat(HandleKind::GridEnd { end: true }, g.end.extend(0.0)),
         ],
         ElementKind::FreeMesh(m) => {
-            let Some(f) = face.filter(|f| *f < m.mesh.faces.len()) else {
-                return vec![];
-            };
             let base = m.origin + DVec3::Z * elevation(model, m.level);
-            let c = base + m.to_model(m.mesh.face_center(f));
-            let n = m.to_model(m.mesh.face_normal(f)).normalize_or_zero();
-            if n == DVec3::ZERO {
-                return vec![];
+            let face_grip = |f: usize| {
+                let c = base + m.to_model(m.mesh.face_center(f));
+                let n = m.to_model(m.mesh.face_normal(f)).normalize_or_zero();
+                (n != DVec3::ZERO).then(|| line(HandleKind::Face(f), c, n))
+            };
+            // a big mesh keeps to the face clicked; a mass of a few faces
+            // gets a push/pull arrow on every face, a grip on every corner
+            // and edge, a base point to move it and a turn grip (A7-9)
+            let small =
+                m.mesh.faces.len() <= MASS_GRIP_FACES && m.mesh.vertices.len() <= MASS_GRIP_CORNERS;
+            if !small {
+                return face
+                    .filter(|f| *f < m.mesh.faces.len())
+                    .and_then(face_grip)
+                    .into_iter()
+                    .collect();
             }
-            vec![line(HandleKind::Face(f), c, n)]
+            let mut out: Vec<Handle> = (0..m.mesh.faces.len()).filter_map(face_grip).collect();
+            let at = |i: u32| base + m.to_model(m.mesh.vertices[i as usize]);
+            for i in 0..m.mesh.vertices.len() {
+                out.push(flat(HandleKind::MeshVertex(i), at(i as u32)));
+            }
+            for (a, b) in mesh_edges(&m.mesh) {
+                out.push(flat(HandleKind::MeshEdge(a, b), (at(a) + at(b)) / 2.0));
+            }
+            out.push(flat(HandleKind::MeshMove, base));
+            let top = m
+                .mesh
+                .vertices
+                .iter()
+                .map(|v| m.to_model(*v).z)
+                .fold(0.0_f64, f64::max);
+            out.push(line(
+                HandleKind::MeshLift,
+                base + DVec3::Z * (top + 0.4),
+                DVec3::Z,
+            ));
+            let reach = m
+                .mesh
+                .vertices
+                .iter()
+                .map(|v| m.to_model(*v).truncate().length())
+                .fold(0.0_f64, f64::max);
+            let turn = (DVec2::from_angle(m.rotation.to_radians()) * (reach + 0.4)).extend(0.0);
+            out.push(flat(HandleKind::Rotate, base + turn));
+            out
         }
         ElementKind::Object(o) => {
             let z = creabim_core::objects::base_z(model, e).unwrap_or(0.0);
@@ -1043,8 +1101,27 @@ fn pivot_of(model: &Model, e: &Element) -> Option<DVec2> {
         }
         ElementKind::Column(c) => Some(c.position),
         ElementKind::Stair(s) => Some(s.start),
+        ElementKind::FreeMesh(m) => Some(m.origin.truncate()),
         _ => None,
     }
+}
+
+/// Above these, a mass shows only the clicked face's arrow: grips on
+/// every corner of a detailed mesh would bury it.
+const MASS_GRIP_FACES: usize = 24;
+const MASS_GRIP_CORNERS: usize = 48;
+
+/// Each edge of a mesh once, its corners in order.
+pub fn mesh_edges(mesh: &creabim_core::editmesh::EditMesh) -> Vec<(u32, u32)> {
+    let mut out: Vec<(u32, u32)> = mesh
+        .faces
+        .iter()
+        .flat_map(|f| (0..f.len()).map(move |i| (f[i], f[(i + 1) % f.len()])))
+        .map(|(a, b)| (a.min(b), a.max(b)))
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
 }
 
 /// An object turned `by` degrees about the middle of its footprint.
@@ -1294,6 +1371,23 @@ pub fn apply(
             let local = m.to_local(n * dist);
             m.mesh.translate_vertices(&verts, local);
         }
+        (ElementKind::FreeMesh(m), HandleKind::MeshVertex(i)) => {
+            let by = DVec3::new(round(d.x, step), round(d.y, step), 0.0);
+            let local = m.to_local(by);
+            m.mesh.translate_vertices(&[i as u32], local);
+        }
+        (ElementKind::FreeMesh(m), HandleKind::MeshEdge(a, b)) => {
+            let by = DVec3::new(round(d.x, step), round(d.y, step), 0.0);
+            let local = m.to_local(by);
+            m.mesh.translate_vertices(&[a, b], local);
+        }
+        (ElementKind::FreeMesh(m), HandleKind::MeshMove) => {
+            m.origin.x = round(m.origin.x + d.x, step);
+            m.origin.y = round(m.origin.y + d.y, step);
+        }
+        (ElementKind::FreeMesh(m), HandleKind::MeshLift) => {
+            m.origin.z = round(m.origin.z + d.z, step);
+        }
         (ElementKind::CropBox(c), HandleKind::CropFace(i)) => {
             let axis = i / 2;
             let (at, _) = c.face(i);
@@ -1435,6 +1529,7 @@ pub fn apply(
                 ElementKind::Object(_) => turn_object(model, first, by),
                 ElementKind::Column(col) => col.rotation = (col.rotation + by).rem_euclid(360.0),
                 ElementKind::Stair(s) => s.direction = (s.direction + by).rem_euclid(360.0),
+                ElementKind::FreeMesh(m) => m.rotation = (m.rotation + by).rem_euclid(360.0),
                 _ => return Err("this doesn't turn".into()),
             }
         }
@@ -4732,6 +4827,71 @@ mod tests {
             .unwrap_or_else(|| panic!("no {kind:?}"));
         let (orig, joined) = originals(m, id, kind);
         apply(m, &orig, &joined, kind, h.at, to(&h), 0.05).unwrap()[0].clone()
+    }
+
+    #[test]
+    fn a_mass_has_grips_on_every_face_corner_and_edge_and_moves_turns_by_them() {
+        let mut doc = creabim_core::Document::new();
+        let mass = creabim_core::FreeMesh::new(
+            None,
+            DVec3::new(1.0, 2.0, 0.0),
+            creabim_core::editmesh::EditMesh::cuboid(DVec3::new(2.0, 1.0, 3.0)),
+        );
+        let e = Element::new("Mass", ElementKind::FreeMesh(mass));
+        let id = e.id;
+        doc.commit(creabim_core::Transaction::new("Mass").insert(e))
+            .unwrap();
+        let m = doc.model().clone();
+        let hs = handles_in(&m, id, None, false);
+        let count = |f: fn(&HandleKind) -> bool| hs.iter().filter(|h| f(&h.kind)).count();
+        assert_eq!(
+            count(|k| matches!(k, HandleKind::Face(_))),
+            6,
+            "an arrow on every face"
+        );
+        assert_eq!(count(|k| matches!(k, HandleKind::MeshVertex(_))), 8);
+        assert_eq!(count(|k| matches!(k, HandleKind::MeshEdge(..))), 12);
+        for k in [
+            HandleKind::MeshMove,
+            HandleKind::MeshLift,
+            HandleKind::Rotate,
+        ] {
+            assert_eq!(hs.iter().filter(|h| h.kind == k).count(), 1, "{k:?}");
+        }
+        // the base point moves the whole mass, to the step
+        let out = drag_to(&m, id, HandleKind::MeshMove, |h| {
+            h.at + DVec3::new(0.52, -0.31, 0.0)
+        });
+        let ElementKind::FreeMesh(t) = &out.kind else {
+            panic!()
+        };
+        assert!(
+            t.origin.distance(DVec3::new(1.5, 1.7, 0.0)) < 1e-9,
+            "{:?}",
+            t.origin
+        );
+        // a corner moves alone
+        let out = drag_to(&m, id, HandleKind::MeshVertex(0), |h| h.at + DVec3::X * 0.5);
+        let ElementKind::FreeMesh(t) = &out.kind else {
+            panic!()
+        };
+        let ElementKind::FreeMesh(was) = &m.get(id).unwrap().kind else {
+            panic!()
+        };
+        let moved = (0..8)
+            .filter(|i| t.mesh.vertices[*i].distance(was.mesh.vertices[*i]) > 1e-9)
+            .count();
+        assert_eq!(moved, 1);
+        // the turn grip turns it about its base point
+        let out = drag_to(&m, id, HandleKind::Rotate, |h| {
+            let o = DVec2::new(1.0, 2.0);
+            (o + (h.at.truncate() - o).perp()).extend(h.at.z)
+        });
+        let ElementKind::FreeMesh(t) = &out.kind else {
+            panic!()
+        };
+        assert!((t.rotation - 90.0).abs() < 1e-6, "{}", t.rotation);
+        assert_eq!(t.origin, DVec3::new(1.0, 2.0, 0.0));
     }
 
     #[test]

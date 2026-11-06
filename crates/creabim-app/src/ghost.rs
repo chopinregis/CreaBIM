@@ -294,8 +294,17 @@ mod timing {
         st.tool = Tool::Window;
         let t = std::time::Instant::now();
         for i in 0..50 {
-            let _ = simulate(&m, level, Tool::Window, mid + DVec2::X * (i as f64 * 0.001), &st);
+            let _ = simulate(
+                &m,
+                level,
+                Tool::Window,
+                mid + DVec2::X * (i as f64 * 0.001),
+                &st,
+            );
         }
-        println!("PROBE ghost {:.2} ms each", t.elapsed().as_secs_f64() * 1000.0 / 50.0);
+        println!(
+            "PROBE ghost {:.2} ms each",
+            t.elapsed().as_secs_f64() * 1000.0 / 50.0
+        );
     }
 }
