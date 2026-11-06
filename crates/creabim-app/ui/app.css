@@ -732,8 +732,12 @@ html[data-pane="popup"] body {
   white-space: nowrap;
 }
 
-.mi .glyph { width: 16px; display: grid; place-items: center; color: var(--muted); flex: none; }
-.mi .glyph svg.i { width: 15px; height: 15px; }
+.mi .state { width: 14px; display: grid; place-items: center; color: var(--accent-text); flex: none; margin-left: 12px; }
+.mi .state svg { width: 14px; height: 14px; stroke-width: 2.4; }
+/* a toggle that is on: its icon on a soft accent square */
+.mi.on .ck { background: var(--accent-soft); border-radius: 4px; color: var(--accent-text); }
+.mi.on .ck svg.i { color: var(--accent-text); }
+.mi:hover:not(:disabled) .state, .mi.hot:not(:disabled) .state { color: var(--on-accent); }
 
 /* ---------- command palette ---------- */
 
