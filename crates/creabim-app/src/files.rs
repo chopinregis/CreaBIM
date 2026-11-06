@@ -192,6 +192,11 @@ pub struct Settings {
     pub workspaces: Vec<crate::areas::Workspace>,
     /// How grips look (brief 02, 2.13): a personal choice.
     pub grips: crate::handles::GripStyle,
+    /// Distance marks while dragging (the Grid snap menu).
+    pub distance_marks: bool,
+    /// The grid snap's and the distance marks' spacing, micrometres. Grid
+    /// snap itself always starts off.
+    pub snap_spacing_um: u32,
 }
 
 impl Default for Settings {
@@ -217,6 +222,8 @@ impl Default for Settings {
             areas: None,
             workspaces: vec![],
             grips: Default::default(),
+            distance_marks: false,
+            snap_spacing_um: 50_000,
         }
     }
 }

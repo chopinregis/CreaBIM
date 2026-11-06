@@ -238,6 +238,13 @@ impl CreaBimApp {
         app.builds.set_context(cc.egui_ctx.clone());
         app.shell.theme = theme;
         app.vis3d.categories = settings.hidden_3d.clone();
+        // grid snap always starts off; its spacing and the distance marks
+        // are kept
+        app.plan.snap.increment = false;
+        app.plan.snap.marks = settings.distance_marks;
+        if settings.snap_spacing_um > 0 {
+            app.plan.snap.step_um = settings.snap_spacing_um;
+        }
         app.areas.workspace = settings.workspace.clone();
         if let Some(root) = settings.areas.clone() {
             app.areas.root = root;
@@ -964,6 +971,19 @@ impl CreaBimApp {
         // a length typed into a grip's drag takes the keys
         if ctx.egui_wants_keyboard_input() || self.plan.grips.typing {
             return;
+        }
+        // Alt+S: grid snap on or off, as in ArchiCAD
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::S)) {
+            let s = &mut self.plan.snap;
+            s.increment = !s.increment;
+            self.status = if s.increment {
+                format!(
+                    "Grid snap on ({}): points land on its grid. Alt+S turns it off.",
+                    s.spacing_label()
+                )
+            } else {
+                "Grid snap off: points and drags go exactly where the pointer is.".into()
+            };
         }
         let editing = self.plan.edit.is_some();
         let (undo, redo, delete, extrude) = ctx.input(|i| {
@@ -5746,6 +5766,7 @@ impl eframe::App for CreaBimApp {
         } else {
             0.0
         });
+        crate::snaps::set_current_marks(live.marks_len());
         self.step_prompt(&ctx);
         self.workspace_prompt(&ctx);
         self.area_keys(&ctx);

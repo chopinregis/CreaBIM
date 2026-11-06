@@ -7,6 +7,13 @@ A selected element shows small handles you can drag to change it directly, in 3D
 
 Grips snap to what they land on, and the readout shows the new value. Every drag is one undo step.
 
+Drags are free: the element goes exactly where the pointer takes it, and snaps catch it only when the pointer comes near a corner, an edge, a guide or a grid line. Hold `Alt` to drag with no snapping at all. Two aids are there when you want round numbers, both off until you turn them on in the status bar's **Grid snap** menu:
+
+- **Grid snap** (`Alt+S`): points and drags land on a grid of the spacing you pick (10 mm, 50 mm, 100 mm or your own), measured from the project's origin.
+- **Distance marks**: while you drag, faint marks every spacing from where you grabbed; near one, the drag holds on it.
+
+For an exact value, type it during the drag (`Tab`), or click a temporary dimension.
+
 ## Your grip style
 
 *CreaBIM › Settings… › Grips* changes how grips look, for you only: *Quiet* (squares at corners, bars on edges), *Edges are the handles* (almost nothing at rest; an edge shows its bar under the pointer) or *One grip shape* (the same small circle everywhere). Rest on one to see it on the selection. It never changes anyone's drawings, and it goes with you from project to project.

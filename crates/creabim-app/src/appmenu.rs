@@ -226,6 +226,8 @@ impl CreaBimApp {
         let mut unit = self.doc.model().units().length;
         let mut keys = false;
         let mut grips = self.shell.settings.grips;
+        let mut spacing = self.plan.snap.step_um;
+        let mut marks = self.plan.snap.marks;
         let mut grip_hover = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         egui::Window::new("Settings")
@@ -269,6 +271,34 @@ impl CreaBimApp {
                     )
                     .weak(),
                 );
+                crate::props::section(ui, "Snapping (yours)");
+                crate::props::row(ui, "Spacing", |ui| {
+                    let steps: &[u32] = if crate::units::get().is_imperial() {
+                        &crate::snaps::STEPS_IMPERIAL
+                    } else {
+                        &crate::snaps::STEPS_METRIC
+                    };
+                    egui::ComboBox::from_id_salt("settings.spacing")
+                        .selected_text(crate::units::len(spacing as f64 / 1e6))
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for um in steps {
+                                ui.selectable_value(
+                                    &mut spacing,
+                                    *um,
+                                    crate::units::len(*um as f64 / 1e6),
+                                );
+                            }
+                        });
+                });
+                ui.checkbox(&mut marks, "Distance marks while dragging")
+                    .on_hover_text("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it.");
+                ui.label(
+                    egui::RichText::new(
+                        "Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time.",
+                    )
+                    .weak(),
+                );
                 crate::props::section(ui, "This project");
                 crate::props::row(ui, "Units", |ui| {
                     egui::ComboBox::from_id_salt("settings.units")
@@ -290,6 +320,13 @@ impl CreaBimApp {
             self.shell.settings.grips = grips;
             self.shell.settings.store();
             self.status = format!("Grips: {}.", grips.label());
+        }
+        if spacing != self.plan.snap.step_um || marks != self.plan.snap.marks {
+            self.plan.snap.step_um = spacing;
+            self.plan.snap.marks = marks;
+            self.shell.settings.snap_spacing_um = spacing;
+            self.shell.settings.distance_marks = marks;
+            self.shell.settings.store();
         }
         if theme != self.shell.theme {
             self.set_theme(ctx, theme);

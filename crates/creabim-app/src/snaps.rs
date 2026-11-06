@@ -118,10 +118,17 @@ pub struct SnapSettings {
     /// Temporary guide lines from points and edges the pointer rests on,
     /// and where they cross.
     pub references: bool,
-    /// Round free points, and grip drags, to the step.
+    /// Grid snap (Alt+S): points land on a grid of `step_um` in space, and
+    /// lengths along guide and axis lines round to it. Off by default, and
+    /// off whenever the app starts: drags and points are free unless you
+    /// ask (the owner's snapping review, after ArchiCAD).
     pub increment: bool,
-    /// The step, in micrometres (whole millimetres and eighth inches both
-    /// fit): 50 mm unless set in the Snap menu.
+    /// Distance marks while dragging: faint marks every `step_um` from
+    /// where a grip or an element was grabbed, which catch the drag only
+    /// when the pointer is near one. Off by default.
+    pub marks: bool,
+    /// The grid snap's spacing, and the distance marks', in micrometres
+    /// (whole millimetres and eighth inches both fit): 50 mm unless set.
     pub step_um: u32,
 }
 
@@ -130,7 +137,7 @@ pub const STEPS_METRIC: [u32; 3] = [10_000, 50_000, 100_000];
 pub const STEPS_IMPERIAL: [u32; 4] = [3_175, 12_700, 25_400, 152_400];
 
 thread_local! {
-    static STEP: std::cell::Cell<f64> = const { std::cell::Cell::new(0.05) };
+    static STEP: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
 }
 
 /// The step grip drags and free points round to this frame, metres (0
@@ -142,6 +149,21 @@ pub fn current_step() -> f64 {
 /// Use this step from now on (see [`current_step`]).
 pub fn set_current_step(step: f64) {
     STEP.with(|s| s.set(step));
+}
+
+thread_local! {
+    static MARKS: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+}
+
+/// How far apart distance marks are this frame, metres, 0 when off. The
+/// app sets it once a frame (see [`SnapSettings::marks_len`]).
+pub fn current_marks() -> f64 {
+    MARKS.with(|s| s.get())
+}
+
+/// Use these distance marks from now on (see [`current_marks`]).
+pub fn set_current_marks(every: f64) {
+    MARKS.with(|s| s.set(every));
 }
 
 impl Default for SnapSettings {
@@ -166,7 +188,8 @@ impl SnapSettings {
         axis: true,
         tracking: true,
         references: true,
-        increment: true,
+        increment: false,
+        marks: false,
         step_um: 50_000,
     };
 
@@ -191,6 +214,7 @@ impl SnapSettings {
             tracking: false,
             references: false,
             increment: false,
+            marks: false,
             ..self
         }
     }
@@ -244,7 +268,7 @@ impl SnapSettings {
         }
     }
 
-    /// The step as the status bar says it: "50 mm", "1/2\"", "Off".
+    /// The grid snap as the status bar says it: "50 mm", "1/2\"", "Off".
     pub fn step_label(&self) -> String {
         if !self.increment || self.step_um == 0 {
             return "Off".into();
@@ -252,8 +276,23 @@ impl SnapSettings {
         crate::units::len(self.step_um as f64 / 1e6)
     }
 
+    /// The spacing, said in the project's units ("50 mm").
+    pub fn spacing_label(&self) -> String {
+        crate::units::len(self.step_um as f64 / 1e6)
+    }
+
+    /// How far apart distance marks are this frame, metres, or 0 when they
+    /// are off (or snapping is, or Alt is held).
+    pub fn marks_len(&self) -> f64 {
+        if self.on && self.marks {
+            self.step_um as f64 / 1e6
+        } else {
+            0.0
+        }
+    }
+
     /// Each switch with its label, in the order the snap bar lists them.
-    pub fn switches(&mut self) -> [(&'static str, &mut bool); 13] {
+    pub fn switches(&mut self) -> [(&'static str, &mut bool); 12] {
         [
             ("Endpoint", &mut self.endpoint),
             ("Midpoint", &mut self.midpoint),
@@ -266,7 +305,6 @@ impl SnapSettings {
             ("Guides", &mut self.guides),
             ("X/Y axis tracking", &mut self.axis),
             ("Alignment with the shape's points", &mut self.tracking),
-            ("Round to the step", &mut self.increment),
             (
                 "Guide lines from rested points and edges",
                 &mut self.references,
@@ -2145,13 +2183,27 @@ mod tests {
         let s = Snapper::new();
         let from = DVec3::new(1.0, 1.0, 0.0);
         let free = DVec3::new(3.013, 1.03, 0.0);
+        // free by default: on the axis, at the length the pointer gives
         let hit = s
             .snap(&ALL, flat(free).unwrap(), &flat, Some(from), Some(free))
             .unwrap();
         assert_eq!(hit.kind, SnapKind::AxisX);
+        assert!((hit.p.y - 1.0).abs() < 1e-9 && (hit.p.x - 3.013).abs() < 1e-9);
+        // with grid snap on, the length rounds to its spacing
+        let grid = SnapSettings {
+            increment: true,
+            ..ALL
+        };
+        let hit = s
+            .snap(&grid, flat(free).unwrap(), &flat, Some(from), Some(free))
+            .unwrap();
+        assert_eq!(hit.kind, SnapKind::AxisX);
         assert!((hit.p.y - 1.0).abs() < 1e-9 && (hit.p.x - 3.0).abs() < 1e-9);
-        // without axis tracking it is the free point on the increment
-        let no_axis = SnapSettings { axis: false, ..ALL };
+        // without axis tracking it is the free point on the grid
+        let no_axis = SnapSettings {
+            axis: false,
+            ..grid
+        };
         let hit = s
             .snap(&no_axis, flat(free).unwrap(), &flat, Some(from), Some(free))
             .unwrap();

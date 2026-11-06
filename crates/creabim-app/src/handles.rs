@@ -3488,6 +3488,15 @@ pub fn interact(
         }
         _ => free,
     };
+    // distance marks from where it was grabbed, when no real snap caught it
+    let now = if snapped
+        .as_ref()
+        .is_none_or(|(_, sn)| sn.kind == SnapKind::Grid)
+    {
+        distance_marks(painter, input, d.grab, now, crate::snaps::current_marks())
+    } else {
+        now
+    };
     crate::actlog::line(format!(
         "drag frame: pane {} | pointer ({:.1}, {:.1}) px | free {} | snap {} | used {} | step {} mm | frame {:.1} ms",
         pane_name(input),
@@ -3507,6 +3516,64 @@ pub fn interact(
     follow(doc, painter, d, input, now, grid, Some(pos), status);
     painter.ctx().request_repaint();
     true
+}
+
+/// Distance marks (the Grid snap menu): faint marks every `every` metres
+/// from `grab`, along the way the drag is going, drawn while it lasts.
+/// Within 10 px of one the drag holds on it; elsewhere it stays where the
+/// pointer put it. Marks closer than 6 px apart on screen are neither drawn
+/// nor caught.
+fn distance_marks(
+    painter: &Painter,
+    input: &PaneInput,
+    grab: DVec3,
+    now: DVec3,
+    every: f64,
+) -> DVec3 {
+    if every <= 0.0 {
+        return now;
+    }
+    let v = now - grab;
+    let len = v.length();
+    if len < 1e-9 {
+        return now;
+    }
+    let dir = v / len;
+    let (Some(a), Some(b)) = ((input.project)(grab), (input.project)(grab + dir * every)) else {
+        return now;
+    };
+    let px = a.distance(b);
+    if px < 6.0 {
+        return now;
+    }
+    let held = mark_held(len, every, px as f64);
+    let k = held.unwrap_or(0.0) / every;
+    let held = held.is_some();
+    let side = (b - a).normalized().rot90();
+    let quiet = Stroke::new(1.0, Color32::from_rgb(79, 107, 76).gamma_multiply(0.75));
+    let hot = Stroke::new(2.0, crate::planview::ACCENT_SELECTED);
+    let n = ((len / every).ceil() as i64 + 1).min(400);
+    for i in 1..=n {
+        let Some(c) = (input.project)(grab + dir * (every * i as f64)) else {
+            continue;
+        };
+        let caught = held && i as f64 == k;
+        let (h, stroke) = if caught { (7.0, hot) } else { (4.0, quiet) };
+        painter.line_segment([c - side * h, c + side * h], stroke);
+    }
+    if held {
+        grab + dir * (k * every)
+    } else {
+        now
+    }
+}
+
+/// The distance mark a drag `len` metres long holds on, if the pointer is
+/// within 10 px of one (marks `every` metres apart, `px` pixels apart on
+/// screen); never the grab point itself.
+fn mark_held(len: f64, every: f64, px: f64) -> Option<f64> {
+    let k = (len / every).round();
+    (k >= 1.0 && ((len - k * every) / every).abs() * px <= 10.0).then_some(k * every)
 }
 
 /// Which kind of pane a drag is in, for the activity log.
@@ -4724,5 +4791,29 @@ mod tests {
         };
         assert!((n.offset - (o.offset - 0.1)).abs() < 1e-9);
         assert!((n.width - o.width).abs() < 1e-12);
+    }
+
+    /// Snapping is free by default (the owner's review): no grid snap, no
+    /// step, no distance marks; drags go exactly where the pointer is.
+    #[test]
+    fn drags_are_free_by_default() {
+        let s = crate::snaps::SnapSettings::default();
+        assert!(!s.increment && !s.marks);
+        assert_eq!(s.step_len(), 0.0);
+        assert_eq!(s.marks_len(), 0.0);
+        assert_eq!(s.step_label(), "Off");
+    }
+
+    /// A distance mark holds a drag only within 10 px of it, never at the
+    /// grab point, and lets go beyond.
+    #[test]
+    fn distance_marks_hold_only_when_near() {
+        // marks 50 mm apart, 40 px apart on screen: 10 px is 12.5 mm
+        assert_eq!(super::mark_held(0.112, 0.05, 40.0), Some(0.1));
+        assert_eq!(super::mark_held(0.088, 0.05, 40.0), Some(0.1));
+        assert_eq!(super::mark_held(0.075, 0.05, 40.0), None);
+        assert_eq!(super::mark_held(0.004, 0.05, 40.0), None);
+        // the same distances with marks only 10 px apart: always near one
+        assert_eq!(super::mark_held(0.077, 0.05, 10.0), Some(0.1));
     }
 }

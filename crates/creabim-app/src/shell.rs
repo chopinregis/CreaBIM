@@ -591,7 +591,7 @@ impl CreaBimApp {
                 }
                 items.push(Item::Separator);
                 items.push(Item::sub(
-                    format!("Step: {}", self.plan.snap.step_label()),
+                    format!("Grid snap: {}", self.plan.snap.step_label()),
                     self.step_items(),
                 ));
                 items
@@ -1083,7 +1083,12 @@ impl CreaBimApp {
         } else {
             &crate::snaps::STEPS_METRIC
         };
-        let mut items = vec![Item::new("step.off", "Off").checked(!s.increment)];
+        let mut items = vec![
+            Item::Header("Grid snap (Alt+S)".into()),
+            Item::new("step.off", "Off: free")
+                .checked(!s.increment)
+                .hint("Points and drags go exactly where the pointer is; other snaps still catch them when near"),
+        ];
         for um in steps {
             items.push(
                 Item::new(format!("step:{um}"), crate::units::len(*um as f64 / 1e6))
@@ -1094,7 +1099,16 @@ impl CreaBimApp {
         items.push(
             Item::new("step.custom", "Custom…")
                 .checked(custom)
-                .hint("Type any step: 25 mm, 1/4\", 2 cm"),
+                .hint("Type any spacing: 25 mm, 1/4\", 2 cm"),
+        );
+        items.push(Item::Separator);
+        items.push(
+            Item::new(
+                "marks.toggle",
+                format!("Distance marks every {}", s.spacing_label()),
+            )
+            .checked(s.marks)
+            .hint("While dragging, faint marks from where you grabbed; a mark holds the drag only when the pointer is near it"),
         );
         items
     }
@@ -1276,7 +1290,22 @@ impl CreaBimApp {
             "snap.on" => self.plan.snap.on = !self.plan.snap.on,
             "step.off" => {
                 self.plan.snap.increment = false;
-                self.status = "Step off: free points and drags go where the pointer is.".into();
+                self.status =
+                    "Grid snap off: points and drags go exactly where the pointer is.".into();
+            }
+            "marks.toggle" => {
+                let s = &mut self.plan.snap;
+                s.marks = !s.marks;
+                self.status = if s.marks {
+                    format!(
+                        "Distance marks every {} while dragging: near one, the drag holds on it.",
+                        s.spacing_label()
+                    )
+                } else {
+                    "Distance marks off.".into()
+                };
+                self.shell.settings.distance_marks = s.marks;
+                self.shell.settings.store();
             }
             "step.custom" => {
                 self.plan.step_prompt =
@@ -1287,9 +1316,11 @@ impl CreaBimApp {
                     self.plan.snap.increment = true;
                     self.plan.snap.step_um = um;
                     self.status = format!(
-                        "Step {}: points and drags round to it. Alt ignores it for a move.",
+                        "Grid snap {}: points land on its grid. Alt+S turns it off; Alt frees one move.",
                         self.plan.snap.step_label()
                     );
+                    self.shell.settings.snap_spacing_um = um;
+                    self.shell.settings.store();
                 }
             }
             "snap.all" | "snap.none" => {
@@ -2564,8 +2595,8 @@ impl CreaBimApp {
                 {"kind": "toggle", "id": "snap.on", "label": "Snap", "on": self.plan.snap.on, "icon": "magnet",
                  "hint": "Object snaps on or off (F3). Hold Alt while picking to suspend them."},
                 {"kind": "menu", "key": "snaps", "label": "", "value": snaps, "hint": "Which snaps are on"},
-                {"kind": "menu", "key": "step", "label": "Step", "value": self.plan.snap.step_label(),
-                 "hint": "What points and drags round to. Alt while dragging ignores it for one move."},
+                {"kind": "menu", "key": "step", "label": "Grid snap", "value": self.plan.snap.step_label(),
+                 "hint": "Off: points and drags go exactly where the pointer is. On (Alt+S): they land on a grid in space. Also: distance marks while dragging."},
                 {"kind": "sep"},
                 {"kind": "menu", "key": "workplane", "label": "Workplane", "value": workplane, "icon": "square-dashed",
                  "hint": "Where sketches and guides drawn in 3D go"},
