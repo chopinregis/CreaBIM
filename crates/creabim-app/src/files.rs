@@ -164,6 +164,10 @@ pub struct Settings {
     /// The ground grid in the 3D view, and its spacing in metres.
     pub ground_grid: bool,
     pub ground_grid_spacing: f64,
+    /// The drawings' paper and the 3D background (A4-3): "theme" follows
+    /// the theme (dark paper in a dark theme), "light" or "dark" always.
+    /// Prints and PDFs are always on white.
+    pub drawing_paper: String,
     /// The kinds of element the 3D view leaves out (grids, annotation,
     /// guides…), from its Visibility settings.
     pub hidden_3d: Vec<creabim_core::Category>,
@@ -210,6 +214,7 @@ impl Default for Settings {
             single_shows_3d: true,
             ground_grid: true,
             ground_grid_spacing: 1.0,
+            drawing_paper: "theme".into(),
             hidden_3d: vec![],
             xray: false,
             hidden_colour_3d: false,

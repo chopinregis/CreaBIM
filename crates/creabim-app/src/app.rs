@@ -122,6 +122,8 @@ pub struct CreaBimApp {
     aspect: f32,
     viewport: Option<Viewport3d>,
     geometry_key: Option<GeometryKey>,
+    /// Drawings and the 3D view on dark paper this frame (A4-3).
+    paper_is_dark: bool,
     scene: Vec<SceneItem>,
     plan: PlanState,
     placement: PlanPlacement,
@@ -281,6 +283,7 @@ impl CreaBimApp {
             aspect: 0.65,
             viewport,
             geometry_key: None,
+            paper_is_dark: false,
             scene: vec![],
             plan: PlanState::default(),
             placement: PlanPlacement::Docked,
@@ -1670,10 +1673,11 @@ impl CreaBimApp {
         if self.shell.settings.ground_grid {
             // as far out as 50 lines each way, at least the old 50 m
             let reach = (spacing * 25.0).max(25.0);
-            let color = if face_plane {
-                [0.88, 0.89, 0.91]
-            } else {
-                [0.80, 0.80, 0.82]
+            let color = match (self.paper_is_dark, face_plane) {
+                (false, true) => [0.88, 0.89, 0.91],
+                (false, false) => [0.80, 0.80, 0.82],
+                (true, true) => [0.18, 0.19, 0.21],
+                (true, false) => [0.26, 0.27, 0.30],
             };
             lines.extend(grid_lines(
                 level_plane,
@@ -1684,7 +1688,12 @@ impl CreaBimApp {
             ));
         }
         if let Some((plane, _)) = self.workplane {
-            lines.extend(workplane_lines(plane, spacing, WORKPLANE_FADE));
+            let bg = if self.paper_is_dark {
+                BACKGROUND_3D_DARK
+            } else {
+                BACKGROUND_3D
+            };
+            lines.extend(workplane_lines(plane, spacing, WORKPLANE_FADE, bg));
         }
         lines.extend(self.grid_lines_3d());
 
@@ -1948,7 +1957,12 @@ impl CreaBimApp {
                 size,
                 self.camera.view_proj(aspect),
                 self.camera.eye().to_array(),
-                BACKGROUND_3D.map(f64::from),
+                if self.paper_is_dark {
+                    BACKGROUND_3D_DARK
+                } else {
+                    BACKGROUND_3D
+                }
+                .map(f64::from),
             );
             ui.painter().image(
                 tex,
@@ -3809,7 +3823,13 @@ impl CreaBimApp {
                 camera: None,
                 scale: self.view(view).map_or(100.0, |v| v.scale),
             };
-            planview::show(
+            // dark paper (A4-3): the pane is drawn as on light paper, then
+            // its greys turn over; colours (selection, dimensions, the
+            // accent) and pictures keep theirs
+            let dark = self.dark_paper(ui.ctx());
+            let layer = ui.layer_id();
+            let from = ui.ctx().graphics(|g| g.get(layer).map(|l| l.next_idx()));
+            let r = planview::show(
                 ui,
                 rect,
                 &mut self.doc,
@@ -3819,7 +3839,11 @@ impl CreaBimApp {
                 &mut self.plan,
                 &mut self.selection,
                 style,
-            )
+            );
+            if dark {
+                darken_shapes(ui.ctx(), layer, from);
+            }
+            r
         };
         if let Some(err) = result {
             self.status = format!("Couldn't do that: {err}");
@@ -4312,6 +4336,14 @@ impl CreaBimApp {
     /// While a placing or drawing tool is on: what the next element will be,
     /// the tool bar's settings as Properties rows, edited in both places
     /// (MU18). False when the tool has none.
+    fn dark_paper(&self, ctx: &egui::Context) -> bool {
+        match self.shell.settings.drawing_paper.as_str() {
+            "dark" => true,
+            "light" => false,
+            _ => crate::theme::Palette::of(ctx).dark,
+        }
+    }
+
     fn next_element_panel(&mut self, ui: &mut egui::Ui) -> bool {
         let ctx = ui.ctx().clone();
         let (_, options) = self.tool_strip(&ctx);
@@ -6282,6 +6314,13 @@ impl eframe::App for CreaBimApp {
         self.templates_window(&ctx);
         self.units_window(&ctx);
         self.settings_window(&ctx);
+        // the paper follows the setting and the theme; a change redraws
+        // the 3D view's grid and background
+        let dark = self.dark_paper(&ctx);
+        if dark != self.paper_is_dark {
+            self.paper_is_dark = dark;
+            self.geometry_key = None;
+        }
         self.project_window(&ctx);
         self.new_project_window(&ctx);
         self.marks_window(&ctx);
@@ -6324,6 +6363,42 @@ const GROUND_SPACINGS: [f64; 6] = [0.25, 0.5, 1.0, 2.0, 5.0, 10.0];
 const GROUND_SPACING_RANGE: (f64, f64) = (0.05, 100.0);
 
 /// A usable ground grid spacing: a setting from the file, kept sensible.
+/// Turn a pane's shapes painted since `from` over to dark paper: greys
+/// (black ink, hatches, fills, the paper) invert, coloured marks and
+/// pictures stay as they are.
+fn darken_shapes(ctx: &egui::Context, layer: egui::LayerId, from: Option<egui::layers::ShapeIdx>) {
+    let start = from.map_or(0, |i| i.0);
+    ctx.graphics_mut(|g| {
+        let list = g.entry(layer);
+        let end = list.next_idx().0;
+        for i in start..end {
+            list.mutate_shape(egui::layers::ShapeIdx(i), |cs| {
+                if let egui::Shape::Mesh(m) = &cs.shape {
+                    if m.texture_id != egui::TextureId::default() {
+                        return;
+                    }
+                }
+                egui::epaint::shape_transform::adjust_colors(&mut cs.shape, |c| {
+                    *c = paper_dark(*c);
+                });
+            });
+        }
+    });
+}
+
+/// A colour on light paper, on dark paper: a grey turns over (white paper
+/// to near black, black ink to near white), a colour is kept.
+fn paper_dark(c: Color32) -> Color32 {
+    let [r, g, b, a] = c.to_srgba_unmultiplied();
+    let (hi, lo) = (r.max(g).max(b), r.min(g).min(b));
+    if hi.saturating_sub(lo) > 28 {
+        return c;
+    }
+    let v = (r as f32 + g as f32 + b as f32) / 3.0;
+    let w = (34.0 + (255.0 - v) * 0.82).round() as u8;
+    Color32::from_rgba_unmultiplied(w, w, w.saturating_add(3), a)
+}
+
 /// How far the workplane's grid reaches from its origin before it has
 /// faded into the background, metres.
 const WORKPLANE_FADE: f64 = 4.0;
@@ -6331,11 +6406,19 @@ const WORKPLANE_FADE: f64 = 4.0;
 /// The 3D view's background, which the workplane's grid fades into.
 const BACKGROUND_3D: [f32; 3] = [0.93, 0.94, 0.96];
 
+/// The 3D view's background on dark paper (A4-3).
+const BACKGROUND_3D_DARK: [f32; 3] = [0.12, 0.13, 0.15];
+
 /// A face workplane's grid (MU18): soft green-grey lines at the ground
 /// grid's spacing (every fifth a little stronger) that fade into the
 /// background `reach` metres from its origin, and a small axis mark there.
 /// Drawn just off the face, as line pairs for the 3D view.
-fn workplane_lines(plane: Workplane, spacing: f64, reach: f64) -> Vec<crate::render3d::Vertex> {
+fn workplane_lines(
+    plane: Workplane,
+    spacing: f64,
+    reach: f64,
+    background: [f32; 3],
+) -> Vec<crate::render3d::Vertex> {
     let lift = plane.normal() * 0.003;
     let at = |u: f64, v: f64| {
         (plane.to_model(DVec2::new(u, v)) + lift)
@@ -6344,9 +6427,9 @@ fn workplane_lines(plane: Workplane, spacing: f64, reach: f64) -> Vec<crate::ren
     };
     let mix = |c: [f32; 3], t: f32| {
         [
-            c[0] + (BACKGROUND_3D[0] - c[0]) * t,
-            c[1] + (BACKGROUND_3D[1] - c[1]) * t,
-            c[2] + (BACKGROUND_3D[2] - c[2]) * t,
+            c[0] + (background[0] - c[0]) * t,
+            c[1] + (background[1] - c[1]) * t,
+            c[2] + (background[2] - c[2]) * t,
         ]
     };
     let minor = [0.62, 0.72, 0.60];
@@ -6835,6 +6918,17 @@ fn typesui_type_name(app: &CreaBimApp, tool: Tool) -> Option<String> {
 #[cfg(test)]
 mod title_tests {
     use super::window_title;
+
+    #[test]
+    fn dark_paper_turns_greys_over_and_keeps_colours() {
+        use super::{paper_dark, Color32};
+        let paper = paper_dark(Color32::from_rgb(250, 250, 247));
+        let ink = paper_dark(Color32::BLACK);
+        assert!(paper.r() < 50, "paper {paper:?}");
+        assert!(ink.r() > 200, "ink {ink:?}");
+        let orange = Color32::from_rgb(230, 120, 30);
+        assert_eq!(paper_dark(orange), orange);
+    }
 
     #[test]
     fn the_title_names_the_project_marks_unsaved_and_the_test_version() {
