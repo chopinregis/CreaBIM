@@ -3324,6 +3324,43 @@ impl CreaBimApp {
             };
             draw_guide_3d(painter, project, g.a, g.b, stroke);
         }
+        // a closed sketch is a face: a light fill inside its outline (A7-1)
+        for e in self.doc.model().iter() {
+            let ElementKind::Sketch(sk) = &e.kind else {
+                continue;
+            };
+            if !sk.closed || left_out.contains(&e.id) {
+                continue;
+            }
+            let outline = sk.outline();
+            if outline.len() < 3 || creabim_core::polygon::self_intersects(&outline, true) {
+                continue;
+            }
+            let z = sk
+                .level
+                .and_then(|l| self.doc.model().level(l))
+                .map_or(0.0, |l| l.elevation);
+            let pts: Option<Vec<egui::Pos2>> = outline
+                .iter()
+                .map(|p| project(sk.plane.to_model(*p) + DVec3::Z * z))
+                .collect();
+            let Some(pts) = pts else {
+                continue;
+            };
+            let fill = if self.selection.contains(e.id) {
+                Color32::from_rgba_unmultiplied(242, 140, 51, 60)
+            } else {
+                Color32::from_rgba_unmultiplied(40, 70, 140, 40)
+            };
+            let mut mesh = egui::Mesh::default();
+            for p in &pts {
+                mesh.colored_vertex(*p, fill);
+            }
+            for t in creabim_core::polygon::triangulate(&outline) {
+                mesh.add_triangle(t[0] as u32, t[1] as u32, t[2] as u32);
+            }
+            painter.add(egui::Shape::mesh(mesh));
+        }
         for (id, a, b) in creabim_geom::scene::sketch_lines(self.doc.model()) {
             if left_out.contains(&id) {
                 continue;
@@ -5106,12 +5143,28 @@ impl CreaBimApp {
                         ui.label("Extrude by");
                         ui.add(crate::units::drag(&mut self.extrude_distance));
                     });
-                    if ui
-                        .button(if sk.closed {
-                            "Extrude into a mass (E)"
+                    // a closed outline that crosses itself has no inside
+                    let crossed =
+                        sk.closed && creabim_core::polygon::self_intersects(&sk.outline(), true);
+                    ui.label(
+                        egui::RichText::new(if crossed {
+                            "Closed, but it crosses itself: not a face. Move a point so no lines cross."
+                        } else if sk.closed {
+                            "Closed: a face. Extruding it makes a solid."
                         } else {
-                            "Extrude into a surface (E)"
+                            "Open: a wire. Extruding it makes a surface."
                         })
+                        .weak(),
+                    );
+                    if ui
+                        .add_enabled(
+                            !crossed,
+                            egui::Button::new(if sk.closed {
+                                "Extrude into a mass (E)"
+                            } else {
+                                "Extrude into a surface (E)"
+                            }),
+                        )
                         .clicked()
                     {
                         extrude_sketch = true;

@@ -825,6 +825,15 @@ pub fn sketch_items(
     let facing =
         (x.length() - 1.0).abs() < 1e-6 && (y.length() - 1.0).abs() < 1e-6 && x.dot(y).abs() < 1e-6;
     let mut out = Vec::new();
+    // a closed sketch is a face: a light wash inside it (A7-1)
+    let outline = sk.outline();
+    if sk.closed && outline.len() >= 3 && !creabim_core::polygon::self_intersects(&outline, true) {
+        out.push(PlanItem::Tint {
+            id,
+            points: outline.iter().map(|p| at(*p)).collect(),
+            rgb: [0.16, 0.27, 0.55],
+        });
+    }
     for c in sk.curves() {
         match c {
             Curve::Arc {
@@ -2615,5 +2624,33 @@ mod tests {
         doc.commit(creabim_core::Transaction::new("show").replace(plan.clone(), shown))
             .unwrap();
         assert!(dashed(doc.model()) > 20, "shown, dashed under the floor");
+    }
+
+    /// A closed sketch draws as a face (a wash inside its outline); an
+    /// open one, or a closed one that crosses itself, as lines only (A7-1).
+    #[test]
+    fn a_closed_sketch_is_washed_as_a_face() {
+        let plane = creabim_core::Workplane::ground(0.0);
+        let square = vec![
+            DVec2::ZERO,
+            DVec2::new(2.0, 0.0),
+            DVec2::new(2.0, 2.0),
+            DVec2::new(0.0, 2.0),
+        ];
+        let bow = vec![
+            DVec2::ZERO,
+            DVec2::new(2.0, 2.0),
+            DVec2::new(2.0, 0.0),
+            DVec2::new(0.0, 2.0),
+        ];
+        let washed = |pts: Vec<DVec2>, closed: bool| {
+            let sk = creabim_core::Sketch::polyline(None, plane, pts, closed);
+            sketch_items(ElementId::NIL, &sk, &|p| p)
+                .iter()
+                .any(|it| matches!(it, PlanItem::Tint { .. }))
+        };
+        assert!(washed(square.clone(), true));
+        assert!(!washed(square, false));
+        assert!(!washed(bow, true));
     }
 }
