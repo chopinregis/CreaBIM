@@ -213,6 +213,9 @@ pub struct CreaBimApp {
     new_project_classic: bool,
 }
 
+/// How much of the accent a selected element takes in 3D (A7-2).
+const SELECTION_TINT: f32 = 0.35;
+
 impl CreaBimApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let settings = crate::files::Settings::load();
@@ -1433,7 +1436,20 @@ impl CreaBimApp {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
         let mut see_through = Vec::new();
-        let highlight = [0.95, 0.55, 0.20];
+        // the selection in the interaction colour every view and grip uses
+        // (A7-2): a tint over the element's own colour and a crisp
+        // outline, never a repaint
+        let highlight = {
+            let a = crate::planview::ACCENT_SELECTED;
+            [
+                a.r() as f32 / 255.0,
+                a.g() as f32 / 255.0,
+                a.b() as f32 / 255.0,
+            ]
+        };
+        let tint = |c: [f32; 3]| {
+            [0, 1, 2].map(|k| c[k] * (1.0 - SELECTION_TINT) + highlight[k] * SELECTION_TINT)
+        };
         let mut ghost_lines: Vec<(DVec3, DVec3, [f32; 3])> = Vec::new();
         // what is selected of the cutters and shafts shows through everything
         let mut on_top: Vec<(DVec3, DVec3, [f32; 3])> = Vec::new();
@@ -1473,7 +1489,8 @@ impl CreaBimApp {
                 }
                 continue;
             }
-            if mode.edges() && !xrayed {
+            // a selected element is outlined whatever the shading shows
+            if (mode.edges() || selected) && !xrayed {
                 let c = if selected { highlight } else { edge_colour };
                 for &(a, b) in snaps::feature_edges_cached(&item.mesh).iter() {
                     ghost_lines.push((a, b, c));
@@ -1504,14 +1521,8 @@ impl CreaBimApp {
             } else {
                 item.color
             };
-            let mut colors = vec![
-                if selected && face_tris.is_none() {
-                    highlight
-                } else {
-                    plain
-                };
-                item.mesh.positions.len()
-            ];
+            let mut colors =
+                vec![if selected { tint(plain) } else { plain }; item.mesh.positions.len()];
             if let Some(tris) = &face_tris {
                 for &t in tris {
                     for k in 0..3 {
@@ -1522,10 +1533,8 @@ impl CreaBimApp {
                     }
                 }
             }
-            // a selected element shows solid, whatever it is made of
-            let surface = if selected {
-                [item.surface[0], item.surface[1], 1.0]
-            } else if xrayed {
+            // a selected element keeps its own surface (glass stays glass)
+            let surface = if xrayed {
                 [
                     item.surface[0],
                     item.surface[1],
