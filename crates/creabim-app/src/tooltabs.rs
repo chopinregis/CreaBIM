@@ -114,6 +114,16 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
         ],
         2 => vec![
+            // levels are what plans are cut from, so they sit with the
+            // views that come from them (MU20)
+            T(Tool::Level),
+            act(
+                "levels",
+                "Levels",
+                "level",
+                "Add, duplicate, rename, move and delete levels",
+            ),
+            Sep,
             T(Tool::Section),
             T(Tool::Elevation),
             T(Tool::Callout),
@@ -146,7 +156,6 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
         ],
         _ => vec![
-            T(Tool::Level),
             T(Tool::Grid),
             T(Tool::Guide),
             Sep,
@@ -156,12 +165,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "info",
                 "Name, client, address, site and building: they fill the title blocks and the IFC export",
             ),
-            act(
-                "levels",
-                "Levels",
-                "level",
-                "Add, duplicate, rename, move and delete levels",
-            ),
+
             act(
                 "types.browser",
                 "Types",

@@ -5137,6 +5137,29 @@ impl CreaBimApp {
                     {
                         label = "View style"
                     }
+                    // how what is cut is drawn, as in plans (A4-11, MU20)
+                    if matches!(v.kind, ViewKind::Section { .. }) {
+                        crate::props::row(ui, "Drawing style", |ui| {
+                            egui::ComboBox::from_id_salt("section.drawing_style")
+                                .selected_text(v.graphics.drawing_style.label())
+                                .width(ui.available_width())
+                                .show_ui(ui, |ui| {
+                                    for s in creabim_core::graphics::DrawingStyle::ALL {
+                                        if ui
+                                            .selectable_value(
+                                                &mut v.graphics.drawing_style,
+                                                s,
+                                                s.label(),
+                                            )
+                                            .on_hover_text(s.hint())
+                                            .changed()
+                                        {
+                                            label = "Drawing style";
+                                        }
+                                    }
+                                });
+                        });
+                    }
                     if matches!(v.kind, ViewKind::Axonometric { .. }) {
                         ui.add_space(6.0);
                         self.crop_list(ui, Some(id));

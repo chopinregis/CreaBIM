@@ -423,6 +423,8 @@ impl ViewCube {
         let response = ui.interact(area, ui.id().with("viewcube"), Sense::click_and_drag());
         let mut painter = ui.painter_at(rect);
         let hover = response.hover_pos();
+        // the theme's colours, light or dark (MU20)
+        let pal = crate::theme::Palette::of(ui.ctx());
         // faded until the pointer comes near or it is in use
         let near = ui
             .input(|i| i.pointer.hover_pos())
@@ -437,8 +439,8 @@ impl ViewCube {
         painter.rect(
             column,
             8.0,
-            Color32::from_rgba_unmultiplied(255, 255, 255, 235),
-            Stroke::new(1.0, Color32::from_rgb(214, 217, 221)),
+            pal.panel,
+            Stroke::new(1.0, pal.border),
             egui::StrokeKind::Inside,
         );
         let (right, up, toward) = axes(cam);
@@ -453,11 +455,11 @@ impl ViewCube {
                 to_screen(Vec3::new(t.cos() * ring_r, t.sin() * ring_r, ring_z))
             })
             .collect();
-        let ink = Color32::from_rgb(52, 56, 62);
-        let faint = Color32::from_rgba_unmultiplied(70, 74, 80, 110);
+        let ink = pal.text;
+        let faint = pal.muted.gamma_multiply(0.6);
         painter.add(Shape::closed_line(
             ring.clone(),
-            Stroke::new(5.0, Color32::from_rgba_unmultiplied(255, 255, 255, 150)),
+            Stroke::new(5.0, pal.panel.gamma_multiply(0.6)),
         ));
         painter.add(Shape::closed_line(ring, Stroke::new(1.0, faint)));
         let mut pick = None;
@@ -493,7 +495,7 @@ impl ViewCube {
             if near {
                 painter.circle_filled(at, 7.5, accent);
             } else {
-                painter.circle_filled(at, 6.5, Color32::from_rgba_unmultiplied(255, 255, 255, 230));
+                painter.circle_filled(at, 6.5, pal.panel);
             }
             let colour = if near {
                 Color32::WHITE
@@ -522,7 +524,11 @@ impl ViewCube {
         } else {
             None
         };
-        let face_fill = Color32::from_rgb(250, 250, 251);
+        let face_fill = if pal.dark {
+            pal.raise
+        } else {
+            Color32::from_rgb(250, 250, 251)
+        };
         // whole faces first, so no seam shows between cells
         for (n, u, v, _) in FACES.iter() {
             if v3(*n).dot(toward) < 0.02 {
@@ -555,10 +561,7 @@ impl ViewCube {
                 .iter()
                 .map(|(a, b)| to_screen(n3 + u3 * *a + v3_ * *b))
                 .collect();
-            painter.add(Shape::closed_line(
-                outline,
-                Stroke::new(1.0, Color32::from_rgb(150, 154, 160)),
-            ));
+            painter.add(Shape::closed_line(outline, Stroke::new(1.0, pal.edge)));
             if facing > 0.25 {
                 // the label printed on the face, so it turns and
                 // foreshortens with it and always reads the right way
@@ -586,10 +589,7 @@ impl ViewCube {
                     for pts in &strokes {
                         painter.add(Shape::line(
                             pts.clone(),
-                            Stroke::new(
-                                width + 2.4,
-                                Color32::from_rgba_unmultiplied(255, 255, 255, 170),
-                            ),
+                            Stroke::new(width + 2.4, face_fill.gamma_multiply(0.7)),
                         ));
                     }
                 }
@@ -665,17 +665,13 @@ impl ViewCube {
                     _ => {}
                 }
             }
-            let (ground, mark) = if lit {
-                (accent, Color32::WHITE)
-            } else {
-                (Color32::from_rgba_unmultiplied(255, 255, 255, 235), ink)
-            };
-            painter.circle(
-                at,
-                10.5,
-                ground,
-                Stroke::new(1.0, Color32::from_rgb(196, 199, 204)),
-            );
+            // a rounded square with a faint accent tint when lit, as the
+            // drawing areas' buttons (MU20)
+            let mark = ink;
+            let square = egui::Rect::from_center_size(at, Vec2::splat(24.0));
+            if lit {
+                painter.rect_filled(square, 6.0, accent.gamma_multiply(0.18));
+            }
             button_icon(&painter, at, what, ortho, mark);
             if lit {
                 tip = Some(hint.to_string());

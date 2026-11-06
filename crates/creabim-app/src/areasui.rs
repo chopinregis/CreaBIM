@@ -550,9 +550,8 @@ impl CreaBimApp {
         vec![
             json!({"kind": "menu", "key": "render3d", "icon": s.render_3d.icon(), "label": "Shading",
                    "hint": format!("How the 3D view draws: {}. Shaded, with edges, hidden line or wireframe", s.render_3d.label())}),
-            json!({"kind": "toggle", "id": "nav.ortho", "icon": if self.camera.ortho { "box" } else { "cuboid" },
-                   "label": "Projection", "on": self.camera.ortho,
-                   "hint": if self.camera.ortho { "Orthographic: click for perspective" } else { "Perspective: click for orthographic" }}),
+            // (perspective / orthographic is the last button of the view's
+            // own column, beside the cube: not twice, MU20)
             json!({"kind": "button", "id": "crop.add", "icon": "crop-box", "label": "Section box",
                    "hint": "Add a crop box to the 3D view: it crops everything outside it"}),
             json!({"kind": "menu", "key": "vis3d", "icon": if self.vis3d.is_empty() { "eye" } else { "eye-off" },

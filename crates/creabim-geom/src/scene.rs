@@ -1074,6 +1074,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_partition_held_to_the_ceilings_has_no_sliver_at_its_ends() {
+        // MU20: FF Spine runs a few centimetres past the ceiling's edge into
+        // the wall it joins; its top used to rise there to its own height
+        let m = creabim_core::starter::starter_house();
+        let id = m.iter().find(|e| e.name == "FF Spine").unwrap().id;
+        let top = build_scene_of(&m, None)
+            .iter()
+            .filter(|i| i.id == id)
+            .filter_map(|i| i.mesh.bounds())
+            .map(|b| b.1.z)
+            .fold(f32::MIN, f32::max);
+        assert!((top - 5.5).abs() < 1e-3, "its top reaches {top}");
+    }
+
+    #[test]
     fn a_slab_edge_in_a_wall_is_cut_by_it_in_3d_as_in_the_drawings() {
         // A4-6: a floor slab whose edge runs into the wall below it, with
         // no junction rule: the wall runs through, so nothing of the slab

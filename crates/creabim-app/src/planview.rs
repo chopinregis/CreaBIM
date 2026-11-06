@@ -1526,8 +1526,18 @@ pub fn show(
             return r;
         }
     }
-    // a tag, dimension or note can be dragged into place
-    if tool == Tool::Select {
+    // a tag, dimension or note can be dragged into place, once selected:
+    // a drag that starts on one that isn't draws a box instead (MU20)
+    let press_on_selected = response.drag_started_by(egui::PointerButton::Primary)
+        && ui.input(|i| i.pointer.press_origin()).is_some_and(|p0| {
+            hit_all(&plan.items, xf.to_world(p0), 6.0 / scale as f64, mm)
+                .into_iter()
+                .any(|id| selection.contains(id))
+        });
+    let annotation_drag = state.anno.grab.is_some()
+        || !response.drag_started_by(egui::PointerButton::Primary)
+        || press_on_selected;
+    if tool == Tool::Select && annotation_drag {
         if let Some(r) = drag_annotation(doc, view, plan, &xf, &response, state, selection, mm) {
             return r;
         }
@@ -3768,7 +3778,15 @@ fn nav_column(
         .input(|i| i.pointer.hover_pos())
         .is_some_and(|h| column.expand(40.0).contains(h));
     let fade = if near { 1.0 } else { 0.45 };
-    let painter = ui.painter_at(rect);
+    // above the drawing, on a layer of its own: dark paper turns the
+    // drawing over, never the controls (MU20)
+    let painter = ui
+        .ctx()
+        .layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            ui.id().with(("nav2d-layer", view)),
+        ))
+        .with_clip_rect(rect);
     painter.rect(
         column,
         8.0,
@@ -3778,8 +3796,8 @@ fn nav_column(
     );
     let mut out = None;
     let buttons = [
-        ("zoom-in", "Zoom in"),
-        ("zoom-out", "Zoom out"),
+        ("zoom-in", "Zoom in: click a step, or drag up and down"),
+        ("zoom-out", "Zoom out: click a step, or drag up and down"),
         ("frame-all", "Fit the drawing"),
         ("move", "Drag to pan"),
     ];
@@ -3801,8 +3819,14 @@ fn nav_column(
             Some((center, k))
         };
         match i {
-            0 if resp.clicked() => out = zoom(1.5),
-            1 if resp.clicked() => out = zoom(1.0 / 1.5),
+            // a click steps; a drag up or down zooms smoothly, as the 3D
+            // view's zoom button does (MU20)
+            0 | 1 if resp.dragged() => {
+                let d = resp.drag_delta().y;
+                out = zoom((1.0 - d * 0.01).clamp(0.5, 2.0));
+            }
+            0 if resp.clicked() => out = zoom(1.25),
+            1 if resp.clicked() => out = zoom(1.0 / 1.25),
             2 if resp.clicked() => out = Some(fit(plan, rect)),
             3 if resp.dragged() => {
                 let d = resp.drag_delta() / scale;

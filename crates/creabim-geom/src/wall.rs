@@ -96,10 +96,13 @@ pub fn wall_layer_mesh_v(
     }
     if let Some(top) = top {
         // where the top bends over a ridge or steps at an eave
+        // each break twice, a millimetre apart: where the top changes
+        // height it steps, not slopes (MU20)
         us.extend(
             top.breaks(wall.start, wall.end)
                 .into_iter()
-                .map(|k| k * len),
+                .flat_map(|k| [k * len - 0.001, k * len + 0.001])
+                .filter(|u| *u > 0.0 && *u < len),
         );
     }
     let sort = |xs: &mut Vec<f64>| {
@@ -130,7 +133,16 @@ pub fn wall_layer_mesh_v(
         let u = ends.place_layer(wall, u, w, core, ext);
         let xy = wall.start + d * u + n2 * w;
         let z = match top {
-            Some(t) if v >= h - 1e-9 => t.z_at(xy).map_or(z0 + h, |z| z.max(z0 + floor.min(h))),
+            Some(t) if v >= h - 1e-9 => {
+                // an end running into a joined wall, just past the ceiling
+                // or roof it is held to, keeps that height rather than
+                // rising for a few centimetres (MU20)
+                let near = [0.0, 0.05, -0.05, 0.1, -0.1, 0.2, -0.2, 0.3, -0.3]
+                    .iter()
+                    .filter_map(|o| t.z_at(xy + d * *o))
+                    .next();
+                near.map_or(z0 + h, |z| z.max(z0 + floor.min(h)))
+            }
             _ => z0 + v,
         };
         // a layer run on past the base or the top, or stopped short
