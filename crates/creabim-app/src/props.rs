@@ -9,13 +9,32 @@ use eframe::egui::{self, Color32, Response, Sense, Ui, Vec2};
 /// The label column's width for a row `width` wide: wide enough for most
 /// labels, never more than 40% of the row.
 pub fn label_width(width: f32) -> f32 {
-    (width * 0.4).clamp(64.0, 128.0)
+    (width * 0.4).clamp(96.0, 180.0)
 }
+
+/// Narrower than this, a row stacks: its label above, its control the
+/// full width below (A4-1).
+pub const STACK_BELOW: f32 = 300.0;
 
 /// A row: `label` at the left, in the label column, then `add`'s controls
 /// filling the rest. A label too long for its column is cut with … and
 /// shows whole when hovered.
 pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    // a control's own text never wraps: a value too long is cut with …
+    // (A4-1)
+    let add = |ui: &mut Ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+        add(ui)
+    };
+    if ui.available_width() < STACK_BELOW {
+        return ui
+            .vertical(|ui| {
+                let muted = ui.visuals().widgets.noninteractive.fg_stroke.color;
+                ui.add(egui::Label::new(egui::RichText::new(label).color(muted)).truncate());
+                ui.horizontal(add).inner
+            })
+            .inner;
+    }
     let lw = label_width(ui.available_width());
     ui.horizontal(|ui| {
         let h = ui.spacing().interact_size.y;
@@ -304,9 +323,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_label_column_is_at_most_two_fifths_of_the_row() {
+    fn the_label_column_is_two_fifths_of_the_row_and_narrow_rows_stack() {
+        // A4-1: about 40 %, never under 96 px, and no wider than 180
         assert_eq!(label_width(300.0), 120.0);
-        assert_eq!(label_width(1000.0), 128.0);
-        assert_eq!(label_width(100.0), 64.0);
+        assert_eq!(label_width(1000.0), 180.0);
+        assert_eq!(label_width(200.0), 96.0);
+        // below 300 px the label goes above its control
+        assert_eq!(STACK_BELOW, 300.0);
     }
 }

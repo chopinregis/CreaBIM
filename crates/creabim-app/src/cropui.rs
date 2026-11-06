@@ -351,21 +351,31 @@ impl CreaBimApp {
             });
         }
         ui.add_space(4.0);
-        let num = |ui: &mut egui::Ui, text: &str, v: &mut f64| -> bool {
-            crate::props::row(ui, text, |ui| {
-                crate::props::fill(ui, crate::units::drag(v).range(-1e5..=1e5)).changed()
-            })
-        };
+        // a small table, from | to, the axis as the row's label (A4-1)
         egui::Grid::new(("crop extents", id))
-            .num_columns(2)
+            .num_columns(3)
+            .spacing([6.0, 4.0])
             .show(ui, |ui| {
+                ui.label("");
+                ui.label(egui::RichText::new("from").weak());
+                ui.label(egui::RichText::new("to").weak());
+                ui.end_row();
+                let w = ((ui.available_width() - 30.0) / 2.0).max(60.0);
                 for (axis, name) in ["X", "Y", "Z"].iter().enumerate() {
                     let (mut lo, mut hi) = (c.min[axis], c.max[axis]);
-                    if num(ui, &format!("{name} from"), &mut lo) {
+                    ui.label(*name);
+                    let h = ui.spacing().interact_size.y;
+                    if ui
+                        .add_sized([w, h], crate::units::drag(&mut lo).range(-1e5..=1e5))
+                        .changed()
+                    {
                         c.set_face(axis * 2, lo);
                         label = Some("Crop box extents");
                     }
-                    if num(ui, "to", &mut hi) {
+                    if ui
+                        .add_sized([w, h], crate::units::drag(&mut hi).range(-1e5..=1e5))
+                        .changed()
+                    {
                         c.set_face(axis * 2 + 1, hi);
                         label = Some("Crop box extents");
                     }

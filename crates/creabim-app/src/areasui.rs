@@ -9,7 +9,9 @@ use serde_json::{json, Value};
 use shell::icon_name;
 
 /// The height of an area's header, in points.
-pub(super) const HEADER: f32 = 30.0;
+/// A view area's header height (A4-2): 26 px controls with 4 px above and
+/// below.
+pub(super) const HEADER: f32 = 34.0;
 
 /// The areas as they are now.
 #[derive(Clone, Debug)]
@@ -569,7 +571,7 @@ impl CreaBimApp {
     /// used first.
     fn area_header(&mut self, ui: &mut egui::Ui, i: usize, head: Rect, shows: Shows) {
         let p = self.shell.theme.palette();
-        ui.painter().rect_filled(head, 0.0, p.panel);
+        ui.painter().rect_filled(head, 0.0, p.header());
         ui.painter().line_segment(
             [head.left_bottom(), head.right_bottom()],
             egui::Stroke::new(1.0, p.border),
@@ -607,12 +609,13 @@ impl CreaBimApp {
             egui::UiBuilder::new()
                 .id_salt(("area-head", i))
                 .max_rect(Rect::from_min_max(
-                    head.min + egui::vec2(14.0, 3.0),
-                    head.max - egui::vec2(6.0, 3.0),
+                    head.min + egui::vec2(14.0, 4.0),
+                    head.max - egui::vec2(6.0, 4.0),
                 ))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         child.spacing_mut().item_spacing.x = 2.0;
+        child.spacing_mut().interact_size.y = 26.0;
         let room = head.width() - 20.0;
         // what shows: the kind, then which one
         let r = pill(&mut child, kind_icon, "", true, &p).on_hover_text(format!(
@@ -1181,7 +1184,7 @@ fn pill(
     strong: bool,
     p: &crate::theme::Palette,
 ) -> egui::Response {
-    let (r, resp) = ui.allocate_exact_size(egui::vec2(34.0, 24.0), Sense::click());
+    let (r, resp) = ui.allocate_exact_size(egui::vec2(34.0, 26.0), Sense::click());
     let fill = if resp.hovered() {
         p.raise2
     } else if strong {
@@ -1190,7 +1193,7 @@ fn pill(
         Color32::TRANSPARENT
     };
     ui.painter().rect_filled(r, 6.0, fill);
-    let ir = Rect::from_min_size(r.min + egui::vec2(3.0, 3.0), egui::vec2(18.0, 18.0));
+    let ir = Rect::from_min_size(r.min + egui::vec2(3.0, 4.0), egui::vec2(18.0, 18.0));
     crate::svgicon::paint(ui.painter(), ir, icon, p.text);
     let cr = Rect::from_min_size(
         egui::pos2(r.right() - 12.0, r.center().y - 4.0),

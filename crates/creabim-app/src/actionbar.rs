@@ -95,6 +95,16 @@ impl CreaBimApp {
                 .hint("Edit mode: all its grips in every view, corners to add and take away. Esc finishes."),
             );
         }
+        // a view not shown in the drawing area opens from here (A4-1)
+        if alone
+            && matches!(e.kind, ElementKind::View(_) | ElementKind::Sheet(_))
+            && self.active_view != Some(id)
+        {
+            out.push(
+                Act::new("bar.view.open", "Open this view", "open-view")
+                    .hint("Show it in the drawing area"),
+            );
+        }
         match &e.kind {
             ElementKind::Wall(_) => {
                 out.push(
@@ -365,6 +375,11 @@ impl CreaBimApp {
         match id {
             "bar.edit" => self.toggle_edit_mode(),
             "bar.cmd:delete" => self.delete_selected(),
+            "bar.view.open" => {
+                if let Some(id) = self.selection.active {
+                    self.active_view = Some(id);
+                }
+            }
             "bar.maketype" => {
                 if let Some(id) = self.selection.active {
                     self.run_types(super::typesui::TypeAsk::FromElement(id));

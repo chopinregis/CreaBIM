@@ -4646,7 +4646,11 @@ impl CreaBimApp {
             // a level is renamed with the plans named after it, once typed
             self.level_name_field(ui, id, &e.name);
         } else if crate::props::row(ui, "Name", |ui| {
-            crate::props::fill(ui, egui::TextEdit::singleline(&mut name)).changed()
+            crate::props::fill(
+                ui,
+                egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center),
+            )
+            .changed()
         }) {
             let r = self
                 .doc
@@ -5073,9 +5077,6 @@ impl CreaBimApp {
                     ) && view_style_combo(ui, "view_style", &mut v.style)
                     {
                         label = "View style"
-                    }
-                    if self.active_view != Some(id) && ui.button("Open this view").clicked() {
-                        self.active_view = Some(id);
                     }
                     if matches!(v.kind, ViewKind::Axonometric { .. }) {
                         ui.add_space(6.0);
@@ -6149,7 +6150,7 @@ impl eframe::App for CreaBimApp {
             .size_range(220.0..=640.0)
             .frame(
                 egui::Frame::side_top_panel(ui.style())
-                    .inner_margin(egui::Margin::symmetric(14, 12)),
+                    .inner_margin(egui::Margin::symmetric(12, 12)),
             )
             .show(ui, |ui| {
                 // the panel keeps the width it was given: what is wider
@@ -6160,10 +6161,17 @@ impl eframe::App for CreaBimApp {
                 let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect));
                 inner.set_clip_rect(clip);
                 inner.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                // one grid for every row (A4-1): 28 px controls, and the
+                // scroll bar in a gutter of its own, never over a field
+                inner.spacing_mut().interact_size.y = 28.0;
+                let mut bar = egui::style::ScrollStyle::solid();
+                bar.bar_width = 6.0;
+                bar.bar_inner_margin = 4.0;
+                inner.spacing_mut().scroll = bar;
                 egui::ScrollArea::vertical()
                     .auto_shrink(false)
                     .show(&mut inner, |ui| {
-                        ui.set_max_width(rect.width());
+                        ui.set_max_width(rect.width() - 10.0);
                         self.properties(ui)
                     });
                 ui.allocate_rect(rect, egui::Sense::hover());
@@ -6760,7 +6768,11 @@ impl CreaBimApp {
             .open(&mut open)
             .show(ctx, |ui| {
                 ui.label("What points and drags round to: 25 mm, 1/4\", 2 cm.");
-                let r = ui.add(egui::TextEdit::singleline(&mut text).desired_width(140.0));
+                let r = ui.add(
+                    egui::TextEdit::singleline(&mut text)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(140.0),
+                );
                 r.request_focus();
                 let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if (enter || ui.button("Use it").clicked()) && !text.trim().is_empty() {
