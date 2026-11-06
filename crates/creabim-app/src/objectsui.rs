@@ -493,7 +493,7 @@ pub(super) fn object_fields(
         }
     });
     ui.horizontal(|ui| {
-        ui.label("Turn");
+        ui.label("Rotation");
         if ui
             .add(
                 egui::DragValue::new(&mut o.rotation)
@@ -507,7 +507,7 @@ pub(super) fn object_fields(
             label = "Turn object";
         }
         if ui
-            .small_button("Turn 90°")
+            .small_button("↺ 90°")
             .on_hover_text("A quarter turn anticlockwise about its back edge")
             .clicked()
         {

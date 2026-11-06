@@ -825,6 +825,15 @@ pub fn sketch_items(
     let facing =
         (x.length() - 1.0).abs() < 1e-6 && (y.length() - 1.0).abs() < 1e-6 && x.dot(y).abs() < 1e-6;
     let mut out = Vec::new();
+    // a closed sketch is a face: a light wash inside it (A7-1)
+    let outline = sk.outline();
+    if sk.closed && outline.len() >= 3 && !creabim_core::polygon::self_intersects(&outline, true) {
+        out.push(PlanItem::Tint {
+            id,
+            points: outline.iter().map(|p| at(*p)).collect(),
+            rgb: [0.16, 0.27, 0.55],
+        });
+    }
     for c in sk.curves() {
         match c {
             Curve::Arc {
@@ -1084,25 +1093,63 @@ pub fn plan_view_with(
                 let bottom = s.top_offset - s.thickness;
                 let cut = bottom < cut_height && cut_height < s.top_offset;
                 let holes = creabim_core::slab::holes_of(model, e);
+                // layers whose edges were moved by hand (A7-10): counted
+                // from the top, each with its depth below the slab's top
+                let layers: Vec<f64> = creabim_core::assembly::assembly_of(model, e)
+                    .map(|(_, a)| a.layers.iter().map(|l| l.thickness).collect())
+                    .unwrap_or_default();
+                let edited: std::collections::BTreeSet<usize> = s
+                    .layer_edges
+                    .iter()
+                    .map(|l| l.layer)
+                    .filter(|l| *l < layers.len())
+                    .collect();
                 if cut {
+                    // the layer the plan plane passes through
+                    let mut top = s.top_offset;
+                    let mut at = None;
+                    for (k, t) in layers.iter().enumerate() {
+                        if cut_height <= top && cut_height > top - t {
+                            at = Some(k);
+                        }
+                        top -= t;
+                    }
+                    let outline = match at {
+                        Some(k) if edited.contains(&k) => s.layer_outline(k),
+                        _ => s.outline(),
+                    };
                     // one outline with its holes bridged in, so the fill leaves them open
                     items.insert(
                         0,
                         PlanItem::Polygon {
                             id: e.id,
                             pen: Pen::Cut,
-                            points: creabim_core::polygon::bridged(&s.outline(), &holes),
+                            points: creabim_core::polygon::bridged(&outline, &holes),
                         },
                     );
                 } else {
-                    items.insert(
-                        0,
-                        PlanItem::Polygon {
-                            id: e.id,
-                            pen: Pen::Projection,
-                            points: s.outline(),
-                        },
-                    );
+                    // seen from above: the slab's own edge where any layer
+                    // still follows it, and each edited layer's edge
+                    if edited.len() < layers.len().max(1) {
+                        items.insert(
+                            0,
+                            PlanItem::Polygon {
+                                id: e.id,
+                                pen: Pen::Projection,
+                                points: s.outline(),
+                            },
+                        );
+                    }
+                    for k in edited.iter().rev() {
+                        items.insert(
+                            0,
+                            PlanItem::Polygon {
+                                id: e.id,
+                                pen: Pen::Projection,
+                                points: s.layer_outline(*k),
+                            },
+                        );
+                    }
                     let here = model.level(level).map_or(0.0, |l| l.elevation);
                     for h in &holes {
                         if stair_arrives_in(model, here, h) {
@@ -2484,5 +2531,126 @@ mod tests {
         assert!(!items
             .iter()
             .any(|it| matches!(it, PlanItem::Line { id, pen: Pen::Symbol, .. } if *id == hole)));
+    }
+
+    /// A slab layer's edges moved by hand show in plan (A7-10): the top
+    /// layer pushed out 500 mm reaches 500 mm past the slab's own edge.
+    #[test]
+    fn slab_layer_edits_show_in_plan() {
+        let m = creabim_core::starter::starter_house();
+        let (id, level, n) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Slab(s) => {
+                    let (_, a) = creabim_core::assembly::assembly_of(&m, e)?;
+                    (a.layers.len() > 1).then_some((e.id, s.level, s.boundary.len()))
+                }
+                _ => None,
+            })
+            .expect("a layered slab");
+        let far = |m: &Model| {
+            plan_view(m, level, 1.2)
+                .items
+                .iter()
+                .filter(|it| it.id() == id)
+                .filter_map(|it| match it {
+                    PlanItem::Polygon { points, .. } => {
+                        Some(points.iter().map(|p| p.x).fold(f64::MIN, f64::max))
+                    }
+                    _ => None,
+                })
+                .fold(f64::MIN, f64::max)
+        };
+        let before = far(&m);
+        let mut e = m.get(id).unwrap().clone();
+        if let ElementKind::Slab(s) = &mut e.kind {
+            for edge in 0..n {
+                creabim_core::set_layer_edge(&mut s.layer_edges, 0, edge, 0.5);
+            }
+        }
+        let mut doc = creabim_core::Document::from_model(m.clone());
+        let old = m.get(id).unwrap().clone();
+        doc.commit(creabim_core::Transaction::new("push").replace(old, e))
+            .unwrap();
+        let after = far(doc.model());
+        assert!(
+            (after - before - 0.5).abs() < 1e-6,
+            "the plan's furthest slab edge moved {:.3} m, wanted 0.5",
+            after - before
+        );
+    }
+
+    /// The starter house's Ground Floor plan hides its footings; shown
+    /// again (the "Show footings" button under its view depth, A7-3) they
+    /// draw dashed under the floor.
+    #[test]
+    fn shown_footings_draw_dashed_under_the_floor() {
+        let m = creabim_core::starter::starter_house();
+        let footings: std::collections::HashSet<ElementId> = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Footing(_)))
+            .map(|e| e.id)
+            .collect();
+        let plan = m
+            .iter()
+            .find(|e| e.name == "Ground Floor plan" && matches!(e.kind, ElementKind::View(_)))
+            .unwrap()
+            .clone();
+        let dashed = |m: &Model| {
+            crate::section::view_drawing_with(m, plan.id, false)
+                .unwrap()
+                .items
+                .iter()
+                .filter(|it| {
+                    footings.contains(&it.id())
+                        && matches!(
+                            it,
+                            PlanItem::Line {
+                                pen: Pen::Hidden,
+                                ..
+                            }
+                        )
+                })
+                .count()
+        };
+        assert_eq!(dashed(&m), 0, "hidden in the view");
+        let mut shown = plan.clone();
+        if let ElementKind::View(v) = &mut shown.kind {
+            v.hidden
+                .categories
+                .retain(|c| *c != creabim_core::visibility::Category::Footings);
+        }
+        let mut doc = creabim_core::Document::from_model(m.clone());
+        doc.commit(creabim_core::Transaction::new("show").replace(plan.clone(), shown))
+            .unwrap();
+        assert!(dashed(doc.model()) > 20, "shown, dashed under the floor");
+    }
+
+    /// A closed sketch draws as a face (a wash inside its outline); an
+    /// open one, or a closed one that crosses itself, as lines only (A7-1).
+    #[test]
+    fn a_closed_sketch_is_washed_as_a_face() {
+        let plane = creabim_core::Workplane::ground(0.0);
+        let square = vec![
+            DVec2::ZERO,
+            DVec2::new(2.0, 0.0),
+            DVec2::new(2.0, 2.0),
+            DVec2::new(0.0, 2.0),
+        ];
+        let bow = vec![
+            DVec2::ZERO,
+            DVec2::new(2.0, 2.0),
+            DVec2::new(2.0, 0.0),
+            DVec2::new(0.0, 2.0),
+        ];
+        let washed = |pts: Vec<DVec2>, closed: bool| {
+            let sk = creabim_core::Sketch::polyline(None, plane, pts, closed);
+            sketch_items(ElementId::NIL, &sk, &|p| p)
+                .iter()
+                .any(|it| matches!(it, PlanItem::Tint { .. }))
+        };
+        assert!(washed(square.clone(), true));
+        assert!(!washed(square, false));
+        assert!(!washed(bow, true));
     }
 }

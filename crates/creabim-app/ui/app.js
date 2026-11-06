@@ -129,7 +129,7 @@
       `<button class="tool ${t.active ? "on" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}</button>`).join("");
     const html =
       `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="About, updates, settings and exit"><span class="logo">${mark()}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
-      `<div class="quick">${quick}</div><span class="spacer"></span><div class="doc" title="${esc(S.doc.path)}"><span class="dot"></span>${esc(S.doc.name)}</div>${S.right.map(control).join("")}</div>` +
+      `<div class="quick">${quick}</div><span class="spacer"></span><div class="doc" title="${esc(S.doc.path)}${S.doc.unsaved === false ? "" : " · unsaved changes"}">${S.doc.unsaved === false ? "" : `<span class="dot"></span>`}${esc(S.doc.name)}</div>${S.right.map(control).join("")}</div>` +
       `<div class="bar2"><div class="ttabs">${tabs}</div><div class="tools">${tools}</div><span class="spacer"></span></div>` +
       // the tool options strip: the tool in use and what it can be set to,
       // then the active view's own settings at the right. What doesn't fit
@@ -379,9 +379,14 @@
       if (i.sep) return `<div class="msep"></div>`;
       if (i.header) return `<div class="mhead">${esc(i.header)}</div>`;
       if (i.items) return `<button class="mi" data-sub="${esc(i.label)}" ${i.enabled ? "" : "disabled"}><span class="ck">${i.icon ? icon(i.icon) : ""}</span><span class="label">${esc(i.label)}</span>${icon("chevron-right", "sub")}</button>`;
-      return `<button class="mi" data-act="${esc(i.id)}" data-keep="${i.keep ? 1 : 0}" title="${esc(i.hint)}" ${i.enabled ? "" : "disabled"}>` +
-        `<span class="ck">${i.checked ? icon("check") : (i.icon && i.checked !== false ? icon(i.icon) : "")}</span>` +
-        (i.icon && i.checked != null ? `<span class="glyph">${icon(i.icon)}</span>` : "") + `<span class="label">${esc(i.label)}</span>${i.key ? `<span class="key">${esc(i.key)}</span>` : ""}</button>`;
+      // one icon column for every row; a toggle's state at the row's end,
+      // before its shortcut (A7-6). A toggle without an icon shows its
+      // tick in the icon column, as a plain check item.
+      const toggle = i.checked != null;
+      const lead = i.icon ? icon(i.icon) : (i.checked ? icon("check") : "");
+      const state = toggle && i.icon ? `<span class="state">${i.checked ? icon("check") : ""}</span>` : "";
+      return `<button class="mi ${toggle && i.checked ? "on" : ""}" data-act="${esc(i.id)}" data-keep="${i.keep ? 1 : 0}" title="${esc(i.hint)}" ${i.enabled ? "" : "disabled"}>` +
+        `<span class="ck">${lead}</span><span class="label">${esc(i.label)}</span>${state}${i.key ? `<span class="key">${esc(i.key)}</span>` : ""}</button>`;
     };
     const cols = S.columns > 1 && title === null ? columns(items, S.columns) : null;
     let html = `<div class="mwrap"><div class="menu ${cols ? "cols" : ""}" ${cols ? `style="--cols:${cols.length}"` : ""}>`;

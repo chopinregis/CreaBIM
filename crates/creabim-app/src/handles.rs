@@ -315,7 +315,7 @@ impl HandleKind {
             HandleKind::Face(_) => "Drag: push or pull the face",
             HandleKind::ViewDepth => "Drag: change how deep it sees",
             HandleKind::CropFace(_) => "Drag: move the crop face",
-            HandleKind::Rotate => "Drag: turn it (steps of 5°) · Tab: type a length",
+            HandleKind::Rotate => "Drag: turn it about its middle (steps of 5°; Alt for any angle)",
             HandleKind::ColumnSize { depth: false } => "Drag: change the width",
             HandleKind::ColumnSize { depth: true } => "Drag: change the depth",
             HandleKind::WallSlide => "Drag: slide the wall square to itself (joined walls follow)",
@@ -842,7 +842,7 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             let (lo, hi) = creabim_core::objects::type_of(model, e)
                 .map(|t| t.bounds())
                 .unwrap_or((DVec3::new(-0.3, -0.6, 0.0), DVec3::new(0.3, 0.0, 1.0)));
-            let front = DVec2::new((lo.x + hi.x) / 2.0, lo.y - 0.35);
+            let front = DVec2::new((lo.x + hi.x) / 2.0, lo.y - 0.25);
             vec![flat(HandleKind::Rotate, o.to_plan(front).extend(z))]
         }
         _ => creabim_core::members::grips(model, e)
@@ -1428,7 +1428,9 @@ pub fn apply(
             if a1.length() < 1e-6 {
                 return Err("too close to its middle".into());
             }
-            let by = round(a0.angle_to(a1).to_degrees(), 5.0);
+            // in 5° steps, free with Alt or Step off, as lengths are
+            let raw = a0.angle_to(a1).to_degrees();
+            let by = if step > 0.0 { round(raw, 5.0) } else { raw };
             match &mut first.kind {
                 ElementKind::Object(_) => turn_object(model, first, by),
                 ElementKind::Column(col) => col.rotation = (col.rotation + by).rem_euclid(360.0),
@@ -2058,6 +2060,67 @@ pub fn grip_style() -> GripStyle {
         2 => GripStyle::OneShape,
         _ => GripStyle::Quiet,
     }
+}
+
+/// An object's turn grip: a round handle with a curved arrow, on a thin
+/// leader from `front` (its front edge on screen).
+fn draw_turn_grip(
+    painter: &Painter,
+    c: Pos2,
+    front: Option<Pos2>,
+    state: GripState,
+    look: &GripLook,
+) {
+    let accent = if state == GripState::Faded {
+        look.accent.gamma_multiply(0.4)
+    } else {
+        look.accent
+    };
+    let r = match state {
+        GripState::Hover | GripState::Held => 9.5,
+        _ => 8.0,
+    };
+    if let Some(f) = front {
+        if f.distance(c) > r + 2.0 {
+            let tip = c + (f - c).normalized() * r;
+            painter.line_segment([f, tip], Stroke::new(1.0, accent.gamma_multiply(0.7)));
+        }
+    }
+    let fill = if state == GripState::Held {
+        accent
+    } else {
+        Color32::WHITE
+    };
+    let ink = if state == GripState::Held {
+        Color32::WHITE
+    } else {
+        accent
+    };
+    painter.circle(c, r, fill, Stroke::new(1.5, accent));
+    // three quarters of a circle and an arrowhead at its end
+    let a = r * 0.5;
+    let steps = 14;
+    let (from, to) = (-0.5_f32, 4.2_f32);
+    let pts: Vec<Pos2> = (0..=steps)
+        .map(|k| {
+            let t = from + (to - from) * k as f32 / steps as f32;
+            c + Vec2::new(t.cos(), -t.sin()) * a
+        })
+        .collect();
+    painter.add(egui::Shape::line(pts.clone(), Stroke::new(1.5, ink)));
+    let end = *pts.last().unwrap();
+    let along = (end - pts[pts.len() - 2]).normalized();
+    let side = along.rot90();
+    let head = 3.0;
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            end + along * head,
+            end - along * 1.0 + side * head,
+            end - along * 1.0 - side * head,
+        ],
+        ink,
+        Stroke::NONE,
+    ));
 }
 
 fn draw_grip(
@@ -2896,6 +2959,23 @@ pub fn interact(
         let filled = edit
             && (matches!(h.kind, HandleKind::Vertex { .. })
                 || edited_end(element.as_ref(), h.kind));
+        if h.kind == HandleKind::Rotate {
+            // an object's turn grip: a curved arrow on a short leader from
+            // its front edge, so it reads as part of the object (A7-7)
+            let front = element.as_ref().and_then(|e| {
+                let ElementKind::Object(o) = &e.kind else {
+                    return None;
+                };
+                let (lo, hi) = creabim_core::objects::type_of(doc.model(), e)?.bounds();
+                let z = creabim_core::objects::base_z(doc.model(), e).unwrap_or(0.0);
+                (input.project)(o.to_plan(DVec2::new((lo.x + hi.x) / 2.0, lo.y)).extend(z))
+            });
+            draw_turn_grip(painter, c, front, state, &look);
+            if state == GripState::Hover {
+                ctx.set_cursor_icon(egui::CursorIcon::Grab);
+            }
+            continue;
+        }
         draw_grip(painter, c, bar, state, filled, picked, &look);
         if state == GripState::Hover {
             if let Some(dir) = bar.flatten() {

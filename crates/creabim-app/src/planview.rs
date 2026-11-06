@@ -1565,9 +1565,27 @@ pub fn show(
     };
     let dim_snapper = state.snaps.get(&view).map(|s| &s.2);
     let dim_guided = match (tool, &view_def, response.hover_pos()) {
-        (t, Some(v), Some(p)) if t == Tool::Dimension || crate::annotate::is_tool(t) => Some(
-            dim_snap_guided(doc, v, kind, dim_snapper, &snap_cfg, &xf, p, &guides),
-        ),
+        (t, Some(v), Some(p)) if t == Tool::Dimension || crate::annotate::is_tool(t) => {
+            Some(dim_snap_guided(
+                doc,
+                v,
+                kind,
+                dim_snapper,
+                &snap_cfg,
+                &xf,
+                p,
+                &guides,
+                state.dim.last().map(|d| d.1.extend(0.0)),
+                &snaps::track_points(
+                    &state
+                        .dim
+                        .iter()
+                        .map(|d| d.1.extend(0.0))
+                        .collect::<Vec<_>>(),
+                    &[],
+                ),
+            ))
+        }
         _ => None,
     };
     let dim_hit = dim_guided.as_ref().map(|(h, at, k, _)| (*h, *at, *k));
@@ -4352,7 +4370,7 @@ fn dim_snap(
     xf: &Xf,
     cursor: Pos2,
 ) -> (HostPoint, DVec2, Option<SnapKind>) {
-    let (hp, at, k, _) = dim_snap_guided(doc, view, kind, snapper, cfg, xf, cursor, &[]);
+    let (hp, at, k, _) = dim_snap_guided(doc, view, kind, snapper, cfg, xf, cursor, &[], None, &[]);
     (hp, at, k)
 }
 
@@ -4375,6 +4393,8 @@ fn dim_snap_guided(
     xf: &Xf,
     cursor: Pos2,
     guides: &[snaps::TempGuide],
+    from: Option<DVec3>,
+    track: &[(DVec3, snaps::Through)],
 ) -> (HostPoint, DVec2, Option<SnapKind>, Vec<usize>) {
     let model = doc.model();
     let p = xf.to_world(cursor);
@@ -4417,12 +4437,15 @@ fn dim_snap_guided(
     }
     let project = |q: DVec3| Some(xf.to_screen(q.truncate()));
     let hit = snapper.and_then(|s| {
+        // from the point clicked last, as the drawing tools snap from
+        // theirs: on its axes, square to it, lined up with the points
+        // picked (A7-11)
         s.snap_guided(
             cfg,
             cursor,
             &project,
-            None,
-            &[],
+            from,
+            track,
             guides,
             Some(p.extend(0.0)),
         )
@@ -5572,6 +5595,51 @@ mod tests {
         let e = doc.model().get(sel.active.unwrap()).unwrap();
         assert!(matches!(&e.kind, ElementKind::Opening(o) if o.kind == OpeningKind::Hole));
         assert!(e.of_type.is_none());
+    }
+
+    /// A dimension's second point locks onto the first point's
+    /// horizontal and vertical, as a wall's end does (A7-11).
+    #[test]
+    fn a_dimension_snaps_on_the_axes_of_its_first_point() {
+        let doc = Document::from_model(creabim_core::sample::sample_house());
+        let v = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. }) => Some(v.clone()),
+                _ => None,
+            })
+            .unwrap();
+        // far from the house, so nothing else is under the pointer
+        let first = DVec2::new(40.0, 40.0);
+        let xf = Xf {
+            rect: Rect::from_min_size(Pos2::ZERO, Vec2::splat(1000.0)),
+            center: first,
+            scale: 100.0,
+        };
+        let snapper = Snapper::from_drawing(&[], &[]);
+        let cfg = snaps::SnapSettings::default();
+        for (aim, want) in [
+            (DVec2::new(43.0, 40.05), DVec2::new(43.0, 40.0)),
+            (DVec2::new(39.96, 37.0), DVec2::new(40.0, 37.0)),
+        ] {
+            let (_, at, kind, _) = dim_snap_guided(
+                &doc,
+                &v,
+                pane_kind(&v),
+                Some(&snapper),
+                &cfg,
+                &xf,
+                xf.to_screen(aim),
+                &[],
+                Some(first.extend(0.0)),
+                &[],
+            );
+            assert!(
+                at.distance(want) < 1e-6,
+                "aimed at {aim}, got {at} ({kind:?}), wanted {want}"
+            );
+        }
     }
 
     #[test]

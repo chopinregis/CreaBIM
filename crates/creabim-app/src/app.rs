@@ -153,6 +153,11 @@ pub struct CreaBimApp {
     guide_from: Option<DVec3>,
     extrude_distance: f64,
     path: String,
+    /// The model's revision when it was last opened or saved: anything
+    /// else is unsaved (A7-8).
+    saved_revision: Option<u64>,
+    /// The window title last set, so it is only sent when it changes.
+    title: String,
     status: String,
     /// Linked files (Blender...) and when they were last read.
     watch: crate::files::Watch,
@@ -212,6 +217,9 @@ pub struct CreaBimApp {
     /// The New project window, with the classic panels.
     new_project_classic: bool,
 }
+
+/// How much of the accent a selected element takes in 3D (A7-2).
+const SELECTION_TINT: f32 = 0.35;
 
 impl CreaBimApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -277,6 +285,8 @@ impl CreaBimApp {
             plane_pick: None,
             extrude_distance: 1.0,
             path: "project.creabim".into(),
+            saved_revision: None,
+            title: String::new(),
             watch: Default::default(),
             live_reload: true,
             hidden: Default::default(),
@@ -395,15 +405,24 @@ impl CreaBimApp {
                 self.watch = Default::default();
                 self.recent.add(path);
                 self.path = path.to_string();
+                self.saved_revision = Some(self.doc.model().revision());
                 self.status = format!("Opened {path}");
             }
             Err(e) => self.status = format!("Couldn't open {path}: {e}"),
         }
     }
 
+    /// Has the model changed since it was opened or saved?
+    pub(crate) fn unsaved(&self) -> bool {
+        self.saved_revision != Some(self.doc.model().revision())
+    }
+
     fn save(&mut self) {
         if self.path.to_ascii_lowercase().ends_with(".json") {
             let r = std::fs::write(&self.path, self.doc.model().to_json());
+            if r.is_ok() {
+                self.saved_revision = Some(self.doc.model().revision());
+            }
             self.report(r, format!("Saved {}", self.path));
             return;
         }
@@ -414,6 +433,7 @@ impl CreaBimApp {
         if r.is_ok() {
             let path = self.path.clone();
             self.recent.add(&path);
+            self.saved_revision = Some(self.doc.model().revision());
         }
         self.report(r, format!("Saved {}", self.path));
     }
@@ -1433,7 +1453,20 @@ impl CreaBimApp {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
         let mut see_through = Vec::new();
-        let highlight = [0.95, 0.55, 0.20];
+        // the selection in the interaction colour every view and grip uses
+        // (A7-2): a tint over the element's own colour and a crisp
+        // outline, never a repaint
+        let highlight = {
+            let a = crate::planview::ACCENT_SELECTED;
+            [
+                a.r() as f32 / 255.0,
+                a.g() as f32 / 255.0,
+                a.b() as f32 / 255.0,
+            ]
+        };
+        let tint = |c: [f32; 3]| {
+            [0, 1, 2].map(|k| c[k] * (1.0 - SELECTION_TINT) + highlight[k] * SELECTION_TINT)
+        };
         let mut ghost_lines: Vec<(DVec3, DVec3, [f32; 3])> = Vec::new();
         // what is selected of the cutters and shafts shows through everything
         let mut on_top: Vec<(DVec3, DVec3, [f32; 3])> = Vec::new();
@@ -1473,7 +1506,8 @@ impl CreaBimApp {
                 }
                 continue;
             }
-            if mode.edges() && !xrayed {
+            // a selected element is outlined whatever the shading shows
+            if (mode.edges() || selected) && !xrayed {
                 let c = if selected { highlight } else { edge_colour };
                 for &(a, b) in snaps::feature_edges_cached(&item.mesh).iter() {
                     ghost_lines.push((a, b, c));
@@ -1504,14 +1538,8 @@ impl CreaBimApp {
             } else {
                 item.color
             };
-            let mut colors = vec![
-                if selected && face_tris.is_none() {
-                    highlight
-                } else {
-                    plain
-                };
-                item.mesh.positions.len()
-            ];
+            let mut colors =
+                vec![if selected { tint(plain) } else { plain }; item.mesh.positions.len()];
             if let Some(tris) = &face_tris {
                 for &t in tris {
                     for k in 0..3 {
@@ -1522,10 +1550,8 @@ impl CreaBimApp {
                     }
                 }
             }
-            // a selected element shows solid, whatever it is made of
-            let surface = if selected {
-                [item.surface[0], item.surface[1], 1.0]
-            } else if xrayed {
+            // a selected element keeps its own surface (glass stays glass)
+            let surface = if xrayed {
                 [
                     item.surface[0],
                     item.surface[1],
@@ -3298,6 +3324,43 @@ impl CreaBimApp {
             };
             draw_guide_3d(painter, project, g.a, g.b, stroke);
         }
+        // a closed sketch is a face: a light fill inside its outline (A7-1)
+        for e in self.doc.model().iter() {
+            let ElementKind::Sketch(sk) = &e.kind else {
+                continue;
+            };
+            if !sk.closed || left_out.contains(&e.id) {
+                continue;
+            }
+            let outline = sk.outline();
+            if outline.len() < 3 || creabim_core::polygon::self_intersects(&outline, true) {
+                continue;
+            }
+            let z = sk
+                .level
+                .and_then(|l| self.doc.model().level(l))
+                .map_or(0.0, |l| l.elevation);
+            let pts: Option<Vec<egui::Pos2>> = outline
+                .iter()
+                .map(|p| project(sk.plane.to_model(*p) + DVec3::Z * z))
+                .collect();
+            let Some(pts) = pts else {
+                continue;
+            };
+            let fill = if self.selection.contains(e.id) {
+                Color32::from_rgba_unmultiplied(242, 140, 51, 60)
+            } else {
+                Color32::from_rgba_unmultiplied(40, 70, 140, 40)
+            };
+            let mut mesh = egui::Mesh::default();
+            for p in &pts {
+                mesh.colored_vertex(*p, fill);
+            }
+            for t in creabim_core::polygon::triangulate(&outline) {
+                mesh.add_triangle(t[0] as u32, t[1] as u32, t[2] as u32);
+            }
+            painter.add(egui::Shape::mesh(mesh));
+        }
         for (id, a, b) in creabim_geom::scene::sketch_lines(self.doc.model()) {
             if left_out.contains(&id) {
                 continue;
@@ -4170,13 +4233,28 @@ impl CreaBimApp {
                 if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
                     if matches!(view.kind, ViewKind::Plan { .. }) {
                         let (mut g, scale) = (view.graphics.clone(), view.scale);
+                        let footings_hidden = view
+                            .hidden
+                            .categories
+                            .contains(&creabim_core::visibility::Category::Footings);
                         if let Some(label) = plan_graphics_ui(ui, &mut g, scale) {
                             let r = self.doc.edit_merged(v, label, |e| {
                                 if let ElementKind::View(x) = &mut e.kind {
-                                    x.graphics = g;
+                                    x.graphics = g.clone();
                                 }
                             });
                             self.report(r, "View changed.");
+                        }
+                        // a view depth can't show what the view hides (A7-3)
+                        if footings_hidden && g.range.view_depth.is_some() && footings_note(ui) {
+                            let r = self.doc.edit(v, "Show footings", |e| {
+                                if let ElementKind::View(x) = &mut e.kind {
+                                    x.hidden.categories.retain(|c| {
+                                        *c != creabim_core::visibility::Category::Footings
+                                    });
+                                }
+                            });
+                            self.report(r, "Footings show in this view, dashed under the floor.");
                         }
                     }
                 }
@@ -5065,12 +5143,28 @@ impl CreaBimApp {
                         ui.label("Extrude by");
                         ui.add(crate::units::drag(&mut self.extrude_distance));
                     });
-                    if ui
-                        .button(if sk.closed {
-                            "Extrude into a mass (E)"
+                    // a closed outline that crosses itself has no inside
+                    let crossed =
+                        sk.closed && creabim_core::polygon::self_intersects(&sk.outline(), true);
+                    ui.label(
+                        egui::RichText::new(if crossed {
+                            "Closed, but it crosses itself: not a face. Move a point so no lines cross."
+                        } else if sk.closed {
+                            "Closed: a face. Extruding it makes a solid."
                         } else {
-                            "Extrude into a surface (E)"
+                            "Open: a wire. Extruding it makes a surface."
                         })
+                        .weak(),
+                    );
+                    if ui
+                        .add_enabled(
+                            !crossed,
+                            egui::Button::new(if sk.closed {
+                                "Extrude into a mass (E)"
+                            } else {
+                                "Extrude into a surface (E)"
+                            }),
+                        )
                         .clicked()
                     {
                         extrude_sketch = true;
@@ -5616,6 +5710,11 @@ impl eframe::App for CreaBimApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        let title = window_title(&self.path, self.unsaved());
+        if title != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title = title;
+        }
         crate::units::set(self.doc.model().units());
         // the step drags round to: none while Alt is held (2.10)
         let live = self.plan.snap.live(ctx.input(|i| i.modifiers.alt));
@@ -5996,6 +6095,20 @@ fn plural(kind: &str, n: usize) -> String {
     }
 }
 
+/// The window's title: the project, a • while it has unsaved changes,
+/// then the app, with its version on test builds (0.x) (A7-8).
+fn window_title(path: &str, unsaved: bool) -> String {
+    let name = std::path::Path::new(path)
+        .file_stem()
+        .map_or(path.to_string(), |n| n.to_string_lossy().into_owned());
+    let version = env!("CARGO_PKG_VERSION");
+    let app = match version.split('.').collect::<Vec<_>>().as_slice() {
+        ["0", minor, ..] => format!("CreaBIM 0.{minor} beta"),
+        _ => "CreaBIM".to_string(),
+    };
+    format!("{}{name} — {app}", if unsaved { "• " } else { "" })
+}
+
 fn file_label(path: &str) -> String {
     std::path::Path::new(path)
         .file_name()
@@ -6051,6 +6164,25 @@ fn draw_guide_3d(
     if run.len() > 1 {
         painter.extend(egui::Shape::dashed_line(&run, stroke, 6.0, 4.0));
     }
+}
+
+/// Under a plan's view depth, when the view hides its footings: why the
+/// depth shows none, and a button to show them. True when clicked.
+fn footings_note(ui: &mut egui::Ui) -> bool {
+    let mut show = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label(
+            egui::RichText::new(
+                "Footings are hidden in this view, so the view depth can't show them.",
+            )
+            .weak(),
+        );
+        show = ui
+            .small_button("Show footings")
+            .on_hover_text("Footings under the floor draw dashed, as the slab hides them.")
+            .clicked();
+    });
+    show
 }
 
 /// A plan's graphics in its Properties: the tint of what lies below the
@@ -6224,5 +6356,22 @@ impl CreaBimApp {
         if open && !done && !ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.plan.step_prompt = Some(text);
         }
+    }
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::window_title;
+
+    #[test]
+    fn the_title_names_the_project_marks_unsaved_and_the_test_version() {
+        let v = env!("CARGO_PKG_VERSION");
+        let saved = window_title("projects/Starter house.creabim", false);
+        assert!(saved.starts_with("Starter house — CreaBIM"), "{saved}");
+        if v.starts_with("0.") {
+            assert!(saved.ends_with(" beta"), "{saved}");
+        }
+        let unsaved = window_title("Starter house.creabim", true);
+        assert!(unsaved.starts_with("• Starter house — "), "{unsaved}");
     }
 }
