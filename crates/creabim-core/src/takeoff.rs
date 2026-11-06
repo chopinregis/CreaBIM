@@ -104,6 +104,8 @@ pub struct Line {
 /// Every take-off line of the model, element by element in model order.
 pub fn lines(model: &Model) -> Vec<Line> {
     let mut out = Vec::new();
+    // strip footings as joined, worked out once
+    let strips = crate::footing::strip_outlines(model);
     for e in model.iter() {
         // the measure of the whole element and its thickness
         let (category, level, whole, thickness) = match &e.kind {
@@ -207,9 +209,18 @@ pub fn lines(model: &Model) -> Vec<Line> {
             ),
             ElementKind::Footing(f) => {
                 let (area, length) = match f.kind {
+                    // its outline as joined: corners and overlaps counted once (A7-12)
                     FootingKind::Strip => {
                         let (a, b) = f.line(model);
-                        (a.distance(b) * f.width, a.distance(b))
+                        let area = strips
+                            .get(&e.id)
+                            .map(|ps| {
+                                ps.iter()
+                                    .map(|p| crate::polygon::signed_area2(p).abs() / 2.0)
+                                    .sum()
+                            })
+                            .unwrap_or(a.distance(b) * f.width);
+                        (area, a.distance(b))
                     }
                     FootingKind::Pad => (
                         crate::polygon::signed_area2(&f.pad_outline(model)).abs() / 2.0,

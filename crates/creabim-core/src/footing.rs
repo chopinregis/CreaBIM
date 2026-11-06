@@ -311,6 +311,134 @@ pub fn strip_outlines(model: &Model) -> HashMap<ElementId, Vec<Vec<DVec2>>> {
             .collect();
         out.insert(*id, pieces);
     }
+    trim_overlaps(model, &lines, &mut out);
+    out
+}
+
+/// Strips whose ends run into each other without joining (walls of
+/// different thicknesses on different location lines leave their
+/// centrelines apart, so the ends don't meet exactly) overlap. There the
+/// stronger strip (wider, or first drawn) runs through and the other
+/// loses what the stronger covers, as walls do: no concrete counted twice,
+/// no overlapping solids, no part of either left out (A7-12).
+fn trim_overlaps(
+    model: &Model,
+    lines: &[(ElementId, Wall, f64)],
+    out: &mut HashMap<ElementId, Vec<Vec<DVec2>>>,
+) {
+    let depth = |id: ElementId| match model.get(id).map(|e| &e.kind) {
+        Some(ElementKind::Footing(f)) => Some((f.top(model), f.thickness)),
+        _ => None,
+    };
+    for (j, (lid, lw, _)) in lines.iter().enumerate() {
+        for (i, (wid, ww, _)) in lines.iter().enumerate() {
+            if wid == lid || ww.level != lw.level {
+                continue;
+            }
+            // the stronger runs through
+            let wins = ww.thickness > lw.thickness + 1e-9
+                || ((ww.thickness - lw.thickness).abs() <= 1e-9 && i < j);
+            if !wins {
+                continue;
+            }
+            match (depth(*wid), depth(*lid)) {
+                (Some((t1, d1)), Some((t2, d2)))
+                    if (t1 - t2).abs() < 1e-6 && (d1 - d2).abs() < 1e-6 => {}
+                _ => continue,
+            }
+            let (Some(win), Some(lose)) = (out.get(wid).cloned(), out.get(lid).cloned()) else {
+                continue;
+            };
+            if !overlap_much(&lose, &win) {
+                continue;
+            }
+            let mut pieces = lose;
+            for w in &win {
+                pieces = pieces
+                    .into_iter()
+                    .flat_map(|p| {
+                        if overlap_area(&p, w) > MIN_OVERLAP {
+                            minus_convex(&p, w)
+                        } else {
+                            vec![p]
+                        }
+                    })
+                    .collect();
+            }
+            out.insert(*lid, pieces);
+        }
+    }
+}
+
+/// `p` less convex `q`: the parts of `p` outside each of `q`'s edges in
+/// turn, as convex pieces that neither overlap nor leave a gap (slivers
+/// dropped).
+fn minus_convex(p: &[DVec2], q: &[DVec2]) -> Vec<Vec<DVec2>> {
+    let ccw = crate::polygon::signed_area2(q) > 0.0;
+    let mut rest = p.to_vec();
+    let mut out = vec![];
+    for k in 0..q.len() {
+        let (a, b) = (q[k], q[(k + 1) % q.len()]);
+        let d = b - a;
+        let inward = if ccw { d.perp() } else { -d.perp() };
+        let outside = clip_half_plane(&rest, a, -inward);
+        if outside.len() >= 3 && crate::polygon::signed_area2(&outside).abs() / 2.0 > 1e-6 {
+            out.push(outside);
+        }
+        rest = clip_half_plane(&rest, a, inward);
+        if rest.len() < 3 {
+            break;
+        }
+    }
+    out
+}
+
+/// Overlaps smaller than this (m²) are strips that already join, their
+/// edges touching.
+const MIN_OVERLAP: f64 = 1e-4;
+
+/// Do any of pieces `a` overlap any of pieces `b` by more than a touch?
+fn overlap_much(a: &[Vec<DVec2>], b: &[Vec<DVec2>]) -> bool {
+    a.iter()
+        .any(|p| b.iter().any(|q| overlap_area(p, q) > MIN_OVERLAP))
+}
+
+/// The area two outlines share; `q` is convex (a strip piece).
+fn overlap_area(p: &[DVec2], q: &[DVec2]) -> f64 {
+    if !crate::polygon::overlap(p, q) {
+        return 0.0;
+    }
+    let ccw = crate::polygon::signed_area2(q) > 0.0;
+    let mut part = p.to_vec();
+    for k in 0..q.len() {
+        let (a, b) = (q[k], q[(k + 1) % q.len()]);
+        let d = b - a;
+        // inward normal: left of a counter-clockwise outline
+        let inward = if ccw { d.perp() } else { -d.perp() };
+        part = clip_half_plane(&part, a, inward);
+        if part.len() < 3 {
+            return 0.0;
+        }
+    }
+    crate::polygon::signed_area2(&part).abs() / 2.0
+}
+
+/// The part of `poly` on the side of the line through `point` that
+/// `normal` points to (Sutherland-Hodgman, one edge).
+fn clip_half_plane(poly: &[DVec2], point: DVec2, normal: DVec2) -> Vec<DVec2> {
+    let inside = |p: DVec2| (p - point).dot(normal) >= -1e-9;
+    let mut out = vec![];
+    for k in 0..poly.len() {
+        let (a, b) = (poly[k], poly[(k + 1) % poly.len()]);
+        let (ia, ib) = (inside(a), inside(b));
+        if ia {
+            out.push(a);
+        }
+        if ia != ib {
+            let (da, db) = ((a - point).dot(normal), (b - point).dot(normal));
+            out.push(a + (b - a) * (da / (da - db)));
+        }
+    }
     out
 }
 
@@ -572,6 +700,86 @@ mod tests {
             panic!()
         };
         assert_eq!((s.width, s.thickness), (0.9, 0.4));
+    }
+}
+
+#[cfg(test)]
+mod join_tests {
+    use super::*;
+
+    /// The starter house's strip footings don't overlap anywhere, and
+    /// every point under a wall with a footing is still on one (A7-12:
+    /// four walls of different thicknesses meet at the stair hall).
+    #[test]
+    fn starter_strips_neither_overlap_nor_leave_walls_bare() {
+        let m = crate::starter::starter_house();
+        let strips = strip_outlines(&m);
+        let pieces: Vec<(ElementId, &Vec<DVec2>)> = strips
+            .iter()
+            .flat_map(|(id, ps)| ps.iter().map(move |p| (*id, p)))
+            .collect();
+        let step = 0.01;
+        let mut overlap = 0.0;
+        for (k, (a, pa)) in pieces.iter().enumerate() {
+            for (b, pb) in &pieces[k + 1..] {
+                if a == b || !crate::polygon::overlap(pa, pb) {
+                    continue;
+                }
+                let lo = pa
+                    .iter()
+                    .chain(pb.iter())
+                    .fold(DVec2::MAX, |x, y| x.min(*y));
+                let hi = pa
+                    .iter()
+                    .chain(pb.iter())
+                    .fold(DVec2::MIN, |x, y| x.max(*y));
+                let mut x = lo.x + step / 2.0;
+                while x < hi.x {
+                    let mut y = lo.y + step / 2.0;
+                    while y < hi.y {
+                        let p = DVec2::new(x, y);
+                        if crate::polygon::contains(pa, p) && crate::polygon::contains(pb, p) {
+                            overlap += step * step;
+                        }
+                        y += step;
+                    }
+                    x += step;
+                }
+            }
+        }
+        assert!(overlap < 2e-4, "strip footings overlap by {overlap:.4} m²");
+
+        let joins = crate::wall_joins(&m);
+        let mut bare = 0;
+        for e in m.iter() {
+            let ElementKind::Footing(f) = &e.kind else {
+                continue;
+            };
+            let Some(wid) = f.host else {
+                continue;
+            };
+            let Some(ElementKind::Wall(w)) = m.get(wid).map(|e| &e.kind) else {
+                continue;
+            };
+            let ends = joins.get(&wid).cloned().unwrap_or_default();
+            let fp = ends.footprint(w);
+            // sample inside the wall's footprint, a centimetre in from its edges
+            let (d, n) = (w.direction(), w.direction().perp());
+            let (len, t) = (w.length(), w.thickness / 2.0);
+            let mut u = 0.01;
+            while u < len - 0.01 {
+                for v in [-t + 0.01, 0.0, t - 0.01] {
+                    let p = w.start + d * u + n * v;
+                    if crate::polygon::contains(&fp, p)
+                        && !pieces.iter().any(|(_, q)| crate::polygon::contains(q, p))
+                    {
+                        bare += 1;
+                    }
+                }
+                u += 0.05;
+            }
+        }
+        assert_eq!(bare, 0, "{bare} points under walls have no footing");
     }
 }
 
