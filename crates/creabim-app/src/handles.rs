@@ -1065,7 +1065,9 @@ fn member_extras(model: &Model, e: &Element) -> Vec<Handle> {
     };
     match &e.kind {
         ElementKind::Column(c) => {
-            let (z0, _) = c.span(model);
+            let (z0, z1) = c.span(model);
+            // its size bars half-way up its sides, in sections too (A4-8)
+            let zm = (z0 + z1) / 2.0;
             let x = DVec2::from_angle(c.rotation.to_radians());
             let (w, d) = match c.profile {
                 creabim_core::members::Profile::Rectangle { width, depth } => (width, depth),
@@ -1078,14 +1080,14 @@ fn member_extras(model: &Model, e: &Element) -> Vec<Handle> {
                 ),
                 line(
                     HandleKind::ColumnSize { depth: false },
-                    (c.position + x * w / 2.0).extend(z0),
+                    (c.position + x * w / 2.0).extend(zm),
                     x,
                 ),
             ];
             if matches!(c.profile, creabim_core::members::Profile::Rectangle { .. }) {
                 out.push(line(
                     HandleKind::ColumnSize { depth: true },
-                    (c.position + x.perp() * d / 2.0).extend(z0),
+                    (c.position + x.perp() * d / 2.0).extend(zm),
                     x.perp(),
                 ));
             }
@@ -1096,7 +1098,8 @@ fn member_extras(model: &Model, e: &Element) -> Vec<Handle> {
             let mid = (b.start + b.end) / 2.0;
             vec![line(
                 HandleKind::BeamWidth,
-                (mid + n * b.width / 2.0).extend(b.top(model)),
+                // half-way down its side, in sections too (A4-8)
+                (mid + n * b.width / 2.0).extend(b.top(model) - b.depth / 2.0),
                 n,
             )]
         }
@@ -4981,6 +4984,48 @@ mod tests {
             .unwrap_or_else(|| panic!("no {kind:?}"));
         let (orig, joined) = originals(m, id, kind);
         apply(m, &orig, &joined, kind, h.at, to(&h), 0.05).unwrap()[0].clone()
+    }
+
+    #[test]
+    fn side_bars_sit_at_the_middle_of_their_side_not_on_a_corner() {
+        // A4-8: a bar that pushes a side across sits between the element's
+        // bottom and top, so in a section it is half-way up the side
+        let m = creabim_core::starter::starter_house();
+        let scene = creabim_geom::scene::build_scene_of(&m, None);
+        let mut checked = 0;
+        for e in m.iter() {
+            let (lo, hi) = scene
+                .iter()
+                .filter(|i| i.id == e.id)
+                .flat_map(|i| i.mesh.positions.iter().map(|p| p[2] as f64))
+                .fold((f64::MAX, f64::MIN), |(a, b), z| (a.min(z), b.max(z)));
+            if lo >= hi {
+                continue;
+            }
+            for h in handles(&m, e.id, None) {
+                let Constraint::Line { dir, .. } = h.constraint else {
+                    continue;
+                };
+                // a member's other grips are its real ends (a stair's run)
+                let side = matches!(
+                    h.kind,
+                    HandleKind::WallFace | HandleKind::BeamWidth | HandleKind::ColumnSize { .. }
+                ) || (matches!(h.kind, HandleKind::Member { .. })
+                    && matches!(e.kind, ElementKind::Footing(_)));
+                if !side || dir.z.abs() > 0.1 {
+                    continue;
+                }
+                checked += 1;
+                let z = h.at.z;
+                assert!(
+                    z > lo + 1e-3 && z < hi - 1e-3,
+                    "{} {:?} at z {z} on its edge ({lo}..{hi})",
+                    e.name,
+                    h.kind
+                );
+            }
+        }
+        assert!(checked > 0);
     }
 
     #[test]

@@ -1282,6 +1282,7 @@ fn footing_grips(model: &Model, f: &crate::Footing) -> Vec<(Grip, FootingGrip)> 
     };
     let mut out = vec![];
     let c = f.anchor(model).truncate();
+    let mid = top - f.thickness / 2.0;
     match f.kind {
         crate::FootingKind::Strip => {
             let (a, b) = f.line(model);
@@ -1290,8 +1291,9 @@ fn footing_grips(model: &Model, f: &crate::Footing) -> Vec<(Grip, FootingGrip)> 
                 out.push((flat(b.extend(top)), FootingGrip::End));
             }
             let n = (b - a).normalize_or_zero().perp();
+            // a side's bar at the middle of the side, in sections too (A4-8)
             out.push((
-                along((c + n * f.width / 2.0).extend(top), n),
+                along((c + n * f.width / 2.0).extend(mid), n),
                 FootingGrip::Width,
             ));
         }
@@ -1302,11 +1304,11 @@ fn footing_grips(model: &Model, f: &crate::Footing) -> Vec<(Grip, FootingGrip)> 
                 out.push((flat(c.extend(top)), FootingGrip::Center));
             }
             out.push((
-                along((c + x * f.width / 2.0).extend(top), x),
+                along((c + x * f.width / 2.0).extend(mid), x),
                 FootingGrip::Width,
             ));
             out.push((
-                along((c + x.perp() * f.length / 2.0).extend(top), x.perp()),
+                along((c + x.perp() * f.length / 2.0).extend(mid), x.perp()),
                 FootingGrip::Length,
             ));
         }
