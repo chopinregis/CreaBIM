@@ -310,17 +310,18 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
         .filter(|e| creabim_core::screen::screen_of(model, e).is_some())
         .map(|e| e.id)
         .collect();
-    let cut_meshes: HashMap<ElementId, creabim_geom::mesh::TriMesh> = if cuts.is_empty()
-        && screens.is_empty()
-    {
-        HashMap::new()
-    } else {
-        let targets: std::collections::HashSet<ElementId> =
-            cuts.iter().map(|c| c.0).chain(screens).collect();
-        let mut all = creabim_geom::scene::element_meshes(&creabim_geom::scene::build_scene(model));
-        all.retain(|id, _| targets.contains(id));
-        all
-    };
+    let cut_meshes: HashMap<ElementId, creabim_geom::mesh::TriMesh> =
+        if cuts.is_empty() && screens.is_empty() {
+            HashMap::new()
+        } else {
+            let targets: std::collections::HashSet<ElementId> =
+                cuts.iter().map(|c| c.0).chain(screens).collect();
+            let mut all = creabim_geom::scene::element_meshes(
+                &creabim_geom::scene::build_scene_for_exchange(model),
+            );
+            all.retain(|id, _| targets.contains(id));
+            all
+        };
     let elevation =
         |l: Option<ElementId>| l.and_then(|l| model.level(l)).map_or(0.0, |l| l.elevation);
     // the products of each element type

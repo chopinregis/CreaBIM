@@ -330,6 +330,22 @@ pub fn build_scene_of(
     model: &Model,
     only: Option<&std::collections::HashSet<ElementId>>,
 ) -> Vec<SceneItem> {
+    let mut out = build_scene_unjoined(model, only);
+    apply_joins(model, &mut out);
+    out
+}
+
+/// The scene for exchange (IFC, IFCX): each element's own body, its
+/// explicit cuts applied but not the wall and slab joins, so a slab
+/// stays the plain extrusion other tools read and re-import as a slab.
+pub fn build_scene_for_exchange(model: &Model) -> Vec<SceneItem> {
+    build_scene_unjoined(model, None)
+}
+
+fn build_scene_unjoined(
+    model: &Model,
+    only: Option<&std::collections::HashSet<ElementId>>,
+) -> Vec<SceneItem> {
     let mut out = Vec::new();
     let joins = creabim_core::wall_joins(model);
     for e in model.iter() {
@@ -670,6 +686,114 @@ fn apply_cuts(model: &Model, items: &mut [SceneItem]) {
     }
 }
 
+/// Where a wall and a slab overlap in 3D, the one the drawings let run
+/// through cuts the other (A4-6), so 3D, sections and plans agree: by the
+/// junction's own rule if it has one, else layer by layer (the lower join
+/// priority runs through: cores through finishes), then walls through
+/// slabs. As strong, they are left as they are. Each result is kept, keyed
+/// by the two shapes, so editing one wall redoes only its own joins.
+fn apply_joins(model: &Model, items: &mut [SceneItem]) {
+    let rules = creabim_core::joins::rules(model);
+    let is = |id: ElementId, wall: bool| match model.get(id).map(|e| &e.kind) {
+        Some(ElementKind::Wall(w)) => wall && w.curtain.is_none(),
+        Some(ElementKind::Slab(_)) => !wall,
+        _ => false,
+    };
+    let strength = |i: &SceneItem| {
+        (
+            std::cmp::Reverse(i.layer.map_or(1, |l| l.priority)),
+            model
+                .get(i.id)
+                .map_or(0, |e| creabim_core::joins::category_rank(&e.kind)),
+        )
+    };
+    let boxes: Vec<Option<(glam::Vec3, glam::Vec3)>> = items
+        .iter()
+        .map(|i| if i.ghost { None } else { i.mesh.bounds() })
+        .collect();
+    let overlap = |a: (glam::Vec3, glam::Vec3), b: (glam::Vec3, glam::Vec3)| {
+        let lo = a.0.max(b.0);
+        let hi = a.1.min(b.1);
+        (hi - lo).min_element() > 1e-4
+    };
+    let walls: Vec<usize> = (0..items.len())
+        .filter(|k| boxes[*k].is_some() && is(items[*k].id, true))
+        .collect();
+    let slabs: Vec<usize> = (0..items.len())
+        .filter(|k| boxes[*k].is_some() && is(items[*k].id, false))
+        .collect();
+    // (target, cutter) pairs, in item indices
+    let mut pairs: Vec<(usize, usize)> = vec![];
+    for &w in &walls {
+        for &sl in &slabs {
+            let (Some(bw), Some(bs)) = (boxes[w], boxes[sl]) else {
+                continue;
+            };
+            if !overlap(bw, bs) {
+                continue;
+            }
+            let (a, b) = (&items[w], &items[sl]);
+            let rule = rules.iter().find(|r| r.joins(a.id, b.id));
+            if rule.is_some_and(|r| !r.cleanup) {
+                continue;
+            }
+            let wall_wins = match rule.and_then(|r| r.wins(a.id, b.id)) {
+                Some(w) => w,
+                None => {
+                    let (sa, sb) = (strength(a), strength(b));
+                    if sa == sb {
+                        continue;
+                    }
+                    sa > sb
+                }
+            };
+            pairs.push(if wall_wins { (sl, w) } else { (w, sl) });
+        }
+    }
+    if pairs.is_empty() {
+        return;
+    }
+    // the cutters' shapes before any join cuts them
+    let originals: Vec<TriMesh> = items.iter().map(|i| i.mesh.clone()).collect();
+    for (t, c) in pairs {
+        let key = (mesh_key(&items[t].mesh), mesh_key(&originals[c]));
+        let done = JOIN_CACHE.with(|m| m.borrow().get(&key).cloned());
+        let mesh = match done {
+            Some(m) => m,
+            None => {
+                let m = boolean_mesh(&items[t].mesh, &originals[c], BoolOp::Difference);
+                JOIN_CACHE.with(|cache| {
+                    let mut cache = cache.borrow_mut();
+                    if cache.len() > 4000 {
+                        cache.clear();
+                    }
+                    cache.insert(key, m.clone());
+                });
+                m
+            }
+        };
+        items[t].mesh = mesh;
+    }
+}
+
+thread_local! {
+    static JOIN_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, u64), TriMesh>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// A fingerprint of a mesh's shape.
+fn mesh_key(m: &TriMesh) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    m.indices.hash(&mut h);
+    for p in &m.positions {
+        for v in p {
+            v.to_bits().hash(&mut h);
+        }
+    }
+    h.finish()
+}
+
 /// `a op b` for two closed triangle meshes.
 pub fn boolean_mesh(a: &TriMesh, b: &TriMesh, op: BoolOp) -> TriMesh {
     let polys = |m: &TriMesh| -> Vec<csg::Polygon> {
@@ -950,6 +1074,89 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_slab_edge_in_a_wall_is_cut_by_it_in_3d_as_in_the_drawings() {
+        // A4-6: a floor slab whose edge runs into the wall below it, with
+        // no junction rule: the wall runs through, so nothing of the slab
+        // is left inside the wall in 3D, as in plans and sections
+        use creabim_core::{Element, Level, Slab, Transaction, Wall};
+        let l0 = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let l1 = Element::new(
+            "L1",
+            ElementKind::Level(Level {
+                elevation: 3.0,
+                height: 3.0,
+            }),
+        );
+        let wall = Element::new(
+            "Wall",
+            ElementKind::Wall(Wall::new(
+                l0.id,
+                DVec2::ZERO,
+                DVec2::new(6.0, 0.0),
+                0.3,
+                3.0,
+            )),
+        );
+        let slab = Element::new(
+            "Slab",
+            ElementKind::Slab(Slab::new(
+                l1.id,
+                vec![
+                    DVec2::new(0.0, 0.0),
+                    DVec2::new(6.0, 0.0),
+                    DVec2::new(6.0, 4.0),
+                    DVec2::new(0.0, 4.0),
+                ],
+                0.25,
+            )),
+        );
+        let (wid, sid) = (wall.id, slab.id);
+        let mut doc = creabim_core::document::Document::new();
+        doc.commit(
+            Transaction::new("setup")
+                .insert(l0)
+                .insert(l1)
+                .insert(wall)
+                .insert(slab),
+        )
+        .unwrap();
+        let items = build_scene_of(doc.model(), None);
+        let (lo, hi) = items
+            .iter()
+            .filter(|i| i.id == wid)
+            .filter_map(|i| i.mesh.bounds())
+            .next()
+            .unwrap();
+        let slab_mesh = &items.iter().find(|i| i.id == sid).unwrap().mesh;
+        let (slo, _) = slab_mesh.bounds().unwrap();
+        // its edge now stops at the wall's face, not its middle
+        assert!(
+            (slo.y - hi.y).abs() < 1e-3,
+            "slab starts at y {} (wall face {})",
+            slo.y,
+            hi.y
+        );
+        for t in slab_mesh.indices.chunks_exact(3) {
+            let c = t
+                .iter()
+                .map(|k| glam::Vec3::from(slab_mesh.positions[*k as usize]))
+                .sum::<glam::Vec3>()
+                / 3.0;
+            let inside = (c - lo).min_element() > 0.002 && (hi - c).min_element() > 0.002;
+            assert!(
+                !inside,
+                "a slab face at {c} is inside the wall ({lo}..{hi})"
+            );
+        }
+    }
+
+    #[test]
     fn slab_volume_matches_area_times_thickness() {
         let l = [
             DVec2::new(0.0, 0.0),
@@ -980,12 +1187,14 @@ mod tests {
         let ElementKind::Slab(s) = &mut e.kind else {
             panic!()
         };
-        // a 4 x 2 m slab whose far side is a half circle, its top 0.6 m up
+        // a 4 x 2 m slab whose far side is a half circle, its top 0.6 m up,
+        // far from any wall (walls cut what of a slab runs into them, A4-6)
+        let o = DVec2::splat(100.0);
         s.boundary = vec![
-            DVec2::new(0.0, 0.0),
-            DVec2::new(4.0, 0.0),
-            DVec2::new(4.0, 2.0),
-            DVec2::new(0.0, 2.0),
+            o + DVec2::new(0.0, 0.0),
+            o + DVec2::new(4.0, 0.0),
+            o + DVec2::new(4.0, 2.0),
+            o + DVec2::new(0.0, 2.0),
         ];
         s.bulges = vec![0.0, 1.0, 0.0, 0.0];
         s.top_offset = 0.6;
@@ -999,7 +1208,7 @@ mod tests {
         assert!((hi.z as f64 - (elevation + 0.6)).abs() < 1e-5);
         assert!((lo.z as f64 - (elevation + 0.6 - t)).abs() < 1e-5);
         // the arc bulges a metre past the straight side
-        assert!((hi.x - 5.0).abs() < 1e-4);
+        assert!((hi.x - 105.0).abs() < 1e-4);
         let area = 8.0 + std::f64::consts::PI / 2.0;
         assert!((item.mesh.volume() - area * t).abs() < 0.01);
     }
