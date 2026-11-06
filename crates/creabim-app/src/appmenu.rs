@@ -229,6 +229,7 @@ impl CreaBimApp {
         let mut spacing = self.plan.snap.step_um;
         let mut marks = self.plan.snap.marks;
         let mut paper = self.shell.settings.drawing_paper.clone();
+        let mut navigation = self.shell.settings.navigation.clone();
         let mut grip_hover = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         egui::Window::new("Settings")
@@ -289,6 +290,22 @@ impl CreaBimApp {
                     .response
                     .on_hover_text("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white.");
                 });
+                crate::props::row(ui, "Mouse", |ui| {
+                    let label = |k: &str| match k {
+                        "classic" => "Classic: left drag orbits",
+                        _ => "CreaBIM: middle orbits, left boxes",
+                    };
+                    egui::ComboBox::from_id_salt("settings.navigation")
+                        .selected_text(label(&navigation))
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for k in ["creabim", "classic"] {
+                                ui.selectable_value(&mut navigation, k.to_string(), label(k));
+                            }
+                        })
+                        .response
+                        .on_hover_text("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D.");
+                });
                 crate::props::section(ui, "Snapping (yours)");
                 crate::props::row(ui, "Spacing", |ui| {
                     let steps: &[u32] = if crate::units::get().is_imperial() {
@@ -334,6 +351,10 @@ impl CreaBimApp {
         self.settings_open = open;
         // resting on a grip look shows it at once; leaving puts yours back
         crate::handles::set_grip_style(grip_hover.filter(|_| open).unwrap_or(grips));
+        if navigation != self.shell.settings.navigation {
+            self.shell.settings.navigation = navigation;
+            self.shell.settings.store();
+        }
         if paper != self.shell.settings.drawing_paper {
             self.shell.settings.drawing_paper = paper;
             self.shell.settings.store();

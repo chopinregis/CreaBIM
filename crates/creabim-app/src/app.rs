@@ -336,7 +336,7 @@ impl CreaBimApp {
             boxed: None,
             last_export_dir: None,
             crop_pick: None,
-            status: "Loaded the sample house. Orbit with left drag, pan with right drag, zoom with the wheel.".into(),
+            status: "Loaded the sample house. Orbit with the middle button (or Alt + left drag), pan with right drag, zoom with the wheel; a left drag selects with a box.".into(),
         }
     }
 
@@ -1923,11 +1923,18 @@ impl CreaBimApp {
         if self.cube.step(&mut self.camera, ui.input(|i| i.time)) {
             ui.ctx().request_repaint();
         }
+        // the mouse (MU19): right drag pans, and so does Shift + middle;
+        // middle drag orbits (Classic: middle pans too)
+        let classic = self.shell.settings.navigation == "classic";
+        let shift_now = ui.input(|i| i.modifiers.shift);
         if response.dragged_by(egui::PointerButton::Secondary)
-            || response.dragged_by(egui::PointerButton::Middle)
+            || (response.dragged_by(egui::PointerButton::Middle) && (classic || shift_now))
         {
             let d = response.drag_delta();
             self.camera.pan(GVec2::new(d.x, d.y), rect.height());
+        }
+        if !classic && response.dragged_by(egui::PointerButton::Middle) && !shift_now {
+            self.orbit_3d(response.drag_delta());
         }
         if response.hovered() {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y);
@@ -2344,7 +2351,24 @@ impl CreaBimApp {
                 self.box_armed = false;
                 self.box_3d = None;
             }
-            if self.box_armed && response.drag_started_by(egui::PointerButton::Primary) {
+            // the mouse (MU19): a left drag on empty space draws a box,
+            // as in drawings; on the cube or on something selected it
+            // doesn't (that drag turns the view or moves it); Alt + left
+            // drag orbits. B arms it in Classic.
+            let auto_box = self.shell.settings.navigation != "classic"
+                && !ui.input(|i| i.modifiers.alt)
+                && response.drag_started_by(egui::PointerButton::Primary)
+                && ui.input(|i| i.pointer.press_origin()).is_some_and(|p0| {
+                    if self.cube.covers(p0) {
+                        return false;
+                    }
+                    let (o, d) = ray(p0);
+                    !pick::pick(&self.scene, o.as_vec3(), d.as_vec3())
+                        .is_some_and(|h| self.selection.contains(h.id))
+                });
+            if (self.box_armed || auto_box)
+                && response.drag_started_by(egui::PointerButton::Primary)
+            {
                 self.box_3d = ui.input(|i| i.pointer.press_origin());
                 self.box_armed = false;
             }
@@ -2483,7 +2507,12 @@ impl CreaBimApp {
         if dragging {
             return;
         }
-        if response.dragged_by(egui::PointerButton::Primary) {
+        // a left drag orbits in Classic, or with Alt (no middle button)
+        let classic = self.shell.settings.navigation == "classic";
+        if response.dragged_by(egui::PointerButton::Primary)
+            && self.box_3d.is_none()
+            && (classic || ui.input(|i| i.modifiers.alt))
+        {
             let d = response.drag_delta();
             self.orbit_3d(d);
         }
@@ -6894,7 +6923,7 @@ pub(crate) fn launch_file(args: impl Iterator<Item = String>) -> Option<String> 
 }
 
 /// What the status bar says when the starter house opens.
-pub(crate) const STARTER_LOADED: &str = "Loaded the starter house. Orbit with left drag, pan with right drag, zoom with the wheel; the Sheets group has its drawings.";
+pub(crate) const STARTER_LOADED: &str = "Loaded the starter house. Orbit with the middle button (or Alt + left drag), pan with right drag, zoom with the wheel; a left drag selects with a box. The Sheets group has its drawings.";
 
 /// The app round the sample house, for tests.
 #[cfg(test)]

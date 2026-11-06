@@ -168,6 +168,9 @@ pub struct Settings {
     /// the theme (dark paper in a dark theme), "light" or "dark" always.
     /// Prints and PDFs are always on white.
     pub drawing_paper: String,
+    /// The mouse (MU19): "creabim" (left selects and boxes, middle
+    /// orbits, right or Shift + middle pans) or "classic" (left orbits).
+    pub navigation: String,
     /// The kinds of element the 3D view leaves out (grids, annotation,
     /// guides…), from its Visibility settings.
     pub hidden_3d: Vec<creabim_core::Category>,
@@ -215,6 +218,7 @@ impl Default for Settings {
             ground_grid: true,
             ground_grid_spacing: 1.0,
             drawing_paper: "theme".into(),
+            navigation: "creabim".into(),
             hidden_3d: vec![],
             xray: false,
             hidden_colour_3d: false,

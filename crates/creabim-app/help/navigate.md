@@ -2,10 +2,17 @@
 
 ## In the 3D view
 
+The same mouse in every view (*Settings › Mouse*; *Classic* keeps a left drag for orbiting):
+
 | Do this | To |
 | --- | --- |
-| Drag with the left button | Orbit round the model |
-| Drag with the right button | Pan |
+| Click with the left button | Select (`Shift` adds) |
+| Drag with the left button on empty space | Select with a box |
+| Drag with the left button on something selected | Move it |
+| Drag with the middle button | Orbit round the model |
+| `Alt` + drag with the left button | Orbit, with a mouse that has no middle button |
+| Drag with the right button, or `Shift` + middle | Pan |
+| Click with the right button without moving | The menu for what is under the pointer |
 | Roll the wheel | Zoom toward the pointer |
 | `Home` | Frame everything |
 | `.` | Frame the selection |
@@ -18,7 +25,7 @@ The cube in the top right corner of the 3D view turns the view for you:
 
 - Click a **face** (*Top*, *Front*, *Right*…), an **edge** or a **corner** to look from there. The view turns smoothly and the status bar says where you are looking from, for example *Looking from the top, front, left (south-west)*.
 - Click **N**, **E**, **S** or **W** on the ring under it to look from that side.
-- The round buttons beside it: drag the **magnifier** up or down to zoom, and the **four arrows** to pan; the **house** frames everything from the three-quarter view, as `Home` does; the two **turn** buttons turn the view a quarter round, from a corner to the next corner; the **grid** switches between perspective (a grid going away) and orthographic (a square grid).
+- The buttons beside it: drag the **magnifier** up or down to zoom, and the **four arrows** to pan; the **house** frames everything from the three-quarter view, as `Home` does; the two **turn** buttons turn the view a quarter round, from a corner to the next corner; the **grid** switches between perspective (a grid going away) and orthographic (a square grid).
 - Drag the cube to orbit.
 
 *Front* is the south face: the cube is named from north, which is up in plans, so *Front* shows what the south elevation shows.
@@ -27,8 +34,10 @@ The cube in the top right corner of the 3D view turns the view for you:
 
 | Do this | To |
 | --- | --- |
-| Drag with the right button | Pan |
+| Drag with the left button on empty paper | Select with a box |
+| Drag with the right or middle button | Pan |
 | Roll the wheel | Zoom |
+| The buttons at the top right | Zoom in and out (click a step, or drag up and down), fit, and drag the hand to pan |
 
 ## Layout
 
