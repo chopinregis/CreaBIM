@@ -1958,8 +1958,17 @@ fn opening_symbol(
         }
     }
     match o.kind {
-        // a bare hole is just the gap in the wall
-        OpeningKind::Hole => {}
+        // a hole that starts above the floor shows the wall's faces across,
+        // over its sill, as a window does; one down to the floor is just
+        // the gap (MU18)
+        OpeningKind::Hole => {
+            if c.v0 > 1e-9 {
+                let t = w.thickness / 2.0;
+                for s in [-t, t] {
+                    line(&mut out, at(c.u0, s), at(c.u1, s));
+                }
+            }
+        }
         OpeningKind::Window => {
             // the wall faces carry on across, over the sill
             let t = w.thickness / 2.0;

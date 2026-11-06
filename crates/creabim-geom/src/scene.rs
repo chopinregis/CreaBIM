@@ -408,6 +408,21 @@ pub fn build_scene_of(
                     continue;
                 };
                 out.extend(opening_items(model, e, o, w, level.elevation));
+                // a bare hole has nothing in it: a see-through box shows
+                // it in 3D and lets it be clicked (MU18)
+                if o.kind == creabim_core::OpeningKind::Hole {
+                    if let Some(mesh) = crate::opening::cut_box_mesh(o, w, level.elevation) {
+                        out.push(SceneItem {
+                            id: e.id,
+                            mesh,
+                            color: [0.85, 0.45, 0.25],
+                            surface: PLAIN_SURFACE,
+                            ghost: true,
+                            layer: None,
+                            finish: None,
+                        });
+                    }
+                }
                 continue;
             }
             ElementKind::Part(_) | ElementKind::Site(_) => {

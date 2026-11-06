@@ -237,7 +237,14 @@ impl CreaBimApp {
             self.dividers(ui, &dividers);
         }
         let pointer = ui.input(|i| i.pointer.hover_pos());
-        let pressed = ui.input(|i| i.pointer.any_pressed());
+        // a press on a window floating over the areas is the window's
+        // (MU18): it neither focuses nor reaches the area under it
+        let over_window = pointer.is_some_and(|p| {
+            ui.ctx()
+                .layer_id_at(p)
+                .is_some_and(|l| l.order != egui::Order::Background)
+        });
+        let pressed = ui.input(|i| i.pointer.any_pressed()) && !over_window;
         self.areas.hovered = pointer.and_then(|p| rects.iter().position(|r| r.contains(p)));
         if pressed {
             if let Some(h) = self.areas.hovered {
@@ -250,6 +257,9 @@ impl CreaBimApp {
         self.rect_2d = None;
         let mut bodies = vec![];
         let mut focus_rect = None;
+        // how long each area took, logged while something is dragged, to
+        // find what makes a drag slow (MU18)
+        let mut timings: Vec<String> = vec![];
         for (i, (r, s)) in rects.iter().zip(&shows).enumerate() {
             if !r.is_positive() {
                 bodies.push(Rect::NOTHING);
@@ -260,13 +270,20 @@ impl CreaBimApp {
             bodies.push(body);
             match s {
                 Shows::Model if model_area == Some(i) => {
+                    let t = std::time::Instant::now();
                     self.show_3d(ui, body, frame);
+                    timings.push(format!("3D {:.1}", t.elapsed().as_secs_f64() * 1000.0));
                 }
                 Shows::View(v) => {
                     self.active_view = Some(*v);
                     let keep = self.rect_2d;
                     // two areas may show the same drawing
+                    let t = std::time::Instant::now();
                     ui.push_id(("area", i), |ui| self.show_plan(ui, body, background));
+                    timings.push(format!(
+                        "area {i} {:.1}",
+                        t.elapsed().as_secs_f64() * 1000.0
+                    ));
                     // the pane tools act in: the focused one, else the last
                     if i != self.areas.focus && keep.is_some() {
                         self.rect_2d = keep;
@@ -291,6 +308,9 @@ impl CreaBimApp {
         }
         if let Some(r) = focus_rect {
             self.rect_2d = Some(r);
+        }
+        if self.handle_drag.is_some() || self.plan.modal.is_some() {
+            crate::actlog::line(format!("areas: {}", timings.join(" | ")));
         }
         if self.areas.max.is_none() {
             self.corners(ui, &rects);

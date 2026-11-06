@@ -33,7 +33,15 @@ pub struct Ghost {
 pub fn shows(tool: Tool) -> bool {
     matches!(
         tool,
-        Tool::Door | Tool::Window | Tool::Opening | Tool::Column | Tool::Footing | Tool::Stair
+        Tool::Door
+            | Tool::Window
+            | Tool::Opening
+            | Tool::Column
+            | Tool::Footing
+            | Tool::Stair
+            | Tool::Mass
+            | Tool::Object
+            | Tool::Planting
     )
 }
 
@@ -85,19 +93,34 @@ pub fn simulate(
     if new.is_empty() {
         return None;
     }
-    let parts: Vec<Part> = creabim_geom::scene::build_scene_of(doc.model(), Some(&new))
+    let part = |mesh: &creabim_geom::mesh::TriMesh| Part {
+        points: mesh
+            .positions
+            .iter()
+            .map(|v| glam::Vec3::from_array(*v).as_dvec3())
+            .collect(),
+        edges: crate::snaps::feature_edges(mesh),
+    };
+    let mut parts: Vec<Part> = creabim_geom::scene::build_scene_of(doc.model(), Some(&new))
         .into_iter()
-        .filter(|i| !i.mesh.positions.is_empty())
-        .map(|i| Part {
-            points: i
-                .mesh
-                .positions
-                .iter()
-                .map(|v| glam::Vec3::from_array(*v).as_dvec3())
-                .collect(),
-            edges: crate::snaps::feature_edges(&i.mesh),
-        })
+        .filter(|i| !i.mesh.positions.is_empty() && !i.ghost)
+        .map(|i| part(&i.mesh))
         .collect();
+    // a door, window or hole shows the hole it cuts through the whole wall,
+    // not only what sits in it (MU18)
+    for id in &new {
+        let m = doc.model();
+        let Some(creabim_core::ElementKind::Opening(o)) = m.get(*id).map(|e| &e.kind) else {
+            continue;
+        };
+        let Some(creabim_core::ElementKind::Wall(w)) = m.get(o.host).map(|e| &e.kind) else {
+            continue;
+        };
+        let z = m.level(w.level).map_or(0.0, |l| l.elevation);
+        if let Some(mesh) = creabim_geom::opening::cut_box_mesh(o, w, z) {
+            parts.push(part(&mesh));
+        }
+    }
     (!parts.is_empty()).then_some(Ghost { parts })
 }
 
@@ -125,7 +148,10 @@ pub fn cached(
         .map(|(c, t)| format!("{c:?}{t:?}"))
         .collect();
     types.sort();
-    let settings = format!("{types:?}{:?}{:?}", state.members, state.host_pick);
+    let settings = format!(
+        "{types:?}{:?}{:?}{:?}{:?}",
+        state.members, state.host_pick, state.objects, state.parts
+    );
     let key: Key = (
         model.revision(),
         level,
@@ -261,10 +287,48 @@ mod tests {
             )
         };
         let (a, b) = (bounds(&real), bounds(&ghost_pts));
+        // the ghost holds the window, and the cut through the whole wall
         assert!(
-            a.0.distance(b.0) < 1e-9 && a.1.distance(b.1) < 1e-9,
-            "{a:?} vs {b:?}"
+            b.0.cmple(a.0 + 1e-6).all() && b.1.cmpge(a.1 - 1e-6).all(),
+            "{a:?} in {b:?}"
         );
+    }
+
+    #[test]
+    fn a_hole_ghost_shows_its_cut_through_the_wall() {
+        let m = creabim_core::sample::sample_house();
+        let (_, level, mid) = first_wall(&m);
+        let mut state = PlanState::default();
+        state.tool = Tool::Opening;
+        let g = simulate(&m, level, Tool::Opening, mid, &state).expect("a hole ghost");
+        assert_eq!(g.parts.len(), 1, "the cut box");
+        let mut state = PlanState::default();
+        state.tool = Tool::Window;
+        let g = simulate(&m, level, Tool::Window, mid, &state).unwrap();
+        assert!(g.parts.len() >= 2, "the window and its cut");
+    }
+
+    #[test]
+    fn furniture_shows_a_ghost_where_it_will_land() {
+        let m = creabim_core::sample::sample_house();
+        let (_, level, _) = first_wall(&m);
+        let mut state = PlanState::default();
+        state.tool = Tool::Object;
+        state.objects.current = creabim_core::catalogue::starters().into_iter().next();
+        assert!(
+            state.objects.current.is_some(),
+            "a catalogue object to place"
+        );
+        let g = simulate(&m, level, Tool::Object, DVec2::new(2.0, 2.0), &state)
+            .expect("an object ghost");
+        let lo = g
+            .parts
+            .iter()
+            .flat_map(|p| p.points.iter())
+            .fold(f64::MAX, |a, p| {
+                a.min(p.truncate().distance(DVec2::new(2.0, 2.0)))
+            });
+        assert!(lo < 2.0, "it sits by the pointer");
     }
 
     #[test]

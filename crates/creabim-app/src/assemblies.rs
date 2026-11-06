@@ -559,12 +559,21 @@ impl CreaBimApp {
                     .show(ui, |ui| {
                         for usage in AssemblyUse::ALL {
                             let rows: Vec<_> = all.iter().filter(|a| a.2.usage == usage).collect();
-                            ui.label(
-                                egui::RichText::new(usage.label().to_uppercase())
-                                    .size(10.5)
-                                    .strong()
-                                    .color(ui.visuals().weak_text_color()),
-                            );
+                            // a bold heading that folds, so a long list stays
+                            // easy to scan (MU18)
+                            let head = egui::RichText::new(format!(
+                                "{}  ({})",
+                                usage.label(),
+                                rows.len()
+                            ))
+                            .size(13.0)
+                            .strong();
+                            let open = rows.iter().any(|(id, _, _)| current == Some(*id))
+                                || rows.len() <= 6;
+                            let fold = egui::CollapsingHeader::new(head)
+                                .id_salt(("asm_group", usage.label()))
+                                .default_open(open)
+                                .show(ui, |ui| {
                             for (id, name, a) in rows {
                                 let users = assembly::users(model, *id).len();
                                 let text = format!(
@@ -587,7 +596,9 @@ impl CreaBimApp {
                             if ui.small_button("+ New").clicked() {
                                 asks.push(AsmAsk::New(usage));
                             }
-                            ui.add_space(6.0);
+                                });
+                            let _ = fold;
+                            ui.separator();
                         }
                         if all.is_empty() {
                             ui.label(

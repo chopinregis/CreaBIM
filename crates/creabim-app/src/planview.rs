@@ -5279,10 +5279,12 @@ fn place_opening(
     let Some((_, host, u, len)) = best else {
         return Ok(());
     };
-    let (kind, width, height, sill, name) = match tool {
-        Tool::Door => (OpeningKind::Door, 0.9, 2.1, 0.0, "Door"),
-        Tool::Opening => (OpeningKind::Hole, 1.0, 1.0, 1.0, "Wall opening"),
-        _ => (OpeningKind::Window, 1.2, 1.3, 0.9, "Window"),
+    // the sizes in the bar (a type, when picked, sets its own)
+    let m = &state.members;
+    let (kind, [width, height, sill], name) = match tool {
+        Tool::Door => (OpeningKind::Door, m.door, "Door"),
+        Tool::Opening => (OpeningKind::Hole, m.hole, "Wall opening"),
+        _ => (OpeningKind::Window, m.window, "Window"),
     };
     let mut e = state.typed(
         doc.model(),

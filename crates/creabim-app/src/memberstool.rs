@@ -31,6 +31,11 @@ pub struct MemberSettings {
     /// Width of new strips, and the sides of new pads.
     pub footing_width: f64,
     pub footing_thickness: f64,
+    /// New doors', windows' and bare holes' width, height and sill, set in
+    /// the bar before placing (MU18); a type, when picked, sets its own.
+    pub door: [f64; 3],
+    pub window: [f64; 3],
+    pub hole: [f64; 3],
 }
 
 impl Default for MemberSettings {
@@ -51,6 +56,9 @@ impl Default for MemberSettings {
             footing_pad: false,
             footing_width: creabim_core::footing::STRIP_WIDTH,
             footing_thickness: creabim_core::footing::STRIP_THICKNESS,
+            door: [0.9, 2.1, 0.0],
+            window: [1.2, 1.3, 0.9],
+            hole: [1.0, 1.0, 1.0],
         }
     }
 }
@@ -1094,7 +1102,44 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             "icon": icon, "hint": hint,
         })
     };
+    let opening = |key: &str, s: [f64; 3], what: &str| {
+        vec![
+            num(
+                &format!("{key}_width"),
+                "Width",
+                s[0],
+                "m",
+                0.01,
+                0.1,
+                20.0,
+                &format!("Width of new {what}s. Typing a size here places it without a type."),
+            ),
+            num(
+                &format!("{key}_height"),
+                "Height",
+                s[1],
+                "m",
+                0.01,
+                0.1,
+                20.0,
+                &format!("Height of new {what}s"),
+            ),
+            num(
+                &format!("{key}_sill"),
+                "Sill",
+                s[2],
+                "m",
+                0.01,
+                0.0,
+                20.0,
+                &format!("How high new {what}s start above the wall's base"),
+            ),
+        ]
+    };
     let mut out = match state.tool {
+        Tool::Door => opening("door", m.door, "door"),
+        Tool::Window => opening("window", m.window, "window"),
+        Tool::Opening => opening("hole", m.hole, "opening"),
         Tool::Column => vec![
             toggle(
                 "square",
@@ -1259,6 +1304,20 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "railing_height" => m.railing_height = v.clamp(0.3, 3.0),
         "footing_width" => m.footing_width = v.clamp(0.1, 10.0),
         "footing_thickness" => m.footing_thickness = v.clamp(0.05, 5.0),
+        k if k.starts_with("door_") || k.starts_with("window_") || k.starts_with("hole_") => {
+            let (kind, what) = k.split_once('_').unwrap_or((k, ""));
+            let s = match kind {
+                "door" => &mut m.door,
+                "window" => &mut m.window,
+                _ => &mut m.hole,
+            };
+            match what {
+                "width" => s[0] = v.clamp(0.1, 20.0),
+                "height" => s[1] = v.clamp(0.1, 20.0),
+                "sill" => s[2] = v.clamp(0.0, 20.0),
+                _ => {}
+            }
+        }
         _ => {}
     }
 }

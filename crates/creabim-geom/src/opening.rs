@@ -290,6 +290,20 @@ pub(crate) fn add_box(m: &mut TriMesh, lo: DVec3, hi: DVec3, at: &dyn Fn(DVec3) 
     );
 }
 
+/// The hole an opening cuts, through the whole wall, as a box: what a
+/// bare hole shows (see-through) and is picked by, and what the placement
+/// ghost shows around a door or window (A7-4, MU18).
+pub fn cut_box_mesh(o: &Opening, wall: &Wall, level_z: f64) -> Option<crate::TriMesh> {
+    let c = crate::wall::Cut::of(o, wall)?;
+    let d = wall.direction();
+    let n = glam::DVec2::new(-d.y, d.x);
+    let t = wall.thickness / 2.0;
+    let at = |u: f64, s: f64| wall.start + d * u + n * s;
+    let outline = [at(c.u0, -t), at(c.u1, -t), at(c.u1, t), at(c.u0, t)];
+    let z0 = level_z + wall.base_offset;
+    Some(crate::scene::slab_mesh(&outline, z0 + c.v1, c.v1 - c.v0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

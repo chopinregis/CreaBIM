@@ -2907,6 +2907,12 @@ impl CreaBimApp {
                         if k.contains("beam") {
                             self.plan.types.remove(&creabim_core::TypeCategory::Beam);
                         }
+                        if k.contains("door_") {
+                            self.plan.types.remove(&creabim_core::TypeCategory::Door);
+                        }
+                        if k.contains("window_") {
+                            self.plan.types.remove(&creabim_core::TypeCategory::Window);
+                        }
                         crate::memberstool::set_option(&mut self.plan, k, v)
                     }
                     "view.number" => self.set_view_number(v),
@@ -3350,6 +3356,10 @@ pub(super) fn style(ctx: &egui::Context, theme: Theme) {
         s.spacing.interact_size.y = 24.0;
         // a slider's track thick enough to read as one
         s.spacing.slider_rail_height = 6.0;
+        // thin floating scroll bars, like the web panels' (MU18)
+        let mut scroll = egui::style::ScrollStyle::thin();
+        scroll.foreground_color = false;
+        s.spacing.scroll = scroll;
         s.text_styles
             .insert(TextStyle::Body, FontId::proportional(13.0));
         s.text_styles

@@ -3477,8 +3477,9 @@ pub fn interact(
                     .unwrap_or(h.at);
                 Some((Some(h.kind), h.constraint, grab))
             }
-            // in Edit mode a drag off the grips draws a box round some
-            None if edit => {
+            // in Edit mode a drag off the grips draws a box round some, in
+            // drawings; in 3D it orbits as ever (MU18)
+            None if edit && input.view.is_some() => {
                 grips.boxsel = Some((response.id, press));
                 grips.menu = None;
                 return true;

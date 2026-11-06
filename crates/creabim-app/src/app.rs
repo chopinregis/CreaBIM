@@ -4418,6 +4418,23 @@ impl CreaBimApp {
                     .color(ui.visuals().selection.bg_fill),
             );
             ui.label(egui::RichText::new(editmode::panel_hint(&e.kind)).weak());
+            // the layers' grips, without having to know Tab (MU18)
+            if handles::has_layers(self.doc.model(), id) {
+                let mut on = handles::layers();
+                let text = if on {
+                    "Back to the element's grips (Tab)"
+                } else {
+                    "Edit its layers in the views (Tab)"
+                };
+                if ui.toggle_value(&mut on, text).clicked() {
+                    handles::set_layers(on);
+                    self.status = if on {
+                        "Layers: a grip at each layer's ends (and, on walls, its bottom and top). Drag one to run that layer on or hold it back; right-click to reset.".into()
+                    } else {
+                        "Back to the element's own grips.".into()
+                    };
+                }
+            }
             ui.add_space(4.0);
         }
 
