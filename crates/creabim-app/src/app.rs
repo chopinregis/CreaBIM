@@ -153,6 +153,11 @@ pub struct CreaBimApp {
     guide_from: Option<DVec3>,
     extrude_distance: f64,
     path: String,
+    /// The model's revision when it was last opened or saved: anything
+    /// else is unsaved (A7-8).
+    saved_revision: Option<u64>,
+    /// The window title last set, so it is only sent when it changes.
+    title: String,
     status: String,
     /// Linked files (Blender...) and when they were last read.
     watch: crate::files::Watch,
@@ -280,6 +285,8 @@ impl CreaBimApp {
             plane_pick: None,
             extrude_distance: 1.0,
             path: "project.creabim".into(),
+            saved_revision: None,
+            title: String::new(),
             watch: Default::default(),
             live_reload: true,
             hidden: Default::default(),
@@ -398,15 +405,24 @@ impl CreaBimApp {
                 self.watch = Default::default();
                 self.recent.add(path);
                 self.path = path.to_string();
+                self.saved_revision = Some(self.doc.model().revision());
                 self.status = format!("Opened {path}");
             }
             Err(e) => self.status = format!("Couldn't open {path}: {e}"),
         }
     }
 
+    /// Has the model changed since it was opened or saved?
+    pub(crate) fn unsaved(&self) -> bool {
+        self.saved_revision != Some(self.doc.model().revision())
+    }
+
     fn save(&mut self) {
         if self.path.to_ascii_lowercase().ends_with(".json") {
             let r = std::fs::write(&self.path, self.doc.model().to_json());
+            if r.is_ok() {
+                self.saved_revision = Some(self.doc.model().revision());
+            }
             self.report(r, format!("Saved {}", self.path));
             return;
         }
@@ -417,6 +433,7 @@ impl CreaBimApp {
         if r.is_ok() {
             let path = self.path.clone();
             self.recent.add(&path);
+            self.saved_revision = Some(self.doc.model().revision());
         }
         self.report(r, format!("Saved {}", self.path));
     }
@@ -5625,6 +5642,11 @@ impl eframe::App for CreaBimApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        let title = window_title(&self.path, self.unsaved());
+        if title != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title = title;
+        }
         crate::units::set(self.doc.model().units());
         // the step drags round to: none while Alt is held (2.10)
         let live = self.plan.snap.live(ctx.input(|i| i.modifiers.alt));
@@ -6005,6 +6027,20 @@ fn plural(kind: &str, n: usize) -> String {
     }
 }
 
+/// The window's title: the project, a • while it has unsaved changes,
+/// then the app, with its version on test builds (0.x) (A7-8).
+fn window_title(path: &str, unsaved: bool) -> String {
+    let name = std::path::Path::new(path)
+        .file_stem()
+        .map_or(path.to_string(), |n| n.to_string_lossy().into_owned());
+    let version = env!("CARGO_PKG_VERSION");
+    let app = match version.split('.').collect::<Vec<_>>().as_slice() {
+        ["0", minor, ..] => format!("CreaBIM 0.{minor} beta"),
+        _ => "CreaBIM".to_string(),
+    };
+    format!("{}{name} — {app}", if unsaved { "• " } else { "" })
+}
+
 fn file_label(path: &str) -> String {
     std::path::Path::new(path)
         .file_name()
@@ -6233,5 +6269,22 @@ impl CreaBimApp {
         if open && !done && !ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.plan.step_prompt = Some(text);
         }
+    }
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::window_title;
+
+    #[test]
+    fn the_title_names_the_project_marks_unsaved_and_the_test_version() {
+        let v = env!("CARGO_PKG_VERSION");
+        let saved = window_title(r"C:\Projects\Starter house.creabim", false);
+        assert!(saved.starts_with("Starter house — CreaBIM"), "{saved}");
+        if v.starts_with("0.") {
+            assert!(saved.ends_with(" beta"), "{saved}");
+        }
+        let unsaved = window_title("Starter house.creabim", true);
+        assert!(unsaved.starts_with("• Starter house — "), "{unsaved}");
     }
 }

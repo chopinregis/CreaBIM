@@ -2257,6 +2257,7 @@ impl CreaBimApp {
             "doc": {
                 "name": file_label(&self.path),
                 "path": self.path,
+                "unsaved": self.unsaved(),
                 "note": "",
             },
             "app": {"key": "menu:CreaBIM", "label": "CreaBIM"},
