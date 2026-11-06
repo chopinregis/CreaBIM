@@ -129,6 +129,9 @@ impl CreaBimApp {
             Item::new("help:shortcuts", "Keyboard shortcuts")
                 .key("Ctrl+/")
                 .icon("keyboard"),
+            Item::new("app.log", "Open the activity log")
+                .icon("file")
+                .hint("What CreaBIM did, step by step (drags frame by frame, edits, tools): attach it to a bug report. It stays on this computer."),
             Item::Separator,
             Item::new("app.exit", "Exit").key("Alt+F4").icon("log-out"),
         ]
@@ -190,6 +193,15 @@ impl CreaBimApp {
                     "This is CreaBIM {}. The releases page is open in your browser; nothing was downloaded.",
                     crate::help::version_line().trim_start_matches("Version ")
                 );
+            }
+            "app.log" => {
+                self.status = match crate::actlog::path() {
+                    Some(p) => match crate::files::open_folder(&p) {
+                        Ok(()) => format!("The activity log is {}.", p.display()),
+                        Err(e) => e,
+                    },
+                    None => "There is no activity log on this computer.".into(),
+                };
             }
             "app.settings" => self.settings_open = true,
             "app.exit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),

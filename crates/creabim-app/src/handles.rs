@@ -3326,6 +3326,13 @@ pub fn interact(
                 Some(k) => k.label(&name),
                 None => format!("Move {name}"),
             };
+            crate::actlog::line(format!(
+                "drag start: {label} | pane {} | grab {} | step {} mm | grip {:?}",
+                pane_name(input),
+                crate::actlog::pt(grab),
+                crate::actlog::mm(crate::snaps::current_step()),
+                kind,
+            ));
             *drag = Some(Drag {
                 kind,
                 constraint,
@@ -3415,6 +3422,11 @@ pub fn interact(
             }
         }
         let press = d.press;
+        crate::actlog::line(format!(
+            "drag end: {} | applied {}",
+            d.edit.label(),
+            d.edit.applied()
+        ));
         *drag = None;
         match kind {
             // a press on a grip that never moved is a click on it
@@ -3476,11 +3488,34 @@ pub fn interact(
         }
         _ => free,
     };
+    crate::actlog::line(format!(
+        "drag frame: pane {} | pointer ({:.1}, {:.1}) px | free {} | snap {} | used {} | step {} mm | frame {:.1} ms",
+        pane_name(input),
+        pos.x,
+        pos.y,
+        crate::actlog::pt(free),
+        match &snapped {
+            Some((p, sn)) => format!("{:?} at {}", sn.kind, crate::actlog::pt(*p)),
+            None => "none".into(),
+        },
+        crate::actlog::pt(now),
+        crate::actlog::mm(crate::snaps::current_step()),
+        painter.ctx().input(|i| i.unstable_dt) * 1000.0,
+    ));
     d.last = now;
     let grid = snapped.is_none_or(|(_, s)| s.kind == SnapKind::Grid);
     follow(doc, painter, d, input, now, grid, Some(pos), status);
     painter.ctx().request_repaint();
     true
+}
+
+/// Which kind of pane a drag is in, for the activity log.
+fn pane_name(input: &PaneInput) -> &'static str {
+    match input.view {
+        None => "3D",
+        Some(_) if input.look.z.abs() > 0.99 => "plan",
+        Some(_) => "section or elevation",
+    }
 }
 
 /// A click on grip `kind`: in Edit mode it picks a corner (Shift adds or
@@ -3593,6 +3628,10 @@ fn follow(
                 ),
                 Some(_) => format!("{}  {}", d.edit.label(), readout(&changed)),
             };
+            crate::actlog::line(format!(
+                "  result: {said} | step {} mm",
+                crate::actlog::mm(crate::snaps::current_step())
+            ));
             if let Some(ElementKind::Shaft(s)) = changed.first().map(|e| &e.kind) {
                 let missed: Vec<String> = creabim_core::slab::shaft_misses(&model, s)
                     .into_iter()

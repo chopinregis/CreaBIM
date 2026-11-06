@@ -158,6 +158,8 @@ pub struct CreaBimApp {
     saved_revision: Option<u64>,
     /// The window title last set, so it is only sent when it changes.
     title: String,
+    /// The status and tool last written to the activity log.
+    logged: (String, Option<Tool>),
     status: String,
     /// Linked files (Blender...) and when they were last read.
     watch: crate::files::Watch,
@@ -232,6 +234,7 @@ impl CreaBimApp {
             .as_ref()
             .map(|rs| Viewport3d::new(&rs.device));
         let mut app = Self::blank(viewport);
+        crate::actlog::start();
         app.builds.set_context(cc.egui_ctx.clone());
         app.shell.theme = theme;
         app.vis3d.categories = settings.hidden_3d.clone();
@@ -287,6 +290,7 @@ impl CreaBimApp {
             path: "project.creabim".into(),
             saved_revision: None,
             title: String::new(),
+            logged: (String::new(), None),
             watch: Default::default(),
             live_reload: true,
             hidden: Default::default(),
@@ -5719,6 +5723,16 @@ impl eframe::App for CreaBimApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // the activity log: what the status bar said (it names every edit
+        // and undo) and the tool, when they change
+        if self.status != self.logged.0 {
+            crate::actlog::line(format!("status: {}", self.status));
+            self.logged.0 = self.status.clone();
+        }
+        if Some(self.plan.tool) != self.logged.1 {
+            crate::actlog::line(format!("tool: {:?}", self.plan.tool));
+            self.logged.1 = Some(self.plan.tool);
+        }
         let title = window_title(&self.path, self.unsaved());
         if title != self.title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
