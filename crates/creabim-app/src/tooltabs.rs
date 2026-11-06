@@ -117,13 +117,6 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             // levels are what plans are cut from, so they sit with the
             // views that come from them (MU20)
             T(Tool::Level),
-            act(
-                "levels",
-                "Levels",
-                "level",
-                "Add, duplicate, rename, move and delete levels",
-            ),
-            Sep,
             T(Tool::Section),
             T(Tool::Elevation),
             T(Tool::Callout),
@@ -156,6 +149,14 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
         ],
         _ => vec![
+            // the Levels manager is project set-up; the Level tool, which
+            // makes a level view, is on the View tab (MU21)
+            act(
+                "levels",
+                "Levels",
+                "level",
+                "Add, duplicate, rename, move and delete levels",
+            ),
             T(Tool::Grid),
             T(Tool::Guide),
             Sep,

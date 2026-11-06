@@ -311,6 +311,15 @@ pub fn show(
             center += before - PaperXf { rect, center, zoom }.to_paper(hover);
         }
     }
+    // the drawing areas' zoom and pan column (MU21)
+    let fit = || {
+        let z = (rect.width() / s.width as f32).min(rect.height() / s.height as f32) * 0.92;
+        (size / 2.0, z)
+    };
+    if let Some((c, z)) = crate::planview::nav_column(ui, rect, sheet_id, fit, center, zoom) {
+        center = c;
+        zoom = z;
+    }
     state.cameras.insert(sheet_id, (center, zoom));
     let xf = PaperXf { rect, center, zoom };
 

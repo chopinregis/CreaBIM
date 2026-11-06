@@ -260,9 +260,20 @@ html[data-pane="top"] body {
 
 html[data-theme="light"] .logo, html[data-theme="paper"] .logo, html[data-theme="sage"] .logo { color: #4F6B4C; }
 
-/* the full mark at 28 px, the owner's choice (MU20) */
-.logo svg.mark { width: 28px; height: 28px; display: block; }
-.bar1 .brand { padding-top: 0; padding-bottom: 0; }
+/* the full mark, white on a rounded sage tile that fits the bar, as small
+   app logos do (MU20, MU21: it no longer spills out of its button) */
+.logo svg.mark { width: 22px; height: 22px; display: block; }
+.bar1 .brand .logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #4F6B4C;
+  color: #FFFFFF;
+  overflow: hidden;
+}
+.bar1 .brand .logo svg.mark { width: 21px; height: 21px; }
+/* the branch is drawn in sage: white on the sage tile */
+.bar1 .brand .logo svg.mark path[stroke="#4F6B4C"] { stroke: #FFFFFF; }
 
 .menubtn {
   height: 28px;

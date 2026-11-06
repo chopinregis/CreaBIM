@@ -369,7 +369,9 @@ pub struct PlanState {
     /// moves) instead of the top.
     pub slab_keep_bottom: bool,
     /// Where a box selection began, on screen.
-    pub boxsel: Option<Pos2>,
+    /// A box being dragged: where it started, and the area dragging it
+    /// (two areas may show one view; only that one ends it, MU21).
+    pub boxsel: Option<(Pos2, egui::Id)>,
     /// What rotate and scale turn about.
     pub pivot: modal::Pivot,
     /// What the Move tool last worked on: whole elements or a face.
@@ -485,6 +487,8 @@ pub struct PlanState {
     /// What each view shows traced under it (MU18): the viewer's, never
     /// saved in the project.
     pub traces: HashMap<ElementId, crate::trace::Trace>,
+    /// Temporary dimensions muted (MU21): none shown, none clicked.
+    pub temp_dims_off: bool,
     pub host_pick: Option<ElementId>,
     pub host_cycle: usize,
     /// A footing was just placed on a host: the status bar offers the
@@ -582,6 +586,7 @@ impl Default for PlanState {
             temp: Default::default(),
             tracker: Default::default(),
             traces: HashMap::new(),
+            temp_dims_off: false,
             host_pick: None,
             host_cycle: 0,
             footing_placed: false,
@@ -783,7 +788,7 @@ pub fn show(
     // zoom and pan buttons, for a mouse without a wheel button or a
     // trackpad (MU18): zoom in, zoom out, fit, and a hand dragged to pan
     if style.decorations && style.camera.is_none() {
-        if let Some((c, k)) = nav_column(ui, rect, view, plan, center, scale) {
+        if let Some((c, k)) = nav_column(ui, rect, view, || fit(plan, rect), center, scale) {
             center = c;
             scale = k;
         }
@@ -1302,7 +1307,7 @@ pub fn show(
     };
     // temporary dimensions of the one element selected: click a value
     // and type, or click its padlock (2.10 part 3)
-    if let (PaneKind::Plan { level }, Tool::Select) = (kind, tool) {
+    if let (PaneKind::Plan { level }, Tool::Select, false) = (kind, tool, state.temp_dims_off) {
         let quiet = state.modal.is_some()
             || state.grip.is_some()
             || state.edit.is_some()
@@ -1589,11 +1594,11 @@ pub fn show(
                     .into_iter()
                     .any(|id| selection.contains(id));
                 if !on_selected || footing_box {
-                    state.boxsel = Some(p0);
+                    state.boxsel = Some((p0, response.id));
                 }
             }
         }
-        if let Some(p0) = state.boxsel {
+        if let Some((p0, _)) = state.boxsel.filter(|b| b.1 == response.id) {
             let now = ui.input(|i| i.pointer.latest_pos()).unwrap_or(p0);
             boxsel::draw(&painter, p0, now);
             if response.drag_stopped() || !response.dragged() {
@@ -3755,11 +3760,11 @@ fn drag_section_line(
 /// Centre and zoom that fit a drawing in the pane.
 /// The column of zoom and pan buttons at a drawing area's top right; the
 /// camera it asks for, if any.
-fn nav_column(
+pub(crate) fn nav_column(
     ui: &egui::Ui,
     rect: Rect,
     view: ElementId,
-    plan: &Drawing,
+    fit_to: impl Fn() -> (DVec2, f32),
     center: DVec2,
     scale: f32,
 ) -> Option<(DVec2, f32)> {
@@ -3827,7 +3832,7 @@ fn nav_column(
             }
             0 if resp.clicked() => out = zoom(1.25),
             1 if resp.clicked() => out = zoom(1.0 / 1.25),
-            2 if resp.clicked() => out = Some(fit(plan, rect)),
+            2 if resp.clicked() => out = Some(fit_to()),
             3 if resp.dragged() => {
                 let d = resp.drag_delta() / scale;
                 out = Some((center - DVec2::new(d.x as f64, -d.y as f64), scale));
@@ -5990,6 +5995,119 @@ mod tests {
     }
 
     use super::*;
+
+    /// Drive a plan pane with pointer events, frame by frame.
+    fn drive_box(kind_section: bool, decorations: bool, two: bool) -> usize {
+        let m = creabim_core::starter::starter_house();
+        let (view, kind) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) if !kind_section && e.name == "Ground Floor plan" => {
+                    Some((e.id, pane_kind(v)))
+                }
+                ElementKind::View(v) if kind_section && e.name == "Section A-A" => {
+                    Some((e.id, pane_kind(v)))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let mut doc = creabim_core::Document::from_model(m);
+        let ctx = egui::Context::default();
+        let mut state = PlanState::default();
+        let mut sel = crate::selection::Selection::default();
+        let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(1200.0, 900.0));
+        let d = creabim_geom::section::view_drawing_with(doc.model(), view, false).unwrap();
+        let mut t = 0.0;
+        let mut frame = |events: Vec<egui::Event>,
+                         doc: &mut creabim_core::Document,
+                         state: &mut PlanState,
+                         sel: &mut crate::selection::Selection| {
+            t += 1.0 / 60.0;
+            let raw = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(2400.0, 900.0))),
+                events,
+                time: Some(t),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(raw, |ui| {
+                let style = PaneStyle {
+                    background: None,
+                    decorations,
+                    camera: None,
+                    scale: 50.0,
+                };
+                ui.push_id(("area", 0), |ui| {
+                    show(ui, rect, doc, view, kind, &d, state, sel, style)
+                });
+                // a second area showing the same view, beside it (MU21)
+                if two {
+                    let other = rect.translate(egui::vec2(rect.width(), 0.0));
+                    ui.push_id(("area", 1), |ui| {
+                        show(ui, other, doc, view, kind, &d, state, sel, style)
+                    });
+                }
+            });
+            out.textures_delta.clear();
+        };
+        // over the middle of the drawing, then a drag of 300 x 200 px
+        let a = Pos2::new(700.0, 550.0);
+        let b = Pos2::new(400.0, 350.0);
+        for e in [
+            vec![egui::Event::PointerMoved(a)],
+            vec![egui::Event::PointerMoved(a)],
+            vec![egui::Event::PointerButton {
+                pos: a,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            }],
+        ] {
+            frame(e, &mut doc, &mut state, &mut sel);
+        }
+        for k in 1..=10 {
+            let p = a + (b - a) * (k as f32 / 10.0);
+            frame(
+                vec![egui::Event::PointerMoved(p)],
+                &mut doc,
+                &mut state,
+                &mut sel,
+            );
+        }
+        frame(
+            vec![egui::Event::PointerButton {
+                pos: b,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            }],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        frame(
+            vec![egui::Event::PointerMoved(b)],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        sel.len()
+    }
+
+    #[test]
+    fn a_left_drag_on_a_plan_with_nothing_selected_selects_with_a_box() {
+        assert!(
+            drive_box(false, false, false) > 0,
+            "the box took nothing in the plan"
+        );
+        assert!(drive_box(false, true, false) > 0, "with decorations");
+        assert!(drive_box(true, true, false) > 0, "in a section");
+        // two areas showing the same plan: the other one used to end the
+        // box the moment it started (MU21)
+        assert!(
+            drive_box(false, true, true) > 0,
+            "with a second area on the same plan"
+        );
+    }
 
     #[test]
     fn a_crop_box_shows_as_its_footprint_in_a_plan_and_its_extent_in_a_section() {

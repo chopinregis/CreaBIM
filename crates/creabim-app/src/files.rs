@@ -174,6 +174,8 @@ pub struct Settings {
     /// How the last IFC export wrote walls, slabs and roofs: "modelled"
     /// (recommended), "joined" or "layers" (MU20).
     pub ifc_body: String,
+    /// Temporary dimensions muted in drawings (MU21).
+    pub temp_dims_off: bool,
     /// The kinds of element the 3D view leaves out (grids, annotation,
     /// guides…), from its Visibility settings.
     pub hidden_3d: Vec<creabim_core::Category>,
@@ -223,6 +225,7 @@ impl Default for Settings {
             drawing_paper: "theme".into(),
             navigation: "creabim".into(),
             ifc_body: "modelled".into(),
+            temp_dims_off: false,
             hidden_3d: vec![],
             xray: false,
             hidden_colour_3d: false,

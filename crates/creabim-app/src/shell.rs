@@ -1980,6 +1980,24 @@ impl CreaBimApp {
             "view.reveal" => self.toggle_hidden_elements(id),
             "view.colour" => self.toggle_hidden_colour(id),
             "view.xray" => self.toggle_view_xray(id),
+            "sheet.preview" => {
+                self.print_preview = !self.print_preview;
+                self.status = if self.print_preview {
+                    "Print preview: the sheet as it prints, on white.".into()
+                } else {
+                    "Back to the working paper.".into()
+                };
+            }
+            "view.tempdims" => {
+                self.plan.temp_dims_off = !self.plan.temp_dims_off;
+                self.shell.settings.temp_dims_off = self.plan.temp_dims_off;
+                self.shell.settings.store();
+                self.status = if self.plan.temp_dims_off {
+                    "Temporary dimensions off: none show by what you select. The button turns them back on.".into()
+                } else {
+                    "Temporary dimensions on.".into()
+                };
+            }
             "view.tag" => {
                 let r = planview::tag_openings(&mut self.doc, id);
                 self.status = match r {
@@ -2430,6 +2448,13 @@ impl CreaBimApp {
                     }));
                 }
             }
+            if self.active_plan().is_some() {
+                options.push(json!({
+                    "kind": "toggle", "id": "view.tempdims", "label": "Temporary dimensions",
+                    "icon": "dimension", "on": !self.plan.temp_dims_off,
+                    "hint": "The blue dimensions by what you select: on, they show and can be typed into; off, none show (MU21)",
+                }));
+            }
             options.push(json!({
                 "kind": "button", "id": "view.tag", "label": "Tag openings", "icon": "tag",
                 "hint": "Tag every door and window in this view that has no tag yet",
@@ -2479,7 +2504,13 @@ impl CreaBimApp {
         if self.active_view.is_some_and(|id| self.is_sheet(id)) {
             options.push(json!({
                 "kind": "menu", "key": "placeview", "label": "", "value": "Place view…",
-                "icon": "frame", "hint": "Put a view on this sheet", "wide": true,
+                "icon": "place-view", "hint": "Put a view on this sheet", "wide": true,
+            }));
+            // the sheet as it prints, on white, while the paper is dark (MU21)
+            options.push(json!({
+                "kind": "toggle", "id": "sheet.preview", "label": "Print preview",
+                "icon": "print-preview", "on": self.print_preview,
+                "hint": "Show the sheet as it prints, on white paper; off, it follows the drawing paper (dark or light)",
             }));
         }
         options

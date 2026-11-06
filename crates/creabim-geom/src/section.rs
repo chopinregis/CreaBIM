@@ -804,13 +804,15 @@ pub fn apply_drawing_style(
     match style {
         S::Technical => {}
         S::Clean => items.retain(|it| !matches!(it, PlanItem::Fill { .. })),
-        S::Poche | S::MaterialColour => {
+        S::Poche | S::MaterialColour | S::ColourWash | S::GreyWash => {
             for it in items.iter_mut() {
                 let PlanItem::Fill { id, points, .. } = it else {
                     continue;
                 };
+                let wash = |c: [f32; 3]| c.map(|v| v + (1.0 - v) * 0.55);
                 let rgb = match style {
                     S::Poche => [0.12, 0.12, 0.13],
+                    S::GreyWash => [0.86, 0.86, 0.85],
                     _ => model
                         .get(*id)
                         .and_then(|e| {
@@ -827,6 +829,11 @@ pub fn apply_drawing_style(
                                 })
                         })
                         .unwrap_or([0.75, 0.75, 0.75]),
+                };
+                let rgb = if style == S::ColourWash {
+                    wash(rgb)
+                } else {
+                    rgb
                 };
                 *it = PlanItem::Shade {
                     id: *id,
@@ -1646,6 +1653,8 @@ mod tests {
             (DrawingStyle::Poche, 0, true),
             (DrawingStyle::MaterialColour, 0, true),
             (DrawingStyle::Clean, 0, false),
+            (DrawingStyle::ColourWash, 0, true),
+            (DrawingStyle::GreyWash, 0, true),
         ] {
             let mut doc = creabim_core::document::Document::from_model(m.clone());
             doc.edit(plan, "style", |e| {

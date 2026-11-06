@@ -213,13 +213,19 @@ pub enum DrawingStyle {
     MaterialColour,
     /// Outlines only: no hatches, no fills.
     Clean,
+    /// What is cut in a soft wash of its material's colour (MU21).
+    ColourWash,
+    /// What is cut in an even light grey, no hatch (MU21).
+    GreyWash,
 }
 
 impl DrawingStyle {
-    pub const ALL: [DrawingStyle; 4] = [
+    pub const ALL: [DrawingStyle; 6] = [
         DrawingStyle::Technical,
         DrawingStyle::Poche,
         DrawingStyle::MaterialColour,
+        DrawingStyle::ColourWash,
+        DrawingStyle::GreyWash,
         DrawingStyle::Clean,
     ];
 
@@ -233,6 +239,8 @@ impl DrawingStyle {
             DrawingStyle::Poche => "Poché",
             DrawingStyle::MaterialColour => "Material colour",
             DrawingStyle::Clean => "Clean",
+            DrawingStyle::ColourWash => "Colour wash",
+            DrawingStyle::GreyWash => "Grey wash",
         }
     }
 
@@ -242,6 +250,10 @@ impl DrawingStyle {
             DrawingStyle::Poche => "Cut walls and slabs solid ink, no hatch",
             DrawingStyle::MaterialColour => "Cut materials in their own colours",
             DrawingStyle::Clean => "Outlines only: no hatches or fills",
+            DrawingStyle::ColourWash => {
+                "Cut materials in a soft wash of their colours, for presentation"
+            }
+            DrawingStyle::GreyWash => "Cut materials in an even light grey, no hatch",
         }
     }
 }

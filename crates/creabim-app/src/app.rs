@@ -124,6 +124,8 @@ pub struct CreaBimApp {
     geometry_key: Option<GeometryKey>,
     /// Drawings and the 3D view on dark paper this frame (A4-3).
     paper_is_dark: bool,
+    /// Sheets as they print, on white, whatever the paper (MU21).
+    print_preview: bool,
     scene: Vec<SceneItem>,
     plan: PlanState,
     placement: PlanPlacement,
@@ -249,6 +251,7 @@ impl CreaBimApp {
         // grid snap always starts off; its spacing and the distance marks
         // are kept
         app.plan.snap.increment = false;
+        app.plan.temp_dims_off = settings.temp_dims_off;
         app.plan.snap.marks = settings.distance_marks;
         if settings.snap_spacing_um > 0 {
             app.plan.snap.step_um = settings.snap_spacing_um;
@@ -286,6 +289,7 @@ impl CreaBimApp {
             viewport,
             geometry_key: None,
             paper_is_dark: false,
+            print_preview: false,
             scene: vec![],
             plan: PlanState::default(),
             placement: PlanPlacement::Docked,
@@ -2365,6 +2369,22 @@ impl CreaBimApp {
                     if self.cube.covers(p0) {
                         return false;
                     }
+                    // nor on one of the selection's grips: that drag is the
+                    // grip's (a crop box's face, MU21)
+                    let on_grip = self.selection.active.is_some_and(|id| {
+                        handles::handles_in(
+                            self.doc.model(),
+                            id,
+                            self.face,
+                            self.plan.edit == Some(id),
+                        )
+                        .iter()
+                        .filter_map(|h| project(h.at))
+                        .any(|s| s.distance(p0) < 14.0)
+                    });
+                    if on_grip {
+                        return false;
+                    }
                     let (o, d) = ray(p0);
                     !pick::pick(&self.scene, o.as_vec3(), d.as_vec3())
                         .is_some_and(|h| self.selection.contains(h.id))
@@ -3816,7 +3836,12 @@ impl CreaBimApp {
         } else if self.is_sheet(view) {
             let views = self.placed_views(view);
             let info = self.sheet_info();
-            sheetview::show(
+            // a sheet follows dark paper while you work on it; Print
+            // preview shows it as it prints, on white (MU21)
+            let dark = self.dark_paper(ui.ctx()) && !self.print_preview;
+            let layer = ui.layer_id();
+            let from = ui.ctx().graphics(|g| g.get(layer).map(|l| l.next_idx()));
+            let r = sheetview::show(
                 ui,
                 rect,
                 &mut self.doc,
@@ -3826,7 +3851,11 @@ impl CreaBimApp {
                 &mut self.sheet,
                 &mut self.plan,
                 &mut self.selection,
-            )
+            );
+            if dark {
+                darken_shapes(ui.ctx(), layer, from);
+            }
+            r
         } else {
             let Some(kind) = self.view(view).map(planview::pane_kind) else {
                 return;
@@ -4647,6 +4676,33 @@ impl CreaBimApp {
                     Some(&format!("View: {name}")),
                 );
                 self.trace_panel(ui, v);
+                // a section's or elevation's drawing style, as a plan's (MU21)
+                if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
+                    if matches!(view.kind, ViewKind::Section { .. }) {
+                        let mut style = view.graphics.drawing_style;
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("Graphics").strong());
+                        crate::props::row(ui, "Drawing style", |ui| {
+                            egui::ComboBox::from_id_salt("section.panel.drawing_style")
+                                .selected_text(style.label())
+                                .width(ui.available_width())
+                                .show_ui(ui, |ui| {
+                                    for s in creabim_core::graphics::DrawingStyle::ALL {
+                                        ui.selectable_value(&mut style, s, s.label())
+                                            .on_hover_text(s.hint());
+                                    }
+                                });
+                        });
+                        if style != view.graphics.drawing_style {
+                            let r = self.doc.edit(v, "Drawing style", |e| {
+                                if let ElementKind::View(x) = &mut e.kind {
+                                    x.graphics.drawing_style = style;
+                                }
+                            });
+                            self.report(r, format!("Drawing style: {}.", style.label()));
+                        }
+                    }
+                }
                 // a plan's graphics: weights, below-cut tint, view depth
                 if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
                     if matches!(view.kind, ViewKind::Plan { .. }) {
@@ -7022,5 +7078,69 @@ mod title_tests {
         }
         let unsaved = window_title("Starter house.creabim", true);
         assert!(unsaved.starts_with("• Starter house — "), "{unsaved}");
+    }
+}
+
+#[cfg(test)]
+mod box_select_tests {
+    use super::*;
+
+    #[test]
+    fn a_left_drag_in_the_apps_plan_area_selects_with_a_box() {
+        let mut app = crate::app::test_app();
+        app.load_model(creabim_core::starter::starter_house());
+        let view = app
+            .doc
+            .model()
+            .iter()
+            .find(|e| e.name == "Ground Floor plan")
+            .unwrap()
+            .id;
+        app.active_view = Some(view);
+        app.selection.clear();
+        let ctx = egui::Context::default();
+        let rect = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 900.0));
+        let mut t = 0.0;
+        let mut frame = |app: &mut CreaBimApp, events: Vec<egui::Event>| {
+            t += 1.0 / 60.0;
+            let raw = egui::RawInput {
+                screen_rect: Some(rect),
+                events,
+                time: Some(t),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(raw, |ui| app.show_plan(ui, rect, Color32::WHITE));
+            out.textures_delta.clear();
+        };
+        // left to right, round the whole drawing: takes what is inside
+        let (a, b) = (egui::Pos2::new(5.0, 5.0), egui::Pos2::new(1195.0, 895.0));
+        frame(&mut app, vec![egui::Event::PointerMoved(a)]);
+        frame(&mut app, vec![egui::Event::PointerMoved(a)]);
+        frame(
+            &mut app,
+            vec![egui::Event::PointerButton {
+                pos: a,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            }],
+        );
+        for k in 1..=10 {
+            frame(
+                &mut app,
+                vec![egui::Event::PointerMoved(a + (b - a) * (k as f32 / 10.0))],
+            );
+        }
+        frame(
+            &mut app,
+            vec![egui::Event::PointerButton {
+                pos: b,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            }],
+        );
+        frame(&mut app, vec![egui::Event::PointerMoved(b)]);
+        assert!(!app.selection.is_empty(), "status: {}", app.status);
     }
 }

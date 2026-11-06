@@ -413,7 +413,7 @@ impl ViewCube {
         let c = Pos2::new(col_x - 96.0, rect.top() + 72.0);
         let area = Rect::from_min_max(
             Pos2::new(c.x - 80.0, rect.top() + 4.0),
-            Pos2::new(rect.right() - 4.0, rect.top() + 172.0),
+            Pos2::new(rect.right() - 4.0, rect.top() + 190.0),
         );
         if !rect.contains_rect(area) {
             self.area = None;
@@ -432,9 +432,11 @@ impl ViewCube {
             || self.grab.is_some();
         painter.multiply_opacity(if near { 1.0 } else { 0.45 });
         // the buttons' box
-        let column = Rect::from_center_size(
-            Pos2::new(col_x, rect.top() + 20.0 + 2.5 * 26.0),
-            Vec2::new(32.0, 6.0 * 26.0 + 10.0),
+        // the same box, gap and pitch as the drawing areas' column (MU21):
+        // 28 px buttons, 10 px under the header, 34 px wide
+        let column = Rect::from_min_size(
+            Pos2::new(col_x - 17.0, rect.top() + 7.0),
+            Vec2::new(34.0, 6.0 * 28.0 + 6.0),
         );
         painter.rect(
             column,
@@ -650,7 +652,7 @@ impl ViewCube {
             ),
         ];
         for (k, (what, hint)) in buttons.into_iter().enumerate() {
-            let at = Pos2::new(col_x, rect.top() + 14.0 + 6.0 + 26.0 * k as f32);
+            let at = Pos2::new(col_x, rect.top() + 24.0 + 28.0 * k as f32);
             let held = self.grab.is_some_and(|g| {
                 matches!(
                     (g, what),
