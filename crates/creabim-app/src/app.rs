@@ -6741,6 +6741,23 @@ fn plan_graphics_ui(
     let mut label = None;
     ui.add_space(4.0);
     ui.label(egui::RichText::new("Graphics").strong());
+    // how what is cut is drawn (A4-11)
+    crate::props::row(ui, "Drawing style", |ui| {
+        egui::ComboBox::from_id_salt("view.drawing_style")
+            .selected_text(g.drawing_style.label())
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for s in creabim_core::graphics::DrawingStyle::ALL {
+                    if ui
+                        .selectable_value(&mut g.drawing_style, s, s.label())
+                        .on_hover_text(s.hint())
+                        .changed()
+                    {
+                        label = Some("Drawing style");
+                    }
+                }
+            });
+    });
     if crate::props::switch(ui, &mut g.below_fill, "Tint what lies below the cut")
         .on_hover_text("Furniture, fittings and imported meshes under the cut get a light fill.")
         .changed()

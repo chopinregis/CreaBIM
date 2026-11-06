@@ -790,7 +790,52 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     // dimension lines whose style says so break where tags and notes
     // finally sit
     crate::annotate::break_dimensions(&mut d.items, v.scale / 1000.0);
+    apply_drawing_style(model, &mut d.items, v.graphics.drawing_style);
     Some(d)
+}
+
+/// A view's drawing style over its cut fills (A4-11).
+pub fn apply_drawing_style(
+    model: &Model,
+    items: &mut Vec<PlanItem>,
+    style: creabim_core::graphics::DrawingStyle,
+) {
+    use creabim_core::graphics::DrawingStyle as S;
+    match style {
+        S::Technical => {}
+        S::Clean => items.retain(|it| !matches!(it, PlanItem::Fill { .. })),
+        S::Poche | S::MaterialColour => {
+            for it in items.iter_mut() {
+                let PlanItem::Fill { id, points, .. } = it else {
+                    continue;
+                };
+                let rgb = match style {
+                    S::Poche => [0.12, 0.12, 0.13],
+                    _ => model
+                        .get(*id)
+                        .and_then(|e| {
+                            creabim_core::material_of(model, e)
+                                .map(|(_, m)| m.color)
+                                // a layered element: its structure's
+                                .or_else(|| {
+                                    let (_, a) = creabim_core::assembly::assembly_of(model, e)?;
+                                    let i = (0..a.layers.len()).find(|i| a.is_core(*i))?;
+                                    match &model.get(a.layers[i].material?)?.kind {
+                                        ElementKind::Material(m) => Some(m.color),
+                                        _ => None,
+                                    }
+                                })
+                        })
+                        .unwrap_or([0.75, 0.75, 0.75]),
+                };
+                *it = PlanItem::Shade {
+                    id: *id,
+                    points: std::mem::take(points),
+                    rgb,
+                };
+            }
+        }
+    }
 }
 
 /// Wash the elements a drawing shows hidden inside others (those with
@@ -1577,6 +1622,43 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_views_drawing_style_changes_its_cut_fills_on_screen_and_paper() {
+        use creabim_core::graphics::DrawingStyle;
+        let m = creabim_core::starter::starter_house();
+        let plan = m.iter().find(|e| e.name == "Ground Floor plan").unwrap().id;
+        let fills = |d: &Drawing| {
+            d.items
+                .iter()
+                .filter(|i| matches!(i, PlanItem::Fill { .. }))
+                .count()
+        };
+        let shades = |d: &Drawing| {
+            d.items
+                .iter()
+                .filter(|i| matches!(i, PlanItem::Shade { .. }))
+                .count()
+        };
+        let base = view_drawing(&m, plan).unwrap();
+        assert!(fills(&base) > 0);
+        for (style, want_fills, more_shades) in [
+            (DrawingStyle::Poche, 0, true),
+            (DrawingStyle::MaterialColour, 0, true),
+            (DrawingStyle::Clean, 0, false),
+        ] {
+            let mut doc = creabim_core::document::Document::from_model(m.clone());
+            doc.edit(plan, "style", |e| {
+                if let ElementKind::View(v) = &mut e.kind {
+                    v.graphics.drawing_style = style;
+                }
+            })
+            .unwrap();
+            let d = view_drawing(doc.model(), plan).unwrap();
+            assert_eq!(fills(&d), want_fills, "{style:?}");
+            assert_eq!(shades(&d) > shades(&base), more_shades, "{style:?}");
+        }
+    }
     use creabim_core::sample::sample_house;
 
     fn sample() -> Model {
