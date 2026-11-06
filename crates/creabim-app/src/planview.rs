@@ -476,6 +476,9 @@ pub struct PlanState {
     pub temp: crate::tempdims::TempState,
     /// The host a host tool's click goes on, as the pointer shows it, and
     /// how many times Tab has moved past the first (A3-2).
+    /// What each view shows traced under it (MU18): the viewer's, never
+    /// saved in the project.
+    pub traces: HashMap<ElementId, crate::trace::Trace>,
     pub host_pick: Option<ElementId>,
     pub host_cycle: usize,
     /// A footing was just placed on a host: the status bar offers the
@@ -569,6 +572,7 @@ impl Default for PlanState {
             step_prompt: None,
             temp: Default::default(),
             tracker: Default::default(),
+            traces: HashMap::new(),
             host_pick: None,
             host_cycle: 0,
             footing_placed: false,
@@ -760,6 +764,14 @@ pub fn show(
             }
         }
     }
+    // zoom and pan buttons, for a mouse without a wheel button or a
+    // trackpad (MU18): zoom in, zoom out, fit, and a hand dragged to pan
+    if style.decorations && style.camera.is_none() {
+        if let Some((c, k)) = nav_column(ui, rect, view, plan, center, scale) {
+            center = c;
+            scale = k;
+        }
+    }
     if style.camera.is_none() {
         state.cameras.insert(view, (center, scale));
     }
@@ -771,6 +783,12 @@ pub fn show(
 
     if style.decorations && kind != PaneKind::Schedule {
         draw_metric_grid(&painter, &xf);
+    }
+    // a reference traced under the drawing (MU18)
+    if style.decorations {
+        if let Some(t) = state.traces.get_mut(&view) {
+            t.draw(&painter, doc.model(), &|p| xf.to_screen(p));
+        }
     }
     // the slabs of a plan's level: a light fill under the rest, stronger
     // where the pointer is, so they can be seen and clicked
@@ -3668,6 +3686,77 @@ fn drag_section_line(
 }
 
 /// Centre and zoom that fit a drawing in the pane.
+/// The column of zoom and pan buttons at a drawing area's top right; the
+/// camera it asks for, if any.
+fn nav_column(
+    ui: &egui::Ui,
+    rect: Rect,
+    view: ElementId,
+    plan: &Drawing,
+    center: DVec2,
+    scale: f32,
+) -> Option<(DVec2, f32)> {
+    let size = 28.0;
+    let x = rect.right() - size - 10.0;
+    let y0 = rect.top() + 10.0;
+    if rect.width() < 200.0 || rect.height() < 4.0 * size + 30.0 {
+        return None;
+    }
+    let p = crate::theme::Palette::of(ui.ctx());
+    let column = Rect::from_min_size(
+        egui::pos2(x - 3.0, y0 - 3.0),
+        egui::vec2(size + 6.0, 4.0 * size + 6.0),
+    );
+    let near = ui
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|h| column.expand(40.0).contains(h));
+    let fade = if near { 1.0 } else { 0.45 };
+    let painter = ui.painter_at(rect);
+    painter.rect(
+        column,
+        8.0,
+        p.panel.gamma_multiply(fade),
+        egui::Stroke::new(1.0, p.border.gamma_multiply(fade)),
+        egui::StrokeKind::Inside,
+    );
+    let mut out = None;
+    let buttons = [
+        ("zoom-in", "Zoom in"),
+        ("zoom-out", "Zoom out"),
+        ("frame-all", "Fit the drawing"),
+        ("move", "Drag to pan"),
+    ];
+    for (i, (icon, tip)) in buttons.iter().enumerate() {
+        let r = Rect::from_min_size(egui::pos2(x, y0 + i as f32 * size), egui::vec2(size, size));
+        let resp = ui
+            .interact(
+                r,
+                ui.id().with(("nav2d", view, i)),
+                egui::Sense::click_and_drag(),
+            )
+            .on_hover_text(*tip);
+        if resp.hovered() {
+            painter.rect_filled(r.shrink(2.0), 6.0, p.accent.gamma_multiply(0.15));
+        }
+        crate::svgicon::paint(&painter, r.shrink(6.0), icon, p.text.gamma_multiply(fade));
+        let zoom = |by: f32| {
+            let k = (scale * by).clamp(2.0, 2000.0);
+            Some((center, k))
+        };
+        match i {
+            0 if resp.clicked() => out = zoom(1.5),
+            1 if resp.clicked() => out = zoom(1.0 / 1.5),
+            2 if resp.clicked() => out = Some(fit(plan, rect)),
+            3 if resp.dragged() => {
+                let d = resp.drag_delta() / scale;
+                out = Some((center - DVec2::new(d.x as f64, -d.y as f64), scale));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 fn fit(d: &Drawing, rect: Rect) -> (DVec2, f32) {
     match d.bounds() {
         Some((lo, hi)) => {

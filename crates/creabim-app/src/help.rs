@@ -490,6 +490,7 @@ pub const KEYS: &[Binding] = &[
     key(VIEWS, "Alt (hold)", "Suspend snapping while you click"),
     key(VIEWS, "Shift+G", "Show or hide the guides in every view"),
     key(VIEWS, "Alt+Z", "X-ray: see through walls, slabs and roofs"),
+    key(VIEWS, "Alt+F2", "Show or hide the trace reference under the view"),
     key(VIEWS, "Shift+right-click", "Put the pivot cursor here"),
     key(VIEWS, "F1", "Help about the tool in use (again to close)"),
     key(

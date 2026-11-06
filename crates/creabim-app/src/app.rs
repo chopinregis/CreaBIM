@@ -1051,6 +1051,17 @@ impl CreaBimApp {
         {
             self.toggle_edit_mode();
         }
+        // Alt+F2 shows or hides the active view's trace reference (MU18)
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::F2)) {
+            if let Some(t) = self.active_view.and_then(|v| self.plan.traces.get_mut(&v)) {
+                t.shown = !t.shown;
+                self.status = if t.shown {
+                    "Trace reference shown (Alt+F2 hides it).".into()
+                } else {
+                    "Trace reference hidden (Alt+F2 shows it).".into()
+                };
+            }
+        }
         // Tab in Edit mode on a layered element: its layers' ends, and back
         if let Some(id) = self.plan.edit {
             let free = self.handle_drag.is_none()
@@ -1653,19 +1664,27 @@ impl CreaBimApp {
             lines.push(line_vertex(a.as_vec3().to_array(), *c));
             lines.push(line_vertex(b.as_vec3().to_array(), *c));
         }
+        // one plane at a time (MU18): while a face is the workplane, the
+        // ground grid dims to a hint
+        let face_plane = self.workplane.is_some();
         if self.shell.settings.ground_grid {
             // as far out as 50 lines each way, at least the old 50 m
             let reach = (spacing * 25.0).max(25.0);
+            let color = if face_plane {
+                [0.88, 0.89, 0.91]
+            } else {
+                [0.80, 0.80, 0.82]
+            };
             lines.extend(grid_lines(
                 level_plane,
                 -reach + 5.0,
                 reach + 5.0,
                 spacing,
-                [0.80, 0.80, 0.82],
+                color,
             ));
         }
         if let Some((plane, _)) = self.workplane {
-            lines.extend(grid_lines(plane, -8.0, 8.0, 1.0, [0.92, 0.55, 0.30]));
+            lines.extend(workplane_lines(plane, spacing, WORKPLANE_FADE));
         }
         lines.extend(self.grid_lines_3d());
 
@@ -1929,7 +1948,7 @@ impl CreaBimApp {
                 size,
                 self.camera.view_proj(aspect),
                 self.camera.eye().to_array(),
-                [0.93, 0.94, 0.96],
+                BACKGROUND_3D.map(f64::from),
             );
             ui.painter().image(
                 tex,
@@ -3125,6 +3144,24 @@ impl CreaBimApp {
         };
         let p = snap.p.truncate();
         let at = p.extend(z);
+        // a point snapped above or below the working plane drops onto it:
+        // a dashed line shows where it lands (ArchiCAD's projections, MU18)
+        if (snap.p.z - z).abs() > 1e-3 {
+            if let (Some(a), Some(b)) = (project(snap.p), project(at)) {
+                painter.extend(egui::Shape::dashed_line(
+                    &[a, b],
+                    egui::Stroke::new(1.2, Color32::from_rgb(78, 123, 196)),
+                    5.0,
+                    4.0,
+                ));
+                painter.circle_stroke(
+                    a,
+                    4.0,
+                    egui::Stroke::new(1.2, Color32::from_rgb(78, 123, 196)),
+                );
+                painter.circle_filled(b, 3.0, Color32::from_rgb(78, 123, 196));
+            }
+        }
         if let Some(c) = project(at) {
             if snap.kind == SnapKind::Grid {
                 painter.circle_stroke(c, 4.0, egui::Stroke::new(1.0, accent));
@@ -4272,6 +4309,220 @@ impl CreaBimApp {
         }
     }
 
+    /// While a placing or drawing tool is on: what the next element will be,
+    /// the tool bar's settings as Properties rows, edited in both places
+    /// (MU18). False when the tool has none.
+    fn next_element_panel(&mut self, ui: &mut egui::Ui) -> bool {
+        let ctx = ui.ctx().clone();
+        let (_, options) = self.tool_strip(&ctx);
+        let rows: Vec<&serde_json::Value> = options
+            .iter()
+            .filter(|o| o["kind"] == "number" || o["kind"] == "toggle")
+            .filter(|o| o["key"] != "view.number")
+            .collect();
+        if rows.is_empty() {
+            return false;
+        }
+        let tool = self.plan.tool;
+        ui.label(
+            egui::RichText::new(format!("Next {}", tool.label().to_lowercase()))
+                .strong()
+                .size(15.0),
+        );
+        if let Some(t) = typesui_type_name(self, tool) {
+            ui.label(egui::RichText::new(format!("Type: {t}")).weak());
+        }
+        ui.label(
+            egui::RichText::new(
+                "Set it before you click; the ghost shows it. The same settings are in the tool bar.",
+            )
+            .weak(),
+        );
+        ui.add_space(4.0);
+        let mut set: Vec<(String, f64)> = vec![];
+        let mut act: Vec<String> = vec![];
+        for o in rows {
+            let label = o["label"].as_str().unwrap_or("").to_string();
+            let hint = o["hint"].as_str().unwrap_or("");
+            if o["kind"] == "number" {
+                let key = o["key"].as_str().unwrap_or("").to_string();
+                let mut v = o["value"].as_f64().unwrap_or(0.0);
+                let (lo, hi) = (
+                    o["min"].as_f64().unwrap_or(f64::MIN),
+                    o["max"].as_f64().unwrap_or(f64::MAX),
+                );
+                let unit = o["unit"].as_str().unwrap_or("");
+                let changed = crate::props::row(ui, &label, |ui| {
+                    let r = if unit == "m" {
+                        crate::props::fill(ui, crate::units::drag(&mut v).range(lo..=hi))
+                    } else {
+                        crate::props::fill(
+                            ui,
+                            egui::DragValue::new(&mut v)
+                                .range(lo..=hi)
+                                .suffix(format!(" {unit}")),
+                        )
+                    };
+                    r.on_hover_text(hint).changed()
+                });
+                if changed {
+                    set.push((key, v));
+                }
+            } else {
+                let mut on = o["on"].as_bool().unwrap_or(false);
+                if ui.checkbox(&mut on, label).on_hover_text(hint).changed() {
+                    act.push(o["id"].as_str().unwrap_or("").to_string());
+                }
+            }
+        }
+        for (k, v) in set {
+            self.set_tool_number(&k, v);
+        }
+        for id in act {
+            self.run_action(&ctx, &id);
+        }
+        true
+    }
+
+    /// Trace and reference for view `v` (MU18): what shows under it, in what
+    /// colour and strength, moved or turned to compare.
+    fn trace_panel(&mut self, ui: &mut egui::Ui, v: ElementId) {
+        use crate::trace::{Source, Trace, COLOURS};
+        ui.add_space(6.0);
+        crate::props::section(ui, "Trace and reference");
+        let model = self.doc.model();
+        let others: Vec<(ElementId, String)> = model
+            .iter()
+            .filter(|e| e.id != v)
+            .filter_map(|e| match &e.kind {
+                ElementKind::View(view)
+                    if matches!(view.kind, ViewKind::Plan { .. } | ViewKind::Section { .. }) =>
+                {
+                    Some((e.id, e.name.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        let current = self.plan.traces.get(&v).map(|t| t.source.label(model));
+        let mut pick: Option<Option<Source>> = None;
+        crate::props::row(ui, "Show under it", |ui| {
+            egui::ComboBox::from_id_salt(("trace.source", v))
+                .selected_text(current.clone().unwrap_or_else(|| "Nothing".into()))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(current.is_none(), "Nothing").clicked() {
+                        pick = Some(None);
+                    }
+                    for (id, name) in &others {
+                        if ui.selectable_label(false, name).clicked() {
+                            pick = Some(Some(Source::View(*id)));
+                        }
+                    }
+                });
+        });
+        ui.horizontal(|ui| {
+            if ui
+                .button("Image…")
+                .on_hover_text("A picture to trace over: a scanned plan, a photo of a sketch (PNG or JPEG). Set its width below.")
+                .clicked()
+            {
+                if let Some(p) = rfd::FileDialog::new()
+                    .set_title("Trace over a picture")
+                    .add_filter("Pictures", &["png", "jpg", "jpeg"])
+                    .pick_file()
+                {
+                    match crate::trace::image(&p.display().to_string(), 10.0) {
+                        Ok(s) => pick = Some(Some(s)),
+                        Err(e) => self.status = e,
+                    }
+                }
+            }
+            if ui
+                .button("DXF drawing…")
+                .on_hover_text("A CAD drawing's lines (DXF). A DWG opens here once saved as DXF: any CAD program, or the free ODA File Converter, does it offline.")
+                .clicked()
+            {
+                if let Some(p) = rfd::FileDialog::new()
+                    .set_title("Trace over a DXF drawing")
+                    .add_filter("DXF", &["dxf"])
+                    .pick_file()
+                {
+                    match crate::trace::dxf(&p.display().to_string()) {
+                        Ok(s) => pick = Some(Some(s)),
+                        Err(e) => self.status = e,
+                    }
+                }
+            }
+        });
+        match pick {
+            Some(None) => {
+                self.plan.traces.remove(&v);
+            }
+            Some(Some(src)) => {
+                let keep = self.plan.traces.remove(&v);
+                let mut t = Trace::new(src);
+                if let Some(k) = keep {
+                    t.colour = k.colour;
+                    t.opacity = k.opacity;
+                }
+                self.status = "Traced under the view. Alt+F2 shows or hides it.".into();
+                self.plan.traces.insert(v, t);
+            }
+            None => {}
+        }
+        let Some(t) = self.plan.traces.get_mut(&v) else {
+            ui.label(
+                egui::RichText::new("Another view, a picture or a DXF drawing, shown faintly under this one to draw over or compare. Yours: it isn't saved in the project.")
+                    .weak(),
+            );
+            return;
+        };
+        ui.checkbox(&mut t.shown, "Shown (Alt+F2)");
+        crate::props::row(ui, "Colour", |ui| {
+            for (i, (name, c)) in COLOURS.iter().enumerate() {
+                let (r, resp) =
+                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                ui.painter().circle_filled(r.center(), 8.0, *c);
+                if t.colour == i {
+                    ui.painter().circle_stroke(
+                        r.center(),
+                        10.0,
+                        egui::Stroke::new(1.5, ui.visuals().text_color()),
+                    );
+                }
+                if resp.on_hover_text(*name).clicked() {
+                    t.colour = i;
+                }
+            }
+        });
+        crate::props::row(ui, "Strength", |ui| {
+            ui.add(egui::Slider::new(&mut t.opacity, 0.05..=1.0).show_value(false));
+        });
+        if let Source::Image { width, .. } = &mut t.source {
+            crate::props::row(ui, "Picture width", |ui| {
+                crate::props::fill(ui, crate::units::drag(width).range(0.1..=10000.0))
+            });
+        }
+        crate::props::row(ui, "Move aside X", |ui| {
+            crate::props::fill(ui, crate::units::drag(&mut t.offset.x))
+        });
+        crate::props::row(ui, "Move aside Y", |ui| {
+            crate::props::fill(ui, crate::units::drag(&mut t.offset.y))
+        });
+        crate::props::row(ui, "Turn", |ui| {
+            crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut t.rotation).speed(0.5).suffix("°"),
+            )
+        });
+        if (t.offset != glam::DVec2::ZERO || t.rotation != 0.0)
+            && ui.button("Back in place").clicked()
+        {
+            t.offset = glam::DVec2::ZERO;
+            t.rotation = 0.0;
+        }
+    }
+
     fn properties(&mut self, ui: &mut egui::Ui) {
         ui.label(
             egui::RichText::new("PROPERTIES")
@@ -4284,6 +4535,9 @@ impl CreaBimApp {
             self.crop_pick_banner(ui);
         }
         let Some(id) = self.selection.active else {
+            if self.plan.tool != Tool::Select && self.next_element_panel(ui) {
+                return;
+            }
             ui.label(
                 "Nothing selected. Click an element in the plan, the 3D view or the model list.",
             );
@@ -4301,6 +4555,7 @@ impl CreaBimApp {
                     gridvis::VisTarget::View(v),
                     Some(&format!("View: {name}")),
                 );
+                self.trace_panel(ui, v);
                 // a plan's graphics: weights, below-cut tint, view depth
                 if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
                     if matches!(view.kind, ViewKind::Plan { .. }) {
@@ -6034,6 +6289,71 @@ const GROUND_SPACINGS: [f64; 6] = [0.25, 0.5, 1.0, 2.0, 5.0, 10.0];
 const GROUND_SPACING_RANGE: (f64, f64) = (0.05, 100.0);
 
 /// A usable ground grid spacing: a setting from the file, kept sensible.
+/// How far the workplane's grid reaches from its origin before it has
+/// faded into the background, metres.
+const WORKPLANE_FADE: f64 = 4.0;
+
+/// The 3D view's background, which the workplane's grid fades into.
+const BACKGROUND_3D: [f32; 3] = [0.93, 0.94, 0.96];
+
+/// A face workplane's grid (MU18): soft green-grey lines at the ground
+/// grid's spacing (every fifth a little stronger) that fade into the
+/// background `reach` metres from its origin, and a small axis mark there.
+/// Drawn just off the face, as line pairs for the 3D view.
+fn workplane_lines(plane: Workplane, spacing: f64, reach: f64) -> Vec<crate::render3d::Vertex> {
+    let lift = plane.normal() * 0.003;
+    let at = |u: f64, v: f64| {
+        (plane.to_model(DVec2::new(u, v)) + lift)
+            .as_vec3()
+            .to_array()
+    };
+    let mix = |c: [f32; 3], t: f32| {
+        [
+            c[0] + (BACKGROUND_3D[0] - c[0]) * t,
+            c[1] + (BACKGROUND_3D[1] - c[1]) * t,
+            c[2] + (BACKGROUND_3D[2] - c[2]) * t,
+        ]
+    };
+    let minor = [0.62, 0.72, 0.60];
+    let major = [0.40, 0.55, 0.38];
+    // fine enough to read, coarse enough not to fill the face
+    let step = spacing.clamp(0.1, 2.0).max(reach / 40.0);
+    let n = (reach / step).floor() as i32;
+    let piece = step.min(reach / 16.0);
+    let mut out = Vec::new();
+    for i in -n..=n {
+        let k = i as f64 * step;
+        let base = if i % 5 == 0 { major } else { minor };
+        // each line in short pieces, so it fades along its length too
+        let mut t = -reach;
+        while t < reach - 1e-9 {
+            let t1 = (t + piece).min(reach);
+            for (a, b) in [((k, t), (k, t1)), ((t, k), (t1, k))] {
+                let fade = |p: (f64, f64)| {
+                    let d = (p.0 * p.0 + p.1 * p.1).sqrt() / reach;
+                    mix(base, (d as f32).clamp(0.0, 1.0).powf(1.5))
+                };
+                if (a.0 * a.0 + a.1 * a.1).sqrt() > reach && (b.0 * b.0 + b.1 * b.1).sqrt() > reach
+                {
+                    continue;
+                }
+                out.push(line_vertex(at(a.0, a.1), fade(a)));
+                out.push(line_vertex(at(b.0, b.1), fade(b)));
+            }
+            t = t1;
+        }
+    }
+    // its origin and axes, small
+    for (d, c) in [
+        ((0.6, 0.0), [0.75, 0.30, 0.25]),
+        ((0.0, 0.6), [0.30, 0.55, 0.30]),
+    ] {
+        out.push(line_vertex(at(0.0, 0.0), c));
+        out.push(line_vertex(at(d.0, d.1), c));
+    }
+    out
+}
+
 fn ground_spacing(s: f64) -> f64 {
     if s.is_finite() {
         s.clamp(GROUND_SPACING_RANGE.0, GROUND_SPACING_RANGE.1)
@@ -6464,6 +6784,13 @@ impl CreaBimApp {
             self.plan.step_prompt = Some(text);
         }
     }
+}
+
+/// The type the tool's next element takes, by name, if one is picked.
+fn typesui_type_name(app: &CreaBimApp, tool: Tool) -> Option<String> {
+    let cat = typesui::category_of_tool(tool)?;
+    let id = app.plan.types.get(&cat)?;
+    app.doc.model().get(*id).map(|e| e.name.clone())
 }
 
 #[cfg(test)]

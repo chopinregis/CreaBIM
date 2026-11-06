@@ -393,6 +393,9 @@ pub fn handles_in(model: &Model, id: ElementId, face: Option<usize>, edit: bool)
     }
     let mut out = handles(model, id, face);
     out.extend(crate::editmode::outline_handles(model, id, edit));
+    if edit {
+        out.extend(mass_edit_handles(model, id, face));
+    }
     out
 }
 
@@ -887,44 +890,20 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             flat(HandleKind::GridEnd { end: true }, g.end.extend(0.0)),
         ],
         ElementKind::FreeMesh(m) => {
+            // at rest only the main shape editing (MU18): its base point
+            // to move it, the turn grip, and the clicked face's push/pull;
+            // corners, edges and every face's arrow wait for Edit mode
             let base = m.origin + DVec3::Z * elevation(model, m.level);
-            let face_grip = |f: usize| {
-                let c = base + m.to_model(m.mesh.face_center(f));
-                let n = m.to_model(m.mesh.face_normal(f)).normalize_or_zero();
-                (n != DVec3::ZERO).then(|| line(HandleKind::Face(f), c, n))
-            };
-            // a big mesh keeps to the face clicked; a mass of a few faces
-            // gets a push/pull arrow on every face, a grip on every corner
-            // and edge, a base point to move it and a turn grip (A7-9)
-            let small =
-                m.mesh.faces.len() <= MASS_GRIP_FACES && m.mesh.vertices.len() <= MASS_GRIP_CORNERS;
-            if !small {
-                return face
-                    .filter(|f| *f < m.mesh.faces.len())
-                    .and_then(face_grip)
-                    .into_iter()
-                    .collect();
-            }
-            let mut out: Vec<Handle> = (0..m.mesh.faces.len()).filter_map(face_grip).collect();
-            let at = |i: u32| base + m.to_model(m.mesh.vertices[i as usize]);
-            for i in 0..m.mesh.vertices.len() {
-                out.push(flat(HandleKind::MeshVertex(i), at(i as u32)));
-            }
-            for (a, b) in mesh_edges(&m.mesh) {
-                out.push(flat(HandleKind::MeshEdge(a, b), (at(a) + at(b)) / 2.0));
-            }
+            let mut out: Vec<Handle> = face
+                .filter(|f| *f < m.mesh.faces.len())
+                .and_then(|f| {
+                    let c = base + m.to_model(m.mesh.face_center(f));
+                    let n = m.to_model(m.mesh.face_normal(f)).normalize_or_zero();
+                    (n != DVec3::ZERO).then(|| line(HandleKind::Face(f), c, n))
+                })
+                .into_iter()
+                .collect();
             out.push(flat(HandleKind::MeshMove, base));
-            let top = m
-                .mesh
-                .vertices
-                .iter()
-                .map(|v| m.to_model(*v).z)
-                .fold(0.0_f64, f64::max);
-            out.push(line(
-                HandleKind::MeshLift,
-                base + DVec3::Z * (top + 0.4),
-                DVec3::Z,
-            ));
             let reach = m
                 .mesh
                 .vertices
@@ -1144,6 +1123,64 @@ fn pivot_of(model: &Model, e: &Element) -> Option<DVec2> {
         ElementKind::FreeMesh(m) => Some(m.origin.truncate()),
         _ => None,
     }
+}
+
+/// What Edit mode adds on a mass of a few faces (A7-9, MU18): an arrow on
+/// every other face, a grip on every corner and edge middle, and the
+/// up/down arrow.
+fn mass_edit_handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle> {
+    let Some(ElementKind::FreeMesh(m)) = model.get(id).map(|e| &e.kind) else {
+        return vec![];
+    };
+    if m.mesh.faces.len() > MASS_GRIP_FACES || m.mesh.vertices.len() > MASS_GRIP_CORNERS {
+        return vec![];
+    }
+    let base = m.origin + DVec3::Z * elevation(model, m.level);
+    let line = |kind, at: DVec3, dir: DVec3| Handle {
+        kind,
+        at,
+        constraint: Constraint::Line {
+            point: at,
+            dir: dir.normalize(),
+        },
+        nudge: 0.0,
+    };
+    let flat = |kind, at: DVec3| Handle {
+        kind,
+        at,
+        constraint: Constraint::Plane {
+            point: at,
+            normal: DVec3::Z,
+        },
+        nudge: 0.0,
+    };
+    let mut out: Vec<Handle> = (0..m.mesh.faces.len())
+        .filter(|f| Some(*f) != face)
+        .filter_map(|f| {
+            let c = base + m.to_model(m.mesh.face_center(f));
+            let n = m.to_model(m.mesh.face_normal(f)).normalize_or_zero();
+            (n != DVec3::ZERO).then(|| line(HandleKind::Face(f), c, n))
+        })
+        .collect();
+    let at = |i: u32| base + m.to_model(m.mesh.vertices[i as usize]);
+    for i in 0..m.mesh.vertices.len() {
+        out.push(flat(HandleKind::MeshVertex(i), at(i as u32)));
+    }
+    for (a, b) in mesh_edges(&m.mesh) {
+        out.push(flat(HandleKind::MeshEdge(a, b), (at(a) + at(b)) / 2.0));
+    }
+    let top = m
+        .mesh
+        .vertices
+        .iter()
+        .map(|v| m.to_model(*v).z)
+        .fold(0.0_f64, f64::max);
+    out.push(line(
+        HandleKind::MeshLift,
+        base + DVec3::Z * (top + 0.4),
+        DVec3::Z,
+    ));
+    out
 }
 
 /// Above these, a mass shows only the clicked face's arrow: grips on
@@ -4939,6 +4976,7 @@ mod tests {
     ) -> Element {
         let h = handles_in(m, id, None, false)
             .into_iter()
+            .chain(handles_in(m, id, None, true))
             .find(|h| h.kind == kind)
             .unwrap_or_else(|| panic!("no {kind:?}"));
         let (orig, joined) = originals(m, id, kind);
@@ -4958,7 +4996,12 @@ mod tests {
         doc.commit(creabim_core::Transaction::new("Mass").insert(e))
             .unwrap();
         let m = doc.model().clone();
-        let hs = handles_in(&m, id, None, false);
+        // at rest: the base point and the turn grip only
+        let rest = handles_in(&m, id, None, false);
+        assert_eq!(rest.len(), 2, "{rest:?}");
+        // a clicked face adds its arrow
+        assert_eq!(handles_in(&m, id, Some(0), false).len(), 3);
+        let hs = handles_in(&m, id, None, true);
         let count = |f: fn(&HandleKind) -> bool| hs.iter().filter(|h| f(&h.kind)).count();
         assert_eq!(
             count(|k| matches!(k, HandleKind::Face(_))),

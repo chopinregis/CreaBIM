@@ -104,6 +104,25 @@ mod tests {
     }
 
     #[test]
+    fn a_windows_sizes_set_before_placing_reach_the_window() {
+        let mut app = app();
+        app.plan.tool = Tool::Window;
+        let ctx = egui::Context::default();
+        let (_, options) = app.tool_strip(&ctx);
+        let keys: Vec<&str> = options.iter().filter_map(|o| o["key"].as_str()).collect();
+        for k in [
+            "member.window_width",
+            "member.window_height",
+            "member.window_sill",
+        ] {
+            assert!(keys.contains(&k), "{k} in {keys:?}");
+        }
+        app.set_tool_number("member.window_width", 0.6);
+        app.set_tool_number("member.window_sill", 1.5);
+        assert_eq!(app.plan.members.window, [0.6, 1.3, 1.5]);
+    }
+
+    #[test]
     fn edit_mode_opens_on_the_selection_and_ends_when_it_changes() {
         let mut app = app();
         // nothing selected: nothing to edit

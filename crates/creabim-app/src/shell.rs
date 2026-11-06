@@ -1995,6 +1995,37 @@ impl CreaBimApp {
     /// The tool options strip: what the tool in use (or the running Move
     /// or Rotate) can be set to. It has its own row under the tools, so it
     /// never covers a view or its buttons.
+    /// A number set in the tool bar, or in Properties' "Next …" (MU18).
+    pub(super) fn set_tool_number(&mut self, key: &str, v: f64) {
+        match key {
+            "wall.thickness" => {
+                // a size of its own: new walls have no type
+                self.plan.types.remove(&creabim_core::TypeCategory::Wall);
+                self.plan.wall_thickness = v.clamp(0.05, 1.0)
+            }
+            k if k.starts_with("object.") => crate::objecttool::set_option(&mut self.plan, k, v),
+            k if k.starts_with("part.") => crate::partstool::set_option(&mut self.plan, k, v),
+            k if k.starts_with("member.") => {
+                if k.contains("column") {
+                    self.plan.types.remove(&creabim_core::TypeCategory::Column);
+                }
+                if k.contains("beam") {
+                    self.plan.types.remove(&creabim_core::TypeCategory::Beam);
+                }
+                if k.contains("door_") {
+                    self.plan.types.remove(&creabim_core::TypeCategory::Door);
+                }
+                if k.contains("window_") {
+                    self.plan.types.remove(&creabim_core::TypeCategory::Window);
+                }
+                crate::memberstool::set_option(&mut self.plan, k, v)
+            }
+            "view.number" => self.set_view_number(v),
+            "detail.width" => self.plan.details.width = v.clamp(0.0, 5.0),
+            _ => {}
+        }
+    }
+
     pub(super) fn tool_strip(&self, ctx: &egui::Context) -> (Value, Vec<Value>) {
         let seg = |items: Vec<Value>| json!({"kind": "seg", "items": items});
         let opt = |id: String, label: &str, on: bool, hint: &str| json!({"id": id, "label": label, "on": on, "hint": hint});
@@ -2888,37 +2919,7 @@ impl CreaBimApp {
                     },
                     _ => return,
                 };
-                match b["key"].as_str().unwrap_or("") {
-                    "wall.thickness" => {
-                        // a size of its own: new walls have no type
-                        self.plan.types.remove(&creabim_core::TypeCategory::Wall);
-                        self.plan.wall_thickness = v.clamp(0.05, 1.0)
-                    }
-                    k if k.starts_with("object.") => {
-                        crate::objecttool::set_option(&mut self.plan, k, v)
-                    }
-                    k if k.starts_with("part.") => {
-                        crate::partstool::set_option(&mut self.plan, k, v)
-                    }
-                    k if k.starts_with("member.") => {
-                        if k.contains("column") {
-                            self.plan.types.remove(&creabim_core::TypeCategory::Column);
-                        }
-                        if k.contains("beam") {
-                            self.plan.types.remove(&creabim_core::TypeCategory::Beam);
-                        }
-                        if k.contains("door_") {
-                            self.plan.types.remove(&creabim_core::TypeCategory::Door);
-                        }
-                        if k.contains("window_") {
-                            self.plan.types.remove(&creabim_core::TypeCategory::Window);
-                        }
-                        crate::memberstool::set_option(&mut self.plan, k, v)
-                    }
-                    "view.number" => self.set_view_number(v),
-                    "detail.width" => self.plan.details.width = v.clamp(0.0, 5.0),
-                    _ => {}
-                }
+                self.set_tool_number(b["key"].as_str().unwrap_or(""), v);
             }
             "pick" => {
                 let want = b["id"].as_str().unwrap_or("");

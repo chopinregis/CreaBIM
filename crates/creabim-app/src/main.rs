@@ -45,6 +45,7 @@ mod tempdims;
 mod textures;
 mod theme;
 mod tooltabs;
+mod trace;
 mod tracker;
 mod ui_model;
 mod units;

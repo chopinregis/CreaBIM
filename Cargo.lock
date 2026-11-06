@@ -863,6 +863,7 @@ dependencies = [
  "eframe",
  "glam",
  "gtk",
+ "image",
  "raw-window-handle",
  "rfd",
  "serde",
@@ -2250,6 +2251,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
