@@ -1131,6 +1131,13 @@ pub fn show(
         if let Some(msg) = rest_reference(state, view, under, now, q) {
             state.status = Some(msg);
         }
+        // the app draws no frames while nothing moves (A6), so a pointer
+        // resting still would never be seen to rest: ask for one frame
+        // just after the dwell (MU21, guide lines stopped appearing)
+        if matches!(state.ref_rest, Some((_, _, false))) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(REST_DWELL + 0.05));
+        }
         // guide lines last while they are used: a snap following one, or
         // a shape being drawn from them; otherwise they go after a while
         let following = tracked.as_ref().is_some_and(|t| !t.guides.is_empty());
@@ -1142,6 +1149,12 @@ pub fn show(
     } else {
         // a point snapped to and rested on while drawing is tracked too
         rest_on(state, view, tool_snap, drawing_from.is_some(), now);
+        // a frame after the dwell, as nothing repaints while the pointer
+        // rests (A6, MU21)
+        if state.rest.is_some() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(450));
+        }
     }
     if guided {
         // the references, and their guides faintly; those a snap follows
@@ -5586,7 +5599,7 @@ fn rest_reference(
     now: f64,
     key: bool,
 ) -> Option<String> {
-    const DWELL: f64 = 0.6;
+    const DWELL: f64 = REST_DWELL;
     let Some(r) = under else {
         state.ref_rest = None;
         return None;
@@ -5624,6 +5637,10 @@ fn rest_reference(
         "Guide lines from this {what}: where they cross snaps. They go when not used for a few seconds; K keeps one."
     ))
 }
+
+/// How long the pointer rests on a point or edge before it becomes a
+/// snap reference, as ArchiCAD's hover delay.
+pub const REST_DWELL: f64 = 0.6;
 
 /// Seconds a view's guide lines last with nothing using them.
 pub const REF_FADE: f64 = 6.0;
