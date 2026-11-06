@@ -422,6 +422,88 @@ impl CreaBimApp {
 }
 
 impl CreaBimApp {
+    /// Export > IFC (MU20): how walls, slabs and roofs go out, with what
+    /// the other side will see under each; the last choice is ticked.
+    pub(super) fn ifc_export_window(&mut self, ctx: &egui::Context) {
+        use creabim_ifc::IfcBody;
+        if !self.ifc_dialog {
+            return;
+        }
+        let key = |b: IfcBody| match b {
+            IfcBody::Modelled => "modelled",
+            IfcBody::Joined => "joined",
+            IfcBody::Layers => "layers",
+        };
+        let mut body = match self.shell.settings.ifc_body.as_str() {
+            "joined" => IfcBody::Joined,
+            "layers" => IfcBody::Layers,
+            _ => IfcBody::Modelled,
+        };
+        let mut open = true;
+        let mut go = false;
+        let mut cancel = false;
+        let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
+        egui::Window::new("Export IFC")
+            .open(&mut open)
+            .default_pos(area.center() - Vec2::new(230.0, 160.0))
+            .constrain_to(area)
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.set_width(460.0);
+                ui.label(egui::RichText::new("How walls, slabs and roofs go out").strong());
+                let choices = [
+                    (
+                        IfcBody::Modelled,
+                        "As modelled elements (recommended)",
+                        "Each wall and slab is one IfcWall or IfcSlab, its layers carried as its layer set, its body the plain extrusion. Every BIM program reads it, and it comes back into CreaBIM as it went out. The other program settles the joins.",
+                    ),
+                    (
+                        IfcBody::Joined,
+                        "Joined shapes, as drawn",
+                        "Bodies cut where walls run through slabs, as CreaBIM shows them: for coordination and clash checks. Some programs then read a cut slab as a generic shape, not a slab, and it won't come back into CreaBIM as a slab.",
+                    ),
+                    (
+                        IfcBody::Layers,
+                        "Layers as separate elements",
+                        "The structure stays the IfcWall or IfcSlab; finishes become IfcCovering (cladding, flooring, roofing), insulation and membranes too, each covering its element. For trades and quantities by layer.",
+                    ),
+                ];
+                for (b, title, what) in choices {
+                    ui.add_space(4.0);
+                    ui.radio_value(&mut body, b, egui::RichText::new(title).strong());
+                    ui.indent(("ifc", key(b)), |ui| {
+                        ui.label(egui::RichText::new(what).weak());
+                    });
+                }
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new("Doors, windows, openings and everything else go out the same way in all three.")
+                        .weak(),
+                );
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    go = ui.button("Export…").clicked();
+                    cancel = ui.button("Cancel").clicked();
+                });
+            });
+        if key(body) != self.shell.settings.ifc_body {
+            self.shell.settings.ifc_body = key(body).into();
+            self.shell.settings.store();
+        }
+        self.ifc_dialog = open && !cancel && !go;
+        if go {
+            let Some(out) = self.export_to(with_extension(&self.path, "ifc")) else {
+                return;
+            };
+            let mut opts =
+                creabim_ifc::ExportOptions::for_model(self.doc.model(), &stem(&self.path));
+            opts.body = body;
+            let r = std::fs::write(&out, creabim_ifc::export_ifc4(self.doc.model(), &opts));
+            self.report(r, format!("Exported {out}"));
+        }
+    }
+
     /// Project information (Manage › Project information, A7-5): a copy is
     /// edited, and Apply makes it one undo step.
     pub(super) fn project_window(&mut self, ctx: &egui::Context) {

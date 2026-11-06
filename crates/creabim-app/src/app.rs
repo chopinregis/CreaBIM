@@ -222,6 +222,8 @@ pub struct CreaBimApp {
     project_open: bool,
     /// The project information being edited, until Apply.
     project_draft: Option<creabim_core::ProjectInfo>,
+    /// Export > IFC: the window asking how walls and slabs go out (MU20).
+    ifc_dialog: bool,
     /// The New project window, with the classic panels.
     new_project_classic: bool,
 }
@@ -322,6 +324,7 @@ impl CreaBimApp {
             settings_open: false,
             project_open: false,
             project_draft: None,
+            ifc_dialog: false,
             new_project_classic: false,
             marks: Default::default(),
             gstyles: Default::default(),
@@ -6275,6 +6278,15 @@ impl eframe::App for CreaBimApp {
                 // one grid for every row (A4-1): 28 px controls, and the
                 // scroll bar in a gutter of its own, never over a field
                 inner.spacing_mut().interact_size.y = 28.0;
+                // editable fields (dropdowns, numbers, text) in the field
+                // colour, a tone apart from the panel, as Blender does, so
+                // they read at a glance as things you can change (MU20)
+                {
+                    let p = crate::theme::Palette::of(ui.ctx());
+                    let w = &mut inner.visuals_mut().widgets;
+                    w.inactive.weak_bg_fill = p.field;
+                    w.inactive.bg_stroke = egui::Stroke::new(1.0, p.edge);
+                }
                 let mut bar = egui::style::ScrollStyle::solid();
                 bar.bar_width = 6.0;
                 bar.bar_inner_margin = 4.0;
@@ -6374,6 +6386,7 @@ impl eframe::App for CreaBimApp {
             self.geometry_key = None;
         }
         self.project_window(&ctx);
+        self.ifc_export_window(&ctx);
         self.new_project_window(&ctx);
         self.marks_window(&ctx);
         self.graphic_styles_window(&ctx);

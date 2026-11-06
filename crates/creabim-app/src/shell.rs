@@ -1665,7 +1665,7 @@ impl CreaBimApp {
 
     /// Where to write an export: asked with the system's save window, which
     /// starts next to the project with `default`'s name.
-    fn export_to(&mut self, default: String) -> Option<String> {
+    pub(super) fn export_to(&mut self, default: String) -> Option<String> {
         let out = if cfg!(test) {
             Some(default)
         } else {
@@ -1731,15 +1731,8 @@ impl CreaBimApp {
                 let r = std::fs::write(&out, creabim_ifc::export_ifcx(self.doc.model()));
                 self.report(r, format!("Exported {out}"));
             }
-            "export.ifc4" => {
-                let Some(out) = self.export_to(with_extension(&self.path, "ifc")) else {
-                    return;
-                };
-                let opts =
-                    creabim_ifc::ExportOptions::for_model(self.doc.model(), &stem(&self.path));
-                let r = std::fs::write(&out, creabim_ifc::export_ifc4(self.doc.model(), &opts));
-                self.report(r, format!("Exported {out}"));
-            }
+            // first how walls and slabs go out (MU20), then where
+            "export.ifc4" => self.ifc_dialog = true,
             "export.xlsx" => {
                 let Some(out) = self.export_to(with_extension(&self.path, "xlsx")) else {
                     return;

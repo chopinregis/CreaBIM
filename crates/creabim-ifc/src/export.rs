@@ -13,6 +13,24 @@ pub struct ExportOptions {
     pub building_name: String,
     /// ISO 8601 timestamp for the file header.
     pub timestamp: String,
+    /// How walls, slabs and roofs go out (MU20).
+    pub body: IfcBody,
+}
+
+/// How walls, slabs and roofs are written (MU20). Everything else is the
+/// same in all three.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IfcBody {
+    /// Each one IfcWall / IfcSlab / IfcRoof with its layer set and its
+    /// plain body: what every program reads and re-imports as such.
+    #[default]
+    Modelled,
+    /// Their bodies cut where walls run through slabs, as CreaBIM draws
+    /// and shows them.
+    Joined,
+    /// The structure stays the element; each other layer is an
+    /// IfcCovering covering it (finishes, insulation, membranes).
+    Layers,
 }
 
 impl Default for ExportOptions {
@@ -22,6 +40,7 @@ impl Default for ExportOptions {
             site_name: "Site".into(),
             building_name: "Building".into(),
             timestamp: "2026-01-01T00:00:00".into(),
+            body: IfcBody::Modelled,
         }
     }
 }
@@ -310,7 +329,7 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
         .filter(|e| creabim_core::screen::screen_of(model, e).is_some())
         .map(|e| e.id)
         .collect();
-    let cut_meshes: HashMap<ElementId, creabim_geom::mesh::TriMesh> =
+    let mut cut_meshes: HashMap<ElementId, creabim_geom::mesh::TriMesh> =
         if cuts.is_empty() && screens.is_empty() {
             HashMap::new()
         } else {
@@ -322,6 +341,44 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
             all.retain(|id, _| targets.contains(id));
             all
         };
+    // MU20: joined bodies, or only the structural core of a layered one,
+    // written as their final shapes
+    let joins_now = creabim_core::wall_joins(model);
+    let joinable = |e: &Element| match &e.kind {
+        ElementKind::Wall(w) => w.curtain.is_none(),
+        ElementKind::Slab(_) | ElementKind::Roof(_) => true,
+        _ => false,
+    };
+    match opts.body {
+        IfcBody::Modelled => {}
+        IfcBody::Joined => {
+            let joined =
+                creabim_geom::scene::element_meshes(&creabim_geom::scene::build_scene(model));
+            for e in model.iter().filter(|e| joinable(e)) {
+                if let Some(m) = joined.get(&e.id) {
+                    cut_meshes.insert(e.id, m.clone());
+                }
+            }
+        }
+        IfcBody::Layers => {
+            for e in model.iter().filter(|e| joinable(e)) {
+                let parts = creabim_geom::scene::layer_parts(model, e, &joins_now);
+                if parts.len() < 2 {
+                    continue;
+                }
+                let mut core = creabim_geom::mesh::TriMesh::default();
+                for (l, m) in &parts {
+                    if l.core {
+                        core.append(m);
+                    }
+                }
+                if !core.indices.is_empty() {
+                    cut_meshes.insert(e.id, core);
+                }
+            }
+        }
+    }
+    let layers_mode = opts.body == IfcBody::Layers;
     let elevation =
         |l: Option<ElementId>| l.and_then(|l| model.level(l)).map_or(0.0, |l| l.elevation);
     // the products of each element type
@@ -513,9 +570,19 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                 of_type(e, r);
                 wall_refs.insert(e.id, (r, pl));
                 contained.entry(Some(wall.level)).or_default().push(r);
-                if cut.is_none() {
+                if cut.is_none() || layers_mode {
                     let z = elevation(Some(wall.level));
-                    write_layer_parts(&mut c, model, e, r, spl, z, &joins, &mut by_material);
+                    write_layer_parts(
+                        &mut c,
+                        model,
+                        e,
+                        r,
+                        spl,
+                        z,
+                        &joins,
+                        &mut by_material,
+                        layers_mode,
+                    );
                 }
                 if let Some((a, _)) = asm {
                     // layers run across the wall from its exterior face,
@@ -565,9 +632,19 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                 let r = product(&mut c, "IFCSLAB", e, pl, shape, ",$,.FLOOR.");
                 of_type(e, r);
                 contained.entry(Some(slab.level)).or_default().push(r);
-                if cut.is_none() {
+                if cut.is_none() || layers_mode {
                     let z = elevation(Some(slab.level));
-                    write_layer_parts(&mut c, model, e, r, spl, z, &joins, &mut by_material);
+                    write_layer_parts(
+                        &mut c,
+                        model,
+                        e,
+                        r,
+                        spl,
+                        z,
+                        &joins,
+                        &mut by_material,
+                        layers_mode,
+                    );
                 }
                 // holes, and shafts passing through, as openings voiding it
                 for (i, h) in creabim_core::slab::holes_of(model, e).iter().enumerate() {
@@ -686,8 +763,18 @@ pub fn export_ifc4(model: &Model, opts: &ExportOptions) -> String {
                     let props = [("Definition", Prop::Text(json))];
                     c.pset_on(&[r], crate::import::MEMBER_PSET, &props);
                 }
-                if cut.is_none() {
-                    write_layer_parts(&mut c, model, e, r, spl, z0, &joins, &mut by_material);
+                if cut.is_none() || layers_mode {
+                    write_layer_parts(
+                        &mut c,
+                        model,
+                        e,
+                        r,
+                        spl,
+                        z0,
+                        &joins,
+                        &mut by_material,
+                        layers_mode,
+                    );
                 }
                 if let ElementKind::Roof(roof) = k {
                     // the mesh has its holes already; say so for other tools
@@ -1337,7 +1424,12 @@ fn write_layer_parts(
     z0: f64,
     joins: &HashMap<ElementId, creabim_core::WallEnds>,
     by_material: &mut HashMap<ElementId, Vec<Ref>>,
+    as_coverings: bool,
 ) {
+    if as_coverings {
+        write_layer_coverings(c, model, e, host, spl, z0, joins, by_material);
+        return;
+    }
     if !layers_differ(e, joins) {
         return;
     }
@@ -1384,6 +1476,67 @@ fn write_layer_parts(
         c.w.add(
             "IFCRELAGGREGATES",
             format!("{g},$,$,$,{host},{}", list(&parts)),
+        );
+    }
+}
+
+/// Element `host`'s layers other than its structure as `IfcCovering`s
+/// covering it (MU20, "Layers as separate elements"): finishes as
+/// cladding, flooring or roofing, insulation, membranes; air gaps are
+/// left out. The host's own body is its structure.
+#[allow(clippy::too_many_arguments)]
+fn write_layer_coverings(
+    c: &mut Ctx,
+    model: &Model,
+    e: &Element,
+    host: Ref,
+    spl: Ref,
+    z0: f64,
+    joins: &HashMap<ElementId, creabim_core::WallEnds>,
+    by_material: &mut HashMap<ElementId, Vec<Ref>>,
+) {
+    use creabim_core::LayerFunction as F;
+    let parts = creabim_geom::scene::layer_parts(model, e, joins);
+    if parts.len() < 2 {
+        return;
+    }
+    let mut covers = vec![];
+    for (layer, mesh) in parts {
+        if layer.core || mesh.indices.is_empty() || layer.function == F::AirGap {
+            continue;
+        }
+        let kind = match (layer.function, &e.kind) {
+            (F::Insulation, _) => "INSULATION",
+            (F::Membrane, _) => "MEMBRANE",
+            (_, ElementKind::Slab(_)) => "FLOORING",
+            (_, ElementKind::Roof(_)) => "ROOFING",
+            _ => "CLADDING",
+        };
+        let name = layer
+            .material
+            .and_then(|m| model.get(m))
+            .map_or_else(|| format!("layer {}", layer.index + 1), |m| m.name.clone());
+        let pl = c.local_placement(Some(spl), DVec3::ZERO, None);
+        let fs = tessellate(c, &mesh, |p| p - DVec3::Z * z0);
+        let shape = c.shape("Tessellation", &[fs]);
+        let g = c.guid();
+        let r = c.w.add(
+            "IFCCOVERING",
+            format!(
+                "{g},$,{},$,$,{pl},{shape},$,.{kind}.",
+                string(&format!("{} {name}", e.name))
+            ),
+        );
+        if let Some(m) = layer.material {
+            by_material.entry(m).or_default().push(r);
+        }
+        covers.push(r);
+    }
+    if !covers.is_empty() {
+        let g = c.guid();
+        c.w.add(
+            "IFCRELCOVERSBLDGELEMENTS",
+            format!("{g},$,$,$,{host},{}", list(&covers)),
         );
     }
 }

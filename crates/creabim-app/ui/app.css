@@ -260,7 +260,9 @@ html[data-pane="top"] body {
 
 html[data-theme="light"] .logo, html[data-theme="paper"] .logo, html[data-theme="sage"] .logo { color: #4F6B4C; }
 
-.logo svg.mark { width: 20px; height: 20px; display: block; }
+/* the full mark at 28 px, the owner's choice (MU20) */
+.logo svg.mark { width: 28px; height: 28px; display: block; }
+.bar1 .brand { padding-top: 0; padding-bottom: 0; }
 
 .menubtn {
   height: 28px;

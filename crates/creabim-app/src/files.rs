@@ -171,6 +171,9 @@ pub struct Settings {
     /// The mouse (MU19): "creabim" (left selects and boxes, middle
     /// orbits, right or Shift + middle pans) or "classic" (left orbits).
     pub navigation: String,
+    /// How the last IFC export wrote walls, slabs and roofs: "modelled"
+    /// (recommended), "joined" or "layers" (MU20).
+    pub ifc_body: String,
     /// The kinds of element the 3D view leaves out (grids, annotation,
     /// guides…), from its Visibility settings.
     pub hidden_3d: Vec<creabim_core::Category>,
@@ -219,6 +222,7 @@ impl Default for Settings {
             ground_grid_spacing: 1.0,
             drawing_paper: "theme".into(),
             navigation: "creabim".into(),
+            ifc_body: "modelled".into(),
             hidden_3d: vec![],
             xray: false,
             hidden_colour_3d: false,
