@@ -319,9 +319,22 @@ pub fn sketch_lines(model: &Model) -> Vec<(ElementId, DVec3, DVec3)> {
 
 /// Build viewport geometry for every element with a body.
 pub fn build_scene(model: &Model) -> Vec<SceneItem> {
+    build_scene_of(model, None)
+}
+
+/// [`build_scene`] for `only` these elements (with what cuts them, which
+/// the caller includes): a plan slicing a few elements needn't mesh the
+/// whole model (30-40 ms for the starter house, every drag frame).
+pub fn build_scene_of(
+    model: &Model,
+    only: Option<&std::collections::HashSet<ElementId>>,
+) -> Vec<SceneItem> {
     let mut out = Vec::new();
     let joins = creabim_core::wall_joins(model);
     for e in model.iter() {
+        if only.is_some_and(|o| !o.contains(&e.id)) {
+            continue;
+        }
         let plain = match &e.kind {
             ElementKind::Wall(_) => [0.86, 0.84, 0.80],
             ElementKind::Slab(_) => [0.70, 0.70, 0.72],

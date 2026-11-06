@@ -1256,7 +1256,10 @@ pub fn plan_view_with(
     items.append(&mut overhead);
     if !sliced.is_empty() {
         let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
-        let scene = crate::scene::build_scene(model);
+        // only what is sliced, and what cuts it
+        let mut needed: std::collections::HashSet<ElementId> = sliced.iter().copied().collect();
+        needed.extend(cuts.iter().filter(|c| sliced.contains(&c.0)).map(|c| c.1));
+        let scene = crate::scene::build_scene_of(model, Some(&needed));
         for item in scene.iter().filter(|i| sliced.contains(&i.id)) {
             sliced_plan(model, item, z, &mut items);
             // an imported mesh wholly below the cut: its footprint tinted

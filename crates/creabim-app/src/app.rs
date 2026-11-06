@@ -688,7 +688,16 @@ impl CreaBimApp {
         };
         match held {
             Some((r, d)) if *r == revision => Some(d.clone()),
-            Some((_, d)) if self.builds.enabled() && !self.builds.cheap(key) => {
+            // the view being worked in, and every plan, are built on the
+            // spot: their lines must follow a drag frame by frame, and a
+            // plan (about 15 ms) sat on the edge of "cheap", so it could go
+            // to a worker and move in steps
+            Some((_, d))
+                if self.builds.enabled()
+                    && !self.builds.cheap(key)
+                    && Some(id) != self.active_view
+                    && !matches!(self.view(id).map(|v| &v.kind), Some(ViewKind::Plan { .. })) =>
+            {
                 let d = d.clone();
                 self.builds.start(self.doc.model(), key);
                 Some(d)
