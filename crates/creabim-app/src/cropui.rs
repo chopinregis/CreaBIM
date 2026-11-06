@@ -622,7 +622,7 @@ mod tests {
         assert!(c.enabled && c.scope == CropScope::All);
         // the 3D window's scene is cropped once the box is pulled in
         app.edit_crop(id, "Crop box extents", |c| c.max.z = c.min.z + 1.5);
-        app.scene = build_scene(app.doc.model());
+        app.scene = (*creabim_geom::shared_scene(app.doc.model())).clone();
         let edges = app.crop_scene_3d();
         assert!(!edges.is_empty(), "the cut walls show their cut edges");
         let top = app
@@ -635,7 +635,7 @@ mod tests {
         assert!(top <= c.max.z + 1e-4, "nothing above the box: {top}");
         // switched off it crops nothing
         assert!(app.crop_action("crop.toggle", &id.0.to_string()));
-        app.scene = build_scene(app.doc.model());
+        app.scene = (*creabim_geom::shared_scene(app.doc.model())).clone();
         assert!(app.crop_scene_3d().is_empty());
         assert!(app.doc.undo());
         assert!(app.crop_box(id).unwrap().1.enabled);

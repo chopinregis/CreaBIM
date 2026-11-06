@@ -10,7 +10,7 @@ use eframe::egui;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use wry::dpi::{PhysicalPosition, PhysicalSize};
-use wry::{Rect, WebView, WebViewBuilder};
+use wry::{Rect, WebContext, WebView, WebViewBuilder};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pane {
@@ -57,6 +57,8 @@ pub struct Msg {
 
 pub struct WebUi {
     views: Vec<(Pane, WebView)>,
+    /// The pages' shared browser profile, kept alive as long as they are.
+    _context: WebContext,
     inbox: Arc<Mutex<Vec<Msg>>>,
     /// The last state sent to each pane, so unchanged state isn't re-sent.
     sent: [String; PANES],
@@ -101,16 +103,36 @@ fn page(pane: Pane) -> String {
     )
 }
 
+/// Where the pages keep their browser data (cache, local storage): the
+/// user's own app data, never beside the program, which an installed copy
+/// can't write to (C:\Program Files). `None` leaves the platform's default.
+fn data_dir() -> Option<std::path::PathBuf> {
+    let var = |k: &str| std::env::var_os(k).map(std::path::PathBuf::from);
+    let base = if cfg!(windows) {
+        var("LOCALAPPDATA")
+    } else if cfg!(target_os = "macos") {
+        var("HOME").map(|h| h.join("Library").join("Application Support"))
+    } else {
+        var("XDG_DATA_HOME").or_else(|| var("HOME").map(|h| h.join(".local").join("share")))
+    }?;
+    Some(base.join("CreaBIM").join("WebView"))
+}
+
 impl WebUi {
     /// Make the pages as children of the app window. Fails where child
     /// webviews aren't possible (Wayland without XWayland), and the app then
     /// keeps its egui panels.
-    pub fn new(frame: &eframe::Frame) -> Result<Self, String> {
+    ///
+    /// A message from a page wakes the app (`ctx`), so no frame has to run
+    /// while nothing happens.
+    pub fn new(frame: &eframe::Frame, ctx: &egui::Context) -> Result<Self, String> {
         let inbox: Arc<Mutex<Vec<Msg>>> = Default::default();
+        let mut context = WebContext::new(data_dir());
         let mut views = vec![];
         for pane in Pane::ALL {
             let inbox = inbox.clone();
-            let view = WebViewBuilder::new()
+            let ctx = ctx.clone();
+            let view = WebViewBuilder::new_with_web_context(&mut context)
                 .with_html(page(pane))
                 .with_bounds(Rect {
                     position: PhysicalPosition::new(0, 0).into(),
@@ -120,6 +142,7 @@ impl WebUi {
                 .with_ipc_handler(move |r| {
                     if let Ok(body) = serde_json::from_str(r.body()) {
                         inbox.lock().unwrap().push(Msg { pane, body });
+                        ctx.request_repaint();
                     }
                 })
                 .build_as_child(frame)
@@ -128,6 +151,7 @@ impl WebUi {
         }
         Ok(Self {
             views,
+            _context: context,
             inbox,
             sent: Default::default(),
             rects: [egui::Rect::NOTHING; PANES],

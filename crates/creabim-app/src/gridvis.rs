@@ -1829,7 +1829,7 @@ mod tests {
         // in 3D
         app.run_action(&ctx, "hidden.colour3d");
         assert!(app.shell.settings.hidden_colour_3d);
-        app.scene = creabim_geom::build_scene(app.doc.model());
+        app.scene = (*creabim_geom::shared_scene(app.doc.model())).clone();
         let buried = app.buried_vertices();
         assert!(!buried.is_empty() && buried.len().is_multiple_of(3));
         app.run_action(&ctx, "hidden.colour3d");
@@ -1841,7 +1841,7 @@ mod tests {
         let mut app = CreaBimApp::blank(None);
         let (model, beam) = creabim_core::sample::sample_with_buried_beam();
         app.load_model(model);
-        app.scene = creabim_geom::build_scene(app.doc.model());
+        app.scene = (*creabim_geom::shared_scene(app.doc.model())).clone();
         let wall = app
             .doc
             .model()

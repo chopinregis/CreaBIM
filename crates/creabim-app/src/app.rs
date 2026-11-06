@@ -17,7 +17,7 @@ use creabim_core::{
     Sheet, Transaction, Underlay, View, ViewKind, ViewStyle, Workplane,
 };
 use creabim_geom::sheet::{self as sheets, PlacedView, SheetInfo};
-use creabim_geom::{build_scene, pick, plan::Pen, section::Drawing, PlanItem, SceneItem};
+use creabim_geom::{pick, plan::Pen, section::Drawing, PlanItem, SceneItem};
 use eframe::egui::{self, Color32, Rect, Sense, Vec2};
 use eframe::egui_wgpu;
 use glam::{DVec2, DVec3, Vec2 as GVec2, Vec3 as GVec3};
@@ -110,6 +110,8 @@ pub struct CreaBimApp {
     sheet: SheetState,
     /// Generated drawings by view, with the model revision they were made at.
     drawings: HashMap<ElementId, (u64, Drawing)>,
+    /// Drawings and the 3D scene being built off the UI thread.
+    builds: crate::builds::Builds,
     /// Each view's looks on sheets, with the model revision they are for.
     looks: HashMap<ElementId, (u64, std::sync::Arc<creabim_geom::looks::Looks>)>,
     /// The same for views seen in X-ray, which their sheets don't follow.
@@ -222,6 +224,7 @@ impl CreaBimApp {
             .as_ref()
             .map(|rs| Viewport3d::new(&rs.device));
         let mut app = Self::blank(viewport);
+        app.builds.set_context(cc.egui_ctx.clone());
         app.shell.theme = theme;
         app.vis3d.categories = settings.hidden_3d.clone();
         app.areas.workspace = settings.workspace.clone();
@@ -248,6 +251,7 @@ impl CreaBimApp {
             active_view: None,
             sheet: SheetState::default(),
             drawings: HashMap::new(),
+            builds: Default::default(),
             looks: HashMap::new(),
             xray_drawings: HashMap::new(),
             camera: OrbitCamera::default(),
@@ -627,9 +631,50 @@ impl CreaBimApp {
                 return Some(d.clone());
             }
         }
+        let t = std::time::Instant::now();
         let d = creabim_geom::section::view_drawing_with(self.doc.model(), id, xray)?;
         cache.insert(id, (revision, d.clone()));
+        self.builds
+            .record((id, xray), t.elapsed().as_secs_f64() * 1000.0);
         Some(d)
+    }
+
+    /// The drawing of a view to show now: as [`Self::drawing`] when it is
+    /// up to date or cheap to build, else the last one finished while a
+    /// worker builds the new one (see [`crate::builds`]). Exports and
+    /// anything measured from a drawing use [`Self::drawing`].
+    fn drawing_live(&mut self, id: ElementId) -> Option<Drawing> {
+        for b in self.builds.finished() {
+            let cache = if b.key.1 {
+                &mut self.xray_drawings
+            } else {
+                &mut self.drawings
+            };
+            match b.drawing {
+                // a drawing older than the one held (built on the spot meanwhile) is dropped
+                Some(d) if cache.get(&b.key.0).is_none_or(|(r, _)| *r < b.revision) => {
+                    cache.insert(b.key.0, (b.revision, d));
+                }
+                _ => {}
+            }
+        }
+        let revision = self.doc.model().revision();
+        let xray = self.plan.xray.contains(&id);
+        let key = (id, xray);
+        let held = if xray {
+            self.xray_drawings.get(&id)
+        } else {
+            self.drawings.get(&id)
+        };
+        match held {
+            Some((r, d)) if *r == revision => Some(d.clone()),
+            Some((_, d)) if self.builds.enabled() && !self.builds.cheap(key) => {
+                let d = d.clone();
+                self.builds.start(self.doc.model(), key);
+                Some(d)
+            }
+            _ => self.drawing(id),
+        }
     }
 
     /// The box round the selected elements in 3D.
@@ -731,7 +776,7 @@ impl CreaBimApp {
 
     /// Fit the 3D view round the whole model.
     fn frame_3d(&mut self) {
-        let scene = build_scene(self.doc.model());
+        let scene = (*creabim_geom::shared_scene(self.doc.model())).clone();
         let bounds = scene
             .iter()
             .filter_map(|s| s.mesh.bounds())
@@ -1348,8 +1393,27 @@ impl CreaBimApp {
     // ---- 3D -------------------------------------------------------------
 
     fn rebuild_geometry(&mut self, rs: &egui_wgpu::RenderState) {
+        // the scene of this revision: shared if built, else the newest a
+        // worker has finished while it builds this one, so an edit or a
+        // drag never waits for the 3D view (A6-1.2); the first is built here
+        let model = self.doc.model();
+        let shown = self.geometry_key.as_ref().map(|k| k.0 .0);
+        let (scene_rev, scene) = match creabim_geom::shared_scene_ready(model) {
+            Some(s) => (model.revision(), s),
+            None if shown.is_none() || !self.builds.enabled() => {
+                (model.revision(), creabim_geom::shared_scene(model))
+            }
+            None => {
+                self.builds.start_scene(model);
+                self.builds.poll();
+                match self.builds.latest_scene() {
+                    Some((r, s)) if shown.is_none_or(|v| r > v) => (r, s),
+                    _ => return,
+                }
+            }
+        };
         let key = (
-            (self.doc.model().revision(), self.hidden_rev),
+            (scene_rev, self.hidden_rev),
             self.selection.clone(),
             self.face,
             self.plan_in_3d,
@@ -1359,11 +1423,12 @@ impl CreaBimApp {
             return;
         }
         self.geometry_key = Some(key);
-        self.scene = build_scene(self.doc.model());
+        self.scene = (*scene).clone();
         let left_out = self.hidden_in_3d();
         self.scene
             .retain(|i| !self.hidden.contains(&i.id) && !left_out.contains(&i.id));
         let cut_edges = self.crop_scene_3d();
+        snaps::begin_edge_round();
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
@@ -1403,14 +1468,14 @@ impl CreaBimApp {
                 } else {
                     &mut ghost_lines
                 };
-                for (a, b) in snaps::feature_edges(&item.mesh) {
+                for &(a, b) in snaps::feature_edges_cached(&item.mesh).iter() {
                     out.push((a, b, c));
                 }
                 continue;
             }
             if mode.edges() && !xrayed {
                 let c = if selected { highlight } else { edge_colour };
-                for (a, b) in snaps::feature_edges(&item.mesh) {
+                for &(a, b) in snaps::feature_edges_cached(&item.mesh).iter() {
                     ghost_lines.push((a, b, c));
                 }
             }
@@ -1470,7 +1535,7 @@ impl CreaBimApp {
                 item.surface
             };
             if xrayed {
-                for (a, b) in snaps::feature_edges(&item.mesh) {
+                for &(a, b) in snaps::feature_edges_cached(&item.mesh).iter() {
                     ghost_lines.push((a, b, XRAY_EDGE));
                 }
             }
@@ -1543,7 +1608,7 @@ impl CreaBimApp {
         if self.plan_in_3d {
             let placed = self.active_view.and_then(|id| {
                 let kind = self.view(id)?.kind.clone();
-                Some((kind, self.drawing(id)?))
+                Some((kind, self.drawing_live(id)?))
             });
             if let Some((kind, plan)) = placed {
                 // drawing coordinates → world: plans lie flat at their cut
@@ -3548,7 +3613,7 @@ impl CreaBimApp {
             let Some(kind) = self.view(view).map(planview::pane_kind) else {
                 return;
             };
-            let Some(mut drawing) = self.drawing(view) else {
+            let Some(mut drawing) = self.drawing_live(view) else {
                 return;
             };
             if !self.hidden.is_empty() {

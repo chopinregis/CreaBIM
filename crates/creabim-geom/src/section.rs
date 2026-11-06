@@ -105,14 +105,31 @@ pub fn section_view_with(
     scale: f64,
     reveal: bool,
 ) -> Drawing {
-    let frame = SectionFrame::new(start, end, depth);
     let scene = crate::scene::drawn_scene(model);
+    section_view_in(model, &scene, start, end, depth, cut, style, scale, reveal)
+}
+
+/// [`section_view_with`] from a scene already built (the shared one,
+/// less what the view hides).
+#[allow(clippy::too_many_arguments)]
+pub fn section_view_in(
+    model: &Model,
+    scene: &[SceneItem],
+    start: DVec2,
+    end: DVec2,
+    depth: f64,
+    cut: bool,
+    style: ViewStyle,
+    scale: f64,
+    reveal: bool,
+) -> Drawing {
+    let frame = SectionFrame::new(start, end, depth);
     let mut items = Vec::new();
 
     let project = |p: DVec3| frame.project(p);
     let revealed = reveal.then(|| revealable(model));
     let (lines, image) = hidden_lines(
-        &scene,
+        scene,
         &project,
         frame.depth,
         Some((0.0, frame.length)),
@@ -131,7 +148,7 @@ pub fn section_view_with(
     // Cut fill, drawn over the projection; layered elements layer by layer.
     let mut layers = vec![];
     if cut {
-        for s in &scene {
+        for s in scene {
             for loop_ in cut_loops(s, &frame) {
                 let pts: Vec<DVec2> = loop_.iter().map(|p| DVec2::new(p.x, p.y)).collect();
                 let (x0, x1) = (-1e-6, frame.length + 1e-6);
@@ -410,8 +427,21 @@ pub fn axonometric_view_with(
     reveal: bool,
     crop: &[creabim_core::CropBox],
 ) -> Drawing {
+    let scene = crate::scene::drawn_scene(model);
+    axonometric_view_in(model, scene, azimuth, altitude, style, reveal, crop)
+}
+
+/// [`axonometric_view_with`] from a scene already built.
+pub fn axonometric_view_in(
+    model: &Model,
+    mut scene: Vec<SceneItem>,
+    azimuth: f64,
+    altitude: f64,
+    style: ViewStyle,
+    reveal: bool,
+    crop: &[creabim_core::CropBox],
+) -> Drawing {
     let frame = AxoFrame::new(model, azimuth, altitude);
-    let mut scene = crate::scene::drawn_scene(model);
     crate::cropbox::crop_scene(model, &mut scene, crop);
     let project = |p: DVec3| frame.project(p);
     let revealed = reveal.then(|| revealable(model));
@@ -534,7 +564,7 @@ fn revealable(model: &Model) -> HashSet<ElementId> {
 /// dashed, as [`Pen::Hidden`].
 pub(crate) fn hidden_lines(
     scene: &[SceneItem],
-    project: &dyn Fn(DVec3) -> DVec3,
+    project: &(dyn Fn(DVec3) -> DVec3 + Sync),
     depth: f64,
     crop: Option<(f64, f64)>,
     style: ViewStyle,
@@ -542,23 +572,17 @@ pub(crate) fn hidden_lines(
 ) -> (Vec<PlanItem>, Option<PlanItem>) {
     let shade = style == ViewStyle::Shaded;
     let wire = style == ViewStyle::Wireframe;
-    let mut faces: Faces = Vec::new();
-    for s in scene {
-        let mut tris = Vec::new();
-        for t in s.mesh.indices.chunks(3) {
-            let p = |i: u32| project(Vec3::from(s.mesh.positions[i as usize]).as_dvec3());
-            tris.extend(clip_triangle([p(t[0]), p(t[1]), p(t[2])], depth));
-        }
-        faces.push((s.id, s.color, tris));
-    }
+    let faces = project_faces(scene, project, depth);
     let (lo, hi) = extents(&faces, crop);
     let mut zbuf = DepthBuffer::render(&faces, lo, hi, shade);
     if reveal.is_some() {
         zbuf.render_backs(&faces);
     }
     let image = zbuf.image();
-    let mut items = Vec::new();
-    for (index, s) in scene.iter().enumerate() {
+    let zbuf = &zbuf;
+    // each element's edges on its own core; the lines kept in scene order
+    let per_item = par_map(scene, |index, s| {
+        let mut items = Vec::new();
         let revealed = reveal.is_some_and(|r| r.contains(&s.id));
         for (a, b) in feature_edges(s) {
             let Some((a, b)) = clip_segment(project(a), project(b), 1e-4, depth) else {
@@ -599,7 +623,9 @@ pub(crate) fn hidden_lines(
                 }
             }
         }
-    }
+        items
+    });
+    let items: Vec<PlanItem> = per_item.into_iter().flatten().collect();
     (items, image)
 }
 
@@ -626,6 +652,16 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     let mut hidden = v.hidden.hidden_set(model);
     // a section never hides its own drawing, even with section marks off
     hidden.remove(&view);
+    // sections and 3D drawings start from the scene shared by every view
+    // of this revision, less what the view hides
+    let full = model;
+    let scene = || -> Vec<SceneItem> {
+        crate::scene::shared_scene(full)
+            .iter()
+            .filter(|i| !i.ghost && !i.is_lining() && !hidden.contains(&i.id))
+            .cloned()
+            .collect()
+    };
     let filtered;
     let model = if hidden.is_empty() {
         model
@@ -689,8 +725,17 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
             depth,
             cut,
         } => {
-            let mut d =
-                section_view_with(model, *start, *end, *depth, *cut, style, v.scale, reveal);
+            let mut d = section_view_in(
+                model,
+                &scene(),
+                *start,
+                *end,
+                *depth,
+                *cut,
+                style,
+                v.scale,
+                reveal,
+            );
             // rooms washed behind the cut, from floor to ceiling
             if v.room_colours && *cut {
                 let mut rooms = crate::rooms::section_items(model, *start, *end);
@@ -701,7 +746,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         }
         creabim_core::ViewKind::Axonometric { azimuth, altitude } => {
             let crop = crate::cropbox::active(model, Some(view));
-            axonometric_view_with(model, *azimuth, *altitude, style, reveal, &crop)
+            axonometric_view_in(model, scene(), *azimuth, *altitude, style, reveal, &crop)
         }
         creabim_core::ViewKind::Schedule { category, by_type } => {
             let table = crate::schedule::schedule_by(model, *category, *by_type);
@@ -1090,6 +1135,120 @@ fn simplify(pts: Vec<DVec2>) -> Vec<DVec2> {
         .collect()
 }
 
+/// Every scene item's triangles seen through `project`, clipped to the
+/// view's depth.
+fn project_faces(scene: &[SceneItem], project: &dyn Fn(DVec3) -> DVec3, depth: f64) -> Faces {
+    let mut faces: Faces = Vec::new();
+    for s in scene {
+        let mut tris = Vec::new();
+        for t in s.mesh.indices.chunks(3) {
+            let p = |i: u32| project(Vec3::from(s.mesh.positions[i as usize]).as_dvec3());
+            tris.extend(clip_triangle([p(t[0]), p(t[1]), p(t[2])], depth));
+        }
+        faces.push((s.id, s.color, tris));
+    }
+    faces
+}
+
+/// `f` over `items` on every core, the results in `items`' order.
+fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(usize, &T) -> R + Sync) -> Vec<R> {
+    let n = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .clamp(1, 16);
+    if n == 1 || items.len() < 32 {
+        return items.iter().enumerate().map(|(i, t)| f(i, t)).collect();
+    }
+    // more pieces than cores, as some elements have far more edges
+    let size = items.len().div_ceil(n * 4);
+    let f = &f;
+    std::thread::scope(|scope| {
+        let pieces: Vec<_> = items
+            .chunks(size)
+            .enumerate()
+            .map(|(k, chunk)| {
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .map(|(j, t)| f(k * size + j, t))
+                        .collect::<Vec<R>>()
+                })
+            })
+            .collect();
+        pieces
+            .into_iter()
+            .flat_map(|p| p.join().expect("a drawing worker panicked"))
+            .collect()
+    })
+}
+
+/// How many rows each band of a depth buffer `h` rows high gets: one band
+/// per core, up to 16.
+fn band_rows(h: usize) -> usize {
+    let n = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .clamp(1, 16);
+    h.div_ceil(n).max(1)
+}
+
+/// Call `f` with each cell (index into a `w` wide grid `h` high) of rows
+/// `rows` that triangle `t` (in cells, depth in z) covers, and its depth
+/// there. Each cell is tested exactly as a scan of the triangle's whole
+/// box would; a row is only walked over the span the triangle can reach
+/// on it (worked out with two cells to spare).
+fn cover_rows(
+    t: &[DVec3; 3],
+    w: usize,
+    h: usize,
+    rows: std::ops::Range<usize>,
+    mut f: impl FnMut(usize, f32),
+) {
+    let [a, b, c] = *t;
+    let area = (b - a).truncate().perp_dot((c - a).truncate());
+    if area.abs() < 1e-12 {
+        return; // seen edge-on
+    }
+    let x0 = a.x.min(b.x).min(c.x).floor().max(0.0) as usize;
+    let x1 = (a.x.max(b.x).max(c.x).ceil() as usize).min(w - 1);
+    let y0 = a.y.min(b.y).min(c.y).floor().max(0.0) as usize;
+    let y1 = (a.y.max(b.y).max(c.y).ceil() as usize).min(h - 1);
+    let (ylo, yhi) = (y0.max(rows.start), y1.min(rows.end.saturating_sub(1)));
+    if x0 > x1 || ylo > yhi || rows.is_empty() {
+        return;
+    }
+    // each weight along a row is s + k * px: px >= or <= a bound
+    let edges = [(c - b, b), (a - c, c), (b - a, a)];
+    for y in ylo..=yhi {
+        let py = y as f64 + 0.5;
+        let (mut lo, mut hi) = (f64::NEG_INFINITY, f64::INFINITY);
+        for (u, q) in edges {
+            let k = -u.y / area;
+            let s0 = (u.x * (py - q.y) + u.y * q.x) / area;
+            if k > 1e-12 {
+                lo = lo.max(-s0 / k);
+            } else if k < -1e-12 {
+                hi = hi.min(-s0 / k);
+            }
+        }
+        let xs = ((lo - 0.5).floor() - 2.0).max(x0 as f64);
+        let xe = ((hi - 0.5).ceil() + 2.0).min(x1 as f64);
+        if xs.is_nan() || xe.is_nan() || xs > xe {
+            continue;
+        }
+        for x in xs as usize..=xe as usize {
+            let p = glam::DVec2::new(x as f64 + 0.5, py);
+            let w0 = (c - b).truncate().perp_dot(p - b.truncate()) / area;
+            let w1 = (a - c).truncate().perp_dot(p - c.truncate()) / area;
+            let w2 = 1.0 - w0 - w1;
+            if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
+                continue;
+            }
+            let d = (w0 * a.z + w1 * b.z + w2 * c.z) as f32;
+            f(y * w + x, d);
+        }
+    }
+}
+
 struct DepthBuffer {
     lo: DVec2,
     px: f64,
@@ -1128,29 +1287,88 @@ impl DepthBuffer {
             back: vec![f32::NEG_INFINITY; w * h],
         };
         let light = LIGHT.normalize();
-        for (index, (_, color, tris)) in faces.iter().enumerate() {
-            for t in tris {
-                let n = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
-                let lit = 0.55 + 0.45 * n.dot(light).abs();
-                let c = color.map(|c| ((c as f64 * lit).clamp(0.0, 1.0) * 255.0) as u8);
-                buf.raster(t, c, index as u32);
+        // every triangle in cells, with its shade and its element, in order
+        let tris: Vec<([DVec3; 3], [u8; 3], u32)> = faces
+            .iter()
+            .enumerate()
+            .flat_map(|(index, (_, color, tris))| {
+                let buf = &buf;
+                tris.iter().map(move |t| {
+                    let n = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
+                    let lit = 0.55 + 0.45 * n.dot(light).abs();
+                    let c = color.map(|c| ((c as f64 * lit).clamp(0.0, 1.0) * 255.0) as u8);
+                    (t.map(|p| buf.to_px(p)), c, index as u32)
+                })
+            })
+            .collect();
+        // bands of rows on every core; each band takes the triangles in
+        // the same order, so every cell ends as the one scan left it
+        let rows = band_rows(h);
+        let (depth, nearest) = (&mut buf.depth, &mut buf.nearest);
+        let mut rgba: Vec<Option<&mut [u8]>> = match &mut buf.rgba {
+            Some(r) => r.chunks_mut(rows * w * 4).map(Some).collect(),
+            None => (0..h.div_ceil(rows)).map(|_| None).collect(),
+        };
+        std::thread::scope(|scope| {
+            for (k, ((dc, nc), rc)) in depth
+                .chunks_mut(rows * w)
+                .zip(nearest.chunks_mut(rows * w))
+                .zip(rgba.iter_mut())
+                .enumerate()
+            {
+                let tris = &tris;
+                scope.spawn(move || {
+                    let y0 = k * rows;
+                    let base = y0 * w;
+                    for (t, c, index) in tris {
+                        cover_rows(t, w, h, y0..(y0 + rows).min(h), |i, d| {
+                            let j = i - base;
+                            if d < dc[j] {
+                                dc[j] = d;
+                                nc[j] = *index;
+                                if let Some(rc) = rc.as_deref_mut() {
+                                    rc[j * 4..j * 4 + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+                                }
+                            }
+                        });
+                    }
+                });
             }
-        }
+        });
         buf
     }
 
     /// Find how deep the nearest element goes in each cell: the furthest
     /// of its own faces there.
     fn render_backs(&mut self, faces: &Faces) {
-        for (index, (_, _, tris)) in faces.iter().enumerate() {
-            for t in tris {
-                self.cover(t, |buf, i, d| {
-                    if buf.nearest[i] == index as u32 && d > buf.back[i] {
-                        buf.back[i] = d;
+        let tris: Vec<([DVec3; 3], u32)> = faces
+            .iter()
+            .enumerate()
+            .flat_map(|(index, (_, _, tris))| {
+                let me = &*self;
+                tris.iter()
+                    .map(move |t| (t.map(|p| me.to_px(p)), index as u32))
+            })
+            .collect();
+        let (w, h) = (self.w, self.h);
+        let rows = band_rows(h);
+        let nearest = &self.nearest;
+        std::thread::scope(|scope| {
+            for (k, bc) in self.back.chunks_mut(rows * w).enumerate() {
+                let tris = &tris;
+                scope.spawn(move || {
+                    let y0 = k * rows;
+                    let base = y0 * w;
+                    for (t, index) in tris {
+                        cover_rows(t, w, h, y0..(y0 + rows).min(h), |i, d| {
+                            if nearest[i] == *index && d > bc[i - base] {
+                                bc[i - base] = d;
+                            }
+                        });
                     }
                 });
             }
-        }
+        });
     }
 
     /// Is the point inside another element than `own`: behind the near
@@ -1195,44 +1413,6 @@ impl DepthBuffer {
             (p.y - self.lo.y) / self.px,
             p.z,
         )
-    }
-
-    fn raster(&mut self, t: &[DVec3; 3], color: [u8; 3], index: u32) {
-        self.cover(t, |buf, i, d| {
-            if d < buf.depth[i] {
-                buf.depth[i] = d;
-                buf.nearest[i] = index;
-                if let Some(rgba) = &mut buf.rgba {
-                    rgba[i * 4..i * 4 + 4].copy_from_slice(&[color[0], color[1], color[2], 255]);
-                }
-            }
-        });
-    }
-
-    /// Call `f` with each cell the triangle covers and its depth there.
-    fn cover(&mut self, t: &[DVec3; 3], mut f: impl FnMut(&mut Self, usize, f32)) {
-        let [a, b, c] = t.map(|p| self.to_px(p));
-        let area = (b - a).truncate().perp_dot((c - a).truncate());
-        if area.abs() < 1e-12 {
-            return; // seen edge-on
-        }
-        let x0 = a.x.min(b.x).min(c.x).floor().max(0.0) as usize;
-        let x1 = (a.x.max(b.x).max(c.x).ceil() as usize).min(self.w - 1);
-        let y0 = a.y.min(b.y).min(c.y).floor().max(0.0) as usize;
-        let y1 = (a.y.max(b.y).max(c.y).ceil() as usize).min(self.h - 1);
-        for y in y0..=y1 {
-            for x in x0..=x1 {
-                let p = glam::DVec2::new(x as f64 + 0.5, y as f64 + 0.5);
-                let w0 = (c - b).truncate().perp_dot(p - b.truncate()) / area;
-                let w1 = (a - c).truncate().perp_dot(p - c.truncate()) / area;
-                let w2 = 1.0 - w0 - w1;
-                if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
-                    continue;
-                }
-                let d = (w0 * a.z + w1 * b.z + w2 * c.z) as f32;
-                f(self, y * self.w + x, d);
-            }
-        }
     }
 
     /// Is the point no further than the nearest face around it (with tolerance)?
@@ -1294,6 +1474,108 @@ impl DepthBuffer {
 
 #[cfg(test)]
 mod tests {
+    /// The depth buffer as one scan of every triangle's whole box (how it
+    /// was built before it ran in bands on every core).
+    fn scanned(faces: &Faces, lo: DVec2, hi: DVec2) -> DepthBuffer {
+        let mut buf = DepthBuffer::render(&Vec::new(), lo, hi, true);
+        let (w, h) = (buf.w, buf.h);
+        let light = LIGHT.normalize();
+        for (index, (_, color, tris)) in faces.iter().enumerate() {
+            for t in tris {
+                let n = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
+                let lit = 0.55 + 0.45 * n.dot(light).abs();
+                let c = color.map(|c| ((c as f64 * lit).clamp(0.0, 1.0) * 255.0) as u8);
+                let [a, b, cc] = t.map(|p| buf.to_px(p));
+                let area = (b - a).truncate().perp_dot((cc - a).truncate());
+                if area.abs() < 1e-12 {
+                    continue;
+                }
+                let x0 = a.x.min(b.x).min(cc.x).floor().max(0.0) as usize;
+                let x1 = (a.x.max(b.x).max(cc.x).ceil() as usize).min(w - 1);
+                let y0 = a.y.min(b.y).min(cc.y).floor().max(0.0) as usize;
+                let y1 = (a.y.max(b.y).max(cc.y).ceil() as usize).min(h - 1);
+                for y in y0..=y1 {
+                    for x in x0..=x1 {
+                        let p = glam::DVec2::new(x as f64 + 0.5, y as f64 + 0.5);
+                        let w0 = (cc - b).truncate().perp_dot(p - b.truncate()) / area;
+                        let w1 = (a - cc).truncate().perp_dot(p - cc.truncate()) / area;
+                        let w2 = 1.0 - w0 - w1;
+                        if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
+                            continue;
+                        }
+                        let d = (w0 * a.z + w1 * b.z + w2 * cc.z) as f32;
+                        let i = y * w + x;
+                        if d < buf.depth[i] {
+                            buf.depth[i] = d;
+                            buf.nearest[i] = index as u32;
+                            let rgba = buf.rgba.as_mut().unwrap();
+                            rgba[i * 4..i * 4 + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+                        }
+                    }
+                }
+            }
+        }
+        buf
+    }
+
+    /// The parallel map keeps the order and the indices of what it maps.
+    #[test]
+    fn par_map_keeps_order() {
+        let items: Vec<usize> = (0..1000).collect();
+        let out = par_map(&items, |i, t| (i, *t * 2));
+        assert!(out
+            .iter()
+            .enumerate()
+            .all(|(k, (i, v))| *i == k && *v == k * 2));
+    }
+
+    /// The depth buffer built in bands, row spans only, is the scan's,
+    /// cell for cell, for the starter house's sections, elevations and 3D
+    /// views.
+    #[test]
+    fn banded_depth_buffer_is_the_whole_scan() {
+        let m = creabim_core::starter::starter_house();
+        let scene = crate::scene::drawn_scene(&m);
+        let mut checked = 0;
+        for e in m.iter() {
+            let ElementKind::View(v) = &e.kind else {
+                continue;
+            };
+            let (faces, crop) = match v.kind {
+                creabim_core::ViewKind::Section {
+                    start, end, depth, ..
+                } => {
+                    let frame = SectionFrame::new(start, end, depth);
+                    let project = |p: DVec3| frame.project(p);
+                    (
+                        project_faces(&scene, &project, frame.depth),
+                        Some((0.0, frame.length)),
+                    )
+                }
+                creabim_core::ViewKind::Axonometric { azimuth, altitude } => {
+                    let frame = AxoFrame::new(&m, azimuth, altitude);
+                    let project = |p: DVec3| frame.project(p);
+                    (project_faces(&scene, &project, frame.radius * 2.0), None)
+                }
+                _ => continue,
+            };
+            let (lo, hi) = extents(&faces, crop);
+            let fast = DepthBuffer::render(&faces, lo, hi, true);
+            let slow = scanned(&faces, lo, hi);
+            assert_eq!((fast.w, fast.h), (slow.w, slow.h));
+            let same_depth = fast
+                .depth
+                .iter()
+                .zip(&slow.depth)
+                .all(|(a, b)| a.to_bits() == b.to_bits());
+            assert!(same_depth, "{}: depths differ", e.name);
+            assert!(fast.nearest == slow.nearest, "{}: nearest differ", e.name);
+            assert!(fast.rgba == slow.rgba, "{}: shading differs", e.name);
+            checked += 1;
+        }
+        assert!(checked >= 8, "only {checked} views checked");
+    }
+
     use super::*;
     use creabim_core::sample::sample_house;
 

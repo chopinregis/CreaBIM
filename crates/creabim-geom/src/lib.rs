@@ -36,4 +36,4 @@ pub mod xlsx;
 
 pub use mesh::TriMesh;
 pub use plan::{plan_view, PlanItem, PlanView};
-pub use scene::{build_scene, SceneItem};
+pub use scene::{build_scene, shared_scene, shared_scene_ready, SceneItem};

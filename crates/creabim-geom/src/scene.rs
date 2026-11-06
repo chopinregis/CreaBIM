@@ -484,9 +484,56 @@ pub fn build_scene(model: &Model) -> Vec<SceneItem> {
 
 /// The scene as drawings show it: cutters left out.
 pub fn drawn_scene(model: &Model) -> Vec<SceneItem> {
-    let mut s = build_scene(model);
-    s.retain(|i| !i.ghost && !i.is_lining());
-    s
+    shared_scene(model)
+        .iter()
+        .filter(|i| !i.ghost && !i.is_lining())
+        .cloned()
+        .collect()
+}
+
+/// How many scenes [`shared_scene`] keeps: the model as it is, and a few
+/// others (a view's filtered copy, the state before an edit).
+const SHARED_SCENES: usize = 4;
+
+static SHARED: std::sync::Mutex<Vec<(u64, std::sync::Arc<Vec<SceneItem>>)>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// The shared scene of `model`'s revision if it is built already, without
+/// waiting: `None` while it isn't, or while another thread holds the
+/// cache (building one).
+pub fn shared_scene_ready(model: &Model) -> Option<std::sync::Arc<Vec<SceneItem>>> {
+    let rev = model.revision();
+    let cache = SHARED.try_lock().ok()?;
+    cache
+        .iter()
+        .find(|(r, _)| *r == rev && rev != 0)
+        .map(|(_, s)| s.clone())
+}
+
+/// [`build_scene`] built once per model revision and shared: the 3D view,
+/// every section, elevation and 3D drawing of the same revision use the
+/// one scene instead of each building its own. Revisions are unique
+/// across models (see [`Model::revision`]); a model at revision 0 is
+/// built afresh every time.
+pub fn shared_scene(model: &Model) -> std::sync::Arc<Vec<SceneItem>> {
+    let rev = model.revision();
+    if rev == 0 {
+        return std::sync::Arc::new(build_scene(model));
+    }
+    // held while building, so two threads after the same revision build it once
+    let mut cache = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(i) = cache.iter().position(|(r, _)| *r == rev) {
+        let hit = cache.remove(i);
+        let scene = hit.1.clone();
+        cache.push(hit);
+        return scene;
+    }
+    let scene = std::sync::Arc::new(build_scene(model));
+    if cache.len() >= SHARED_SCENES {
+        cache.remove(0);
+    }
+    cache.push((rev, scene.clone()));
+    scene
 }
 
 /// One item per element, a layered element's layers in one mesh with its

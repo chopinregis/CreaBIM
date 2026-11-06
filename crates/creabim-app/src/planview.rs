@@ -3058,7 +3058,7 @@ fn depth_of_walls(
 /// how long a section drawn across it should be.
 fn model_depth(doc: &Document, start: DVec2, end: DVec2) -> (f64, f64) {
     let look = (end - start).normalize_or_zero().perp();
-    let scene = creabim_geom::build_scene(doc.model());
+    let scene = (*creabim_geom::shared_scene(doc.model())).clone();
     let (lo, hi) = scene
         .iter()
         .flat_map(|s| s.mesh.positions.iter())

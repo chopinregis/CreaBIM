@@ -6,7 +6,7 @@ members = ["crates/*"]
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/kingbenoitbrice-fun/creabim"
+repository = "https://github.com/chopinregis/CreaBIM"
 rust-version = "1.85"
 
 [workspace.dependencies]
@@ -25,3 +25,20 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
+
+# Shipping builds: small and fast. Measured on 2026-11-05: 38.5 MB -> 26.0 MB.
+# Nothing catches panics (no catch_unwind), so they can abort.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+# Day-to-day testing at near release speed, without the long link:
+# cargo build --profile fast -p creabim-app
+[profile.fast]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+strip = "none"
+panic = "unwind"

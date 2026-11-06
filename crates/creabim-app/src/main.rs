@@ -7,6 +7,7 @@ mod app;
 mod areas;
 mod boxsel;
 mod browser;
+mod builds;
 mod camera;
 mod centres;
 mod choices;

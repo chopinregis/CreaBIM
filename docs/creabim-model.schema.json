@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/kingbenoitbrice-fun/CreaBIM/blob/main/docs/creabim-model.schema.json",
+  "$id": "https://github.com/chopinregis/CreaBIM/blob/main/docs/creabim-model.schema.json",
   "title": "CreaBIM model",
   "description": "A CreaBIM model described in JSON, format version 1. Lengths are in metres unless `units` says otherwise. See docs/json-format.md.",
   "$ref": "#/$defs/Model",

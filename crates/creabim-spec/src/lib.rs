@@ -80,10 +80,15 @@ pub fn schema() -> J {
     let mut defs = Defs::default();
     let root = format::Model::schema(&mut defs);
     J::obj(vec![
-        ("$schema", J::str("https://json-schema.org/draft/2020-12/schema")),
+        (
+            "$schema",
+            J::str("https://json-schema.org/draft/2020-12/schema"),
+        ),
         (
             "$id",
-            J::str("https://github.com/kingbenoitbrice-fun/CreaBIM/blob/main/docs/creabim-model.schema.json"),
+            J::str(
+                "https://github.com/chopinregis/CreaBIM/blob/main/docs/creabim-model.schema.json",
+            ),
         ),
         ("title", J::str("CreaBIM model")),
         (
@@ -94,10 +99,13 @@ pub fn schema() -> J {
                 format::VERSION
             )),
         ),
-        ("$ref", match root {
-            J::Obj(o) => o[0].1.clone(),
-            _ => unreachable!(),
-        }),
+        (
+            "$ref",
+            match root {
+                J::Obj(o) => o[0].1.clone(),
+                _ => unreachable!(),
+            },
+        ),
         ("$defs", J::Obj(defs.schemas)),
     ])
 }

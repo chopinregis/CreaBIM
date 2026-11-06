@@ -915,7 +915,7 @@ mod tests {
         doc.commit(Transaction::new("Add").insert(col).insert(beam))
             .unwrap();
         // the plan's centre lines, as the pane finds them
-        let scene = creabim_geom::build_scene(doc.model());
+        let scene = (*creabim_geom::shared_scene(doc.model())).clone();
         let centres: Vec<CentreLine> = [cid, bid]
             .iter()
             .flat_map(|id| crate::centres::of(doc.model(), &scene, *id))

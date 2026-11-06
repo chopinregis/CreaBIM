@@ -6,9 +6,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Model {
     elements: IndexMap<ElementId, Element>,
-    /// Bumped on every change so views know when to rebuild.
+    /// Bumped on every change so views know when to rebuild. Revisions
+    /// are unique across every model in the process (a clone shares its
+    /// original's until either changes), so caches can key on the
+    /// revision alone; 0 is a model never changed through these methods.
     #[serde(skip)]
     revision: u64,
+}
+
+/// The next revision handed out, to any model.
+static NEXT_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn next_revision() -> u64 {
+    NEXT_REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Two models are equal when they hold the same elements in the same order;
@@ -74,7 +84,7 @@ impl Model {
     /// out ([`crate::visibility::without`]). Never commit edits from one.
     pub fn retain(&mut self, mut keep: impl FnMut(&Element) -> bool) {
         self.elements.retain(|_, e| keep(e));
-        self.revision += 1;
+        self.revision = next_revision();
     }
 
     /// Elements that directly reference `id`.
@@ -115,7 +125,7 @@ impl Model {
         }
         self.check_refs(&e)?;
         self.elements.insert(e.id, e);
-        self.revision += 1;
+        self.revision = next_revision();
         Ok(())
     }
 
@@ -130,7 +140,7 @@ impl Model {
             .elements
             .shift_remove(&id)
             .ok_or(ModelError::NotFound(id))?;
-        self.revision += 1;
+        self.revision = next_revision();
         Ok(e)
     }
 
@@ -140,7 +150,7 @@ impl Model {
         }
         self.check_refs(&e)?;
         let old = self.elements.insert(e.id, e).expect("checked above");
-        self.revision += 1;
+        self.revision = next_revision();
         Ok(old)
     }
 
@@ -159,7 +169,7 @@ impl Model {
         for e in m.elements.values() {
             m.check_refs(e)?;
         }
-        m.revision = 1;
+        m.revision = next_revision();
         Ok(m)
     }
 
