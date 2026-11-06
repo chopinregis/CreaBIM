@@ -63,6 +63,24 @@ pub fn wall_layer_mesh(
     core: bool,
     ext: [f64; 2],
 ) -> TriMesh {
+    wall_layer_mesh_v(wall, base_z, openings, ends, top, band, core, ext, [0.0; 2])
+}
+
+/// [`wall_layer_mesh`], its bottom run down `vext[0]` past the wall's base
+/// and its top up `vext[1]` past the wall's top (A7-10; negative stops
+/// short).
+#[allow(clippy::too_many_arguments)]
+pub fn wall_layer_mesh_v(
+    wall: &Wall,
+    base_z: f64,
+    openings: &[&Opening],
+    ends: &WallEnds,
+    top: Option<&TopProfile>,
+    band: (f64, f64),
+    core: bool,
+    ext: [f64; 2],
+    vext: [f64; 2],
+) -> TriMesh {
     let len = wall.length();
     let h = wall.height;
     let cuts: Vec<Cut> = openings.iter().filter_map(|o| Cut::of(o, wall)).collect();
@@ -114,6 +132,14 @@ pub fn wall_layer_mesh(
         let z = match top {
             Some(t) if v >= h - 1e-9 => t.z_at(xy).map_or(z0 + h, |z| z.max(z0 + floor.min(h))),
             _ => z0 + v,
+        };
+        // a layer run on past the base or the top, or stopped short
+        let z = if v <= 1e-9 {
+            z - vext[0]
+        } else if v >= h - 1e-9 {
+            z + vext[1]
+        } else {
+            z
         };
         DVec3::new(xy.x, xy.y, z)
     };

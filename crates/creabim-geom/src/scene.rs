@@ -104,7 +104,7 @@ fn layer_items(
             assembly::wall_bands(a, w)
                 .into_iter()
                 .map(|b| {
-                    let m = crate::wall::wall_layer_mesh(
+                    let m = crate::wall::wall_layer_mesh_v(
                         w,
                         level.elevation,
                         &openings,
@@ -113,6 +113,7 @@ fn layer_items(
                         (b.s0, b.s1),
                         b.core,
                         b.ext,
+                        b.vext,
                     );
                     (b, m)
                 })

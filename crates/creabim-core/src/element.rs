@@ -906,11 +906,24 @@ pub struct LayerEnd {
     pub start: f64,
     #[serde(default)]
     pub end: f64,
+    /// How far it runs down past the wall's base (A7-10): the outer leaf
+    /// and insulation down past a slab's edge. Negative stops it short.
+    #[serde(default, skip_serializing_if = "is_zero_f")]
+    pub bottom: f64,
+    /// How far it runs up past the wall's top.
+    #[serde(default, skip_serializing_if = "is_zero_f")]
+    pub top: f64,
+}
+
+fn is_zero_f(v: &f64) -> bool {
+    *v == 0.0
 }
 
 impl LayerEnd {
     pub fn is_zero(&self) -> bool {
-        self.start.abs() < 1e-9 && self.end.abs() < 1e-9
+        [self.start, self.end, self.bottom, self.top]
+            .iter()
+            .all(|v| v.abs() < 1e-9)
     }
 }
 
@@ -1064,6 +1077,38 @@ impl Wall {
                 layer,
                 start: if end { 0.0 } else { by },
                 end: if end { by } else { 0.0 },
+                ..Default::default()
+            }),
+        }
+        self.layer_ends.retain(|l| !l.is_zero());
+        self.layer_ends.sort_by_key(|l| l.layer);
+    }
+
+    /// How far layer `layer` runs past the wall's base and top, as edited
+    /// by hand: `[bottom, top]`, zero when untouched (A7-10).
+    pub fn layer_vext(&self, layer: usize) -> [f64; 2] {
+        self.layer_ends
+            .iter()
+            .find(|l| l.layer == layer)
+            .map_or([0.0; 2], |l| [l.bottom, l.top])
+    }
+
+    /// Set how far layer `layer` runs past the top (`top`) or below the
+    /// base; an edit back at zero is dropped.
+    pub fn set_layer_vext(&mut self, layer: usize, top: bool, by: f64) {
+        match self.layer_ends.iter_mut().find(|l| l.layer == layer) {
+            Some(l) => {
+                if top {
+                    l.top = by
+                } else {
+                    l.bottom = by
+                }
+            }
+            None => self.layer_ends.push(LayerEnd {
+                layer,
+                bottom: if top { 0.0 } else { by },
+                top: if top { by } else { 0.0 },
+                ..Default::default()
             }),
         }
         self.layer_ends.retain(|l| !l.is_zero());

@@ -189,6 +189,12 @@ pub enum HandleKind {
         layer: usize,
         end: bool,
     },
+    /// In Layers, the bottom (or `top`) of layer `layer` of a layered
+    /// wall, run down past the wall's base or up past its top (A7-10).
+    LayerHeight {
+        layer: usize,
+        top: bool,
+    },
     /// In Layers, edge `edge` of layer `layer` of a layered slab or roof,
     /// pushed out past the element's edge or pulled in.
     LayerEdge {
@@ -236,6 +242,7 @@ impl HandleKind {
             HandleKind::CalloutCorner(_) | HandleKind::CalloutEdge(_) => "Resize the callout of",
             HandleKind::LayerEnd { .. } => "Move a layer end of",
             HandleKind::LayerEdge { .. } => "Move a layer edge of",
+            HandleKind::LayerHeight { .. } => "Move a layer's base or top of",
             HandleKind::WallFace | HandleKind::SlabUnderside | HandleKind::SlabTop => {
                 "Change thickness of"
             }
@@ -301,6 +308,8 @@ impl HandleKind {
             HandleKind::CalloutEdge(_) => "Callout edge: push",
             HandleKind::LayerEnd { .. } => "Layer end",
             HandleKind::LayerEdge { .. } => "Layer edge",
+            HandleKind::LayerHeight { top: false, .. } => "Layer bottom",
+            HandleKind::LayerHeight { top: true, .. } => "Layer top",
             HandleKind::MeshVertex(_) => "Corner",
             HandleKind::MeshEdge(..) => "Edge",
             HandleKind::MeshMove => "Base point: move",
@@ -354,6 +363,9 @@ impl HandleKind {
             }
             HandleKind::LayerEdge { .. } => {
                 "Drag: push the layer's edge out or pull it in · Tab: type how far · Right-click: reset"
+            }
+            HandleKind::LayerHeight { .. } => {
+                "Drag: run the layer down or up past the wall, or stop it short · Tab: type how far · Right-click: reset"
             }
             _ => "Drag to change it",
         }
@@ -444,6 +456,25 @@ pub fn layer_handles(model: &Model, id: ElementId) -> Vec<Handle> {
                 nudge: 0.0,
             });
         }
+        // its bottom and top, up and down (A7-10), in the middle of the
+        // wall's length
+        let mid = w.start + d * (w.length() / 2.0) + n * s;
+        let [down, up] = b.vext;
+        for (top, z) in [(false, z0 - down), (true, z0 + w.height + up)] {
+            let at = mid.extend(z);
+            out.push(Handle {
+                kind: HandleKind::LayerHeight {
+                    layer: b.index,
+                    top,
+                },
+                at,
+                constraint: Constraint::Line {
+                    point: at,
+                    dir: DVec3::Z,
+                },
+                nudge: 0.0,
+            });
+        }
     }
     out
 }
@@ -454,6 +485,9 @@ fn layer_offset(e: &ElementKind, kind: HandleKind) -> Option<f64> {
     match (e, kind) {
         (ElementKind::Wall(w), HandleKind::LayerEnd { layer, end }) => {
             Some(w.layer_ext(layer)[usize::from(end)])
+        }
+        (ElementKind::Wall(w), HandleKind::LayerHeight { layer, top }) => {
+            Some(w.layer_vext(layer)[usize::from(top)])
         }
         (ElementKind::Slab(s), HandleKind::LayerEdge { layer, edge }) => {
             Some(creabim_core::layer_edge_offsets(&s.layer_edges, layer, s.boundary.len())[edge])
@@ -470,6 +504,9 @@ fn set_layer_offset(e: &mut ElementKind, kind: HandleKind, by: f64) {
     match (e, kind) {
         (ElementKind::Wall(w), HandleKind::LayerEnd { layer, end }) => {
             w.set_layer_ext(layer, end, by)
+        }
+        (ElementKind::Wall(w), HandleKind::LayerHeight { layer, top }) => {
+            w.set_layer_vext(layer, top, by)
         }
         (ElementKind::Slab(s), HandleKind::LayerEdge { layer, edge }) => {
             creabim_core::set_layer_edge(&mut s.layer_edges, layer, edge, by)
@@ -649,6 +686,9 @@ fn layer_name(model: &Model, id: ElementId, kind: HandleKind) -> Option<String> 
             (layer, if end { "end" } else { "start" }.to_string())
         }
         HandleKind::LayerEdge { layer, edge } => (layer, format!("edge {}", edge + 1)),
+        HandleKind::LayerHeight { layer, top } => {
+            (layer, if top { "top" } else { "bottom" }.to_string())
+        }
         _ => return None,
     };
     let e = model.get(id)?;
@@ -1259,6 +1299,15 @@ pub fn apply(
                 return Err("a layer can't be held back past the wall's middle".into());
             }
             w.set_layer_ext(layer, end, old + by);
+        }
+        (ElementKind::Wall(w), HandleKind::LayerHeight { layer, top }) => {
+            // up is more at the top, down is more at the bottom
+            let by = round(if top { d.z } else { -d.z }, step / 5.0);
+            let old = w.layer_vext(layer)[usize::from(top)];
+            if old + by < -w.height / 2.0 {
+                return Err("a layer can't stop short past the wall's middle height".into());
+            }
+            w.set_layer_vext(layer, top, old + by);
         }
         (
             ek @ (ElementKind::Slab(_) | ElementKind::Roof(_)),
@@ -2787,6 +2836,8 @@ fn grip_menu(
                         let moved = edited_end(Some(&e), k);
                         let text = match k {
                             HandleKind::LayerEdge { .. } => "Reset layer edge",
+                            HandleKind::LayerHeight { top: false, .. } => "Reset layer bottom",
+                            HandleKind::LayerHeight { top: true, .. } => "Reset layer top",
                             _ => "Reset layer end",
                         };
                         item(ui, moved, text, Act::ResetLayer(k));
@@ -3233,9 +3284,11 @@ pub fn interact(
     if edit && drag.is_none() && response.secondary_clicked() {
         if let (Some(p), Some(e)) = (response.interact_pointer_pos(), &element) {
             let on = match nearest(p).map(|h| h.kind) {
-                Some(k @ (HandleKind::LayerEnd { .. } | HandleKind::LayerEdge { .. })) => {
-                    MenuOn::Layer(k)
-                }
+                Some(
+                    k @ (HandleKind::LayerEnd { .. }
+                    | HandleKind::LayerEdge { .. }
+                    | HandleKind::LayerHeight { .. }),
+                ) => MenuOn::Layer(k),
                 Some(HandleKind::Vertex { ring, i }) => {
                     if !grips.picked(ring, i) {
                         grips.pick(ring, i, false);
@@ -4167,6 +4220,68 @@ mod tests {
         reset_layer_ends(&mut doc, id, Some(kind)).unwrap();
         assert!(w(&doc).layer_ends.is_empty());
         assert!(reset_layer_ends(&mut doc, id, None).is_err());
+    }
+
+    #[test]
+    fn a_wall_layer_runs_down_past_the_base_by_its_bottom_grip() {
+        let m = creabim_core::sample::typed_house();
+        let (id, core) = layered_wall(&m);
+        // an outer layer: the one that runs down past the slab's edge
+        let outer = if core == 0 { 1 } else { 0 };
+        let mut doc = Document::from_model(m);
+        let kind = HandleKind::LayerHeight {
+            layer: outer,
+            top: false,
+        };
+        let h = layer_handles(doc.model(), id)
+            .into_iter()
+            .find(|h| h.kind == kind)
+            .expect("a bottom grip on every layer");
+        let Constraint::Line { dir, .. } = h.constraint else {
+            panic!()
+        };
+        assert_eq!(dir, DVec3::Z, "it slides up and down");
+        let (orig, joined) = originals(doc.model(), id, kind);
+        let model = doc.model().clone();
+        let out = apply(
+            &model,
+            &orig,
+            &joined,
+            kind,
+            h.at,
+            h.at - DVec3::Z * 0.5,
+            0.0,
+        )
+        .unwrap();
+        let new = out[0].clone();
+        doc.edit(id, "drag", |e| *e = new.clone()).unwrap();
+        let ElementKind::Wall(w) = &doc.model().get(id).unwrap().kind else {
+            panic!()
+        };
+        assert!((w.layer_vext(outer)[0] - 0.5).abs() < 1e-9);
+        assert_eq!(w.layer_vext(core), [0.0, 0.0], "the core stays on the slab");
+        // its solid goes 500 mm lower; the core's does not
+        let low = |layer: usize| {
+            creabim_geom::scene::build_scene_of(doc.model(), Some(&[id].into_iter().collect()))
+                .iter()
+                .filter(|i| i.layer.is_some_and(|l| l.index == layer))
+                .flat_map(|i| i.mesh.positions.iter().map(|p| p[2] as f64))
+                .fold(f64::MAX, f64::min)
+        };
+        assert!(
+            (low(core) - low(outer) - 0.5).abs() < 1e-4,
+            "{} {}",
+            low(core),
+            low(outer)
+        );
+        // the grip follows, and Reset puts it back
+        let moved = layer_handles(doc.model(), id)
+            .into_iter()
+            .find(|h| h.kind == kind)
+            .unwrap();
+        assert!((h.at.z - moved.at.z - 0.5).abs() < 1e-9);
+        reset_layer_ends(&mut doc, id, Some(kind)).unwrap();
+        assert!(!edited_end(doc.model().get(id), kind));
     }
 
     #[test]
