@@ -216,6 +216,10 @@ pub struct CreaBimApp {
     crop_pick: Option<ElementId>,
     /// The Settings window is open.
     settings_open: bool,
+    /// The Project information window (A7-5).
+    project_open: bool,
+    /// The project information being edited, until Apply.
+    project_draft: Option<creabim_core::ProjectInfo>,
     /// The New project window, with the classic panels.
     new_project_classic: bool,
 }
@@ -313,6 +317,8 @@ impl CreaBimApp {
             catalogue: Default::default(),
             levels: Default::default(),
             settings_open: false,
+            project_open: false,
+            project_draft: None,
             new_project_classic: false,
             marks: Default::default(),
             gstyles: Default::default(),
@@ -1279,6 +1285,7 @@ impl CreaBimApp {
                             | ElementKind::Viewport(_)
                             | ElementKind::Material(_)
                             | ElementKind::Units(_)
+                            | ElementKind::Project(_)
                             | ElementKind::SheetTemplate(_)
                             | ElementKind::CropBox(_)
                     )
@@ -3056,8 +3063,14 @@ impl CreaBimApp {
             });
             if let Some((h, wl)) = wall {
                 let at = o + d * h.t as f64;
-                if let Some(c) = project(at) {
-                    painter.circle_stroke(c, 6.0, stroke);
+                // the window or door a click puts here (A7-4)
+                match crate::ghost::cached(self.doc.model(), wl, tool, at.truncate(), &self.plan) {
+                    Some(g) => crate::ghost::draw(painter, &project, &g, accent),
+                    None => {
+                        if let Some(c) = project(at) {
+                            painter.circle_stroke(c, 6.0, stroke);
+                        }
+                    }
                 }
                 if response.clicked() {
                     let mut sel = self.selection.clone();
@@ -3117,6 +3130,11 @@ impl CreaBimApp {
                 painter.circle_stroke(c, 4.0, egui::Stroke::new(1.0, accent));
             } else {
                 snaps::draw_tracked(painter, project, snap, align, c, from.and_then(project));
+            }
+        }
+        if from.is_none() && crate::ghost::shows(tool) {
+            if let Some(g) = crate::ghost::cached(self.doc.model(), level, tool, p, &self.plan) {
+                crate::ghost::draw(painter, &project, &g, accent);
             }
         }
         if tool == Tool::Object {
@@ -5110,6 +5128,11 @@ impl CreaBimApp {
                         self.levels.units_open = true;
                     }
                 }
+                ElementKind::Project(_) => {
+                    if ui.button("Project information…").clicked() {
+                        self.project_open = true;
+                    }
+                }
                 ElementKind::MarkRules(_) => {
                     if ui.button("Mark numbering…").clicked() {
                         self.marks.open = true;
@@ -5952,6 +5975,7 @@ impl eframe::App for CreaBimApp {
         self.templates_window(&ctx);
         self.units_window(&ctx);
         self.settings_window(&ctx);
+        self.project_window(&ctx);
         self.new_project_window(&ctx);
         self.marks_window(&ctx);
         self.graphic_styles_window(&ctx);
@@ -6121,6 +6145,7 @@ fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::TextStyle(_) => "text style",
         ElementKind::SheetTemplate(_) => "sheet template",
         ElementKind::Units(_) => "project units",
+        ElementKind::Project(_) => "project information",
         ElementKind::MarkRules(_) => "mark numbering",
         ElementKind::StylePack(_) => "style pack",
         ElementKind::View(_) => "view",

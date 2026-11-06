@@ -240,10 +240,7 @@ fn main() -> ExitCode {
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "CreaBIM Project".into());
-            let opts = ExportOptions {
-                project_name: name,
-                ..Default::default()
-            };
+            let opts = ExportOptions::for_model(&m, &name);
             std::fs::write(out, export_ifc4(&m, &opts)).map_err(|e| e.to_string())
         }),
         ["plan", input, level, out] => load(input).and_then(|m| {

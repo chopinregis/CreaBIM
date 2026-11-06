@@ -151,6 +151,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::Guide),
             Sep,
             act(
+                "project.info",
+                "Project information",
+                "info",
+                "Name, client, address, site and building: they fill the title blocks and the IFC export",
+            ),
+            act(
                 "levels",
                 "Levels",
                 "level",

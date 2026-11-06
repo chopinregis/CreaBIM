@@ -1697,6 +1697,30 @@ pub fn show(
         }
     }
 
+    // the element a click would place, as a ghost (A7-4)
+    if let (PaneKind::Plan { level }, Some(h), true) = (kind, hover_world, response.hovered()) {
+        if crate::ghost::shows(tool) {
+            let accent = crate::theme::Palette::of(ui.ctx()).accent;
+            match crate::ghost::cached(doc.model(), level, tool, h, state) {
+                Some(g) => {
+                    crate::ghost::draw(&painter, &|p| Some(xf.to_screen(p.truncate())), &g, accent)
+                }
+                None if matches!(tool, Tool::Door | Tool::Window | Tool::Opening) => {
+                    if let Some(at) = response.hover_pos() {
+                        let look =
+                            crate::handles::PillLook::of(&crate::theme::Palette::of(ui.ctx()));
+                        crate::handles::plain_pill(
+                            &painter,
+                            at + Vec2::new(16.0, 18.0),
+                            "Move onto a wall",
+                            &look,
+                        );
+                    }
+                }
+                None => {}
+            }
+        }
+    }
     // the object about to be placed, under the pointer
     if let (Tool::Object, PaneKind::Plan { level }, Some(h)) = (tool, kind, hover_world) {
         if ui.input(|i| !i.modifiers.command && i.key_pressed(egui::Key::Space))

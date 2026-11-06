@@ -26,6 +26,30 @@ impl Default for ExportOptions {
     }
 }
 
+impl ExportOptions {
+    /// The names from the model's project information (A7-5), `fallback`
+    /// (the file's name) for a project without one.
+    pub fn for_model(model: &creabim_core::Model, fallback: &str) -> Self {
+        let p = model
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        let or = |v: &str, d: &str| {
+            if v.trim().is_empty() {
+                d.to_string()
+            } else {
+                v.trim().to_string()
+            }
+        };
+        Self {
+            project_name: or(&p.name, fallback),
+            site_name: or(&p.site_name, "Site"),
+            building_name: or(&p.building_name, "Building"),
+            ..Default::default()
+        }
+    }
+}
+
 /// Marks the hatch in an exported material's description, so CreaBIM
 /// gets it back on import.
 pub(crate) const HATCH_PREFIX: &str = "CreaBIM hatch: ";
@@ -1741,5 +1765,29 @@ fn free_mesh_entity(class: &str) -> (String, String) {
     match crate::classes::ifc4_element_tail(class) {
         Some(tail) => (class.to_ascii_uppercase(), format!(",${tail}")),
         None => ("IFCBUILDINGELEMENTPROXY".into(), ",$,.NOTDEFINED.".into()),
+    }
+}
+
+#[cfg(test)]
+mod project_tests {
+    use super::*;
+
+    #[test]
+    fn options_take_the_projects_names() {
+        let mut doc = creabim_core::Document::new();
+        let o = ExportOptions::for_model(doc.model(), "File name");
+        assert_eq!(o.project_name, "File name");
+        let info = creabim_core::ProjectInfo {
+            name: "Maple Lane House".into(),
+            site_name: "Plot 4".into(),
+            building_name: "House".into(),
+            ..Default::default()
+        };
+        doc.commit(creabim_core::set_project(doc.model(), info))
+            .unwrap();
+        let o = ExportOptions::for_model(doc.model(), "File name");
+        assert_eq!(o.project_name, "Maple Lane House");
+        assert_eq!(o.site_name, "Plot 4");
+        assert_eq!(o.building_name, "House");
     }
 }

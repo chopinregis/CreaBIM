@@ -456,6 +456,7 @@ pub fn build_scene_of(
             | ElementKind::TextStyle(_)
             | ElementKind::SheetTemplate(_)
             | ElementKind::Units(_)
+            | ElementKind::Project(_)
             | ElementKind::MarkRules(_)
             | ElementKind::StylePack(_)
             | ElementKind::ElementType(_)

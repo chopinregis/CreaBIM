@@ -96,6 +96,7 @@ pub const PAGES: &[(&str, &str, &str)] = &[
     page!("Drawing aids", "snaps"),
     page!("Drawing aids", "guides"),
     page!("Drawing aids", "units"),
+    page!("Drawing aids", "project-info"),
     page!("Files and exchange", "files"),
     page!("Files and exchange", "ifc"),
     page!("Files and exchange", "blender"),
@@ -296,6 +297,7 @@ pub fn element_page(kind: &ElementKind) -> &'static str {
             _ => "views",
         },
         ElementKind::Units(_) => "units",
+        ElementKind::Project(_) => "project-info",
         ElementKind::MarkRules(_) => "marks",
         ElementKind::StylePack(_) => "graphic-styles",
     }

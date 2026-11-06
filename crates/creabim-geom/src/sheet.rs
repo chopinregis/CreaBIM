@@ -253,6 +253,27 @@ pub fn field_values(
     v
 }
 
+/// A sheet's title-block values with the project's information (A7-5)
+/// filled in: over the template's defaults, under the sheet's own.
+pub fn frame_values(
+    model: &Model,
+    sheet: &Sheet,
+    template: Option<&SheetTemplate>,
+    title: &str,
+    scales: &str,
+    info: &SheetInfo,
+) -> BTreeMap<String, String> {
+    let mut values = field_values(sheet, template, title, scales, info);
+    if let Some((_, project)) = model.project_info() {
+        for (k, v) in project.fields() {
+            if !sheet.fields.contains_key(k) {
+                values.insert(k.to_string(), v);
+            }
+        }
+    }
+    values
+}
+
 /// Where a sheet's title block sits, mm from its lower left: the
 /// template's drawing, or the built-in block.
 pub fn title_block_bounds(model: &Model, sheet: &Sheet) -> (DVec2, DVec2) {
@@ -317,9 +338,25 @@ pub fn draw_frame(
     scales: &str,
     info: &SheetInfo,
 ) {
+    // the project's information (A7-5): over the template's defaults and
+    // the file's name, under what this sheet sets itself
+    let project = model
+        .project_info()
+        .map(|(_, p)| p.clone())
+        .unwrap_or_default();
+    let named;
+    let info = if project.name.trim().is_empty() {
+        info
+    } else {
+        named = SheetInfo {
+            project: project.name.trim().to_string(),
+            date: info.date.clone(),
+        };
+        &named
+    };
     match template_of(model, sheet) {
         Some(t) => {
-            let values = field_values(sheet, Some(t), title, scales, info);
+            let values = frame_values(model, sheet, Some(t), title, scales, info);
             draw_template(c, sheet, t, &values);
         }
         None => draw_builtin_frame(c, sheet, title, scales, info),
@@ -560,6 +597,45 @@ pub fn sheets_pdf(model: &Model, info: &SheetInfo) -> Vec<u8> {
 mod tests {
     use super::*;
     use creabim_core::sample::sample_house;
+
+    #[test]
+    fn project_information_fills_the_title_block_under_the_sheets_own() {
+        let mut m = sample_house();
+        let info = creabim_core::ProjectInfo {
+            name: "Maple Lane House".into(),
+            client: "A. Client".into(),
+            status: "Tender".into(),
+            ..Default::default()
+        };
+        let mut doc = creabim_core::Document::from_model(m.clone());
+        doc.commit(creabim_core::set_project(doc.model(), info))
+            .unwrap();
+        m = doc.model().clone();
+        let t = SheetTemplate {
+            corner: Default::default(),
+            items: vec![],
+            border: true,
+            fields: vec![
+                ("client".into(), "Client".into()),
+                ("status".into(), "Draft".into()),
+            ],
+            paper: None,
+        };
+        let (_, s) = sheets(&m).into_iter().next().unwrap();
+        let mut s = s.clone();
+        s.fields.insert("status".into(), "Construction".into());
+        let base = SheetInfo {
+            project: "Starter house".into(),
+            date: String::new(),
+        };
+        let v = frame_values(&m, &s, Some(&t), "Plan", "1:100", &base);
+        assert_eq!(
+            v["client"], "A. Client",
+            "the project's client over the template's default"
+        );
+        assert_eq!(v["status"], "Construction", "the sheet's own value wins");
+        assert_eq!(v["job"], "Maple Lane House");
+    }
 
     #[test]
     fn sample_sheets_place_their_views_inside_the_border() {

@@ -109,7 +109,10 @@ impl Element {
             // a missing style falls back to the default look, like materials
             ElementKind::TextStyle(_) => vec![],
             ElementKind::SheetTemplate(_) => vec![],
-            ElementKind::Units(_) | ElementKind::MarkRules(_) | ElementKind::StylePack(_) => vec![],
+            ElementKind::Units(_)
+            | ElementKind::Project(_)
+            | ElementKind::MarkRules(_)
+            | ElementKind::StylePack(_) => vec![],
             // types are soft too: an element whose type is gone keeps its values
             ElementKind::ElementType(_) => vec![],
             // a shaft's top level is soft: without it the shaft stops at
@@ -170,6 +173,7 @@ impl Element {
             ElementKind::TextStyle(_) => "TextStyle",
             ElementKind::SheetTemplate(_) => "SheetTemplate",
             ElementKind::Units(_) => "ProjectUnits",
+            ElementKind::Project(_) => "ProjectInfo",
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
@@ -339,7 +343,7 @@ impl Element {
             ElementKind::Note(n) => n.validate(),
             ElementKind::TextStyle(s) => s.validate(),
             ElementKind::SheetTemplate(t) => t.validate(),
-            ElementKind::Units(_) => Ok(()),
+            ElementKind::Units(_) | ElementKind::Project(_) => Ok(()),
             ElementKind::MarkRules(r) => r.validate(),
             ElementKind::StylePack(p) => p.validate(),
             ElementKind::CropBox(c) => c.validate(),
@@ -416,6 +420,8 @@ pub enum ElementKind {
     Assembly(crate::assembly::Assembly),
     /// The project's units: one per project, read through [`crate::Model::units`].
     Units(crate::units::Units),
+    /// The project's own information (at most one).
+    Project(crate::project::ProjectInfo),
     /// The project's mark numbering rules: at most one per project, read
     /// through [`crate::marks::rules`].
     MarkRules(crate::marks::MarkRules),
@@ -483,6 +489,7 @@ impl ElementKind {
             ElementKind::GridGroup(_) => "GridGroup",
             ElementKind::Assembly(_) => "Assembly",
             ElementKind::Units(_) => "Units",
+            ElementKind::Project(_) => "Project information",
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",

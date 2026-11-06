@@ -1403,6 +1403,7 @@ impl CreaBimApp {
             "new.project" => self.open_new_project(ctx),
             "new.sheet" => self.new_sheet(),
             "levels" => self.open_levels(),
+            "project.info" => self.project_open = true,
             "level.add" => self.add_level_above(),
             "browser.sort" => {
                 if let Some(g) = crate::browser::ViewGroup::from_key(arg) {
@@ -1717,10 +1718,8 @@ impl CreaBimApp {
                 let Some(out) = self.export_to(with_extension(&self.path, "ifc")) else {
                     return;
                 };
-                let opts = creabim_ifc::ExportOptions {
-                    project_name: stem(&self.path),
-                    ..Default::default()
-                };
+                let opts =
+                    creabim_ifc::ExportOptions::for_model(self.doc.model(), &stem(&self.path));
                 let r = std::fs::write(&out, creabim_ifc::export_ifc4(self.doc.model(), &opts));
                 self.report(r, format!("Exported {out}"));
             }

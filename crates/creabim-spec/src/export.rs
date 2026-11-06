@@ -118,7 +118,8 @@ fn covered(model: &Model, e: &Element) -> bool {
         | ElementKind::View(_)
         | ElementKind::Sheet(_)
         | ElementKind::Viewport(_)
-        | ElementKind::Units(_) => true,
+        | ElementKind::Units(_)
+        | ElementKind::Project(_) => true,
         _ => false,
     }
 }
@@ -204,6 +205,7 @@ pub fn export(model: &Model) -> Exported {
         match &e.kind {
             ElementKind::Viewport(_)
             | ElementKind::Units(_)
+            | ElementKind::Project(_)
             | ElementKind::Tag(_)
             | ElementKind::Note(_) => {}
             _ if object_type_key(e).is_some() => {}

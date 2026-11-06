@@ -378,6 +378,117 @@ impl CreaBimApp {
     }
 }
 
+impl CreaBimApp {
+    /// Project information (Manage › Project information, A7-5): a copy is
+    /// edited, and Apply makes it one undo step.
+    pub(super) fn project_window(&mut self, ctx: &egui::Context) {
+        if !self.project_open {
+            self.project_draft = None;
+            return;
+        }
+        let current = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        let mut draft = self.project_draft.take().unwrap_or_else(|| current.clone());
+        let mut open = true;
+        let mut apply = false;
+        let mut close = false;
+        let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
+        egui::Window::new("Project information")
+            .open(&mut open)
+            .default_pos(area.center() - Vec2::new(200.0, 220.0))
+            .constrain_to(area)
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.set_width(400.0);
+                let text = |ui: &mut egui::Ui, label: &str, v: &mut String, hint: &str| {
+                    crate::props::row(ui, label, |ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(v)
+                                .hint_text(hint)
+                                .desired_width(ui.available_width()),
+                        );
+                    });
+                };
+                crate::props::section(ui, "Project");
+                text(ui, "Name", &mut draft.name, "Maple Lane House");
+                text(ui, "Number", &mut draft.number, "Job number");
+                text(ui, "Client", &mut draft.client, "");
+                text(ui, "Status", &mut draft.status, "Planning application");
+                text(ui, "Issue date", &mut draft.issue_date, "");
+                crate::props::section(ui, "Site");
+                text(ui, "Site name", &mut draft.site_name, "");
+                text(ui, "Address", &mut draft.address, "");
+                let degrees = |ui: &mut egui::Ui, label: &str, v: &mut Option<f64>, range: f64| {
+                    crate::props::row(ui, label, |ui| {
+                        let mut on = v.is_some();
+                        if ui.checkbox(&mut on, "").changed() {
+                            *v = on.then_some(0.0);
+                        }
+                        if let Some(d) = v {
+                            ui.add(
+                                egui::DragValue::new(d)
+                                    .range(-range..=range)
+                                    .speed(0.0001)
+                                    .max_decimals(6)
+                                    .suffix("°"),
+                            );
+                        }
+                    });
+                };
+                degrees(ui, "Latitude", &mut draft.latitude, 90.0);
+                degrees(ui, "Longitude", &mut draft.longitude, 180.0);
+                crate::props::row(ui, "Elevation", |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut draft.elevation)
+                            .speed(0.01)
+                            .suffix(" m"),
+                    )
+                    .on_hover_text("The project's zero above sea level");
+                });
+                crate::props::row(ui, "True north", |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut draft.true_north)
+                            .range(-180.0..=180.0)
+                            .speed(0.5)
+                            .suffix("°"),
+                    )
+                    .on_hover_text("How far true north turns from the drawings' up, anticlockwise");
+                });
+                crate::props::section(ui, "Building");
+                text(ui, "Name", &mut draft.building_name, "");
+                text(ui, "Use", &mut draft.building_use, "Dwelling");
+                ui.label(
+                    egui::RichText::new(
+                        "These fill the title blocks of every sheet (a value a sheet sets itself still wins) and name the project, site and building in IFC exports.",
+                    )
+                    .weak(),
+                );
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    apply = ui
+                        .add_enabled(draft != current, egui::Button::new("Apply"))
+                        .clicked();
+                    close = ui.button("Close").clicked();
+                });
+            });
+        if apply {
+            let tx = creabim_core::set_project(self.doc.model(), draft.clone());
+            let r = self.doc.commit(tx);
+            self.report(
+                r,
+                "Project information applied: the title blocks show it now.".to_string(),
+            );
+        }
+        self.project_open = open && !close;
+        self.project_draft = self.project_open.then_some(draft);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

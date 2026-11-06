@@ -68,6 +68,14 @@ impl Model {
         }
     }
 
+    /// The project's information element, if it has one.
+    pub fn project_info(&self) -> Option<(crate::ElementId, &crate::ProjectInfo)> {
+        self.iter().find_map(|e| match &e.kind {
+            ElementKind::Project(p) => Some((e.id, p)),
+            _ => None,
+        })
+    }
+
     /// The project's units: from its units element, millimetres when it
     /// has none (as every file from before units were added).
     pub fn units(&self) -> crate::Units {
