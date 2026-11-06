@@ -6366,7 +6366,7 @@ mod title_tests {
     #[test]
     fn the_title_names_the_project_marks_unsaved_and_the_test_version() {
         let v = env!("CARGO_PKG_VERSION");
-        let saved = window_title(r"C:\Projects\Starter house.creabim", false);
+        let saved = window_title("projects/Starter house.creabim", false);
         assert!(saved.starts_with("Starter house — CreaBIM"), "{saved}");
         if v.starts_with("0.") {
             assert!(saved.ends_with(" beta"), "{saved}");
