@@ -426,6 +426,11 @@ pub struct Modal {
     pub space: Space,
     /// The pane that runs it: a view, or `None` for the 3D view.
     pub pane: Option<ElementId>,
+    /// The area (its interaction id) that runs it, once one has taken it:
+    /// two areas can show the same view, and only one may run the move
+    /// and draw its bar, or the other moved the elements with its own
+    /// camera and no pointer, out of sight.
+    pub owner: Option<egui::Id>,
     pub flow: Flow,
     stage: Stage,
     /// The point things turn and scale about.
@@ -601,6 +606,7 @@ impl Modal {
             face: None,
             space,
             pane,
+            owner: None,
             flow: Flow::Keys,
             stage: Stage::Follow,
             pivot,

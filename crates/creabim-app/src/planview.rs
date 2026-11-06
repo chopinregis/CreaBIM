@@ -1362,13 +1362,6 @@ pub fn show(
                 return r;
             }
         }
-        // a level line or head in a section drags the level up and down
-        if let (PaneKind::Section { .. }, Tool::Select) = (kind, tool) {
-            let snapped = tool_snap.filter(|s| !shift && s.kind != SnapKind::Grid);
-            if let Some(r) = drag_level(doc, plan, &xf, &response, state, selection, mm, snapped) {
-                return r;
-            }
-        }
         if tool == Tool::Select {
             let level_z = match kind {
                 PaneKind::Plan { level } => doc.model().level(level).map_or(0.0, |l| l.elevation),
@@ -1456,6 +1449,15 @@ pub fn show(
         }
     }
 
+    // a level line or head in a section drags the level up and down; after
+    // the selection's grips, so a wall's top grip lying on a level line
+    // moves the wall's top, not the level
+    if let (PaneKind::Section { .. }, Tool::Select) = (kind, tool) {
+        let snapped = tool_snap.filter(|s| !shift && s.kind != SnapKind::Grid);
+        if let Some(r) = drag_level(doc, plan, &xf, &response, state, selection, mm, snapped) {
+            return r;
+        }
+    }
     // a selected section line in a plan can be dragged by its ends or middle
     if let (PaneKind::Plan { .. }, Tool::Select) = (kind, tool) {
         if let Some(r) = drag_section_line(doc, &painter, &xf, &response, state, selection.active) {
@@ -3174,7 +3176,17 @@ fn keyboard_edits(
     pick: &dyn Fn(Pos2) -> Option<ElementId>,
 ) -> Option<Option<String>> {
     let shift = ui.input(|i| i.modifiers.shift);
-    if let Some(m) = state.modal.as_mut().filter(|m| m.pane == Some(view)) {
+    // the area that runs this view's move: the one that took it, else the
+    // one under the pointer takes it now
+    let mine = |m: &Modal| {
+        m.pane == Some(view)
+            && match m.owner {
+                Some(o) => o == response.id,
+                None => response.hovered(),
+            }
+    };
+    if let Some(m) = state.modal.as_mut().filter(|m| mine(m)) {
+        m.owner = Some(response.id);
         // Shift+click while the base point is picked adds or takes away
         if m.stage() == Stage::Base && shift && response.clicked() {
             if let Some(id) = response.interact_pointer_pos().and_then(pick) {
