@@ -5439,6 +5439,142 @@ fn rest_on(
 
 #[cfg(test)]
 mod tests {
+    /// Two areas showing the same plan, side by side, share the drag; a
+    /// drag started in one goes on every frame until the button is let go
+    /// (the owner's MU16 report: in plan the drag only moved at the press
+    /// and the release, because the other area ended it after one frame).
+    #[test]
+    fn a_drag_in_one_of_two_plan_areas_follows_the_pointer() {
+        use eframe::egui::{Pos2, Rect};
+        crate::units::set(creabim_core::Units::metric());
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let (view, level) = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) if e.name == "Ground Floor plan" => match v.kind {
+                    ViewKind::Plan { level, .. } => Some((e.id, level)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        let wall = creabim_core::Element::new(
+            "Probe",
+            ElementKind::Wall(creabim_core::Wall::new(
+                level,
+                DVec2::new(30.0, 0.0),
+                DVec2::new(34.0, 0.0),
+                0.2,
+                3.0,
+            )),
+        );
+        let id = wall.id;
+        doc.commit(creabim_core::Transaction::new("probe").insert(wall))
+            .unwrap();
+        let ctx = egui::Context::default();
+        let mut state = PlanState::default();
+        state.cameras.insert(view, (DVec2::new(32.0, 1.5), 100.0));
+        let mut sel = crate::selection::Selection::default();
+        sel.only(id);
+        let left = Rect::from_min_size(Pos2::ZERO, egui::vec2(1000.0, 800.0));
+        let right = Rect::from_min_size(Pos2::new(1000.0, 0.0), egui::vec2(1000.0, 800.0));
+        let xf = Xf {
+            rect: left,
+            center: DVec2::new(32.0, 1.5),
+            scale: 100.0,
+        };
+        let end = xf.to_screen(DVec2::new(34.0, 0.0));
+        let mut t = 0.0;
+        let mut frame = |events: Vec<egui::Event>,
+                         doc: &mut creabim_core::Document,
+                         state: &mut PlanState,
+                         sel: &mut crate::selection::Selection| {
+            t += 1.0 / 60.0;
+            let raw = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(2000.0, 800.0))),
+                events,
+                time: Some(t),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(raw, |ui| {
+                for (i, rect) in [left, right].into_iter().enumerate() {
+                    ui.push_id(("area", i), |ui| {
+                        let d = creabim_geom::section::view_drawing_with(doc.model(), view, false)
+                            .unwrap();
+                        let style = PaneStyle {
+                            background: None,
+                            decorations: false,
+                            camera: None,
+                            scale: 50.0,
+                        };
+                        show(
+                            ui,
+                            rect,
+                            doc,
+                            view,
+                            PaneKind::Plan { level },
+                            &d,
+                            state,
+                            sel,
+                            style,
+                        );
+                    });
+                }
+            });
+            out.textures_delta.clear();
+        };
+        let length = |doc: &creabim_core::Document| match &doc.model().get(id).unwrap().kind {
+            ElementKind::Wall(w) => w.length(),
+            _ => 0.0,
+        };
+        frame(
+            vec![egui::Event::PointerMoved(end)],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        frame(
+            vec![egui::Event::PointerMoved(end)],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        frame(
+            vec![egui::Event::PointerButton {
+                pos: end,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            }],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        let mut seen = std::collections::BTreeSet::new();
+        for dx in 1..=40 {
+            let p = end + egui::vec2(dx as f32, 0.0);
+            frame(
+                vec![egui::Event::PointerMoved(p)],
+                &mut doc,
+                &mut state,
+                &mut sel,
+            );
+            seen.insert((length(&doc) * 1e4).round() as i64);
+        }
+        // free (grid snap off by default): a new length nearly every pixel
+        assert!(
+            seen.len() > 30,
+            "the wall took only {} lengths over 40 px",
+            seen.len()
+        );
+        assert!(
+            (length(&doc) - 4.4).abs() < 0.02,
+            "ended at {}",
+            length(&doc)
+        );
+    }
+
     #[test]
     fn guide_lines_go_when_nothing_uses_them() {
         let view = ElementId::new();

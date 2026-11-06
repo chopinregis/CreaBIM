@@ -1612,6 +1612,12 @@ pub struct Drag {
     /// A length being typed (Tab, or a digit, starts it): the grip goes
     /// that far from where it was grabbed, the way the pointer went.
     typed: Option<String>,
+    /// The pane (its interaction id) the drag started in. Every pane runs
+    /// [`interact`] with the one shared drag; only this one may go on with
+    /// it or end it. Without this, a second area showing a plan saw "my
+    /// pane isn't dragged" and ended the drag after its first frame, so 2D
+    /// drags only moved at the press and at the release.
+    owner: egui::Id,
 }
 
 /// The corners and holes picked in Edit mode, on the element being
@@ -3342,6 +3348,7 @@ pub fn interact(
                 press,
                 last: grab,
                 typed: None,
+                owner: response.id,
             });
         }
     }
@@ -3350,6 +3357,10 @@ pub fn interact(
         grips.typing = false;
         return false;
     };
+    // another pane's drag: leave it to that pane
+    if d.owner != response.id {
+        return false;
+    }
     // Tab, or a digit, starts typing a length
     let typed_now = ctx.input_mut(|i| {
         let tab = i.consume_key(egui::Modifiers::NONE, egui::Key::Tab);
