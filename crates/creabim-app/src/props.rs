@@ -165,17 +165,17 @@ pub fn switch(ui: &mut Ui, on: &mut bool, label: impl Into<egui::WidgetText>) ->
             egui::pos2(rect.right() - sw.x / 2.0 - 2.0, rect.center().y),
             sw,
         );
-        paint_switch(ui, r, *on, resp.hovered() && enabled, enabled);
+        paint_switch(ui, resp.id, r, *on, resp.hovered() && enabled, enabled);
     }
     resp
 }
 
 /// Paint a switch in `r`: a rounded track, accent when on, with its knob.
-pub fn paint_switch(ui: &Ui, r: egui::Rect, on: bool, hovered: bool, enabled: bool) {
+/// `id` is the switch's own, so its slide animates when it is flipped and
+/// never when the panel scrolls it (MU19).
+pub fn paint_switch(ui: &Ui, id: egui::Id, r: egui::Rect, on: bool, hovered: bool, enabled: bool) {
     let v = ui.visuals();
-    let t = ui
-        .ctx()
-        .animate_bool_responsive(ui.id().with(r.min.x as i32).with(r.min.y as i32), on);
+    let t = ui.ctx().animate_bool_responsive(id.with("switch"), on);
     let accent = v.selection.stroke.color;
     let off = v.widgets.inactive.bg_fill;
     let mut track = lerp(off, accent, t);

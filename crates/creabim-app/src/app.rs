@@ -4338,6 +4338,28 @@ impl CreaBimApp {
             )
             .weak(),
         );
+        // an object's own make: its size and how it is fixed (MU19)
+        if tool == Tool::Object {
+            if let Some(c) = &self.plan.objects.current {
+                let (lo, hi) = c.object.bounds();
+                let s = hi - lo;
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{}: {} × {} × {}, {}",
+                        c.name,
+                        crate::units::len(s.x),
+                        crate::units::len(s.y),
+                        crate::units::len(s.z),
+                        match c.object.mount {
+                            creabim_core::objects::Mount::Wall => "on a wall",
+                            creabim_core::objects::Mount::Floor => "on the floor",
+                            creabim_core::objects::Mount::Ceiling => "hung from the ceiling",
+                        }
+                    ))
+                    .weak(),
+                );
+            }
+        }
         ui.add_space(4.0);
         let mut set: Vec<(String, f64)> = vec![];
         let mut act: Vec<String> = vec![];
@@ -4367,6 +4389,11 @@ impl CreaBimApp {
                 });
                 if changed {
                     set.push((key, v));
+                }
+            } else if o["action"].as_bool().unwrap_or(false) {
+                // a step, not a setting: a button
+                if ui.button(label).on_hover_text(hint).clicked() {
+                    act.push(o["id"].as_str().unwrap_or("").to_string());
                 }
             } else {
                 let mut on = o["on"].as_bool().unwrap_or(false);

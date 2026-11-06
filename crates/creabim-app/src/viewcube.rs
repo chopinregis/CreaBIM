@@ -407,16 +407,40 @@ impl ViewCube {
         ortho: bool,
     ) -> (Option<Pick>, Option<Nav>) {
         let s = 25.0;
-        let c = Pos2::new(rect.right() - 70.0, rect.top() + 70.0);
-        let area = Rect::from_center_size(c + Vec2::new(-16.0, 13.0), Vec2::new(164.0, 152.0));
+        // the buttons in a boxed column at the area's right edge, as in
+        // the 2D areas, the cube to their left (MU19)
+        let col_x = rect.right() - 24.0;
+        let c = Pos2::new(col_x - 96.0, rect.top() + 72.0);
+        let area = Rect::from_min_max(
+            Pos2::new(c.x - 80.0, rect.top() + 4.0),
+            Pos2::new(rect.right() - 4.0, rect.top() + 172.0),
+        );
         if !rect.contains_rect(area) {
             self.area = None;
             return (None, None);
         }
         self.area = Some(area);
         let response = ui.interact(area, ui.id().with("viewcube"), Sense::click_and_drag());
-        let painter = ui.painter_at(rect);
+        let mut painter = ui.painter_at(rect);
         let hover = response.hover_pos();
+        // faded until the pointer comes near or it is in use
+        let near = ui
+            .input(|i| i.pointer.hover_pos())
+            .is_some_and(|h| area.expand(40.0).contains(h))
+            || self.grab.is_some();
+        painter.multiply_opacity(if near { 1.0 } else { 0.45 });
+        // the buttons' box
+        let column = Rect::from_center_size(
+            Pos2::new(col_x, rect.top() + 20.0 + 2.5 * 26.0),
+            Vec2::new(32.0, 6.0 * 26.0 + 10.0),
+        );
+        painter.rect(
+            column,
+            8.0,
+            Color32::from_rgba_unmultiplied(255, 255, 255, 235),
+            Stroke::new(1.0, Color32::from_rgb(214, 217, 221)),
+            egui::StrokeKind::Inside,
+        );
         let (right, up, toward) = axes(cam);
         let to_screen = |p: Vec3| c + Vec2::new(p.dot(right), -p.dot(up)) * s;
 
@@ -511,10 +535,13 @@ impl ViewCube {
                 .collect();
             painter.add(Shape::convex_polygon(face, face_fill, Stroke::NONE));
         }
+        // a lit edge or corner is see-through enough for the face's name
+        // to read under it (MU19)
         for cell in all.iter().filter(|c| hovered_zone == Some(c.zone)) {
+            let whole_face = FACES.get(cell.face).is_some_and(|f| f.0 == cell.zone);
             painter.add(Shape::convex_polygon(
                 cell.points.clone(),
-                accent.gamma_multiply(0.85),
+                accent.gamma_multiply(if whole_face { 0.85 } else { 0.45 }),
                 Stroke::NONE,
             ));
         }
@@ -546,11 +573,27 @@ impl ViewCube {
                     ink.gamma_multiply(0.35 + 0.65 * fade)
                 };
                 let width = 1.15 + 0.35 * facing;
-                for st in label_strokes(label) {
-                    let pts: Vec<Pos2> = st
-                        .iter()
-                        .map(|(a, b)| to_screen(n3 + lu * *a + lv * *b))
-                        .collect();
+                let strokes: Vec<Vec<Pos2>> = label_strokes(label)
+                    .iter()
+                    .map(|st| {
+                        st.iter()
+                            .map(|(a, b)| to_screen(n3 + lu * *a + lv * *b))
+                            .collect()
+                    })
+                    .collect();
+                // a light halo first, so a lit edge never swallows the name
+                if !lit {
+                    for pts in &strokes {
+                        painter.add(Shape::line(
+                            pts.clone(),
+                            Stroke::new(
+                                width + 2.4,
+                                Color32::from_rgba_unmultiplied(255, 255, 255, 170),
+                            ),
+                        ));
+                    }
+                }
+                for pts in strokes {
                     painter.add(Shape::line(pts, Stroke::new(width, colour)));
                 }
             }
@@ -607,7 +650,7 @@ impl ViewCube {
             ),
         ];
         for (k, (what, hint)) in buttons.into_iter().enumerate() {
-            let at = c + Vec2::new(-84.0, -50.0 + 25.0 * k as f32);
+            let at = Pos2::new(col_x, rect.top() + 14.0 + 6.0 + 26.0 * k as f32);
             let held = self.grab.is_some_and(|g| {
                 matches!(
                     (g, what),

@@ -1571,8 +1571,14 @@ pub fn show(
         if response.drag_started_by(egui::PointerButton::Primary) {
             let origin = ui.input(|i| i.pointer.press_origin());
             if let Some(p0) = origin {
-                let on_item = hit_test(&plan.items, xf.to_world(p0), 6.0 / scale as f64, mm);
-                if on_item.is_none() || footing_box {
+                // as in Revit: a drag starts a box unless it starts on
+                // something selected (that drag moves it); grid lines,
+                // dimensions and the rest under the press don't stop it
+                // (MU19)
+                let on_selected = hit_all(&plan.items, xf.to_world(p0), 6.0 / scale as f64, mm)
+                    .into_iter()
+                    .any(|id| selection.contains(id));
+                if !on_selected || footing_box {
                     state.boxsel = Some(p0);
                 }
             }

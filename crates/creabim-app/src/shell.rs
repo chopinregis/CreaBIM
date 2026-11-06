@@ -341,10 +341,27 @@ impl CreaBimApp {
             }
             c => c.label().into(),
         };
+        let running = self
+            .plan
+            .modal
+            .as_ref()
+            .map(|m| m.mode)
+            .or(self.plan.armed.map(|a| a.0))
+            .is_some_and(|m| {
+                matches!(
+                    (m, c),
+                    (crate::modal::Mode::Move, Command::Move)
+                        | (crate::modal::Mode::Rotate, Command::Rotate)
+                        | (crate::modal::Mode::Scale, Command::Scale)
+                        | (crate::modal::Mode::Mirror, Command::Mirror)
+                        | (crate::modal::Mode::Offset, Command::Offset)
+                )
+            });
         Item::new(format!("cmd:{c:?}"), label)
             .key(c.shortcut())
             .enabled(enabled)
             .icon(command_icon(c))
+            .checked(running)
     }
 
     /// The items of a menu or dropdown, by its key.
@@ -2044,8 +2061,16 @@ impl CreaBimApp {
         }
         if let Some((m, _)) = self.plan.armed {
             let verb = format!("{m:?}");
+            let icon = match m {
+                crate::modal::Mode::Move => "move",
+                crate::modal::Mode::Rotate => "rotate-cw",
+                crate::modal::Mode::Scale => "scaling",
+                crate::modal::Mode::Mirror => "flip-horizontal-2",
+                crate::modal::Mode::Offset => "copy-plus",
+                crate::modal::Mode::Grip => "spline",
+            };
             return (
-                json!({"label": verb, "icon": "move", "hint": self.status}),
+                json!({"label": verb, "icon": icon, "hint": self.status}),
                 options,
             );
         }
@@ -2273,7 +2298,11 @@ impl CreaBimApp {
             let i = Tool::ALL.iter().position(|x| *x == t).unwrap_or(0);
             json!({
                 "kind": "tool", "id": format!("tool:{i}"), "label": t.label(), "hint": t.hint(),
-                "icon": tool_icon(t), "active": self.plan.tool == t,
+                // while Move, Rotate and the rest wait or run, it is
+                // their button that is lit, not Select's (MU19)
+                "icon": tool_icon(t),
+                "active": self.plan.tool == t
+                    && !(t == Tool::Select && (self.plan.armed.is_some() || self.plan.modal.is_some())),
             })
         };
         let mut tools: Vec<Value> = crate::tooltabs::ALWAYS.iter().map(|t| tool(*t)).collect();

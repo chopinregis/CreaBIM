@@ -811,6 +811,7 @@ impl CreaBimApp {
                     c.name
                 );
                 self.plan.objects.current = Some(*c);
+                self.plan.objects.offset = None;
                 self.plan.objects.project_type = own;
                 self.plan.cancel();
                 self.plan.tool = Tool::Object;

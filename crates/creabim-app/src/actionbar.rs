@@ -97,7 +97,8 @@ impl CreaBimApp {
         }
         // a view not shown in the drawing area opens from here (A4-1)
         if alone
-            && matches!(e.kind, ElementKind::View(_) | ElementKind::Sheet(_))
+            // (views have their own Open view below)
+            && matches!(e.kind, ElementKind::Sheet(_))
             && self.active_view != Some(id)
         {
             out.push(

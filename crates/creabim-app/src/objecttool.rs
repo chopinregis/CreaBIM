@@ -28,6 +28,9 @@ pub struct ObjectSettings {
     pub rotation: f64,
     /// Snap to walls (for those that stand against them).
     pub free: bool,
+    /// How high the next one sits above its floor (or below the ceiling,
+    /// hung), when set before placing; none takes its type's (MU19).
+    pub offset: Option<f64>,
 }
 
 /// How an object went against a wall.
@@ -108,6 +111,18 @@ pub fn click(
         None => objects::place(doc.model(), &c, level, at, rotation),
     };
     doc.commit(tx)?;
+    // a height set before placing (MU19), in the same undo step
+    if let Some(off) = state.objects.offset {
+        if let Some(e) = doc.model().get(id).cloned() {
+            let mut now = e.clone();
+            if let ElementKind::Object(o) = &mut now.kind {
+                o.offset = off;
+            }
+            if now != e {
+                doc.commit_merged(creabim_core::Transaction::new("Place").replace(e, now))?;
+            }
+        }
+    }
     selection.only(id);
     state.status = Some(if walled.blocked {
         format!(
@@ -223,7 +238,7 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
     vec![
         json!({
             "kind": "toggle", "id": "object:catalogue", "label": s.current.as_ref().map_or("Pick an object…".to_string(), |c| c.name.clone()),
-            "on": false, "icon": "sofa",
+            "on": false, "icon": "sofa", "action": true,
             "hint": "The object placed: pick another in the Catalogue window",
         }),
         json!({
@@ -233,7 +248,13 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
         }),
         json!({
             "kind": "toggle", "id": "object:turn", "label": "Turn 90°", "on": false,
-            "icon": "rotate-cw", "hint": "Turn the next object a quarter (also the Space key)",
+            "icon": "rotate-cw", "action": true, "hint": "Turn the next object a quarter (also the Space key)",
+        }),
+        json!({
+            "kind": "number", "key": "object.offset", "label": "Above floor",
+            "value": s.offset.or(s.current.as_ref().map(|c| c.object.offset)).unwrap_or(0.0),
+            "unit": "m", "step": 0.01, "min": -20.0, "max": 20.0,
+            "hint": "How high it sits above its floor (for one hung from the ceiling, how far below it)",
         }),
         json!({
             "kind": "toggle", "id": "object:free", "label": "Free of walls", "on": s.free,
@@ -257,8 +278,10 @@ pub fn toggle_option(state: &mut PlanState, what: &str) -> bool {
 
 /// A number typed in the tool bar.
 pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
-    if key == "object.rotation" {
-        state.objects.rotation = v.rem_euclid(360.0);
+    match key {
+        "object.rotation" => state.objects.rotation = v.rem_euclid(360.0),
+        "object.offset" => state.objects.offset = Some(v),
+        _ => {}
     }
 }
 
