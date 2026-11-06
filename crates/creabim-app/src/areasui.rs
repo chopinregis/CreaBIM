@@ -262,6 +262,9 @@ impl CreaBimApp {
         // how long each area took, logged while something is dragged, to
         // find what makes a drag slow (MU18)
         let mut timings: Vec<String> = vec![];
+        // the first area showing a view has its shared camera; another
+        // showing it too has its own, unless linked (A4-4)
+        let mut seen: std::collections::HashSet<ElementId> = Default::default();
         for (i, (r, s)) in rects.iter().zip(&shows).enumerate() {
             if !r.is_positive() {
                 bodies.push(Rect::NOTHING);
@@ -281,7 +284,10 @@ impl CreaBimApp {
                     let keep = self.rect_2d;
                     // two areas may show the same drawing
                     let t = std::time::Instant::now();
+                    let own = !seen.insert(*v) && !self.plan.linked_areas.contains(&i);
+                    self.plan.area = own.then_some(i);
                     ui.push_id(("area", i), |ui| self.show_plan(ui, body, background));
+                    self.plan.area = None;
                     timings.push(format!(
                         "area {i} {:.1}",
                         t.elapsed().as_secs_f64() * 1000.0
@@ -576,6 +582,14 @@ impl CreaBimApp {
             [head.left_bottom(), head.right_bottom()],
             egui::Stroke::new(1.0, p.border),
         );
+        // a linked area shows a small link by its right end (A4-4)
+        if self.plan.linked_areas.contains(&i) && self.shows_twice(i) {
+            let r = Rect::from_center_size(
+                egui::pos2(head.right() - 92.0, head.center().y),
+                egui::vec2(14.0, 14.0),
+            );
+            crate::svgicon::paint(ui.painter(), r, "link", p.accent);
+        }
         let focused = i == self.areas.focus && self.areas.root.len() > 1;
         if focused {
             ui.painter().line_segment(
@@ -879,13 +893,36 @@ impl CreaBimApp {
                 .key("Ctrl+Space")
                 .checked(self.areas.max == Some(i))
                 .icon("maximize-2"),
+            Item::new(format!("area.link:{i}"), "Pan and zoom with the other area of this view")
+                .checked(self.plan.linked_areas.contains(&i))
+                .icon("link")
+                .enabled(self.shows_twice(i))
+                .hint("Two areas showing the same view move apart by default (a detail close up, the whole beside it); linked, they move together"),
         ]
+    }
+
+    /// Does another area show the view area `i` shows?
+    fn shows_twice(&self, i: usize) -> bool {
+        let shows = self.areas.root.areas();
+        match shows.get(i) {
+            Some(Shows::View(v)) => shows
+                .iter()
+                .enumerate()
+                .any(|(j, s)| j != i && *s == Shows::View(*v)),
+            _ => false,
+        }
     }
 
     /// Run an area or workspace action; false when `head` is not one.
     pub(super) fn area_action(&mut self, head: &str, arg: &str) -> bool {
         let nums: Vec<usize> = arg.split(':').filter_map(|s| s.parse().ok()).collect();
         match head {
+            "area.link" => {
+                let i = nums.first().copied().unwrap_or(self.areas.focus);
+                if !self.plan.linked_areas.remove(&i) {
+                    self.plan.linked_areas.insert(i);
+                }
+            }
             "area.max" => {
                 let i = nums.first().copied().unwrap_or(self.areas.focus);
                 self.areas.max = if self.areas.max == Some(i) {
@@ -1276,5 +1313,15 @@ mod tests {
         assert_eq!(app.areas.workspace, "Drawing");
         app.step_workspace(-2);
         assert_eq!(app.areas.workspace, "Sheets");
+    }
+
+    #[test]
+    fn an_area_can_be_linked_and_unlinked() {
+        let mut app = crate::app::test_app();
+        assert!(app.plan.linked_areas.is_empty());
+        assert!(app.area_action("area.link", "1"));
+        assert!(app.plan.linked_areas.contains(&1));
+        assert!(app.area_action("area.link", "1"));
+        assert!(!app.plan.linked_areas.contains(&1));
     }
 }

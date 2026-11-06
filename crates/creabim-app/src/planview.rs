@@ -314,6 +314,12 @@ enum Handle {
 pub struct PlanState {
     /// Pan and zoom per view: centre in drawing units, pixels per metre.
     pub cameras: HashMap<ElementId, (DVec2, f32)>,
+    /// A second area showing the same view pans and zooms on its own
+    /// (A4-4): the area being drawn when it does, and those cameras.
+    pub area: Option<usize>,
+    pub area_cameras: HashMap<(usize, ElementId), (DVec2, f32)>,
+    /// Areas kept in step with the first area showing their view.
+    pub linked_areas: std::collections::HashSet<usize>,
     /// What the pane under the pointer does, for the status bar.
     pub hint: Option<&'static str>,
     pub tool: Tool,
@@ -504,6 +510,9 @@ impl Default for PlanState {
     fn default() -> Self {
         Self {
             cameras: HashMap::new(),
+            area: None,
+            area_cameras: HashMap::new(),
+            linked_areas: Default::default(),
             hint: None,
             tool: Tool::Select,
             pending: None,
@@ -708,7 +717,14 @@ pub fn show(
 
     let (mut center, mut scale) = match style.camera {
         Some(c) => c,
-        None => *state.cameras.entry(view).or_insert_with(|| fit(plan, rect)),
+        None => {
+            let shared = *state.cameras.entry(view).or_insert_with(|| fit(plan, rect));
+            match state.area {
+                // its own, starting where the first area is
+                Some(a) => *state.area_cameras.entry((a, view)).or_insert(shared),
+                None => shared,
+            }
+        }
     };
     let tool = match (kind, state.tool) {
         (PaneKind::Axonometric, Tool::Tag) => Tool::Tag,
@@ -773,7 +789,14 @@ pub fn show(
         }
     }
     if style.camera.is_none() {
-        state.cameras.insert(view, (center, scale));
+        match state.area {
+            Some(a) => {
+                state.area_cameras.insert((a, view), (center, scale));
+            }
+            None => {
+                state.cameras.insert(view, (center, scale));
+            }
+        }
     }
     let xf = Xf {
         rect,

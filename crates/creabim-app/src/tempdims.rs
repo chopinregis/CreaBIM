@@ -25,6 +25,9 @@ pub enum How {
     /// A door or window slides along its wall; the value is the gap on its
     /// start side or its end side.
     Along { start_side: bool },
+    /// A wall's own length (A4-7): typing it moves its `end` (else its
+    /// start), the end nearer the middle of the view.
+    Length { end: bool },
 }
 
 /// One temporary dimension, in the plan's drawing.
@@ -122,7 +125,9 @@ pub fn find(model: &Model, level: ElementId, id: ElementId, near: DVec2) -> Vec<
                     continue;
                 }
                 let off = (r - p).dot(n0);
-                if off.abs() < 0.001 {
+                // a neighbour more than 10 m off measures nothing useful
+                // (A4-7)
+                if off.abs() < 0.001 || off.abs() > 10.0 {
                     continue;
                 }
                 let other_is_grid =
@@ -166,7 +171,29 @@ pub fn find(model: &Model, level: ElementId, id: ElementId, near: DVec2) -> Vec<
                     },
                 ));
             }
-            best.into_iter().flatten().map(|(_, d)| d).collect()
+            let mut out: Vec<TempDim> = best.iter().flatten().map(|(_, d)| d.clone()).collect();
+            // a wall always shows its own length, beside it on the side
+            // with no gap shown (A4-7)
+            if let ElementKind::Wall(w) = &e.kind {
+                let side = if best[0].is_some() && best[1].is_none() {
+                    -1.0
+                } else {
+                    1.0
+                };
+                let off = n0 * side * (w.thickness / 2.0 + 0.6);
+                let end = (near - q).length() < (near - p).length();
+                out.push(TempDim {
+                    owner: id,
+                    other: None,
+                    a: p + off,
+                    b: q + off,
+                    value: len,
+                    how: How::Length { end },
+                    held: None,
+                    to: "its length".into(),
+                });
+            }
+            out
         }
         ElementKind::Column(c) => {
             let at = c.position;
@@ -293,6 +320,32 @@ pub fn set(model: &Model, d: &TempDim, value: f64) -> Result<(Transaction, Strin
                     dim.held = Some(value);
                 }
                 tx = tx.replace(h.clone(), now);
+            }
+        }
+        How::Length { end } => {
+            // the end moves as its grip would, walls joined to it following
+            let kind = crate::handles::HandleKind::WallEnd { end };
+            let ElementKind::Wall(w) = &e.kind else {
+                return Err("It is not a wall.".into());
+            };
+            let (from, dir) = if end {
+                (w.end, w.direction())
+            } else {
+                (w.start, -w.direction())
+            };
+            let z = model.level(w.level).map_or(0.0, |l| l.elevation);
+            let (orig, joined) = crate::handles::originals(model, d.owner, kind);
+            let out = crate::handles::apply(
+                model,
+                &orig,
+                &joined,
+                kind,
+                from.extend(z),
+                (from + dir * delta).extend(z),
+                0.0,
+            )?;
+            for (o, now) in orig.into_iter().zip(out) {
+                tx = tx.replace(o, now);
             }
         }
         How::Along { start_side } => {
@@ -527,8 +580,37 @@ pub fn interact(
         .input(|i| i.pointer.hover_pos())
         .filter(|p| response.rect.contains(*p));
     let mut clicked: Option<(usize, bool)> = None;
+    // grips win over values (A4-7): where a value box would come within
+    // 12 px of a grip, the dimension line steps further out
+    let grips: Vec<Pos2> = crate::handles::handles_in(doc.model(), id, None, false)
+        .iter()
+        .map(|h| xf.to_screen(h.at.truncate()))
+        .collect();
     for (i, d) in dims.iter().enumerate() {
-        let (a, b) = (xf.to_screen(d.a), xf.to_screen(d.b));
+        let (mut a, mut b) = (xf.to_screen(d.a), xf.to_screen(d.b));
+        let out = {
+            let from = a;
+            let n = Vec2::new(-(b - a).y, (b - a).x).normalized();
+            // away from the element's middle
+            let mid =
+                grips.iter().fold(Vec2::ZERO, |s, g| s + g.to_vec2()) / grips.len().max(1) as f32;
+            if (from.to_vec2() - mid).dot(n) < 0.0 {
+                -n
+            } else {
+                n
+            }
+        };
+        let text_w = bare(d.value).len() as f32 * 7.0 + 30.0;
+        for _ in 0..4 {
+            let mid = a + (b - a) / 2.0;
+            let boxed = Rect::from_center_size(mid, Vec2::new(text_w, 20.0)).expand(12.0);
+            if !grips.iter().any(|g| boxed.contains(*g)) {
+                break;
+            }
+            a += out * 20.0;
+            b += out * 20.0;
+        }
+        let (a, b) = (a, b);
         let along = (b - a).normalized();
         let tick = Vec2::new(-along.y, along.x) * 5.0;
         let stroke = Stroke::new(1.2, ink);
@@ -718,6 +800,35 @@ mod tests {
             ElementKind::Wall(w) => w.start.x,
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn a_wall_shows_its_length_and_typing_it_lengthens_the_wall() {
+        let m = creabim_core::sample::sample_house();
+        let (id, level, len) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Wall(w) => Some((e.id, w.level, w.length())),
+                _ => None,
+            })
+            .unwrap();
+        let dims = find(&m, level, id, DVec2::new(1e3, 1e3));
+        let d = dims
+            .iter()
+            .find(|d| matches!(d.how, How::Length { .. }))
+            .expect("a wall's own length");
+        assert!((d.value - len).abs() < 1e-9);
+        // no gap to anything more than 10 m away
+        assert!(dims
+            .iter()
+            .all(|d| d.value <= 10.0 || matches!(d.how, How::Length { .. })));
+        let (tx, _) = set(&m, d, len + 0.5).unwrap();
+        let mut doc = Document::from_model(m);
+        doc.commit(tx).unwrap();
+        let ElementKind::Wall(w) = &doc.model().get(id).unwrap().kind else {
+            panic!()
+        };
+        assert!((w.length() - (len + 0.5)).abs() < 1e-6, "{}", w.length());
     }
 
     #[test]
