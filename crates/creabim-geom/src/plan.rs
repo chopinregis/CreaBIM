@@ -2570,4 +2570,50 @@ mod tests {
             after - before
         );
     }
+
+    /// The starter house's Ground Floor plan hides its footings; shown
+    /// again (the "Show footings" button under its view depth, A7-3) they
+    /// draw dashed under the floor.
+    #[test]
+    fn shown_footings_draw_dashed_under_the_floor() {
+        let m = creabim_core::starter::starter_house();
+        let footings: std::collections::HashSet<ElementId> = m
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Footing(_)))
+            .map(|e| e.id)
+            .collect();
+        let plan = m
+            .iter()
+            .find(|e| e.name == "Ground Floor plan" && matches!(e.kind, ElementKind::View(_)))
+            .unwrap()
+            .clone();
+        let dashed = |m: &Model| {
+            crate::section::view_drawing_with(m, plan.id, false)
+                .unwrap()
+                .items
+                .iter()
+                .filter(|it| {
+                    footings.contains(&it.id())
+                        && matches!(
+                            it,
+                            PlanItem::Line {
+                                pen: Pen::Hidden,
+                                ..
+                            }
+                        )
+                })
+                .count()
+        };
+        assert_eq!(dashed(&m), 0, "hidden in the view");
+        let mut shown = plan.clone();
+        if let ElementKind::View(v) = &mut shown.kind {
+            v.hidden
+                .categories
+                .retain(|c| *c != creabim_core::visibility::Category::Footings);
+        }
+        let mut doc = creabim_core::Document::from_model(m.clone());
+        doc.commit(creabim_core::Transaction::new("show").replace(plan.clone(), shown))
+            .unwrap();
+        assert!(dashed(doc.model()) > 20, "shown, dashed under the floor");
+    }
 }

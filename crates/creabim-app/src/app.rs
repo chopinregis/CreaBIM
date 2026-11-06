@@ -4196,13 +4196,28 @@ impl CreaBimApp {
                 if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
                     if matches!(view.kind, ViewKind::Plan { .. }) {
                         let (mut g, scale) = (view.graphics.clone(), view.scale);
+                        let footings_hidden = view
+                            .hidden
+                            .categories
+                            .contains(&creabim_core::visibility::Category::Footings);
                         if let Some(label) = plan_graphics_ui(ui, &mut g, scale) {
                             let r = self.doc.edit_merged(v, label, |e| {
                                 if let ElementKind::View(x) = &mut e.kind {
-                                    x.graphics = g;
+                                    x.graphics = g.clone();
                                 }
                             });
                             self.report(r, "View changed.");
+                        }
+                        // a view depth can't show what the view hides (A7-3)
+                        if footings_hidden && g.range.view_depth.is_some() && footings_note(ui) {
+                            let r = self.doc.edit(v, "Show footings", |e| {
+                                if let ElementKind::View(x) = &mut e.kind {
+                                    x.hidden.categories.retain(|c| {
+                                        *c != creabim_core::visibility::Category::Footings
+                                    });
+                                }
+                            });
+                            self.report(r, "Footings show in this view, dashed under the floor.");
                         }
                     }
                 }
@@ -6096,6 +6111,25 @@ fn draw_guide_3d(
     if run.len() > 1 {
         painter.extend(egui::Shape::dashed_line(&run, stroke, 6.0, 4.0));
     }
+}
+
+/// Under a plan's view depth, when the view hides its footings: why the
+/// depth shows none, and a button to show them. True when clicked.
+fn footings_note(ui: &mut egui::Ui) -> bool {
+    let mut show = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label(
+            egui::RichText::new(
+                "Footings are hidden in this view, so the view depth can't show them.",
+            )
+            .weak(),
+        );
+        show = ui
+            .small_button("Show footings")
+            .on_hover_text("Footings under the floor draw dashed, as the slab hides them.")
+            .clicked();
+    });
+    show
 }
 
 /// A plan's graphics in its Properties: the tint of what lies below the
