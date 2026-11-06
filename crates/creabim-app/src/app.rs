@@ -2388,6 +2388,26 @@ impl CreaBimApp {
                 own.snap(&snap_cfg.points_only(), p, &project, None, None)
                     .map(|s| s.p)
             };
+            // the face under the pointer, what is edited left out: its point,
+            // and its plane from two more rays a pixel aside
+            let editing = exclude.clone();
+            let face = |p: egui::Pos2| {
+                let hit = |q: egui::Pos2| {
+                    let (o, d) = ray(q);
+                    let h = pick::pick_where(scene, o.as_vec3(), d.as_vec3(), &|id| {
+                        !editing.contains(&id)
+                    })?;
+                    Some((h.id, o + d * h.t as f64))
+                };
+                let (id, a) = hit(p)?;
+                let (ib, b) = hit(p + egui::vec2(1.0, 0.0))?;
+                let (ic, c) = hit(p + egui::vec2(0.0, 1.0))?;
+                if ib != id || ic != id {
+                    return None;
+                }
+                let n = (b - a).cross(c - a).normalize_or_zero();
+                (n != DVec3::ZERO).then_some((a, n))
+            };
             let (_, look) = ray(rect.center());
             let input = PaneInput {
                 ray: &ray_fn,
@@ -2398,6 +2418,7 @@ impl CreaBimApp {
                 grab_snap: &grab_snap,
                 body_normal: DVec3::Z,
                 view: None,
+                face: &face,
             };
             let mut status = None;
             let edit = self.plan.edit.is_some() && self.plan.edit == self.selection.active;

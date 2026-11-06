@@ -19,7 +19,7 @@ pub fn pick(scene: &[SceneItem], origin: Vec3, dir: Vec3) -> Option<Hit> {
 }
 
 /// [`pick`], of the elements `keep` takes only.
-fn pick_where(
+pub fn pick_where(
     scene: &[SceneItem],
     origin: Vec3,
     dir: Vec3,

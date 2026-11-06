@@ -1431,6 +1431,7 @@ pub fn show(
                     DVec3::Z
                 },
                 view: Some(view),
+                face: &|_| None,
             };
             let mut status = None;
             let edit = state.edit.is_some() && state.edit == selection.active;
@@ -5572,6 +5573,136 @@ mod tests {
             (length(&doc) - 4.4).abs() < 0.02,
             "ended at {}",
             length(&doc)
+        );
+    }
+
+    /// A grip sliding along its line stops where an edge crosses its path:
+    /// a wall's end dragged up to another wall's face stops on the face
+    /// (the owner's MU16 report: a wall's base wouldn't stop on a slab's
+    /// top in a section; only corners and middles caught a sliding grip).
+    #[test]
+    fn a_sliding_grip_stops_on_an_edge_across_its_path() {
+        use eframe::egui::{Pos2, Rect};
+        crate::units::set(creabim_core::Units::metric());
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let (view, level) = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) if e.name == "Ground Floor plan" => match v.kind {
+                    ViewKind::Plan { level, .. } => Some((e.id, level)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        let wall = |a: DVec2, b: DVec2| {
+            creabim_core::Element::new(
+                "Probe",
+                ElementKind::Wall(creabim_core::Wall::new(level, a, b, 0.2, 3.0)),
+            )
+        };
+        let probe = wall(DVec2::new(30.0, 0.0), DVec2::new(34.0, 0.0));
+        let id = probe.id;
+        // a long parallel wall, its near face at y = 0.9, its corners far
+        let across = wall(DVec2::new(20.0, 1.0), DVec2::new(45.0, 1.0));
+        doc.commit(
+            creabim_core::Transaction::new("probe")
+                .insert(probe)
+                .insert(across),
+        )
+        .unwrap();
+        let ctx = egui::Context::default();
+        let mut state = PlanState::default();
+        state.cameras.insert(view, (DVec2::new(33.0, 0.5), 100.0));
+        let mut sel = crate::selection::Selection::default();
+        sel.only(id);
+        let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(1000.0, 800.0));
+        let xf = Xf {
+            rect,
+            center: DVec2::new(33.0, 0.5),
+            scale: 100.0,
+        };
+        let mut t = 0.0;
+        let mut frame = |events: Vec<egui::Event>,
+                         doc: &mut creabim_core::Document,
+                         state: &mut PlanState,
+                         sel: &mut crate::selection::Selection| {
+            t += 1.0 / 60.0;
+            let raw = egui::RawInput {
+                screen_rect: Some(rect),
+                events,
+                time: Some(t),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(raw, |ui| {
+                let d = creabim_geom::section::view_drawing_with(doc.model(), view, false).unwrap();
+                let style = PaneStyle {
+                    background: None,
+                    decorations: false,
+                    camera: None,
+                    scale: 50.0,
+                };
+                show(
+                    ui,
+                    rect,
+                    doc,
+                    view,
+                    PaneKind::Plan { level },
+                    &d,
+                    state,
+                    sel,
+                    style,
+                );
+            });
+            out.textures_delta.clear();
+        };
+        // the probe's face (y = 0.1) slides square to the wall
+        let face = xf.to_screen(DVec2::new(32.0, 0.1));
+        frame(
+            vec![egui::Event::PointerMoved(face)],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        frame(
+            vec![egui::Event::PointerMoved(face)],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        frame(
+            vec![egui::Event::PointerButton {
+                pos: face,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            }],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        // to 2.7 px past the other wall's face at y = 0.9
+        let target = xf.to_screen(DVec2::new(32.0, 0.927));
+        for k in 1..=10 {
+            let p = face + (target - face) * (k as f32 / 10.0);
+            frame(
+                vec![egui::Event::PointerMoved(p)],
+                &mut doc,
+                &mut state,
+                &mut sel,
+            );
+        }
+        let (start, end, t) = match &doc.model().get(id).unwrap().kind {
+            ElementKind::Wall(w) => (w.start, w.end, w.thickness),
+            _ => unreachable!(),
+        };
+        // the dragged face, whichever way the wall grew, is on y = 0.9
+        let mid = (start + end) / 2.0;
+        let face_y = mid.y + t / 2.0;
+        assert!(
+            (face_y - 0.9).abs() < 1e-6,
+            "the face is at y = {face_y} (thickness {t}), not on the other wall's face at 0.9"
         );
     }
 

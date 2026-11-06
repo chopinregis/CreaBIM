@@ -29,6 +29,8 @@ pub enum SnapKind {
     Intersection,
     Perpendicular,
     OnEdge,
+    /// On a face in 3D, where a grip sliding along a line meets it.
+    OnFace,
     Guide,
     /// On a grid line, or a level line in a section.
     OnGridLine,
@@ -65,6 +67,7 @@ impl SnapKind {
             SnapKind::Intersection => "Intersection",
             SnapKind::Perpendicular => "Perpendicular",
             SnapKind::OnEdge => "On edge",
+            SnapKind::OnFace => "On face",
             SnapKind::Guide => "On guide",
             SnapKind::OnGridLine => "On grid/level",
             SnapKind::AxisX => "On X axis",
@@ -229,9 +232,10 @@ impl SnapSettings {
                 SnapKind::Quadrant => self.quadrant,
                 SnapKind::Intersection => self.intersection,
                 SnapKind::Perpendicular => self.perpendicular,
-                SnapKind::OnEdge | SnapKind::UnderlayFace | SnapKind::UnderlayCentre => {
-                    self.nearest
-                }
+                SnapKind::OnEdge
+                | SnapKind::OnFace
+                | SnapKind::UnderlayFace
+                | SnapKind::UnderlayCentre => self.nearest,
                 SnapKind::Guide => self.guides,
                 SnapKind::OnGridLine => self.grid_lines,
                 SnapKind::AxisX | SnapKind::AxisY => self.axis,
@@ -1503,6 +1507,7 @@ fn marker(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) -> Option
         SnapKind::Center | SnapKind::Quadrant => Color32::from_rgb(200, 120, 20),
         SnapKind::Perpendicular => Color32::from_rgb(160, 60, 180),
         SnapKind::OnEdge | SnapKind::Guide | SnapKind::OnGridLine => Color32::from_rgb(200, 40, 40),
+        SnapKind::OnFace => Color32::from_rgb(40, 110, 200),
         SnapKind::AxisX => Color32::from_rgb(220, 50, 50),
         SnapKind::AxisY => Color32::from_rgb(40, 160, 60),
         SnapKind::Aligned | SnapKind::AlignedCross => TRACK,
@@ -1558,6 +1563,15 @@ fn marker(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) -> Option
         }
         SnapKind::OnEdge | SnapKind::Guide | SnapKind::OnGridLine => {
             painter.circle_stroke(at, r * 0.7, s);
+        }
+        // a small square lying in the face
+        SnapKind::OnFace => {
+            painter.rect_stroke(
+                egui::Rect::from_center_size(at, egui::vec2(r * 1.4, r * 1.4)),
+                1.0,
+                s,
+                egui::StrokeKind::Middle,
+            );
         }
         SnapKind::Aligned | SnapKind::OnTempGuide => {
             painter.circle_filled(at, 3.0, c);

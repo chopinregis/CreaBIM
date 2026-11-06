@@ -1593,6 +1593,10 @@ pub struct PaneInput<'a> {
     pub body_normal: DVec3,
     /// The view the pane shows: drafting has grips only in its own.
     pub view: Option<ElementId>,
+    /// The face under the pointer and its normal, leaving out what is
+    /// being edited: 3D only (plans and sections give none). A grip
+    /// sliding along a line stops where it meets it.
+    pub face: &'a dyn Fn(Pos2) -> Option<(DVec3, DVec3)>,
 }
 
 /// A handle or a whole element being dragged.
@@ -2795,6 +2799,66 @@ fn screen_at(h: &Handle, input: &PaneInput) -> Option<Pos2> {
     Some(if v.is_finite() { c + v * h.nudge } else { c })
 }
 
+/// Where a grip sliding along the line through `point` (direction `dir`)
+/// meets the face under the pointer, if that is within reach of where the
+/// pointer puts it (`free`) and the face isn't edge-on to the line.
+fn on_face(input: &PaneInput, pos: Pos2, point: DVec3, dir: DVec3, free: DVec3) -> Option<DVec3> {
+    let (hit, n) = (input.face)(pos)?;
+    let across = dir.dot(n);
+    if across.abs() < 0.2 {
+        return None;
+    }
+    let on = point + dir * ((hit - point).dot(n) / across);
+    near_on_screen(input, on, free).then_some(on)
+}
+
+/// Where a grip sliding along the line through `point` (direction `dir`)
+/// meets what the snap at `p` found. A point snap: the foot of `p` on the
+/// line. An edge, a level line or a guide: the snap gives the point on it
+/// nearest the pointer, so ask again from the line, and again: for a line
+/// crossing the path at any angle this closes on the crossing in a few
+/// rounds (exact at once for one square to it, as a slab's top under a
+/// wall's base).
+fn crossing(
+    input: &PaneInput,
+    fixed: Option<DVec3>,
+    point: DVec3,
+    dir: DVec3,
+    p: DVec3,
+    kind: SnapKind,
+) -> DVec3 {
+    let foot = |q: DVec3| point + dir * (q - point).dot(dir);
+    let mut on = foot(p);
+    if !matches!(
+        kind,
+        SnapKind::OnEdge
+            | SnapKind::OnGridLine
+            | SnapKind::Guide
+            | SnapKind::OnTempGuide
+            | SnapKind::UnderlayFace
+    ) {
+        return on;
+    }
+    for _ in 0..6 {
+        let Some(at) = (input.project)(on) else {
+            break;
+        };
+        let Some((q, again)) = (input.snap)(at, fixed) else {
+            break;
+        };
+        if again.kind != kind {
+            break;
+        }
+        let next = foot(q);
+        let moved = (next - on).length();
+        on = next;
+        if moved < 1e-6 {
+            break;
+        }
+    }
+    on
+}
+
 fn near_on_screen(input: &PaneInput, snapped: DVec3, free: DVec3) -> bool {
     match ((input.project)(snapped), (input.project)(free)) {
         (Some(a), Some(b)) => a.distance(b) < 16.0,
@@ -3486,17 +3550,47 @@ pub fn interact(
             // onto the plane, along its normal
             p - normal * (p - point).dot(normal)
         }
+        // a grip sliding along a line stops on points near its path, and
+        // where an edge, a level or grid line, or a guide crosses it (the
+        // snap's point is the nearest on that line, so near the crossing):
+        // a wall's base dragged in a section stops on a slab's top
         (Constraint::Line { point, dir }, Some((p, snap)))
             if matches!(
                 snap.kind,
-                SnapKind::Endpoint | SnapKind::Midpoint | SnapKind::Center | SnapKind::Intersection
+                SnapKind::Endpoint
+                    | SnapKind::Midpoint
+                    | SnapKind::Center
+                    | SnapKind::Intersection
+                    | SnapKind::Quadrant
+                    | SnapKind::OnEdge
+                    | SnapKind::OnGridLine
+                    | SnapKind::Guide
+                    | SnapKind::OnTempGuide
+                    | SnapKind::GuideCross
+                    | SnapKind::UnderlayFace
             ) && near_on_screen(input, point + dir * (p - point).dot(dir), free) =>
         {
-            if let Some(at) = (input.project)(p) {
+            let on = crossing(input, fixed, point, dir, p, snap.kind);
+            if let Some(at) = (input.project)(on) {
                 crate::snaps::draw(painter, snap, at, None);
             }
-            point + dir * (p - point).dot(dir)
+            on
         }
+        // nothing caught it: a face it slides into (3D), when near
+        (Constraint::Line { point, dir }, _) => match on_face(input, pos, point, dir, free) {
+            Some(on) => {
+                if let Some(at) = (input.project)(on) {
+                    let snap = crate::snaps::Snap {
+                        p: on,
+                        kind: SnapKind::OnFace,
+                        host: None,
+                    };
+                    crate::snaps::draw(painter, snap, at, None);
+                }
+                on
+            }
+            None => free,
+        },
         _ => free,
     };
     // distance marks from where it was grabbed, when no real snap caught it
@@ -4826,5 +4920,41 @@ mod tests {
         assert_eq!(super::mark_held(0.004, 0.05, 40.0), None);
         // the same distances with marks only 10 px apart: always near one
         assert_eq!(super::mark_held(0.077, 0.05, 10.0), Some(0.1));
+    }
+
+    /// A grip sliding along a line (a wall's top going up) stops on a face
+    /// across its path when the pointer puts it near, and not otherwise.
+    #[test]
+    fn a_sliding_grip_stops_on_a_face_in_3d() {
+        // a side view: x across, z up, 100 px a metre
+        let project = |p: DVec3| Some(Pos2::new(p.x as f32 * 100.0, -p.z as f32 * 100.0));
+        let ray = |_: Pos2| None;
+        let snap = |_: Pos2, _: Option<DVec3>| None;
+        let none = |_: Pos2, _: ElementId| None;
+        // a slab's soffit at 2.5 m, and an upright face the path runs along
+        let soffit = |_: Pos2| Some((DVec3::new(0.3, 0.0, 2.5), DVec3::Z));
+        let upright = |_: Pos2| Some((DVec3::new(1.0, 0.0, 2.5), DVec3::X));
+        let input = |face: &dyn Fn(Pos2) -> Option<(DVec3, DVec3)>| {
+            let (point, dir) = (DVec3::new(0.0, 0.0, 2.0), DVec3::Z);
+            let pane = PaneInput {
+                ray: &ray,
+                project: &project,
+                look: DVec3::Y,
+                snap: &snap,
+                grab_body: &none,
+                grab_snap: &none,
+                body_normal: DVec3::Z,
+                view: None,
+                face,
+            };
+            [2.47, 2.0]
+                .map(|z| super::on_face(&pane, Pos2::ZERO, point, dir, DVec3::new(0.0, 0.0, z)))
+        };
+        // 3 px short of it: on it; 50 px short: free
+        let [near, far] = input(&soffit);
+        assert!(near.is_some_and(|p| (p.z - 2.5).abs() < 1e-9));
+        assert!(far.is_none());
+        // a face the path runs along: never
+        assert_eq!(input(&upright), [None, None]);
     }
 }
