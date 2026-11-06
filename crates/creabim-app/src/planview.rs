@@ -924,6 +924,27 @@ pub fn show(
             selection,
         );
     }
+    // 3D crop boxes in plans and sections (A4-5): the selected one, and
+    // every one whose frame is shown, dashed in the crop colour
+    if style.decorations {
+        for (id, lo, hi) in crop_rects(doc.model(), view) {
+            let selected = selection.contains(id);
+            let shown = matches!(
+                doc.model().get(id).map(|e| &e.kind),
+                Some(ElementKind::CropBox(c)) if !c.frame_hidden
+            );
+            if !(selected || shown) {
+                continue;
+            }
+            let c = Color32::from_rgb(217, 115, 64);
+            let w = if selected { 1.8 } else { 1.0 };
+            let corners = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y), lo];
+            let pts: Vec<Pos2> = corners.iter().map(|p| xf.to_screen(*p)).collect();
+            for seg in pts.windows(2) {
+                painter.extend(egui::Shape::dashed_line(seg, Stroke::new(w, c), 6.0, 4.0));
+            }
+        }
+    }
     // a selected mark is traced in the accent, as a hover traces it
     for item in plan.items.iter().filter(|it| is_mark(it)) {
         if selection.contains(item.id()) && !ghost {
@@ -2790,6 +2811,13 @@ fn under_pointer(
     mm: f64,
 ) -> Vec<ElementId> {
     let mut under = hit_all(&plan.items, p, tol, mm);
+    // a crop box's dashed outline picks it (A4-5)
+    for (id, lo, hi) in crop_rects(doc.model(), view) {
+        let c = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
+        if (0..4).any(|i| segment_distance(p, c[i], c[(i + 1) % 4]) < tol) && !under.contains(&id) {
+            under.push(id);
+        }
+    }
     let scene = cached_pick_scene(state, doc, view);
     let drawn: HashSet<ElementId> = match kind {
         PaneKind::Plan { .. } => plan.items.iter().map(|i| i.id()).collect(),
@@ -3778,6 +3806,35 @@ fn nav_column(
         }
     }
     out
+}
+
+/// Each 3D crop box as a rectangle on `view`'s drawing: its footprint
+/// in a plan, its extent across a section.
+fn crop_rects(model: &creabim_core::Model, view: ElementId) -> Vec<(ElementId, DVec2, DVec2)> {
+    let Some(frame) = creabim_core::DrawingFrame::of(model, view) else {
+        return vec![];
+    };
+    model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::CropBox(c) => {
+                let mut lo = DVec2::splat(f64::MAX);
+                let mut hi = DVec2::splat(f64::MIN);
+                for i in 0..8 {
+                    let p = DVec3::new(
+                        if i & 1 == 0 { c.min.x } else { c.max.x },
+                        if i & 2 == 0 { c.min.y } else { c.max.y },
+                        if i & 4 == 0 { c.min.z } else { c.max.z },
+                    );
+                    let d = frame.to_drawing(p);
+                    lo = lo.min(d);
+                    hi = hi.max(d);
+                }
+                Some((e.id, lo, hi))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 fn fit(d: &Drawing, rect: Rect) -> (DVec2, f32) {
@@ -5903,6 +5960,47 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_crop_box_shows_as_its_footprint_in_a_plan_and_its_extent_in_a_section() {
+        let m = creabim_core::sample::sample_house();
+        let views: Vec<(ElementId, bool)> = m
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::View(v) => match v.kind {
+                    creabim_core::ViewKind::Plan { .. } => Some((e.id, true)),
+                    creabim_core::ViewKind::Section { .. } => Some((e.id, false)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        let crop = creabim_core::CropBox {
+            view: None,
+            min: DVec3::new(1.0, 2.0, 0.5),
+            max: DVec3::new(4.0, 6.0, 3.0),
+            scope: Default::default(),
+            enabled: true,
+            frame_hidden: false,
+        };
+        let e = creabim_core::Element::new("Crop", ElementKind::CropBox(crop));
+        let id = e.id;
+        let mut doc = Document::from_model(m);
+        doc.commit(Transaction::new("crop").insert(e)).unwrap();
+        let plan = views.iter().find(|v| v.1).unwrap().0;
+        let r = crop_rects(doc.model(), plan);
+        let (_, lo, hi) = r.iter().find(|r| r.0 == id).unwrap();
+        assert_eq!((*lo, *hi), (DVec2::new(1.0, 2.0), DVec2::new(4.0, 6.0)));
+        let section = views.iter().find(|v| !v.1).unwrap().0;
+        let (_, lo, hi) = crop_rects(doc.model(), section)
+            .into_iter()
+            .find(|r| r.0 == id)
+            .unwrap();
+        assert!(
+            (lo.y - 0.5).abs() < 1e-9 && (hi.y - 3.0).abs() < 1e-9,
+            "{lo} {hi}"
+        );
+    }
     use creabim_core::{EditMesh, FreeMesh};
 
     #[test]
