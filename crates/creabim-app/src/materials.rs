@@ -184,6 +184,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
         .show(ui, |ui| {
             ui.label("Category");
             egui::ComboBox::from_id_salt("mat_category")
+                .icon(crate::props::combo_icon)
                 .selected_text(library::category_label(&m.category))
                 .width(170.0)
                 .show_ui(ui, |ui| {
@@ -225,6 +226,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
 
             ui.label("Cut hatch");
             egui::ComboBox::from_id_salt("mat_hatch")
+                .icon(crate::props::combo_icon)
                 .selected_text(m.hatch.label())
                 .width(170.0)
                 .show_ui(ui, |ui| {
@@ -286,6 +288,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                     label = "Material rate";
                 }
                 egui::ComboBox::from_id_salt("mat_rate_per")
+                    .icon(crate::props::combo_icon)
                     .selected_text(per.label())
                     .width(70.0)
                     .show_ui(ui, |ui| {
@@ -765,7 +768,7 @@ impl CreaBimApp {
                         let shown = choice
                             .and_then(|c| model.get(c))
                             .map_or("By type (no material)".to_string(), |e| e.name.clone());
-                        egui::ComboBox::from_id_salt("mat_replace")
+                        egui::ComboBox::from_id_salt("mat_replace").icon(crate::props::combo_icon)
                             .selected_text(shown)
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut choice, None, "By type (no material)");

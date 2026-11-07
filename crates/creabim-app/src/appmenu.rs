@@ -242,7 +242,7 @@ impl CreaBimApp {
                 ui.set_width(360.0);
                 crate::props::section(ui, "Appearance (yours)");
                 crate::props::row(ui, "Theme", |ui| {
-                    egui::ComboBox::from_id_salt("settings.theme")
+                    egui::ComboBox::from_id_salt("settings.theme").icon(crate::props::combo_icon)
                         .selected_text(theme.label())
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
@@ -279,7 +279,7 @@ impl CreaBimApp {
                         "dark" => "Always dark",
                         _ => "Follow the theme",
                     };
-                    egui::ComboBox::from_id_salt("settings.paper")
+                    egui::ComboBox::from_id_salt("settings.paper").icon(crate::props::combo_icon)
                         .selected_text(label(&paper))
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
@@ -295,7 +295,7 @@ impl CreaBimApp {
                         "classic" => "Classic: left drag orbits",
                         _ => "CreaBIM: middle orbits, left boxes",
                     };
-                    egui::ComboBox::from_id_salt("settings.navigation")
+                    egui::ComboBox::from_id_salt("settings.navigation").icon(crate::props::combo_icon)
                         .selected_text(label(&navigation))
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
@@ -313,7 +313,7 @@ impl CreaBimApp {
                     } else {
                         &crate::snaps::STEPS_METRIC
                     };
-                    egui::ComboBox::from_id_salt("settings.spacing")
+                    egui::ComboBox::from_id_salt("settings.spacing").icon(crate::props::combo_icon)
                         .selected_text(crate::units::len(spacing as f64 / 1e6))
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
@@ -336,7 +336,7 @@ impl CreaBimApp {
                 );
                 crate::props::section(ui, "This project");
                 crate::props::row(ui, "Units", |ui| {
-                    egui::ComboBox::from_id_salt("settings.units")
+                    egui::ComboBox::from_id_salt("settings.units").icon(crate::props::combo_icon)
                         .selected_text(unit_row(unit).0)
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {

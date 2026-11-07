@@ -1338,6 +1338,7 @@ fn terminator_combo(
     let mut changed = false;
     crate::props::row(ui, text, |ui| {
         egui::ComboBox::from_id_salt(salt)
+            .icon(crate::props::combo_icon)
             .selected_text(t.map_or(usual.to_string(), |t| t.label().to_string()))
             .width(ui.available_width())
             .show_ui(ui, |ui| {

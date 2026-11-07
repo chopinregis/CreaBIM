@@ -133,9 +133,8 @@ impl CreaBimApp {
         // a sub-section (a key with a dot, "view.pens") is set in
         // (visibility and a view's range and template are sections of
         // their own, boxed, not sub-sections: MU22)
-        let indent = key.contains('.')
-            && !key.starts_with("visibility.")
-            && !key.starts_with("view.");
+        let indent =
+            key.contains('.') && !key.starts_with("visibility.") && !key.starts_with("view.");
         let (resp, help_at) = crate::props::header(ui, title, open, indent);
         let resp = resp.on_hover_text(if open {
             "Click to fold this section"
@@ -149,7 +148,6 @@ impl CreaBimApp {
                 toggle = false;
             }
         }
-        ui.add_space(2.0);
         if toggle {
             let s = &mut self.shell.settings;
             if !open == default_open {
@@ -183,6 +181,9 @@ impl CreaBimApp {
             ));
         let mut read = false;
         egui::Popup::from_toggle_button_response(&r)
+            // above the views' zoom columns, which sit on the foreground
+            // layer (MU22)
+            .kind(egui::PopupKind::Tooltip)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
                 ui.set_max_width(300.0);

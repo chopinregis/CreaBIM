@@ -42,14 +42,13 @@ impl CreaBimApp {
         let mut text = e.mark.clone().unwrap_or_default();
         let hint = match (&shown, typed) {
             (Some(m), false) => m.clone(),
-            _ => "Mark".into(),
+            _ => "None".into(),
         };
         let changed = ui
             .add_sized(
-                [width, 22.0],
+                [width, ui.spacing().interact_size.y],
                 egui::TextEdit::singleline(&mut text)
                     .hint_text(hint)
-                    .horizontal_align(egui::Align::Max)
                     .vertical_align(egui::Align::Center),
             )
             .on_hover_text(
@@ -184,7 +183,7 @@ impl CreaBimApp {
                 ui.separator();
                 ui.label(egui::RichText::new("Apply").strong());
                 ui.horizontal(|ui| {
-                    egui::ComboBox::from_id_salt("renumber_only")
+                    egui::ComboBox::from_id_salt("renumber_only").icon(crate::props::combo_icon)
                         .selected_text(self.marks.only.map_or("Every kind", |c| c.label()))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(&mut self.marks.only, None, "Every kind");
@@ -343,6 +342,7 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
                 ui.add(egui::DragValue::new(&mut r.padding).range(1..=6));
                 ui.checkbox(&mut r.by_level, "");
                 egui::ComboBox::from_id_salt(("mark_order", class))
+                    .icon(crate::props::combo_icon)
                     .selected_text(r.order.label())
                     .width(150.0)
                     .show_ui(ui, |ui| {

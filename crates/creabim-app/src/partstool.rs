@@ -748,6 +748,7 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
     }
     if !p.void {
         egui::ComboBox::from_id_salt("part_ifc_class")
+            .icon(crate::props::combo_icon)
             .selected_text(p.ifc_class.clone())
             .width(190.0)
             .show_ui(ui, |ui| {

@@ -75,6 +75,7 @@ fn weight_combo(
     let mut changed = false;
     let text = w.map_or("As drawn".to_string(), |w| w.label());
     egui::ComboBox::from_id_salt(salt)
+        .icon(crate::props::combo_icon)
         .width(ui.spacing().combo_width.max(108.0))
         .selected_text(text)
         .show_ui(ui, |ui| {
@@ -114,6 +115,7 @@ fn pattern_combo(
 ) -> bool {
     let mut changed = false;
     egui::ComboBox::from_id_salt(salt)
+        .icon(crate::props::combo_icon)
         .width(ui.spacing().combo_width.max(84.0))
         .selected_text(p.as_ref().map_or("As drawn", |p| p.label()))
         .show_ui(ui, |ui| {
@@ -155,6 +157,7 @@ fn name_combo(
 ) -> bool {
     let mut changed = false;
     egui::ComboBox::from_id_salt(salt)
+        .icon(crate::props::combo_icon)
         .width(ui.spacing().combo_width.max(108.0))
         .selected_text(v.as_deref().unwrap_or(none))
         .show_ui(ui, |ui| {
@@ -223,6 +226,7 @@ fn limit_ui(
             .and_then(|l| levels.iter().find(|x| x.0 == l.level))
             .map_or(none.to_string(), |x| x.1.clone());
         egui::ComboBox::from_id_salt(salt)
+            .icon(crate::props::combo_icon)
             .width(130.0)
             .selected_text(current)
             .show_ui(ui, |ui| {
@@ -377,6 +381,7 @@ pub(super) fn look_ui(
     ui: &mut egui::Ui,
     model: &creabim_core::Model,
     v: &mut View,
+    edit_styles: &mut bool,
 ) -> Option<&'static str> {
     let mut label = None;
     let pack = styles::active_pack(model);
@@ -392,11 +397,23 @@ pub(super) fn look_ui(
         if name_combo(ui, "view_template", &names, &mut v.look.template, &none) {
             label = Some("View template");
         }
-    })
-    ;
+    });
+    // the pack the template comes from, and where it is edited (MU22)
     crate::props::row(ui, "Style pack", |ui| {
-        ui.add(egui::Label::new(egui::RichText::new(pack.name.clone()).weak()).truncate())
-            .on_hover_text("A named bundle of scale, style, hidden categories, pens, overrides and cues from the project's style pack. Change the template and every view using it changes.")
+        ui.add(
+            egui::Label::new(pack.name.clone())
+                .truncate(),
+        )
+        .on_hover_text("A named bundle of scale, style, hidden categories, pens, overrides and cues from the project's style pack. Change the template and every view using it changes.");
+        if ui
+            .small_button("Edit…")
+            .on_hover_text(
+                "Graphic styles: the pack's pens, object styles, hatches and view templates",
+            )
+            .clicked()
+        {
+            *edit_styles = true;
+        }
     });
     // depth cues
     let c = &mut v.look.cues;
@@ -424,14 +441,24 @@ pub(super) fn look_ui(
     }
     if let Some(s) = &mut c.shadows {
         crate::props::row(ui, "Toward", |ui| {
-            label = label.or(crate::props::fill(ui, egui::DragValue::new(&mut s.direction).speed(1.0).suffix("°"))
-                .changed()
-                .then_some("Depth cues"));
+            label = label.or(crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut s.direction)
+                    .speed(1.0)
+                    .suffix("°"),
+            )
+            .changed()
+            .then_some("Depth cues"));
         });
         crate::props::row(ui, "Length", |ui| {
-            label = label.or(crate::props::fill(ui, egui::DragValue::new(&mut s.length).speed(0.05).range(0.0..=5.0))
-                .changed()
-                .then_some("Depth cues"));
+            label = label.or(crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut s.length)
+                    .speed(0.05)
+                    .range(0.0..=5.0),
+            )
+            .changed()
+            .then_some("Depth cues"));
         });
         crate::props::row(ui, "Strength", |ui| {
             ui.spacing_mut().slider_width = (ui.available_width() - 56.0).max(40.0);
@@ -441,11 +468,25 @@ pub(super) fn look_ui(
                 .then_some("Depth cues"));
         });
     }
-    // overrides by category
-    ui.add_space(4.0);
-    ui.label(egui::RichText::new("Overrides").strong().size(12.0)).on_hover_text(
-        "How a category or one element draws in this view only: halftone, its weight, colour or line pattern, its hatch off",
-    );
+    // overrides by category: a sub-section, as Blender's (MU22)
+    let oid = egui::Id::new("props.view.overrides.open");
+    let open = ui.ctx().data(|d| d.get_temp::<bool>(oid)).unwrap_or(true);
+    let n = v.look.overrides.len();
+    let title = if n == 0 {
+        "Overrides".to_string()
+    } else {
+        format!("Overrides ({n})")
+    };
+    let (resp, _) = crate::props::header(ui, &title, open, true);
+    if resp
+        .on_hover_text("How a category draws in this view only: halftone, its weight, colour or line pattern, its hatch off")
+        .clicked()
+    {
+        ui.ctx().data_mut(|d| d.insert_temp(oid, !open));
+    }
+    if !open {
+        return label;
+    }
     let mut remove = None;
     for (i, o) in v.look.overrides.iter_mut().enumerate() {
         let name = match o.target {
@@ -475,22 +516,23 @@ pub(super) fn look_ui(
         label = Some("Graphic override");
     }
     let mut add = None;
-    crate::props::row(ui, "", |ui| {
-    egui::ComboBox::from_id_salt("add_override")
-        .selected_text("Add a category…")
-        .width(ui.available_width())
-        .show_ui(ui, |ui| {
-            for c in STYLED {
-                let taken = v
-                    .look
-                    .overrides
-                    .iter()
-                    .any(|o| o.target == Target::Category(c));
-                if !taken && ui.selectable_label(false, c.label()).clicked() {
-                    add = Some(c);
+    crate::props::row(ui, "Add", |ui| {
+        egui::ComboBox::from_id_salt("add_override")
+            .icon(crate::props::combo_icon)
+            .selected_text("A category…")
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for c in STYLED {
+                    let taken = v
+                        .look
+                        .overrides
+                        .iter()
+                        .any(|o| o.target == Target::Category(c));
+                    if !taken && ui.selectable_label(false, c.label()).clicked() {
+                        add = Some(c);
+                    }
                 }
-            }
-        });
+            });
     });
     if let Some(c) = add {
         v.look.override_mut(Target::Category(c)).halftone = true;
@@ -585,10 +627,11 @@ impl CreaBimApp {
             true,
             Some("graphic-styles#view-templates"),
         ) {
-            if let Some(l) = look_ui(ui, self.doc.model(), &mut v) {
+            let mut edit = false;
+            if let Some(l) = look_ui(ui, self.doc.model(), &mut v, &mut edit) {
                 label = Some(l);
             }
-            if crate::props::row(ui, "", |ui| crate::props::fill(ui, egui::Button::new("Graphic styles…")).clicked()) {
+            if edit {
                 self.gstyles.open = true;
             }
         }
@@ -699,7 +742,7 @@ impl CreaBimApp {
                 );
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Style pack");
-                    egui::ComboBox::from_id_salt("pack_pick")
+                    egui::ComboBox::from_id_salt("pack_pick").icon(crate::props::combo_icon)
                         .selected_text(if id.is_some() {
                             pack.name.clone()
                         } else {

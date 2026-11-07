@@ -1159,8 +1159,13 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
             let mut v = c["value"].as_f64().unwrap_or(0.0);
             let unit = c["unit"].as_str().unwrap_or("");
             let mut changed = false;
-            ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.set_width(126.0);
+                // a field the header's height allows, its text the label's
+                // size and on its line, with even room above and below (MU22)
+                ui.spacing_mut().interact_size.y = 20.0;
+                ui.spacing_mut().button_padding = egui::vec2(5.0, 1.0);
+                ui.style_mut().override_font_id = Some(egui::FontId::proportional(12.0));
                 ui.label(egui::RichText::new(label).size(12.0).color(p.muted))
                     .on_hover_text(&tip);
                 let w = if unit == "m" {

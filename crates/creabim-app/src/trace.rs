@@ -143,7 +143,12 @@ pub fn draw_view(
 }
 
 /// Draw one reference.
-pub fn draw(painter: &egui::Painter, r: &Reference, shown: &Shown, to_screen: &dyn Fn(DVec2) -> Pos2) {
+pub fn draw(
+    painter: &egui::Painter,
+    r: &Reference,
+    shown: &Shown,
+    to_screen: &dyn Fn(DVec2) -> Pos2,
+) {
     let a = r.opacity.clamp(0.0, 1.0);
     match shown {
         Shown::Picture(raster) => {
@@ -173,7 +178,9 @@ pub fn draw(painter: &egui::Painter, r: &Reference, shown: &Shown, to_screen: &d
             painter.add(egui::Shape::mesh(mesh));
         }
         Shown::Lines(lines) => {
-            let ink = colour(r).unwrap_or(Color32::from_gray(70)).gamma_multiply(a);
+            let ink = colour(r)
+                .unwrap_or(Color32::from_gray(70))
+                .gamma_multiply(a);
             let stroke = Stroke::new(1.0, ink);
             for line in lines.iter() {
                 let pts: Vec<Pos2> = line.iter().map(|p| to_screen(r.place(*p))).collect();

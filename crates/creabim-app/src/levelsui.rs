@@ -433,6 +433,7 @@ impl CreaBimApp {
                     .map_or("Pick a level", |(_, n, _)| n.as_str());
                 ui.indent("to", |ui| {
                     egui::ComboBox::from_id_salt("move-to")
+                        .icon(crate::props::combo_icon)
                         .selected_text(current)
                         .show_ui(ui, |ui| {
                             for (id, n, _) in &others {
@@ -628,7 +629,7 @@ impl CreaBimApp {
                 });
                 egui::Grid::new("units").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
                     ui.label("Length");
-                    egui::ComboBox::from_id_salt("unit")
+                    egui::ComboBox::from_id_salt("unit").icon(crate::props::combo_icon)
                         .selected_text(units.length.label())
                         .width(260.0)
                         .show_ui(ui, |ui| {
@@ -650,7 +651,7 @@ impl CreaBimApp {
                         .find(|(p, _)| *p == units.precision)
                         .map(|(_, l)| l)
                         .unwrap_or_default();
-                    egui::ComboBox::from_id_salt("precision")
+                    egui::ComboBox::from_id_salt("precision").icon(crate::props::combo_icon)
                         .selected_text(current)
                         .show_ui(ui, |ui| {
                             for (p, l) in units.precisions() {

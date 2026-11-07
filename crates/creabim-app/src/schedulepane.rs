@@ -332,6 +332,7 @@ pub fn show(
                         let mut chosen = per;
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                             egui::ComboBox::from_id_salt(("rate_per", n, r.id))
+                                .icon(crate::props::combo_icon)
                                 .selected_text(per.label())
                                 .width(inner.width())
                                 .show_ui(ui, |ui| {
@@ -361,6 +362,7 @@ pub fn show(
                         let mut chosen = current;
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                             egui::ComboBox::from_id_salt(("material", r.id))
+                                .icon(crate::props::combo_icon)
                                 .selected_text(text.as_str())
                                 .width(inner.width())
                                 .show_ui(ui, |ui| {

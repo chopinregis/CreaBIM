@@ -559,6 +559,7 @@ impl CreaBimApp {
         let is_mesh = matches!(e.kind, ElementKind::FreeMesh(_));
         let mut pick = None;
         egui::ComboBox::from_id_salt("assign_as")
+            .icon(crate::props::combo_icon)
             .selected_text("Assign as…")
             .show_ui(ui, |ui| {
                 for a in creabim_exchange::Assign::menu() {
@@ -3966,6 +3967,7 @@ impl CreaBimApp {
             None => "Level".into(),
         };
         egui::ComboBox::from_id_salt("workplane")
+            .icon(crate::props::combo_icon)
             .selected_text(text)
             .width(150.0)
             .show_ui(ui, |ui| {
@@ -4023,7 +4025,7 @@ impl CreaBimApp {
             ui.label("Pivot:").on_hover_text(
                 "What R and S turn and scale about. Shift+right-click places the pivot cursor.",
             );
-            egui::ComboBox::from_id_salt("pivot")
+            egui::ComboBox::from_id_salt("pivot").icon(crate::props::combo_icon)
                 .selected_text(self.plan.pivot.label())
                 .width(150.0)
                 .show_ui(ui, |ui| {
@@ -4049,7 +4051,7 @@ impl CreaBimApp {
                 Some(s) => format!("{} {current}", s.number),
                 None => current,
             };
-            egui::ComboBox::from_id_salt("view")
+            egui::ComboBox::from_id_salt("view").icon(crate::props::combo_icon)
                 .selected_text(current)
                 .width(190.0)
                 .show_ui(ui, |ui| {
@@ -4129,7 +4131,7 @@ impl CreaBimApp {
             }
             ui.label("Wall thickness:");
             ui.add(crate::units::drag(&mut self.plan.wall_thickness).range(0.05..=1.0));
-            egui::ComboBox::from_id_salt("wall_location")
+            egui::ComboBox::from_id_salt("wall_location").icon(crate::props::combo_icon)
                 .selected_text(self.plan.wall_location.label())
                 .show_ui(ui, |ui| {
                     for l in creabim_core::LocationLine::ALL {
@@ -4153,6 +4155,7 @@ impl CreaBimApp {
             .collect();
         let mut chosen = None;
         egui::ComboBox::from_id_salt("place_view")
+            .icon(crate::props::combo_icon)
             .selected_text("Place view…")
             .width(150.0)
             .show_ui(ui, |ui| {
@@ -4360,6 +4363,7 @@ impl CreaBimApp {
         }
         let mut add = None;
         egui::ComboBox::from_id_salt("cut_with")
+            .icon(crate::props::combo_icon)
             .selected_text("Subtract…")
             .show_ui(ui, |ui| {
                 for (_, cid, name) in &candidates {
@@ -4607,7 +4611,8 @@ impl CreaBimApp {
         for (id, name, hidden) in &here {
             ui.horizontal(|ui| {
                 let eye = if *hidden { "eye-off" } else { "eye" };
-                let (rr, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                let (rr, resp) =
+                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
                 crate::svgicon::paint(ui.painter(), rr.shrink(2.0), eye, ui.visuals().text_color());
                 if resp
                     .on_hover_text(if *hidden { "Show it" } else { "Hide it" })
@@ -4631,15 +4636,16 @@ impl CreaBimApp {
                 if let ElementKind::Reference(r) = &mut after.kind {
                     r.hidden = !r.hidden;
                 }
-                let _ = self
-                    .doc
-                    .commit(creabim_core::Transaction::new("Show or hide a reference").replace(e, after));
+                let _ = self.doc.commit(
+                    creabim_core::Transaction::new("Show or hide a reference").replace(e, after),
+                );
             }
         }
         ui.add_space(6.0);
         let mut add = None;
         crate::props::row(ui, "Add", |ui| {
             egui::ComboBox::from_id_salt(("trace.add", v))
+                .icon(crate::props::combo_icon)
                 .selected_text("Another view…")
                 .width(ui.available_width())
                 .show_ui(ui, |ui| {
@@ -4725,6 +4731,7 @@ impl CreaBimApp {
         let n = r.shown_in.len();
         crate::props::row(ui, "Shown in", |ui| {
             egui::ComboBox::from_id_salt(("ref.views", id))
+                .icon(crate::props::combo_icon)
                 .selected_text(match n {
                     0 => "No view".to_string(),
                     1 => views
@@ -4750,7 +4757,8 @@ impl CreaBimApp {
         });
         crate::props::row(ui, "Colour", |ui| {
             let swatch = |ui: &mut egui::Ui, c: Option<Color32>, on: bool, tip: &str| {
-                let (rr, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                let (rr, resp) =
+                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
                 match c {
                     Some(c) => {
                         ui.painter().circle_filled(rr.center(), 8.0, c);
@@ -4763,7 +4771,10 @@ impl CreaBimApp {
                             egui::Stroke::new(1.2, ui.visuals().weak_text_color()),
                         );
                         ui.painter().line_segment(
-                            [rr.center() + egui::vec2(-5.0, 5.0), rr.center() + egui::vec2(5.0, -5.0)],
+                            [
+                                rr.center() + egui::vec2(-5.0, 5.0),
+                                rr.center() + egui::vec2(5.0, -5.0),
+                            ],
                             egui::Stroke::new(1.2, ui.visuals().weak_text_color()),
                         );
                     }
@@ -4832,8 +4843,11 @@ impl CreaBimApp {
             label = Some("Move reference");
         }
         crate::props::row(ui, "Rotation", |ui| {
-            if crate::props::fill(ui, egui::DragValue::new(&mut r.rotation).speed(0.5).suffix("°"))
-                .changed()
+            if crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut r.rotation).speed(0.5).suffix("°"),
+            )
+            .changed()
             {
                 label = Some("Turn reference");
             }
@@ -4934,7 +4948,10 @@ impl CreaBimApp {
                             let k = r.scale;
                             if self
                                 .doc
-                                .commit(creabim_core::Transaction::new("Calibrate reference").replace(e, after))
+                                .commit(
+                                    creabim_core::Transaction::new("Calibrate reference")
+                                        .replace(e, after),
+                                )
                                 .is_ok()
                             {
                                 self.status = format!("Calibrated: scale {k:.4}.");
@@ -4968,17 +4985,14 @@ impl CreaBimApp {
             }
             if tab == PropTab::Model3d {
                 self.visibility_panel(ui, gridvis::VisTarget::Window3d, Some("3D view"));
-                ui.add_space(8.0);
                 self.crop_list(ui, self.crop_owner());
                 return;
             }
             if self.plan.tool == Tool::Grid {
-                ui.add_space(8.0);
                 self.grid_systems_panel(ui);
             }
             // with nothing selected, the view shown in the 2D pane
             if let Some(gridvis::VisTarget::View(v)) = self.vis_target(false) {
-                ui.add_space(8.0);
                 if tab == PropTab::Trace {
                     self.trace_panel(ui, v);
                     return;
@@ -4994,10 +5008,10 @@ impl CreaBimApp {
                 if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
                     if matches!(view.kind, ViewKind::Section { .. }) {
                         let mut style = view.graphics.drawing_style;
-                        ui.add_space(4.0);
-                        ui.label(egui::RichText::new("Graphics").strong());
+                        crate::props::section(ui, "Graphics");
                         crate::props::row(ui, "Drawing style", |ui| {
                             egui::ComboBox::from_id_salt("section.panel.drawing_style")
+                                .icon(crate::props::combo_icon)
                                 .selected_text(style.label())
                                 .width(ui.available_width())
                                 .show_ui(ui, |ui| {
@@ -5508,6 +5522,7 @@ impl CreaBimApp {
                     if matches!(v.kind, ViewKind::Section { .. }) {
                         crate::props::row(ui, "Drawing style", |ui| {
                             egui::ComboBox::from_id_salt("section.drawing_style")
+                                .icon(crate::props::combo_icon)
                                 .selected_text(v.graphics.drawing_style.label())
                                 .width(ui.available_width())
                                 .show_ui(ui, |ui| {
@@ -6147,6 +6162,7 @@ impl CreaBimApp {
                         None => {}
                     }
                     egui::ComboBox::from_id_salt("add_modifier")
+                        .icon(crate::props::combo_icon)
                         .selected_text("Add modifier…")
                         .show_ui(ui, |ui| {
                             for k in ModifierKind::presets() {
@@ -6461,7 +6477,10 @@ impl CreaBimApp {
                     self.prop_tab.icon(),
                     p.muted,
                 );
-                ui.add(egui::Label::new(egui::RichText::new(self.prop_tab.label()).strong()).truncate());
+                ui.add(
+                    egui::Label::new(egui::RichText::new(self.prop_tab.label()).strong())
+                        .truncate(),
+                );
             });
             ui.add_space(2.0);
             return;
@@ -6504,60 +6523,53 @@ impl CreaBimApp {
         // an object is what its type says: a basin an IfcSanitaryTerminal
         let class = creabim_core::objects::type_of(self.doc.model(), &e)
             .map_or_else(|| e.ifc_class().to_string(), |t| t.ifc.class.clone());
-        // one line, as on the board (MU22): its class in a pill, the name
-        // to type over, its mark at the right; the actions below
+        // labelled rows, as every field (MU22): its name, its IFC class and
+        // the guide's page on it, its mark; then its actions
         let pal = crate::theme::Palette::of(ui.ctx());
-        let mut name = e.name.clone();
-        let mut renamed = false;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            let pill = egui::RichText::new(class.trim_start_matches("Ifc").to_string())
-                .size(11.0)
-                .color(pal.accent);
-            let resp = egui::Frame::new()
-                .fill(pal.accent.gamma_multiply(0.14))
-                .corner_radius(8.0)
-                .inner_margin(egui::Margin::symmetric(6, 1))
-                .show(ui, |ui| ui.label(pill))
-                .response;
-            resp.on_hover_text(class.clone());
-            if !matches!(e.kind, ElementKind::Level(_)) {
-                let mark_w = if marksui::markable(&e.kind) { 64.0 } else { 0.0 };
-                let w = (ui.available_width() - mark_w - 26.0).max(40.0);
-                renamed = ui
-                    .add_sized(
-                        [w, 22.0],
-                        egui::TextEdit::singleline(&mut name)
-                            .font(egui::FontId::proportional(13.0))
-                            .frame(egui::Frame::NONE)
-                            .vertical_align(egui::Align::Center),
-                    )
-                    .on_hover_text("Its name: click to rename")
-                    .changed();
-                self.mark_inline(ui, id, mark_w);
-            }
-            // what this kind of element is, and its page in the guide
-            let page = crate::help::element_page(&e.kind);
-            let title = crate::help::text(page.split('#').next().unwrap_or(page))
-                .map(crate::help::title)
-                .unwrap_or("This element");
-            self.quick_help_button(ui, page, title);
-        });
         if matches!(e.kind, ElementKind::Level(_)) {
             // a level is renamed with the plans named after it, once typed
             self.level_name_field(ui, id, &e.name);
-        } else if renamed {
-            let r = self
-                .doc
-                .edit_merged(id, "Rename", |e| e.name = name.clone());
-            self.report(r, "Renamed.");
+        } else {
+            let mut name = e.name.clone();
+            if crate::props::row(ui, "Name", |ui| {
+                crate::props::fill(
+                    ui,
+                    egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center),
+                )
+                .changed()
+            }) {
+                let r = self
+                    .doc
+                    .edit_merged(id, "Rename", |e| e.name = name.clone());
+                self.report(r, "Renamed.");
+            }
+        }
+        crate::props::row(ui, "IFC class", |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.add(egui::Label::new(egui::RichText::new(class.clone()).color(pal.accent)).truncate());
+                // what this kind of element is, and its page in the guide
+                let page = crate::help::element_page(&e.kind);
+                let title = crate::help::text(page.split('#').next().unwrap_or(page))
+                    .map(crate::help::title)
+                    .unwrap_or("This element");
+                self.quick_help_button(ui, page, title);
+            })
+        });
+        if marksui::markable(&e.kind) {
+            crate::props::row(ui, "Mark", |ui| {
+                let w = ui.available_width();
+                self.mark_inline(ui, id, w);
+            });
         }
         self.mark_warning(ui, id);
+        ui.add_space(2.0);
         // its actions, under its name (brief 02, 2.7)
         self.action_bar(ui);
         ui.add_space(2.0);
         let r = ui.available_rect_before_wrap();
-        ui.painter().hline(r.x_range(), r.top(), egui::Stroke::new(1.0, pal.border));
+        ui.painter()
+            .hline(r.x_range(), r.top(), egui::Stroke::new(1.0, pal.border));
         ui.add_space(3.0);
     }
 
@@ -6657,7 +6669,8 @@ impl CreaBimApp {
                     let group = t.group();
                     if last_group.is_some_and(|g| g != group) {
                         // a gap and a hairline between groups, as Blender's
-                        let (r, _) = ui.allocate_exact_size(egui::vec2(W, 9.0), egui::Sense::hover());
+                        let (r, _) =
+                            ui.allocate_exact_size(egui::vec2(W, 9.0), egui::Sense::hover());
                         ui.painter().line_segment(
                             [
                                 egui::pos2(r.left() + 7.0, r.center().y),
@@ -6669,10 +6682,8 @@ impl CreaBimApp {
                     last_group = Some(group);
                     let (row, resp) =
                         ui.allocate_exact_size(egui::vec2(W, CELL), egui::Sense::click());
-                    let r = egui::Rect::from_min_max(
-                        egui::pos2(row.left() + 2.0, row.top()),
-                        row.max,
-                    );
+                    let r =
+                        egui::Rect::from_min_max(egui::pos2(row.left() + 2.0, row.top()), row.max);
                     let on = *t == self.prop_tab;
                     if on {
                         ui.painter().rect_filled(
@@ -6686,12 +6697,16 @@ impl CreaBimApp {
                             panel,
                         );
                         ui.painter().rect_filled(
-                            egui::Rect::from_min_size(r.min + egui::vec2(0.0, 4.0), egui::vec2(2.0, CELL - 8.0)),
+                            egui::Rect::from_min_size(
+                                r.min + egui::vec2(0.0, 4.0),
+                                egui::vec2(2.0, CELL - 8.0),
+                            ),
                             1.0,
                             p.accent,
                         );
                     } else if resp.hovered() {
-                        ui.painter().rect_filled(r.shrink(1.0), 4.0, p.accent.gamma_multiply(0.12));
+                        ui.painter()
+                            .rect_filled(r.shrink(1.0), 4.0, p.accent.gamma_multiply(0.12));
                     }
                     let ink = if on { p.accent } else { p.muted };
                     let icon = egui::Rect::from_center_size(r.center(), egui::vec2(16.0, 16.0));
@@ -6733,7 +6748,11 @@ impl PropTab {
     /// the whole project.
     fn group(self) -> u8 {
         match self {
-            PropTab::Next | PropTab::Element | PropTab::Joins | PropTab::Graphics | PropTab::Data => 0,
+            PropTab::Next
+            | PropTab::Element
+            | PropTab::Joins
+            | PropTab::Graphics
+            | PropTab::Data => 0,
             PropTab::View | PropTab::Trace | PropTab::Model3d => 1,
             PropTab::Project => 2,
         }
@@ -7516,6 +7535,7 @@ fn plan_graphics_ui(
     // how what is cut is drawn (A4-11)
     crate::props::row(ui, "Drawing style", |ui| {
         egui::ComboBox::from_id_salt("view.drawing_style")
+            .icon(crate::props::combo_icon)
             .selected_text(g.drawing_style.label())
             .width(ui.available_width())
             .show_ui(ui, |ui| {
@@ -7626,6 +7646,7 @@ fn view_style_combo(ui: &mut egui::Ui, salt: &str, style: &mut ViewStyle) -> boo
     let mut changed = false;
     crate::props::row(ui, "Style", |ui| {
         egui::ComboBox::from_id_salt(salt)
+            .icon(crate::props::combo_icon)
             .selected_text(style.label())
             .width(ui.available_width())
             .show_ui(ui, |ui| {
@@ -7805,7 +7826,10 @@ mod prop_tab_tests {
     fn draw(app: &mut CreaBimApp) {
         let ctx = egui::Context::default();
         let raw = egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 900.0))),
+            screen_rect: Some(Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(400.0, 900.0),
+            )),
             ..Default::default()
         };
         let mut out = ctx.run_ui(raw, |ui| {
@@ -7827,7 +7851,15 @@ mod prop_tab_tests {
             .id;
         app.selection.only(wall);
         let tabs = app.prop_tabs();
-        assert_eq!(&tabs[..4], &[PropTab::Element, PropTab::Joins, PropTab::Graphics, PropTab::Data]);
+        assert_eq!(
+            &tabs[..4],
+            &[
+                PropTab::Element,
+                PropTab::Joins,
+                PropTab::Graphics,
+                PropTab::Data
+            ]
+        );
         for t in tabs {
             app.prop_tab = t;
             draw(&mut app);
@@ -7867,7 +7899,10 @@ mod prop_tab_tests {
         // in place: its own points are where they were
         let c = r.centre();
         assert!(r.place(c).distance(c) < 1e-9);
-        assert_eq!(creabim_core::reference::in_view(app.doc.model(), here).len(), 1);
+        assert_eq!(
+            creabim_core::reference::in_view(app.doc.model(), here).len(),
+            1
+        );
         // its Properties draw, every tab
         for t in app.prop_tabs() {
             app.prop_tab = t;
@@ -7875,9 +7910,13 @@ mod prop_tab_tests {
         }
         // Alt+F2's toggle hides it, then shows it again
         app.toggle_references(here);
-        assert!(matches!(&app.doc.model().get(id).unwrap().kind, ElementKind::Reference(r) if r.hidden));
+        assert!(
+            matches!(&app.doc.model().get(id).unwrap().kind, ElementKind::Reference(r) if r.hidden)
+        );
         app.toggle_references(here);
-        assert!(matches!(&app.doc.model().get(id).unwrap().kind, ElementKind::Reference(r) if !r.hidden));
+        assert!(
+            matches!(&app.doc.model().get(id).unwrap().kind, ElementKind::Reference(r) if !r.hidden)
+        );
         // the Trace tab lists it, with nothing selected
         app.selection.clear();
         app.prop_tab = PropTab::Trace;

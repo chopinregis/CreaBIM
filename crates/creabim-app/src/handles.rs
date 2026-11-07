@@ -1516,7 +1516,10 @@ pub fn apply(
             r.at = DVec2::new(round(r.at.x + d.x, step), round(r.at.y + d.y, step));
         }
         (ElementKind::Reference(r), HandleKind::RefScale(_)) => {
-            let (g, n) = (grab.truncate().distance(r.at), now.truncate().distance(r.at));
+            let (g, n) = (
+                grab.truncate().distance(r.at),
+                now.truncate().distance(r.at),
+            );
             if g < 1e-6 || n < 1e-3 {
                 return Err("too close to its middle".into());
             }
@@ -4212,7 +4215,12 @@ mod reference_grip_tests {
 
     #[test]
     fn a_reference_moves_by_its_middle_scales_by_a_corner_and_turns() {
-        let mut r = Reference::new(RefSource::Dxf { path: "survey.dxf".into() }, vec![]);
+        let mut r = Reference::new(
+            RefSource::Dxf {
+                path: "survey.dxf".into(),
+            },
+            vec![],
+        );
         r.in_place([DVec2::new(0.0, 0.0), DVec2::new(10.0, 6.0)]);
         let e = Element::new("Reference", ElementKind::Reference(r));
         let id = e.id;
@@ -4220,21 +4228,50 @@ mod reference_grip_tests {
         let hs = handles(&model, id, None);
         let kinds: Vec<HandleKind> = hs.iter().map(|h| h.kind).collect();
         assert!(kinds.contains(&HandleKind::RefMove) && kinds.contains(&HandleKind::Rotate));
-        assert_eq!(kinds.iter().filter(|k| matches!(k, HandleKind::RefScale(_))).count(), 4);
+        assert_eq!(
+            kinds
+                .iter()
+                .filter(|k| matches!(k, HandleKind::RefScale(_)))
+                .count(),
+            4
+        );
         let drag = |kind: HandleKind, grab: DVec2, now: DVec2| {
             let (orig, joined) = originals(&model, id, kind);
-            let out = apply(&model, &orig, &joined, kind, grab.extend(0.0), now.extend(0.0), 0.0).unwrap();
-            let ElementKind::Reference(r) = &out[0].kind else { panic!() };
+            let out = apply(
+                &model,
+                &orig,
+                &joined,
+                kind,
+                grab.extend(0.0),
+                now.extend(0.0),
+                0.0,
+            )
+            .unwrap();
+            let ElementKind::Reference(r) = &out[0].kind else {
+                panic!()
+            };
             r.clone()
         };
         // its middle, dragged 2 m right
-        let moved = drag(HandleKind::RefMove, DVec2::new(5.0, 3.0), DVec2::new(7.0, 3.0));
+        let moved = drag(
+            HandleKind::RefMove,
+            DVec2::new(5.0, 3.0),
+            DVec2::new(7.0, 3.0),
+        );
         assert!(moved.at.distance(DVec2::new(7.0, 3.0)) < 1e-9);
         // a corner dragged twice as far from the middle doubles it
-        let big = drag(HandleKind::RefScale(2), DVec2::new(10.0, 6.0), DVec2::new(15.0, 9.0));
+        let big = drag(
+            HandleKind::RefScale(2),
+            DVec2::new(10.0, 6.0),
+            DVec2::new(15.0, 9.0),
+        );
         assert!((big.scale - 2.0).abs() < 1e-9, "{}", big.scale);
         // the turn grip, a quarter turn about the middle
-        let turned = drag(HandleKind::Rotate, DVec2::new(5.0, 9.0), DVec2::new(-1.0, 3.0));
+        let turned = drag(
+            HandleKind::Rotate,
+            DVec2::new(5.0, 9.0),
+            DVec2::new(-1.0, 3.0),
+        );
         assert!((turned.rotation - 90.0).abs() < 1e-9, "{}", turned.rotation);
         // locked, it has no grips
         let mut e2 = model.get(id).unwrap().clone();

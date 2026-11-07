@@ -821,9 +821,14 @@ pub fn show(
     }
     // the references shown in this view, under the drawing (MU19)
     if style.decorations {
-        crate::trace::draw_view(&painter, doc.model(), &mut state.ref_cache, view, false, &|p| {
-            xf.to_screen(p)
-        });
+        crate::trace::draw_view(
+            &painter,
+            doc.model(),
+            &mut state.ref_cache,
+            view,
+            false,
+            &|p| xf.to_screen(p),
+        );
     }
     // the slabs of a plan's level: a light fill under the rest, stronger
     // where the pointer is, so they can be seen and clicked
@@ -888,9 +893,14 @@ pub fn show(
     // the references drawn over the model, then the outline of each one
     // selected or hovered, which is where it is picked (MU19)
     if style.decorations {
-        crate::trace::draw_view(&painter, doc.model(), &mut state.ref_cache, view, true, &|p| {
-            xf.to_screen(p)
-        });
+        crate::trace::draw_view(
+            &painter,
+            doc.model(),
+            &mut state.ref_cache,
+            view,
+            true,
+            &|p| xf.to_screen(p),
+        );
         for (id, r) in creabim_core::reference::in_view(doc.model(), view) {
             let lit = selection.contains(id);
             if !(lit || hovered == Some(id)) {
@@ -899,8 +909,17 @@ pub fn show(
             if let Some(c) = r.outline() {
                 let mut pts: Vec<Pos2> = c.iter().map(|p| xf.to_screen(*p)).collect();
                 pts.push(pts[0]);
-                let ink = if lit { ACCENT_SELECTED } else { ACCENT_SELECTED.gamma_multiply(0.6) };
-                painter.extend(egui::Shape::dashed_line(&pts, Stroke::new(1.5, ink), 6.0, 4.0));
+                let ink = if lit {
+                    ACCENT_SELECTED
+                } else {
+                    ACCENT_SELECTED.gamma_multiply(0.6)
+                };
+                painter.extend(egui::Shape::dashed_line(
+                    &pts,
+                    Stroke::new(1.5, ink),
+                    6.0,
+                    4.0,
+                ));
             }
         }
     }
@@ -2167,7 +2186,10 @@ pub fn show(
             painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, ACCENT_SELECTED));
         }
         if let (Some(a), Some(h)) = (pts.first(), hover_world) {
-            painter.line_segment([xf.to_screen(*a), xf.to_screen(h)], Stroke::new(1.0, ACCENT_SELECTED));
+            painter.line_segment(
+                [xf.to_screen(*a), xf.to_screen(h)],
+                Stroke::new(1.0, ACCENT_SELECTED),
+            );
         }
         if response.clicked() {
             if let Some(q) = hover_world {

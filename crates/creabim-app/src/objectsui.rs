@@ -347,6 +347,7 @@ fn part_material(
         .map_or("None".to_string(), |e| e.name.clone());
     let mut changed = false;
     egui::ComboBox::from_id_salt(("part_material", salt))
+        .icon(crate::props::combo_icon)
         .selected_text(shown)
         .width(170.0)
         .show_ui(ui, |ui| {
@@ -374,6 +375,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
     ui.horizontal(|ui| {
         ui.label("Category");
         egui::ComboBox::from_id_salt("object_category")
+            .icon(crate::props::combo_icon)
             .selected_text(o.category.label())
             .show_ui(ui, |ui| {
                 for c in ObjectCategory::ALL {
@@ -386,6 +388,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
     ui.horizontal(|ui| {
         ui.label("Placed");
         egui::ComboBox::from_id_salt("object_mount")
+            .icon(crate::props::combo_icon)
             .selected_text(mount_label(o.mount))
             .show_ui(ui, |ui| {
                 for m in Mount::ALL {
@@ -424,6 +427,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         ui.label("IFC");
         let mut class = o.ifc.class.clone();
         egui::ComboBox::from_id_salt("object_class")
+            .icon(crate::props::combo_icon)
             .selected_text(&class)
             .show_ui(ui, |ui| {
                 for (c, _, _) in IFC_CLASSES {
@@ -436,6 +440,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         }
         let mut pre = o.ifc.predefined.clone();
         egui::ComboBox::from_id_salt("object_predefined")
+            .icon(crate::props::combo_icon)
             .selected_text(&pre)
             .show_ui(ui, |ui| {
                 for p in objects::predefined_types(&o.ifc.class) {

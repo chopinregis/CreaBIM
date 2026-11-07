@@ -84,6 +84,7 @@ fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bo
         ui.label(text);
         let spacing = matches!(r, GridRule::Spacing(_));
         egui::ComboBox::from_id_salt(("curtain_rule", salt))
+            .icon(crate::props::combo_icon)
             .selected_text(r.label())
             .width(80.0)
             .show_ui(ui, |ui| {
@@ -172,6 +173,7 @@ fn material_pick(
     ui.horizontal(|ui| {
         ui.label("Material");
         egui::ComboBox::from_id_salt(("type_material", salt))
+            .icon(crate::props::combo_icon)
             .selected_text(shown)
             .width(150.0)
             .show_ui(ui, |ui| {
@@ -202,6 +204,7 @@ fn assembly_pick(
     ui.horizontal(|ui| {
         ui.label("Assembly");
         egui::ComboBox::from_id_salt("type_assembly")
+            .icon(crate::props::combo_icon)
             .selected_text(shown)
             .width(170.0)
             .show_ui(ui, |ui| {
@@ -266,6 +269,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                 ui.horizontal(|ui| {
                     ui.label("Location line");
                     egui::ComboBox::from_id_salt("type_location")
+                        .icon(crate::props::combo_icon)
                         .selected_text(w.location.label())
                         .show_ui(ui, |ui| {
                             for l in creabim_core::LocationLine::ALL {
@@ -672,6 +676,8 @@ impl CreaBimApp {
         let Some(cat) = TypeCategory::of(&e.kind) else {
             return;
         };
+        // its own box, as on the board (MU22)
+        crate::props::section(ui, "Type");
         let choices: Vec<(ElementId, String, bool)> = types::types_for(model, &e.kind)
             .into_iter()
             .map(|(id, n, t)| (id, n.to_string(), t.is_curtain()))
@@ -751,7 +757,8 @@ impl CreaBimApp {
                 );
                 if r.hovered() {
                     let b = r.rect;
-                    ui.painter().hline(b.x_range(), b.bottom() - 2.0, egui::Stroke::new(1.0, ink));
+                    ui.painter()
+                        .hline(b.x_range(), b.bottom() - 2.0, egui::Stroke::new(1.0, ink));
                 }
                 r
             };
@@ -778,7 +785,9 @@ impl CreaBimApp {
                     if cat != TypeCategory::Object {
                         ui.label(egui::RichText::new("·").weak());
                         if link(ui, "New type")
-                            .on_hover_text("A new type with its values, which it becomes an instance of")
+                            .on_hover_text(
+                                "A new type with its values, which it becomes an instance of",
+                            )
                             .clicked()
                         {
                             asks.push(TypeAsk::FromElement(id));
@@ -814,7 +823,9 @@ impl CreaBimApp {
                         }
                         ui.label(egui::RichText::new("·").weak());
                         if link(ui, "Update type")
-                            .on_hover_text("Make its values the type's: every other instance follows")
+                            .on_hover_text(
+                                "Make its values the type's: every other instance follows",
+                            )
                             .clicked()
                         {
                             asks.push(TypeAsk::SaveToType(id));
@@ -830,7 +841,6 @@ impl CreaBimApp {
         {
             asks.push(TypeAsk::FromElement(id));
         }
-        ui.separator();
         for a in asks {
             self.run_types(a);
         }

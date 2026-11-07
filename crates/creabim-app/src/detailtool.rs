@@ -318,6 +318,7 @@ pub fn preview(
 pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
     let mut label = "";
     egui::ComboBox::from_id_salt("detail.kind")
+        .icon(crate::props::combo_icon)
         .selected_text(d.kind.label())
         .show_ui(ui, |ui| {
             for k in DetailKind::ALL {
@@ -369,6 +370,7 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
         }
         DetailKind::Region { hatch } => {
             egui::ComboBox::from_id_salt("detail.hatch")
+                .icon(crate::props::combo_icon)
                 .selected_text(hatch.label())
                 .show_ui(ui, |ui| {
                     for h in Hatch::ALL {

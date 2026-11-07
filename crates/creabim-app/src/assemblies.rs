@@ -238,6 +238,7 @@ pub(super) fn layer_table(
                     );
                 }
                 egui::ComboBox::from_id_salt(("fn", id, i))
+                    .icon(crate::props::combo_icon)
                     .width(if compact { 78.0 } else { 96.0 })
                     .selected_text(l.function.label())
                     .show_ui(ui, |ui| {
@@ -253,6 +254,7 @@ pub(super) fn layer_table(
                     .map_or("None", |x| x.1)
                     .to_string();
                 egui::ComboBox::from_id_salt(("mat", id, i))
+                    .icon(crate::props::combo_icon)
                     .width(if compact { 110.0 } else { 190.0 })
                     .selected_text(shown)
                     .show_ui(ui, |ui| {

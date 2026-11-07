@@ -1022,12 +1022,11 @@ impl CreaBimApp {
                 {
                     extra = Some("guides.toggle");
                 }
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("Categories").strong().size(12.0));
+                let cats_open = crate::props::subsection(ui, "vis.categories", "Categories", true);
                 // two compact columns, as Blender's lists of toggles
                 let cols = if ui.available_width() >= 180.0 { 2 } else { 1 };
                 let cw = (ui.available_width() / cols as f32 - 4.0).max(60.0);
-                egui::Grid::new(("vis-cats", format!("{t:?}")))
+                if cats_open { egui::Grid::new(("vis-cats", format!("{t:?}")))
                     .num_columns(cols)
                     .spacing(egui::vec2(4.0, 1.0))
                     .show(ui, |ui| {
@@ -1047,15 +1046,13 @@ impl CreaBimApp {
                                 ui.end_row();
                             }
                         }
-                    });
+                    }); }
                 let groups: Vec<(ElementId, String, [f32; 3])> = grids::groups(self.doc.model())
                     .into_iter()
                     .map(|(e, g)| (e.id, e.name.clone(), g.color))
                     .collect();
                 if !groups.is_empty() {
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new("Grid systems").strong().size(12.0));
-                    ui.add_enabled_ui(!h.hides_category(Category::Grids), |ui| {
+                    if crate::props::subsection(ui, "vis.grids", "Grid systems", true) { ui.add_enabled_ui(!h.hides_category(Category::Grids), |ui| {
                         for (id, name, color) in groups {
                             ui.horizontal(|ui| {
                                 swatch(ui, color);
@@ -1083,8 +1080,7 @@ impl CreaBimApp {
                     .map(|e| (e.id, e.name.clone()))
                     .collect();
                 if !hidden.is_empty() {
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new("Hidden elements").strong());
+                    crate::props::subsection(ui, "vis.hidden", "Hidden elements", true);
                     for (id, name) in hidden {
                         ui.horizontal(|ui| {
                             ui.label(name);
@@ -1094,25 +1090,20 @@ impl CreaBimApp {
                                     Box::new(move |h| h.set_element(id, false)),
                                 ));
                             }
-                        });
+                        }); }
                     }
                 }
-                ui.add_space(4.0);
-                if ui
-                    .add_enabled(!h.is_empty(), egui::Button::new("Show everything"))
-                    .clicked()
-                {
+                ui.add_space(3.0);
+                if crate::props::row(ui, "", |ui| {
+                    ui.add_enabled(!h.is_empty(), egui::Button::new("Show everything"))
+                        .on_hover_text("Right-click an element in a view to hide it or its category there.")
+                        .clicked()
+                }) {
                     change = Some((
                         "Show everything".into(),
                         Box::new(|h| *h = ViewHidden::default()),
                     ));
                 }
-                ui.label(
-                    egui::RichText::new(
-                        "Right-click an element in a view to hide it or its category there.",
-                    )
-                    .weak(),
-                );
             });
         }
         if let Some((label, f)) = change {

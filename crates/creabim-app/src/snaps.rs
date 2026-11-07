@@ -332,6 +332,7 @@ pub fn snap_bar(ui: &mut egui::Ui, s: &mut SnapSettings) {
     };
     ui.add_enabled_ui(s.on, |ui| {
         egui::ComboBox::from_id_salt("snap_kinds")
+            .icon(crate::props::combo_icon)
             .selected_text(text)
             .width(80.0)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)

@@ -763,6 +763,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
     ui.horizontal_wrapped(|ui| {
         if sk.circle.is_none() {
             egui::ComboBox::from_id_salt("constraint_kind")
+                .icon(crate::props::combo_icon)
                 .selected_text(KINDS[form.kind])
                 .show_ui(ui, |ui| {
                     for (k, name) in KINDS.iter().enumerate() {
@@ -781,6 +782,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
                 }
             };
             egui::ComboBox::from_id_salt(salt)
+                .icon(crate::props::combo_icon)
                 .selected_text(name(*v))
                 .show_ui(ui, |ui| {
                     for i in 0..n {

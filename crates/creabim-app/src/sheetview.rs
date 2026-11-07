@@ -219,6 +219,7 @@ pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f6
         ui.label("Scale");
         let standard = SCALES.iter().any(|s| (s - scale).abs() < 1e-6);
         egui::ComboBox::from_id_salt(("scale", salt))
+            .icon(crate::props::combo_icon)
             .selected_text(if standard {
                 format!("1:{scale:.0}")
             } else {

@@ -127,7 +127,7 @@ impl CreaBimApp {
                 .map_or("(missing)".into(), |e| e.name.clone());
             ui.horizontal(|ui| {
                 ui.label(format!("{which}, with {name}"));
-                egui::ComboBox::from_id_salt(("corner", id, at_end))
+                egui::ComboBox::from_id_salt(("corner", id, at_end)).icon(crate::props::combo_icon)
                     .selected_text(now.label())
                     .show_ui(ui, |ui| {
                         for p in creabim_core::CornerPreset::ALL {
@@ -192,6 +192,7 @@ impl CreaBimApp {
                     "Not cleaned up".into()
                 };
                 egui::ComboBox::from_id_salt(("join", rid))
+                    .icon(crate::props::combo_icon)
                     .selected_text(shown)
                     .show_ui(ui, |ui| {
                         let rule = r;
