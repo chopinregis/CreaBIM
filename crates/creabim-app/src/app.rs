@@ -1069,15 +1069,10 @@ impl CreaBimApp {
         {
             self.toggle_edit_mode();
         }
-        // Alt+F2 shows or hides the active view's trace reference (MU18)
+        // Alt+F2 shows or hides the active view's references (MU18/MU19)
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::F2)) {
-            if let Some(t) = self.active_view.and_then(|v| self.plan.traces.get_mut(&v)) {
-                t.shown = !t.shown;
-                self.status = if t.shown {
-                    "Trace reference shown (Alt+F2 hides it).".into()
-                } else {
-                    "Trace reference hidden (Alt+F2 shows it).".into()
-                };
+            if let Some(v) = self.active_view {
+                self.toggle_references(v);
             }
         }
         // Tab in Edit mode on a layered element: its layers' ends, and back
@@ -4514,11 +4509,81 @@ impl CreaBimApp {
 
     /// Trace and reference for view `v` (MU18): what shows under it, in what
     /// colour and strength, moved or turned to compare.
+    /// Hide every reference shown in view `v`, or show them again.
+    fn toggle_references(&mut self, v: ElementId) {
+        let model = self.doc.model();
+        let refs: Vec<Element> = creabim_core::reference::in_view(model, v)
+            .iter()
+            .filter_map(|(id, _)| model.get(*id).cloned())
+            .collect();
+        if refs.is_empty() {
+            self.status = "No reference in this view: add one in Properties > Trace.".into();
+            return;
+        }
+        let hide = refs
+            .iter()
+            .any(|e| matches!(&e.kind, ElementKind::Reference(r) if !r.hidden));
+        let mut tx = creabim_core::Transaction::new(if hide {
+            "Hide references"
+        } else {
+            "Show references"
+        });
+        for e in refs {
+            let mut after = e.clone();
+            if let ElementKind::Reference(r) = &mut after.kind {
+                r.hidden = hide;
+            }
+            tx = tx.replace(e, after);
+        }
+        if self.doc.commit(tx).is_ok() {
+            self.status = if hide {
+                "References hidden (Alt+F2 shows them).".into()
+            } else {
+                "References shown (Alt+F2 hides them).".into()
+            };
+        }
+    }
+
+    /// A new reference shown in view `v`, in place, selected.
+    fn add_reference(&mut self, v: ElementId, source: creabim_core::RefSource) {
+        let model = self.doc.model();
+        let shown = crate::trace::read(model, &source);
+        if let crate::trace::Shown::Missing(why) = &shown {
+            self.status = why.clone();
+            return;
+        }
+        let mut r = creabim_core::Reference::new(source, vec![v]);
+        if let Some(b) = crate::trace::bounds_of(&r.source, &shown) {
+            r.in_place(b);
+        }
+        // a picture keeps its own colours; lines take the first colour
+        if matches!(shown, crate::trace::Shown::Picture(_)) {
+            r.colour = None;
+            r.opacity = 0.6;
+        }
+        let name = format!("Reference: {}", crate::trace::label(model, &r.source));
+        let e = Element::new(name.clone(), ElementKind::Reference(r));
+        let id = e.id;
+        if self
+            .doc
+            .commit(creabim_core::Transaction::new(format!("Add {name}")).insert(e))
+            .is_ok()
+        {
+            self.selection.only(id);
+            self.prop_tab = PropTab::Element;
+            self.status = "Reference added. Drag its middle to move it, a corner to scale it, the round grip to turn it; Calibrate sets an exact size. Alt+F2 hides it.".into();
+        }
+    }
+
     fn trace_panel(&mut self, ui: &mut egui::Ui, v: ElementId) {
-        use crate::trace::{Source, Trace, COLOURS};
+        use creabim_core::RefSource;
         ui.add_space(6.0);
         crate::props::section(ui, "Trace and reference");
         let model = self.doc.model();
+        let here: Vec<(ElementId, String, bool)> = creabim_core::reference::in_view(model, v)
+            .into_iter()
+            .map(|(id, r)| (id, crate::trace::label(model, &r.source), r.hidden))
+            .collect();
         let others: Vec<(ElementId, String)> = model
             .iter()
             .filter(|e| e.id != v)
@@ -4531,38 +4596,75 @@ impl CreaBimApp {
                 _ => None,
             })
             .collect();
-        let current = self.plan.traces.get(&v).map(|t| t.source.label(model));
-        let mut pick: Option<Option<Source>> = None;
-        crate::props::row(ui, "Show under it", |ui| {
-            egui::ComboBox::from_id_salt(("trace.source", v))
-                .selected_text(current.clone().unwrap_or_else(|| "Nothing".into()))
+        if here.is_empty() {
+            ui.label(
+                egui::RichText::new("Another view, a picture or a DXF drawing, shown faintly under this view to draw over or compare. It is saved with the project and can show in several views.")
+                    .weak(),
+            );
+        }
+        let mut select = None;
+        let mut flip = None;
+        for (id, name, hidden) in &here {
+            ui.horizontal(|ui| {
+                let eye = if *hidden { "eye-off" } else { "eye" };
+                let (rr, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                crate::svgicon::paint(ui.painter(), rr.shrink(2.0), eye, ui.visuals().text_color());
+                if resp
+                    .on_hover_text(if *hidden { "Show it" } else { "Hide it" })
+                    .clicked()
+                {
+                    flip = Some(*id);
+                }
+                let on = self.selection.contains(*id);
+                if ui.selectable_label(on, name).clicked() {
+                    select = Some(*id);
+                }
+            });
+        }
+        if let Some(id) = select {
+            self.selection.only(id);
+            self.prop_tab = PropTab::Element;
+        }
+        if let Some(id) = flip {
+            if let Some(e) = self.doc.model().get(id).cloned() {
+                let mut after = e.clone();
+                if let ElementKind::Reference(r) = &mut after.kind {
+                    r.hidden = !r.hidden;
+                }
+                let _ = self
+                    .doc
+                    .commit(creabim_core::Transaction::new("Show or hide a reference").replace(e, after));
+            }
+        }
+        ui.add_space(6.0);
+        let mut add = None;
+        crate::props::row(ui, "Add", |ui| {
+            egui::ComboBox::from_id_salt(("trace.add", v))
+                .selected_text("Another view…")
                 .width(ui.available_width())
                 .show_ui(ui, |ui| {
-                    if ui.selectable_label(current.is_none(), "Nothing").clicked() {
-                        pick = Some(None);
-                    }
                     for (id, name) in &others {
                         if ui.selectable_label(false, name).clicked() {
-                            pick = Some(Some(Source::View(*id)));
+                            add = Some(RefSource::View(*id));
                         }
                     }
-                });
+                })
         });
         ui.horizontal(|ui| {
             if ui
-                .button("Image…")
-                .on_hover_text("A picture to trace over: a scanned plan, a photo of a sketch (PNG or JPEG). Set its width below.")
+                .button("Picture…")
+                .on_hover_text("A picture to trace over: a scanned plan, a photo of a sketch (PNG or JPEG). Calibrate it to size in its properties.")
                 .clicked()
             {
                 if let Some(p) = rfd::FileDialog::new()
-                    .set_title("Trace over a picture")
+                    .set_title("Add a picture as a reference")
                     .add_filter("Pictures", &["png", "jpg", "jpeg"])
                     .pick_file()
                 {
-                    match crate::trace::image(&p.display().to_string(), 10.0) {
-                        Ok(s) => pick = Some(Some(s)),
-                        Err(e) => self.status = e,
-                    }
+                    add = Some(RefSource::Image {
+                        path: p.display().to_string(),
+                        width: 10.0,
+                    });
                 }
             }
             if ui
@@ -4571,83 +4673,282 @@ impl CreaBimApp {
                 .clicked()
             {
                 if let Some(p) = rfd::FileDialog::new()
-                    .set_title("Trace over a DXF drawing")
+                    .set_title("Add a DXF drawing as a reference")
                     .add_filter("DXF", &["dxf"])
                     .pick_file()
                 {
-                    match crate::trace::dxf(&p.display().to_string()) {
-                        Ok(s) => pick = Some(Some(s)),
-                        Err(e) => self.status = e,
-                    }
+                    add = Some(RefSource::Dxf {
+                        path: p.display().to_string(),
+                    });
                 }
             }
         });
-        match pick {
-            Some(None) => {
-                self.plan.traces.remove(&v);
-            }
-            Some(Some(src)) => {
-                let keep = self.plan.traces.remove(&v);
-                let mut t = Trace::new(src);
-                if let Some(k) = keep {
-                    t.colour = k.colour;
-                    t.opacity = k.opacity;
-                }
-                self.status = "Traced under the view. Alt+F2 shows or hides it.".into();
-                self.plan.traces.insert(v, t);
-            }
-            None => {}
+        if let Some(src) = add {
+            self.add_reference(v, src);
         }
-        let Some(t) = self.plan.traces.get_mut(&v) else {
-            ui.label(
-                egui::RichText::new("Another view, a picture or a DXF drawing, shown faintly under this one to draw over or compare. Yours: it isn't saved in the project.")
-                    .weak(),
-            );
-            return;
+    }
+
+    /// A reference's own properties (MU19): what it shows and where, how
+    /// strongly, and its size. Returns the undo label of a change.
+    fn reference_fields(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: ElementId,
+        r: &mut creabim_core::Reference,
+    ) -> Option<&'static str> {
+        use creabim_core::reference::REFERENCE_COLOURS;
+        use creabim_core::RefSource;
+        let mut label = None;
+        let model = self.doc.model();
+        let what = match &r.source {
+            RefSource::View(_) => "View",
+            RefSource::Image { .. } => "Picture",
+            RefSource::Dxf { .. } => "DXF drawing",
         };
-        ui.checkbox(&mut t.shown, "Shown (Alt+F2)");
+        let name = crate::trace::label(model, &r.source);
+        crate::props::row(ui, what, |ui| ui.label(name));
+        if let crate::trace::Shown::Missing(why) = self.plan.ref_cache.get(model, id, r) {
+            ui.colored_label(ui.visuals().warn_fg_color, why);
+        }
+        // the views it shows in: plans and sections
+        let views: Vec<(ElementId, String)> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::View(view)
+                    if matches!(view.kind, ViewKind::Plan { .. } | ViewKind::Section { .. }) =>
+                {
+                    Some((e.id, e.name.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        let n = r.shown_in.len();
+        crate::props::row(ui, "Shown in", |ui| {
+            egui::ComboBox::from_id_salt(("ref.views", id))
+                .selected_text(match n {
+                    0 => "No view".to_string(),
+                    1 => views
+                        .iter()
+                        .find(|(v, _)| r.shown_in.contains(v))
+                        .map_or("1 view".into(), |(_, n)| n.clone()),
+                    n => format!("{n} views"),
+                })
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for (v, name) in &views {
+                        let mut on = r.shown_in.contains(v);
+                        if ui.checkbox(&mut on, name).changed() {
+                            if on {
+                                r.shown_in.push(*v);
+                            } else {
+                                r.shown_in.retain(|x| x != v);
+                            }
+                            label = Some("Reference views");
+                        }
+                    }
+                })
+        });
         crate::props::row(ui, "Colour", |ui| {
-            for (i, (name, c)) in COLOURS.iter().enumerate() {
-                let (r, resp) =
-                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                ui.painter().circle_filled(r.center(), 8.0, *c);
-                if t.colour == i {
+            let swatch = |ui: &mut egui::Ui, c: Option<Color32>, on: bool, tip: &str| {
+                let (rr, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                match c {
+                    Some(c) => {
+                        ui.painter().circle_filled(rr.center(), 8.0, c);
+                    }
+                    None => {
+                        // its own colours: a split swatch
+                        ui.painter().circle_stroke(
+                            rr.center(),
+                            7.5,
+                            egui::Stroke::new(1.2, ui.visuals().weak_text_color()),
+                        );
+                        ui.painter().line_segment(
+                            [rr.center() + egui::vec2(-5.0, 5.0), rr.center() + egui::vec2(5.0, -5.0)],
+                            egui::Stroke::new(1.2, ui.visuals().weak_text_color()),
+                        );
+                    }
+                }
+                if on {
                     ui.painter().circle_stroke(
-                        r.center(),
+                        rr.center(),
                         10.0,
                         egui::Stroke::new(1.5, ui.visuals().text_color()),
                     );
                 }
-                if resp.on_hover_text(*name).clicked() {
-                    t.colour = i;
+                resp.on_hover_text(tip).clicked()
+            };
+            if swatch(ui, None, r.colour.is_none(), "Its own colours") {
+                r.colour = None;
+                label = Some("Reference colour");
+            }
+            for (i, (cname, [cr, cg, cb])) in REFERENCE_COLOURS.iter().enumerate() {
+                let c = Color32::from_rgb(*cr, *cg, *cb);
+                if swatch(ui, Some(c), r.colour == Some(i as u8), cname) {
+                    r.colour = Some(i as u8);
+                    label = Some("Reference colour");
                 }
             }
         });
         crate::props::row(ui, "Strength", |ui| {
-            ui.add(egui::Slider::new(&mut t.opacity, 0.05..=1.0).show_value(false));
+            if ui
+                .add(egui::Slider::new(&mut r.opacity, 0.05..=1.0).show_value(false))
+                .drag_stopped()
+            {
+                label = Some("Reference strength");
+            }
         });
-        if let Source::Image { width, .. } = &mut t.source {
+        crate::props::row(ui, "Drawn", |ui| {
+            ui.horizontal(|ui| {
+                if ui.selectable_label(!r.over, "Under").clicked() && r.over {
+                    r.over = false;
+                    label = Some("Reference under");
+                }
+                if ui.selectable_label(r.over, "Over").clicked() && !r.over {
+                    r.over = true;
+                    label = Some("Reference over");
+                }
+            })
+        });
+        ui.horizontal(|ui| {
+            if ui.checkbox(&mut r.locked, "Locked").changed() {
+                label = Some("Lock reference");
+            }
+            if ui.checkbox(&mut r.hidden, "Hidden (Alt+F2)").changed() {
+                label = Some("Hide reference");
+            }
+        });
+        ui.add_space(4.0);
+        crate::props::section(ui, "Place and size");
+        let mut at = r.at;
+        let mut changed = false;
+        crate::props::row(ui, "X", |ui| {
+            changed |= crate::props::fill(ui, crate::units::drag(&mut at.x)).changed()
+        });
+        crate::props::row(ui, "Y", |ui| {
+            changed |= crate::props::fill(ui, crate::units::drag(&mut at.y)).changed()
+        });
+        if changed && !r.locked {
+            r.at = at;
+            label = Some("Move reference");
+        }
+        crate::props::row(ui, "Rotation", |ui| {
+            if crate::props::fill(ui, egui::DragValue::new(&mut r.rotation).speed(0.5).suffix("°"))
+                .changed()
+            {
+                label = Some("Turn reference");
+            }
+        });
+        crate::props::row(ui, "Scale", |ui| {
+            if crate::props::fill(
+                ui,
+                egui::DragValue::new(&mut r.scale)
+                    .speed(0.01)
+                    .range(0.0001..=10000.0)
+                    .max_decimals(5),
+            )
+            .changed()
+            {
+                label = Some("Scale reference");
+            }
+        });
+        if let RefSource::Image { width, .. } = &mut r.source {
+            let before = *width;
             crate::props::row(ui, "Picture width", |ui| {
                 crate::props::fill(ui, crate::units::drag(width).range(0.1..=10000.0))
             });
+            if *width != before {
+                // the picture keeps its middle where it is
+                let k = *width / before;
+                if let Some([a, b]) = r.bounds {
+                    r.bounds = Some([a * k, b * k]);
+                }
+                label = Some("Picture width");
+            }
         }
-        crate::props::row(ui, "Move aside X", |ui| {
-            crate::props::fill(ui, crate::units::drag(&mut t.offset.x))
+        ui.horizontal(|ui| {
+            if ui
+                .button("Calibrate…")
+                .on_hover_text("Click two points on it a known distance apart, then type that distance: it is scaled to fit (the first point stays).")
+                .clicked()
+            {
+                self.plan.calibrate = Some((id, vec![]));
+                self.status = "Calibrate: click a first point on the reference.".into();
+            }
+            if ui
+                .button("Back in place")
+                .on_hover_text("Where it was drawn: no move, turn or scale.")
+                .clicked()
+            {
+                if let Some(b) = r.bounds {
+                    r.in_place(b);
+                    label = Some("Reference back in place");
+                }
+            }
+            if !matches!(r.source, RefSource::View(_))
+                && ui
+                    .button("Reload")
+                    .on_hover_text("Read the file again, after it changed.")
+                    .clicked()
+            {
+                self.plan.ref_cache.forget(id);
+            }
         });
-        crate::props::row(ui, "Move aside Y", |ui| {
-            crate::props::fill(ui, crate::units::drag(&mut t.offset.y))
-        });
-        crate::props::row(ui, "Turn", |ui| {
-            crate::props::fill(
-                ui,
-                egui::DragValue::new(&mut t.rotation).speed(0.5).suffix("°"),
-            )
-        });
-        if (t.offset != glam::DVec2::ZERO || t.rotation != 0.0)
-            && ui.button("Back in place").clicked()
-        {
-            t.offset = glam::DVec2::ZERO;
-            t.rotation = 0.0;
+        label
+    }
+
+    /// Calibrate's last step: the distance between the two points picked.
+    fn calibrate_window(&mut self, ctx: &egui::Context) {
+        let Some((id, a, b)) = self.plan.calibrated else {
+            return;
+        };
+        let mut open = true;
+        let mut done = false;
+        let mut go = false;
+        let id_d = egui::Id::new("calibrate.distance");
+        let mut d: f64 = ctx.data(|m| m.get_temp(id_d)).unwrap_or(a.distance(b));
+        egui::Window::new("Calibrate")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "The two points are {} apart now. How far apart should they be?",
+                    crate::units::len(a.distance(b))
+                ));
+                let r = ui.add(crate::units::drag(&mut d).range(0.001..=100000.0));
+                r.request_focus();
+                ui.horizontal(|ui| {
+                    go = ui.button("Scale it").clicked()
+                        || ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    done = ui.button("Cancel").clicked();
+                });
+            });
+        ctx.data_mut(|m| m.insert_temp(id_d, d));
+        if go {
+            if let Some(e) = self.doc.model().get(id).cloned() {
+                let mut after = e.clone();
+                if let ElementKind::Reference(r) = &mut after.kind {
+                    match r.calibrate(a, b, d) {
+                        Ok(()) => {
+                            let k = r.scale;
+                            if self
+                                .doc
+                                .commit(creabim_core::Transaction::new("Calibrate reference").replace(e, after))
+                                .is_ok()
+                            {
+                                self.status = format!("Calibrated: scale {k:.4}.");
+                            }
+                        }
+                        Err(why) => self.status = why,
+                    }
+                }
+            }
+            done = true;
+        }
+        if done || !open {
+            self.plan.calibrated = None;
+            ctx.data_mut(|m| m.remove::<f64>(id_d));
         }
     }
 
@@ -5562,6 +5863,11 @@ impl CreaBimApp {
                 ElementKind::Project(_) => {
                     if ui.button("Project information…").clicked() {
                         self.project_open = true;
+                    }
+                }
+                ElementKind::Reference(r) => {
+                    if let Some(l) = self.reference_fields(ui, id, r) {
+                        label = l;
                     }
                 }
                 ElementKind::MarkRules(_) => {
@@ -6670,6 +6976,7 @@ impl eframe::App for CreaBimApp {
         }
         self.project_window(&ctx);
         self.ifc_export_window(&ctx);
+        self.calibrate_window(&ctx);
         self.new_project_window(&ctx);
         self.marks_window(&ctx);
         self.graphic_styles_window(&ctx);
@@ -6949,6 +7256,7 @@ fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::SheetTemplate(_) => "sheet template",
         ElementKind::Units(_) => "project units",
         ElementKind::Project(_) => "project information",
+        ElementKind::Reference(_) => "reference",
         ElementKind::MarkRules(_) => "mark numbering",
         ElementKind::StylePack(_) => "style pack",
         ElementKind::View(_) => "view",
@@ -7416,6 +7724,45 @@ mod prop_tab_tests {
         app.plan.tool = Tool::Window;
         assert_eq!(app.prop_tabs()[0], PropTab::Next);
         app.prop_tab = PropTab::Next;
+        draw(&mut app);
+    }
+
+    #[test]
+    fn a_view_added_as_a_reference_is_placed_selected_and_hidden_with_alt_f2() {
+        let mut app = crate::app::test_app();
+        let plans: Vec<ElementId> = app
+            .doc
+            .model()
+            .iter()
+            .filter(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, ViewKind::Plan { .. })))
+            .map(|e| e.id)
+            .collect();
+        assert!(plans.len() >= 2, "the test project has two plans");
+        let (here, below) = (plans[1], plans[0]);
+        app.add_reference(here, creabim_core::RefSource::View(below));
+        let id = app.selection.active.expect("the new reference is selected");
+        let Some(ElementKind::Reference(r)) = app.doc.model().get(id).map(|e| &e.kind) else {
+            panic!("a reference was added")
+        };
+        assert_eq!(r.shown_in, vec![here]);
+        assert!(r.bounds.is_some(), "its bounds were read from the view");
+        // in place: its own points are where they were
+        let c = r.centre();
+        assert!(r.place(c).distance(c) < 1e-9);
+        assert_eq!(creabim_core::reference::in_view(app.doc.model(), here).len(), 1);
+        // its Properties draw, every tab
+        for t in app.prop_tabs() {
+            app.prop_tab = t;
+            draw(&mut app);
+        }
+        // Alt+F2's toggle hides it, then shows it again
+        app.toggle_references(here);
+        assert!(matches!(&app.doc.model().get(id).unwrap().kind, ElementKind::Reference(r) if r.hidden));
+        app.toggle_references(here);
+        assert!(matches!(&app.doc.model().get(id).unwrap().kind, ElementKind::Reference(r) if !r.hidden));
+        // the Trace tab lists it, with nothing selected
+        app.selection.clear();
+        app.prop_tab = PropTab::Trace;
         draw(&mut app);
     }
 }

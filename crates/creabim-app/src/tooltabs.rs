@@ -127,6 +127,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "crop-box",
                 "Add a crop box to the 3D view: it crops everything outside it",
             ),
+            act(
+                "view.reference",
+                "Reference",
+                "underlay",
+                "Trace over another view, a picture or a DXF drawing: shown faintly under this view (Alt+F2 hides it)",
+            ),
             act("new.sheet", "New sheet", "file-text", "A new drawing sheet"),
             Entry::Menu {
                 key: "tab:schedules",

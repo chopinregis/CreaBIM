@@ -147,6 +147,19 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             g.start = t.point2(g.start);
             g.end = t.point2(g.end);
         }
+        // a reference moves, turns and scales about its centre with them
+        ElementKind::Reference(r) => match t {
+            Xform::Move(d) => r.at += d.truncate(),
+            Xform::Rotate { degrees, .. } => {
+                r.at = t.point2(r.at);
+                r.rotation = (r.rotation + degrees).rem_euclid(360.0);
+            }
+            Xform::Scale { factor, .. } => {
+                r.at = t.point2(r.at);
+                r.scale *= factor;
+            }
+            _ => return None,
+        },
         ElementKind::Wall(w) => {
             if !t.keeps_upright() {
                 return None;

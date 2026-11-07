@@ -130,6 +130,10 @@ pub enum HandleKind {
     CropFace(usize),
     /// A crop box as a whole, across the plan.
     CropMove,
+    /// A reference as a whole, by its middle (Trace & Reference v2).
+    RefMove,
+    /// Corner `i` of a reference's outline: scales it about its middle.
+    RefScale(usize),
     /// Corner `i` of an outline: a slab's, a roof's, a shaft's, a
     /// sketch's, a railing's path; in Edit mode a hole's too.
     Vertex {
@@ -213,6 +217,8 @@ impl HandleKind {
                 | HandleKind::Member { free: true, .. }
                 | HandleKind::ViewEnd { .. }
                 | HandleKind::CropMove
+                | HandleKind::RefMove
+                | HandleKind::RefScale(_)
                 | HandleKind::Vertex { .. }
                 | HandleKind::AddVertex { .. }
                 | HandleKind::CalloutCorner(_)
@@ -251,7 +257,11 @@ impl HandleKind {
             HandleKind::Face(_) => "Push/pull",
             HandleKind::ViewDepth => "Change depth of",
             HandleKind::CropFace(_) => "Resize",
-            HandleKind::CropMove | HandleKind::MeshMove | HandleKind::MeshLift => "Move",
+            HandleKind::CropMove
+            | HandleKind::RefMove
+            | HandleKind::MeshMove
+            | HandleKind::MeshLift => "Move",
+            HandleKind::RefScale(_) => "Scale",
             HandleKind::MeshVertex(_) | HandleKind::MeshEdge(..) => "Reshape",
             _ => "Stretch",
         }
@@ -289,6 +299,8 @@ impl HandleKind {
             HandleKind::ViewDepth => "Depth",
             HandleKind::CropFace(_) => "Crop face",
             HandleKind::CropMove => "Crop box: move",
+            HandleKind::RefMove => "Reference: move",
+            HandleKind::RefScale(_) => "Corner: scale",
             HandleKind::Vertex { .. } => "Corner",
             HandleKind::Edge { .. } => "Edge: push",
             HandleKind::AddVertex { .. } => "Add a corner",
@@ -345,6 +357,8 @@ impl HandleKind {
             HandleKind::MeshLift => "Drag: move the mass up or down",
             HandleKind::ViewDepth => "Drag: change how deep it sees",
             HandleKind::CropFace(_) => "Drag: move the crop face",
+            HandleKind::RefMove => "Drag: move the reference",
+            HandleKind::RefScale(_) => "Drag: scale it about its middle (Calibrate in Properties sets an exact size)",
             HandleKind::Rotate => "Drag: turn it about its middle (steps of 5°; Alt for any angle)",
             HandleKind::ColumnSize { depth: false } => "Drag: change the width",
             HandleKind::ColumnSize { depth: true } => "Drag: change the depth",
@@ -860,6 +874,21 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             out
         }
         ElementKind::Detail(d) => detail_grips(model, d),
+        // a reference: its middle moves it, its corners scale it, the
+        // turn grip above its top turns it; none when it is locked
+        ElementKind::Reference(r) if !r.locked => {
+            let Some(c) = r.outline() else {
+                return vec![flat(HandleKind::RefMove, r.at.extend(0.0))];
+            };
+            let mut out: Vec<Handle> = (0..4)
+                .map(|i| flat(HandleKind::RefScale(i), c[i].extend(0.0)))
+                .collect();
+            out.push(flat(HandleKind::RefMove, r.at.extend(0.0)));
+            let top = (c[2] + c[3]) / 2.0;
+            let up = (top - r.at).normalize_or_zero();
+            out.push(flat(HandleKind::Rotate, (top + up * 0.6).extend(0.0)));
+            out
+        }
         ElementKind::Site(s) => match s.form {
             creabim_core::SiteForm::Plant {
                 position,
@@ -1124,6 +1153,7 @@ fn pivot_of(model: &Model, e: &Element) -> Option<DVec2> {
         ElementKind::Column(c) => Some(c.position),
         ElementKind::Stair(s) => Some(s.start),
         ElementKind::FreeMesh(m) => Some(m.origin.truncate()),
+        ElementKind::Reference(r) => Some(r.at),
         _ => None,
     }
 }
@@ -1482,6 +1512,16 @@ pub fn apply(
             let (at, _) = c.face(i);
             c.set_face(i, round(at[axis] + d[axis], step));
         }
+        (ElementKind::Reference(r), HandleKind::RefMove) => {
+            r.at = DVec2::new(round(r.at.x + d.x, step), round(r.at.y + d.y, step));
+        }
+        (ElementKind::Reference(r), HandleKind::RefScale(_)) => {
+            let (g, n) = (grab.truncate().distance(r.at), now.truncate().distance(r.at));
+            if g < 1e-6 || n < 1e-3 {
+                return Err("too close to its middle".into());
+            }
+            r.scale *= n / g;
+        }
         (ElementKind::CropBox(c), HandleKind::CropMove) => {
             // the grabbed corner lands on a rounded spot
             let to = DVec3::new(
@@ -1619,6 +1659,7 @@ pub fn apply(
                 ElementKind::Column(col) => col.rotation = (col.rotation + by).rem_euclid(360.0),
                 ElementKind::Stair(s) => s.direction = (s.direction + by).rem_euclid(360.0),
                 ElementKind::FreeMesh(m) => m.rotation = (m.rotation + by).rem_euclid(360.0),
+                ElementKind::Reference(r) => r.rotation = (r.rotation + by).rem_euclid(360.0),
                 _ => return Err("this doesn't turn".into()),
             }
         }
@@ -4162,6 +4203,47 @@ fn typed_length(
         *status = doc.undo_label().map(|l| format!("{l}. Ctrl+Z to undo."));
     }
     true
+}
+
+#[cfg(test)]
+mod reference_grip_tests {
+    use super::*;
+    use creabim_core::{RefSource, Reference};
+
+    #[test]
+    fn a_reference_moves_by_its_middle_scales_by_a_corner_and_turns() {
+        let mut r = Reference::new(RefSource::Dxf { path: "survey.dxf".into() }, vec![]);
+        r.in_place([DVec2::new(0.0, 0.0), DVec2::new(10.0, 6.0)]);
+        let e = Element::new("Reference", ElementKind::Reference(r));
+        let id = e.id;
+        let model = Model::from_elements([e]).unwrap();
+        let hs = handles(&model, id, None);
+        let kinds: Vec<HandleKind> = hs.iter().map(|h| h.kind).collect();
+        assert!(kinds.contains(&HandleKind::RefMove) && kinds.contains(&HandleKind::Rotate));
+        assert_eq!(kinds.iter().filter(|k| matches!(k, HandleKind::RefScale(_))).count(), 4);
+        let drag = |kind: HandleKind, grab: DVec2, now: DVec2| {
+            let (orig, joined) = originals(&model, id, kind);
+            let out = apply(&model, &orig, &joined, kind, grab.extend(0.0), now.extend(0.0), 0.0).unwrap();
+            let ElementKind::Reference(r) = &out[0].kind else { panic!() };
+            r.clone()
+        };
+        // its middle, dragged 2 m right
+        let moved = drag(HandleKind::RefMove, DVec2::new(5.0, 3.0), DVec2::new(7.0, 3.0));
+        assert!(moved.at.distance(DVec2::new(7.0, 3.0)) < 1e-9);
+        // a corner dragged twice as far from the middle doubles it
+        let big = drag(HandleKind::RefScale(2), DVec2::new(10.0, 6.0), DVec2::new(15.0, 9.0));
+        assert!((big.scale - 2.0).abs() < 1e-9, "{}", big.scale);
+        // the turn grip, a quarter turn about the middle
+        let turned = drag(HandleKind::Rotate, DVec2::new(5.0, 9.0), DVec2::new(-1.0, 3.0));
+        assert!((turned.rotation - 90.0).abs() < 1e-9, "{}", turned.rotation);
+        // locked, it has no grips
+        let mut e2 = model.get(id).unwrap().clone();
+        if let ElementKind::Reference(r) = &mut e2.kind {
+            r.locked = true;
+        }
+        let locked = Model::from_elements([e2]).unwrap();
+        assert!(handles(&locked, id, None).is_empty());
+    }
 }
 
 #[cfg(test)]

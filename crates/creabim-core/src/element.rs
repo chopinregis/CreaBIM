@@ -109,6 +109,8 @@ impl Element {
             // a missing style falls back to the default look, like materials
             ElementKind::TextStyle(_) => vec![],
             ElementKind::SheetTemplate(_) => vec![],
+            // a reference's view is soft: without it, it shows nothing
+            ElementKind::Reference(_) => vec![],
             ElementKind::Units(_)
             | ElementKind::Project(_)
             | ElementKind::MarkRules(_)
@@ -174,6 +176,7 @@ impl Element {
             ElementKind::SheetTemplate(_) => "SheetTemplate",
             ElementKind::Units(_) => "ProjectUnits",
             ElementKind::Project(_) => "ProjectInfo",
+            ElementKind::Reference(_) => "Reference",
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
@@ -344,6 +347,13 @@ impl Element {
             ElementKind::TextStyle(s) => s.validate(),
             ElementKind::SheetTemplate(t) => t.validate(),
             ElementKind::Units(_) | ElementKind::Project(_) => Ok(()),
+            ElementKind::Reference(r) => {
+                if r.scale.is_finite() && r.scale > 0.0 && r.at.is_finite() && r.rotation.is_finite() {
+                    Ok(())
+                } else {
+                    Err("a reference needs a finite place and a scale above zero".into())
+                }
+            }
             ElementKind::MarkRules(r) => r.validate(),
             ElementKind::StylePack(p) => p.validate(),
             ElementKind::CropBox(c) => c.validate(),
@@ -422,6 +432,8 @@ pub enum ElementKind {
     Units(crate::units::Units),
     /// The project's own information (at most one).
     Project(crate::project::ProjectInfo),
+    /// Something traced over in views (Trace & Reference v2, MU19).
+    Reference(crate::reference::Reference),
     /// The project's mark numbering rules: at most one per project, read
     /// through [`crate::marks::rules`].
     MarkRules(crate::marks::MarkRules),
@@ -490,6 +502,7 @@ impl ElementKind {
             ElementKind::Assembly(_) => "Assembly",
             ElementKind::Units(_) => "Units",
             ElementKind::Project(_) => "Project information",
+            ElementKind::Reference(_) => "Reference",
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",

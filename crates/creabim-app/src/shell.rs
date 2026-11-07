@@ -1980,6 +1980,16 @@ impl CreaBimApp {
             "view.reveal" => self.toggle_hidden_elements(id),
             "view.colour" => self.toggle_hidden_colour(id),
             "view.xray" => self.toggle_view_xray(id),
+            "view.reference" => {
+                // the Trace tab of the view in the focused area (MU19)
+                if matches!(self.vis_target(false), Some(gridvis::VisTarget::View(_))) {
+                    self.selection.clear();
+                    self.prop_tab = PropTab::Trace;
+                    self.status = "Add a reference in Properties > Trace: another view, a picture or a DXF drawing.".into();
+                } else {
+                    self.status = "Open a plan or a section first: references show in them.".into();
+                }
+            }
             "sheet.preview" => {
                 self.print_preview = !self.print_preview;
                 self.status = if self.print_preview {

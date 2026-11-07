@@ -1,144 +1,160 @@
-//! Trace and reference (MU18, after ArchiCAD's): something shown faintly
-//! under a drawing to draw over or compare against. Another view, a
-//! placed image (a scanned plan, a photo of a sketch) or a DXF drawing,
-//! in a colour and strength of its own, moved aside or turned to compare,
-//! shown and hidden with one key (Alt+F2).
+//! Trace and reference (MU18, v2 after MU19): something shown faintly
+//! under (or over) a drawing to draw over or compare against: another
+//! view, a picture (a scanned plan, a photo of a sketch) or a DXF drawing.
 //!
-//! It is the viewer's, not the model's: it is kept with the view's pane
-//! state, never in the project file, the undo history or an export.
+//! The reference itself is a project element ([`creabim_core::Reference`]):
+//! where it is put, turned and scaled, its colour, strength and the views
+//! it shows in are saved with the project. What it shows (a picture's
+//! pixels, a drawing's lines, a view's linework) is read here and kept in
+//! a cache, as a link is: the file stays where it is.
 
+use creabim_core::reference::{RefSource, Reference, REFERENCE_COLOURS};
 use creabim_core::{ElementId, Model};
 use creabim_geom::plan::PlanItem;
 use creabim_geom::raster::Raster;
 use eframe::egui::{self, Color32, Pos2, Stroke};
 use glam::DVec2;
+use std::collections::HashMap;
 use std::sync::Arc;
 
-/// What is traced over.
+/// What a reference shows, read: a picture, or lines in its own metres.
 #[derive(Clone, Debug)]
-pub enum Source {
-    /// Another plan, section or elevation, drawn at the same place.
-    View(ElementId),
-    /// A picture: `width` metres wide, its lower left corner at the origin.
-    Image {
-        path: String,
-        raster: Arc<Raster>,
-        width: f64,
-    },
-    /// A DXF drawing's lines, in metres (its units read from the file).
-    Dxf {
-        path: String,
-        lines: Vec<Vec<DVec2>>,
-    },
+pub enum Shown {
+    Picture(Arc<Raster>),
+    Lines(Arc<Vec<Vec<DVec2>>>),
+    /// It couldn't be read; why.
+    Missing(String),
 }
 
-impl Source {
-    pub fn label(&self, model: &Model) -> String {
-        let file = |p: &str| {
-            std::path::Path::new(p)
-                .file_name()
-                .map_or(p.to_string(), |n| n.to_string_lossy().into_owned())
+/// The references' contents, read once per file (or per model revision
+/// for a view's linework).
+#[derive(Default)]
+pub struct RefCache {
+    read: HashMap<ElementId, (String, u64, Shown)>,
+}
+
+/// The cache key of a source: its file, or its view.
+fn key(source: &RefSource) -> String {
+    match source {
+        RefSource::View(v) => format!("view:{v:?}"),
+        RefSource::Image { path, .. } => format!("image:{path}"),
+        RefSource::Dxf { path } => format!("dxf:{path}"),
+    }
+}
+
+impl RefCache {
+    /// What reference `id` shows, read if not yet (or stale).
+    pub fn get(&mut self, model: &Model, id: ElementId, r: &Reference) -> Shown {
+        let k = key(&r.source);
+        let rev = match r.source {
+            RefSource::View(_) => model.revision(),
+            _ => 0,
         };
-        match self {
-            Source::View(v) => model.get(*v).map_or("a view".into(), |e| e.name.clone()),
-            Source::Image { path, .. } | Source::Dxf { path, .. } => file(path),
-        }
-    }
-}
-
-/// The colours a reference can be drawn in; the first is the default.
-pub const COLOURS: [(&str, Color32); 4] = [
-    ("Red", Color32::from_rgb(214, 64, 52)),
-    ("Blue", Color32::from_rgb(52, 104, 196)),
-    ("Grey", Color32::from_rgb(120, 124, 130)),
-    ("Green", Color32::from_rgb(70, 130, 70)),
-];
-
-/// A reference shown under one view.
-#[derive(Clone, Debug)]
-pub struct Trace {
-    pub source: Source,
-    pub colour: usize,
-    /// 0 (gone) to 1 (as strong as the drawing).
-    pub opacity: f32,
-    /// Moved aside by, metres.
-    pub offset: DVec2,
-    /// Turned by, degrees anticlockwise, about the origin.
-    pub rotation: f64,
-    pub shown: bool,
-    /// A view's linework, and the model revision it was taken at.
-    cache: Option<(u64, Arc<Vec<Vec<DVec2>>>)>,
-}
-
-impl Trace {
-    pub fn new(source: Source) -> Self {
-        Self {
-            source,
-            colour: 0,
-            opacity: 0.45,
-            offset: DVec2::ZERO,
-            rotation: 0.0,
-            shown: true,
-            cache: None,
-        }
-    }
-
-    /// From the reference's own place to where it is shown.
-    pub fn place(&self, p: DVec2) -> DVec2 {
-        DVec2::from_angle(self.rotation.to_radians()).rotate(p) + self.offset
-    }
-
-    fn colour(&self) -> Color32 {
-        COLOURS[self.colour.min(COLOURS.len() - 1)]
-            .1
-            .gamma_multiply(self.opacity.clamp(0.0, 1.0))
-    }
-
-    /// Its linework, for a view or a DXF: polylines in model metres.
-    fn lines(&mut self, model: &Model) -> Arc<Vec<Vec<DVec2>>> {
-        match &self.source {
-            Source::Dxf { lines, .. } => Arc::new(lines.clone()),
-            Source::View(v) => {
-                let rev = model.revision();
-                if let Some((r, l)) = &self.cache {
-                    if *r == rev {
-                        return l.clone();
-                    }
-                }
-                let l = Arc::new(
-                    creabim_geom::section::view_drawing(model, *v)
-                        .map(|d| linework(&d.items))
-                        .unwrap_or_default(),
-                );
-                self.cache = Some((rev, l.clone()));
-                l
+        if let Some((kk, rr, s)) = self.read.get(&id) {
+            if *kk == k && *rr == rev {
+                return s.clone();
             }
-            Source::Image { .. } => Arc::new(vec![]),
         }
+        let s = read(model, &r.source);
+        self.read.insert(id, (k, rev, s.clone()));
+        s
     }
 
-    /// Draw it under a drawing; `to_screen` places a model point.
-    pub fn draw(
-        &mut self,
-        painter: &egui::Painter,
-        model: &Model,
-        to_screen: &dyn Fn(DVec2) -> Pos2,
-    ) {
-        if !self.shown || self.opacity <= 0.0 {
-            return;
+    /// Forget what was read, so it is read again (Reload).
+    pub fn forget(&mut self, id: ElementId) {
+        self.read.remove(&id);
+    }
+}
+
+/// Read a source.
+pub fn read(model: &Model, source: &RefSource) -> Shown {
+    match source {
+        RefSource::View(v) => Shown::Lines(Arc::new(
+            creabim_geom::section::view_drawing(model, *v)
+                .map(|d| linework(&d.items))
+                .unwrap_or_default(),
+        )),
+        RefSource::Image { path, .. } => match picture(path) {
+            Ok(r) => Shown::Picture(Arc::new(r)),
+            Err(e) => Shown::Missing(e),
+        },
+        RefSource::Dxf { path } => match dxf_lines(path) {
+            Ok(l) => Shown::Lines(Arc::new(l)),
+            Err(e) => Shown::Missing(e),
+        },
+    }
+}
+
+/// What a source spans in its own coordinates, once read.
+pub fn bounds_of(source: &RefSource, shown: &Shown) -> Option<[DVec2; 2]> {
+    match (source, shown) {
+        (RefSource::Image { width, .. }, Shown::Picture(r)) => {
+            let h = width * r.height as f64 / r.width.max(1) as f64;
+            Some([DVec2::ZERO, DVec2::new(*width, h)])
         }
-        if let Source::Image { raster, width, .. } = &self.source {
-            let h = width * raster.height as f64 / raster.width.max(1) as f64;
-            // a turned picture is drawn by its corners
-            let corners = [
-                DVec2::ZERO,
-                DVec2::new(*width, 0.0),
-                DVec2::new(*width, h),
-                DVec2::new(0.0, h),
-            ]
-            .map(|c| to_screen(self.place(c)));
+        (_, Shown::Lines(l)) => {
+            let mut it = l.iter().flatten();
+            let first = *it.next()?;
+            let (lo, hi) = it.fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+            Some([lo, hi])
+        }
+        _ => None,
+    }
+}
+
+/// A reference's name: the view's, or the file's.
+pub fn label(model: &Model, source: &RefSource) -> String {
+    let file = |p: &str| {
+        std::path::Path::new(p)
+            .file_name()
+            .map_or(p.to_string(), |n| n.to_string_lossy().into_owned())
+    };
+    match source {
+        RefSource::View(v) => model.get(*v).map_or("a view".into(), |e| e.name.clone()),
+        RefSource::Image { path, .. } | RefSource::Dxf { path } => file(path),
+    }
+}
+
+/// The ink a reference is drawn in; none keeps its own colours.
+pub fn colour(r: &Reference) -> Option<Color32> {
+    r.colour.map(|i| {
+        let [cr, cg, cb] = REFERENCE_COLOURS[(i as usize).min(REFERENCE_COLOURS.len() - 1)].1;
+        Color32::from_rgb(cr, cg, cb)
+    })
+}
+
+/// Draw the references shown in `view` that go under the model (or, with
+/// `over`, over it); `to_screen` places a model point.
+pub fn draw_view(
+    painter: &egui::Painter,
+    model: &Model,
+    cache: &mut RefCache,
+    view: ElementId,
+    over: bool,
+    to_screen: &dyn Fn(DVec2) -> Pos2,
+) {
+    for (id, r) in creabim_core::reference::in_view(model, view) {
+        if r.hidden || r.over != over || r.opacity <= 0.0 {
+            continue;
+        }
+        let shown = cache.get(model, id, r);
+        draw(painter, r, &shown, to_screen);
+    }
+}
+
+/// Draw one reference.
+pub fn draw(painter: &egui::Painter, r: &Reference, shown: &Shown, to_screen: &dyn Fn(DVec2) -> Pos2) {
+    let a = r.opacity.clamp(0.0, 1.0);
+    match shown {
+        Shown::Picture(raster) => {
+            let Some([lo, hi]) = r.bounds.or_else(|| bounds_of(&r.source, shown)) else {
+                return;
+            };
+            let corners = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)]
+                .map(|c| to_screen(r.place(c)));
             let id = crate::textures::texture(painter.ctx(), raster);
-            let tint = Color32::WHITE.gamma_multiply(self.opacity.clamp(0.0, 1.0));
+            // its own colours, or tinted with the reference colour
+            let tint = colour(r).unwrap_or(Color32::WHITE).gamma_multiply(a);
             let mut mesh = egui::Mesh::with_texture(id);
             let uv = [
                 egui::pos2(0.0, 1.0),
@@ -155,15 +171,18 @@ impl Trace {
             }
             mesh.indices.extend([0, 1, 2, 0, 2, 3]);
             painter.add(egui::Shape::mesh(mesh));
-            return;
         }
-        let stroke = Stroke::new(1.0, self.colour());
-        for line in self.lines(model).iter() {
-            let pts: Vec<Pos2> = line.iter().map(|p| to_screen(self.place(*p))).collect();
-            if pts.len() >= 2 {
-                painter.add(egui::Shape::line(pts, stroke));
+        Shown::Lines(lines) => {
+            let ink = colour(r).unwrap_or(Color32::from_gray(70)).gamma_multiply(a);
+            let stroke = Stroke::new(1.0, ink);
+            for line in lines.iter() {
+                let pts: Vec<Pos2> = line.iter().map(|p| to_screen(r.place(*p))).collect();
+                if pts.len() >= 2 {
+                    painter.add(egui::Shape::line(pts, stroke));
+                }
             }
         }
+        Shown::Missing(_) => {}
     }
 }
 
@@ -205,28 +224,23 @@ pub fn linework(items: &[PlanItem]) -> Vec<Vec<DVec2>> {
     out
 }
 
-/// A picture file as a reference `width` metres wide.
-pub fn image(path: &str, width: f64) -> Result<Source, String> {
+/// A picture file's pixels.
+pub fn picture(path: &str) -> Result<Raster, String> {
     let img = image::open(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
     let rgba = img.to_rgba8();
-    let raster = Raster {
+    Ok(Raster {
         width: rgba.width() as usize,
         height: rgba.height() as usize,
         rgba: rgba.into_raw(),
         key: path_key(path),
-    };
-    Ok(Source::Image {
-        path: path.to_string(),
-        raster: Arc::new(raster),
-        width,
     })
 }
 
-/// A DXF file's lines as a reference.
-pub fn dxf(path: &str) -> Result<Source, String> {
+/// A DXF file's lines, in metres.
+pub fn dxf_lines(path: &str) -> Result<Vec<Vec<DVec2>>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
     let items = creabim_exchange::titleblock::dxf_items(&text)?;
-    let lines = items
+    Ok(items
         .into_iter()
         .filter_map(|it| match it {
             creabim_core::titleblock::TitleItem::Line { points, .. } => {
@@ -234,11 +248,7 @@ pub fn dxf(path: &str) -> Result<Source, String> {
             }
             _ => None,
         })
-        .collect();
-    Ok(Source::Dxf {
-        path: path.to_string(),
-        lines,
-    })
+        .collect())
 }
 
 fn path_key(path: &str) -> u64 {
@@ -253,20 +263,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_view_traced_under_another_is_its_linework_moved_and_turned() {
+    fn a_view_reference_reads_its_linework_and_spans_it() {
         let m = creabim_core::sample::sample_house();
         let v = m
             .iter()
             .find(|e| matches!(&e.kind, creabim_core::ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. })))
             .unwrap()
             .id;
-        let mut t = Trace::new(Source::View(v));
-        let lines = t.lines(&m);
-        assert!(!lines.is_empty(), "a plan has linework");
-        t.offset = DVec2::new(10.0, 0.0);
-        t.rotation = 90.0;
-        let p = t.place(DVec2::new(1.0, 0.0));
-        assert!(p.distance(DVec2::new(10.0, 1.0)) < 1e-9, "{p}");
+        let src = RefSource::View(v);
+        let shown = read(&m, &src);
+        let Shown::Lines(l) = &shown else { panic!() };
+        assert!(!l.is_empty(), "a plan has linework");
+        let [lo, hi] = bounds_of(&src, &shown).unwrap();
+        assert!(hi.x > lo.x && hi.y > lo.y);
     }
 
     #[test]
@@ -274,9 +283,7 @@ mod tests {
         let dir = std::env::temp_dir().join("creabim-trace-test.dxf");
         let text = "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n5000\n21\n0\n0\nENDSEC\n0\nEOF\n";
         std::fs::write(&dir, text).unwrap();
-        let Source::Dxf { lines, .. } = dxf(&dir.to_string_lossy()).unwrap() else {
-            panic!()
-        };
+        let lines = dxf_lines(&dir.to_string_lossy()).unwrap();
         assert_eq!(lines.len(), 1);
         assert!((lines[0][1].x - 5.0).abs() < 1e-9, "{:?}", lines[0]);
     }

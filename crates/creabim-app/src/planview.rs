@@ -486,7 +486,12 @@ pub struct PlanState {
     /// how many times Tab has moved past the first (A3-2).
     /// What each view shows traced under it (MU18): the viewer's, never
     /// saved in the project.
-    pub traces: HashMap<ElementId, crate::trace::Trace>,
+    /// What the project's references show, read (Trace & Reference v2).
+    pub ref_cache: crate::trace::RefCache,
+    /// Calibrate: the reference being scaled and the points picked on
+    /// it so far; with two, `calibrated` asks for the distance.
+    pub calibrate: Option<(ElementId, Vec<DVec2>)>,
+    pub calibrated: Option<(ElementId, DVec2, DVec2)>,
     /// Temporary dimensions muted (MU21): none shown, none clicked.
     pub temp_dims_off: bool,
     pub host_pick: Option<ElementId>,
@@ -585,7 +590,9 @@ impl Default for PlanState {
             step_prompt: None,
             temp: Default::default(),
             tracker: Default::default(),
-            traces: HashMap::new(),
+            ref_cache: Default::default(),
+            calibrate: None,
+            calibrated: None,
             temp_dims_off: false,
             host_pick: None,
             host_cycle: 0,
@@ -812,11 +819,11 @@ pub fn show(
     if style.decorations && kind != PaneKind::Schedule {
         draw_metric_grid(&painter, &xf);
     }
-    // a reference traced under the drawing (MU18)
+    // the references shown in this view, under the drawing (MU19)
     if style.decorations {
-        if let Some(t) = state.traces.get_mut(&view) {
-            t.draw(&painter, doc.model(), &|p| xf.to_screen(p));
-        }
+        crate::trace::draw_view(&painter, doc.model(), &mut state.ref_cache, view, false, &|p| {
+            xf.to_screen(p)
+        });
     }
     // the slabs of a plan's level: a light fill under the rest, stronger
     // where the pointer is, so they can be seen and clicked
@@ -876,6 +883,25 @@ pub fn show(
             draw_item_xray(&painter, &xf, item, selected, mm, doc.model());
         } else {
             draw_item(&painter, &xf, item, selected, mm);
+        }
+    }
+    // the references drawn over the model, then the outline of each one
+    // selected or hovered, which is where it is picked (MU19)
+    if style.decorations {
+        crate::trace::draw_view(&painter, doc.model(), &mut state.ref_cache, view, true, &|p| {
+            xf.to_screen(p)
+        });
+        for (id, r) in creabim_core::reference::in_view(doc.model(), view) {
+            let lit = selection.contains(id);
+            if !(lit || hovered == Some(id)) {
+                continue;
+            }
+            if let Some(c) = r.outline() {
+                let mut pts: Vec<Pos2> = c.iter().map(|p| xf.to_screen(*p)).collect();
+                pts.push(pts[0]);
+                let ink = if lit { ACCENT_SELECTED } else { ACCENT_SELECTED.gamma_multiply(0.6) };
+                painter.extend(egui::Shape::dashed_line(&pts, Stroke::new(1.5, ink), 6.0, 4.0));
+            }
         }
     }
     // a dimension that holds its spacing shows a small closed padlock by
@@ -2135,6 +2161,28 @@ pub fn show(
             error = Some(e.to_string());
         }
     }
+    // Calibrate: two clicks on the reference, then its distance (MU19)
+    if let Some((rid, pts)) = state.calibrate.as_mut() {
+        for q in pts.iter() {
+            painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, ACCENT_SELECTED));
+        }
+        if let (Some(a), Some(h)) = (pts.first(), hover_world) {
+            painter.line_segment([xf.to_screen(*a), xf.to_screen(h)], Stroke::new(1.0, ACCENT_SELECTED));
+        }
+        if response.clicked() {
+            if let Some(q) = hover_world {
+                pts.push(q);
+            }
+            if pts.len() >= 2 {
+                state.calibrated = Some((*rid, pts[0], pts[1]));
+                state.calibrate = None;
+            } else {
+                state.status =
+                    Some("Calibrate: click a second point a known distance from the first.".into());
+            }
+        }
+        return None;
+    }
     if response.clicked() {
         state.tracker.clear();
         let p = hover_world?;
@@ -2850,6 +2898,17 @@ fn under_pointer(
         let c = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
         if (0..4).any(|i| segment_distance(p, c[i], c[(i + 1) % 4]) < tol) && !under.contains(&id) {
             under.push(id);
+        }
+    }
+    // a reference's outline picks it (MU19), after what is drawn
+    for (id, r) in creabim_core::reference::in_view(doc.model(), view) {
+        if r.hidden || under.contains(&id) {
+            continue;
+        }
+        if let Some(c) = r.outline() {
+            if (0..4).any(|i| segment_distance(p, c[i], c[(i + 1) % 4]) < tol) {
+                under.push(id);
+            }
         }
     }
     let scene = cached_pick_scene(state, doc, view);

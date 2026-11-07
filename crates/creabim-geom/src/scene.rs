@@ -489,6 +489,7 @@ fn build_scene_unjoined(
             | ElementKind::SheetTemplate(_)
             | ElementKind::Units(_)
             | ElementKind::Project(_)
+            | ElementKind::Reference(_)
             | ElementKind::MarkRules(_)
             | ElementKind::StylePack(_)
             | ElementKind::ElementType(_)
