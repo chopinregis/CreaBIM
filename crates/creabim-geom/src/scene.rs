@@ -490,6 +490,7 @@ fn build_scene_unjoined(
             | ElementKind::Units(_)
             | ElementKind::Project(_)
             | ElementKind::Reference(_)
+            | ElementKind::PaperMark(_)
             | ElementKind::MarkRules(_)
             | ElementKind::StylePack(_)
             | ElementKind::ElementType(_)

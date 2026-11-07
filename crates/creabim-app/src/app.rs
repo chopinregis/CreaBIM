@@ -132,6 +132,9 @@ pub struct CreaBimApp {
     prop_seen: (Tool, bool),
     /// Sheets as they print, on white, whatever the paper (MU21).
     print_preview: bool,
+    /// The Export sheets dialog (MU22), and its choices this session.
+    sheets_export_open: bool,
+    sheets_export: SheetsExport,
     scene: Vec<SceneItem>,
     plan: PlanState,
     placement: PlanPlacement,
@@ -298,6 +301,8 @@ impl CreaBimApp {
             prop_tab: PropTab::Element,
             prop_seen: (Tool::Select, false),
             print_preview: false,
+            sheets_export_open: false,
+            sheets_export: SheetsExport::default(),
             scene: vec![],
             plan: PlanState::default(),
             placement: PlanPlacement::Docked,
@@ -1069,6 +1074,16 @@ impl CreaBimApp {
             && self.plan.outline.is_none()
         {
             self.toggle_edit_mode();
+        }
+        // Ctrl+P: this sheet as a PDF; Ctrl+Shift+P: Export sheets (MU22)
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::P)) {
+            self.sheets_export_open = true;
+        } else if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::P)) {
+            if self.active_view.is_some_and(|id| self.is_sheet(id)) {
+                self.export_sheets_now(true);
+            } else {
+                self.sheets_export_open = true;
+            }
         }
         // Alt+F2 shows or hides the active view's references (MU18/MU19)
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::F2)) {
@@ -4513,6 +4528,213 @@ impl CreaBimApp {
 
     /// Trace and reference for view `v` (MU18): what shows under it, in what
     /// colour and strength, moved or turned to compare.
+    /// A north arrow or a scale bar on `sheet`, where it usually goes:
+    /// over the title block's right end, or its left (MU22).
+    fn add_paper_mark(&mut self, sheet: ElementId, north: bool) {
+        let model = self.doc.model();
+        let Some(s) = sheets::sheet_of(model, sheet) else {
+            return;
+        };
+        let (w, m) = (s.width, creabim_geom::sheet::MARGIN);
+        // clear of the title block as drawn, whatever its template
+        let tb = creabim_geom::sheet::TITLE_BLOCK;
+        let (tb_left, tb_top) = creabim_geom::sheet::title_block_box(model, sheet)
+            .map_or((w - m - tb.x, m + tb.y), |(lo, hi)| (lo.x, hi.y));
+        let mark = if north {
+            creabim_core::PaperMark::north_arrow(sheet, glam::DVec2::new(w - m - 16.0, tb_top + 18.0))
+        } else {
+            // the scale of the views on it, else 1:100
+            let scale = model
+                .iter()
+                .find_map(|e| match &e.kind {
+                    ElementKind::Viewport(vp) if vp.sheet == sheet => match model.get(vp.view).map(|v| &v.kind) {
+                        Some(ElementKind::View(v)) if !matches!(v.kind, ViewKind::Schedule { .. }) => Some(v.scale),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap_or(100.0);
+            creabim_core::PaperMark::scale_bar(sheet, glam::DVec2::new(tb_left + 4.0, tb_top + 10.0), scale)
+        };
+        let what = if north { "North arrow" } else { "Scale bar" };
+        let e = Element::new(what, ElementKind::PaperMark(mark));
+        let id = e.id;
+        if self
+            .doc
+            .commit(creabim_core::Transaction::new(format!("Add {}", what.to_lowercase())).insert(e))
+            .is_ok()
+        {
+            self.selection.only(id);
+            self.prop_tab = PropTab::Element;
+            self.status = format!("{what} added. Drag it where it goes; Properties sets its size{}.", if north { " and angle" } else { ", scale and length" });
+        }
+    }
+
+    /// The sheets the Export sheets dialog would write, in sheet order.
+    fn sheets_to_export(&self, this_only: bool) -> Vec<ElementId> {
+        let all: Vec<ElementId> = sheets::sheets(self.doc.model()).into_iter().map(|(id, _)| id).collect();
+        if this_only {
+            return self.active_view.filter(|id| all.contains(id)).into_iter().collect();
+        }
+        match self.sheets_export.scope {
+            ExportScope::All => all,
+            ExportScope::Chosen => all.into_iter().filter(|id| self.sheets_export.chosen.contains(id)).collect(),
+            ExportScope::This => self.active_view.filter(|id| all.contains(id)).into_iter().collect(),
+        }
+    }
+
+    /// Write sheets as PDF: this one (`this_only`), else as the dialog says.
+    pub(super) fn export_sheets_now(&mut self, this_only: bool) {
+        let ids = self.sheets_to_export(this_only);
+        if ids.is_empty() {
+            self.status = if this_only {
+                "Open a sheet first: Ctrl+P makes a PDF of the sheet in front.".into()
+            } else {
+                "No sheets to export: pick some, or choose All.".into()
+            };
+            return;
+        }
+        let info = self.sheet_info();
+        let model = self.doc.model();
+        let name_of = |id: ElementId| {
+            let n = sheets::sheet_of(model, id).map(|s| s.number.clone()).unwrap_or_default();
+            let t = model.get(id).map(|e| e.name.clone()).unwrap_or_default();
+            let raw = format!("{n} {t}");
+            raw.trim()
+                .chars()
+                .map(|c| if "\\/:*?\"<>|".contains(c) { '-' } else { c })
+                .collect::<String>()
+        };
+        if this_only || !self.sheets_export.each {
+            let default = if ids.len() == 1 {
+                let p = std::path::Path::new(&self.path);
+                p.parent()
+                    .unwrap_or(std::path::Path::new(""))
+                    .join(format!("{}.pdf", name_of(ids[0])))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                with_extension(&self.path, "pdf")
+            };
+            let pdf = sheets::sheets_pdf_of(model, &info, &ids);
+            let Some(out) = self.export_to(default) else {
+                return;
+            };
+            let r = std::fs::write(&out, pdf);
+            let n = ids.len();
+            self.report(r, format!("Exported {n} sheet{} to {out}", if n == 1 { "" } else { "s" }));
+            return;
+        }
+        // a PDF each, named by number and name, in a folder
+        let dir = if cfg!(test) {
+            Some(std::env::temp_dir())
+        } else {
+            let start = std::path::absolute(&self.path)
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+            let mut d = rfd::FileDialog::new().set_title("Export sheets: a PDF each, into…");
+            if let Some(s) = start {
+                d = d.set_directory(s);
+            }
+            d.pick_folder()
+        };
+        let Some(dir) = dir else { return };
+        let mut written = 0;
+        for id in &ids {
+            let pdf = sheets::sheets_pdf_of(model, &info, &[*id]);
+            if std::fs::write(dir.join(format!("{}.pdf", name_of(*id))), pdf).is_ok() {
+                written += 1;
+            }
+        }
+        self.last_export_dir = Some(dir.clone());
+        self.status = format!("Exported {written} sheet PDF{} to {}", if written == 1 { "" } else { "s" }, dir.display());
+    }
+
+    /// The Export sheets dialog (MU22): all, chosen or this sheet, as one
+    /// PDF or a PDF each.
+    fn sheets_export_window(&mut self, ctx: &egui::Context) {
+        if !self.sheets_export_open {
+            return;
+        }
+        let model = self.doc.model();
+        let all: Vec<(ElementId, String)> = sheets::sheets(model)
+            .into_iter()
+            .map(|(id, s)| {
+                let t = model.get(id).map(|e| e.name.clone()).unwrap_or_default();
+                (id, format!("{} {t}", s.number))
+            })
+            .collect();
+        // chosen starts as the sheets selected in the browser
+        if self.sheets_export.chosen.is_empty() {
+            self.sheets_export.chosen = self
+                .selection
+                .all()
+                .iter()
+                .copied()
+                .filter(|id| all.iter().any(|(s, _)| s == id))
+                .collect();
+        }
+        let this = self.active_view.filter(|id| all.iter().any(|(s, _)| s == id));
+        let mut open = true;
+        let mut go = false;
+        let mut cancel = false;
+        let x = &mut self.sheets_export;
+        egui::Window::new("Export sheets")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(380.0)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                crate::props::row(ui, "Sheets", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut x.scope, ExportScope::All, format!("All ({})", all.len()));
+                        ui.selectable_value(&mut x.scope, ExportScope::Chosen, format!("Chosen ({})", x.chosen.len()));
+                        ui.add_enabled_ui(this.is_some(), |ui| {
+                            ui.selectable_value(&mut x.scope, ExportScope::This, "This one")
+                                .on_disabled_hover_text("Open a sheet first");
+                        });
+                    })
+                });
+                if x.scope == ExportScope::Chosen {
+                    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+                        for (id, name) in &all {
+                            let mut on = x.chosen.contains(id);
+                            if crate::props::check(ui, "", &mut on, name.as_str()).changed() {
+                                if on {
+                                    x.chosen.insert(*id);
+                                } else {
+                                    x.chosen.remove(id);
+                                }
+                            }
+                        }
+                    });
+                }
+                crate::props::row(ui, "As", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut x.each, false, "One PDF");
+                        ui.selectable_value(&mut x.each, true, "A PDF each");
+                    })
+                });
+                crate::props::row(ui, "Paper", |ui| {
+                    ui.label(egui::RichText::new("As printed: white, at the sheets' sizes").weak())
+                });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        go = ui.button("Export…").clicked();
+                        cancel = ui.button("Cancel").clicked();
+                    });
+                });
+            });
+        if go {
+            self.sheets_export_open = false;
+            self.export_sheets_now(false);
+        } else if cancel || !open {
+            self.sheets_export_open = false;
+        }
+    }
+
     /// Hide every reference shown in view `v`, or show them again.
     fn toggle_references(&mut self, v: ElementId) {
         let model = self.doc.model();
@@ -5875,6 +6097,16 @@ impl CreaBimApp {
                         label = l;
                     }
                 }
+                ElementKind::PaperMark(m) => {
+                    let north = self
+                        .doc
+                        .model()
+                        .project_info()
+                        .map_or(0.0, |(_, p)| p.true_north);
+                    if let Some(l) = paper_mark_fields(ui, m, north) {
+                        label = l;
+                    }
+                }
                 ElementKind::MarkRules(_) => {
                     if ui.button("Mark numbering…").clicked() {
                         self.marks.open = true;
@@ -6720,6 +6952,114 @@ impl CreaBimApp {
     }
 }
 
+/// Which sheets the Export sheets dialog writes (MU22).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ExportScope {
+    #[default]
+    All,
+    Chosen,
+    This,
+}
+
+/// The Export sheets dialog's choices, kept for the session.
+#[derive(Default)]
+pub(crate) struct SheetsExport {
+    scope: ExportScope,
+    /// A PDF a sheet, not one for all.
+    each: bool,
+    chosen: std::collections::BTreeSet<ElementId>,
+}
+
+/// A north arrow's or a scale bar's settings (MU22). The undo label of a
+/// change.
+fn paper_mark_fields(
+    ui: &mut egui::Ui,
+    m: &mut creabim_core::PaperMark,
+    true_north: f64,
+) -> Option<&'static str> {
+    use creabim_core::PaperMarkKind;
+    let mut label = None;
+    match &mut m.kind {
+        PaperMarkKind::NorthArrow { rotation } => {
+            let mut own = rotation.is_some();
+            if crate::props::check(ui, "Points to", &mut own, "An angle of its own")
+                .on_hover_text(format!(
+                    "Off, it follows the project's true north ({true_north:.1}°, Project information)"
+                ))
+                .changed()
+            {
+                *rotation = own.then_some(true_north);
+                label = Some("North arrow");
+            }
+            if let Some(r) = rotation {
+                crate::props::row(ui, "Angle", |ui| {
+                    if crate::props::fill(ui, egui::DragValue::new(r).speed(0.5).suffix("°")).changed() {
+                        label = Some("North arrow");
+                    }
+                });
+            }
+            crate::props::row(ui, "Height", |ui| {
+                if crate::props::fill(
+                    ui,
+                    egui::DragValue::new(&mut m.size).speed(0.2).range(6.0..=60.0).suffix(" mm"),
+                )
+                .changed()
+                {
+                    label = Some("North arrow");
+                }
+            });
+        }
+        PaperMarkKind::ScaleBar {
+            scale,
+            length,
+            parts,
+        } => {
+            crate::props::row(ui, "Scale", |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("1 :");
+                    if crate::props::fill(ui, egui::DragValue::new(scale).speed(1.0).range(1.0..=10000.0))
+                        .changed()
+                    {
+                        label = Some("Scale bar");
+                    }
+                })
+            });
+            crate::props::row(ui, "Length", |ui| {
+                if crate::props::fill(
+                    ui,
+                    egui::DragValue::new(length).speed(0.1).range(0.1..=10000.0).suffix(" m"),
+                )
+                .changed()
+                {
+                    label = Some("Scale bar");
+                }
+            });
+            crate::props::row(ui, "Parts", |ui| {
+                if crate::props::fill(ui, egui::DragValue::new(parts).range(1..=10)).changed() {
+                    label = Some("Scale bar");
+                }
+            });
+            crate::props::row(ui, "Thickness", |ui| {
+                if crate::props::fill(
+                    ui,
+                    egui::DragValue::new(&mut m.size).speed(0.1).range(0.5..=10.0).suffix(" mm"),
+                )
+                .changed()
+                {
+                    label = Some("Scale bar");
+                }
+            });
+        }
+    }
+    crate::props::row(ui, "On the sheet", |ui| {
+        ui.label(
+            egui::RichText::new(format!("{:.0}, {:.0} mm", m.at.x, m.at.y)).weak(),
+        )
+        .on_hover_text("Drag it on the sheet to move it")
+    });
+    label
+}
+
 /// The tabs of Properties (MU19): what a tab holds is its sections.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PropTab {
@@ -7104,6 +7444,7 @@ impl eframe::App for CreaBimApp {
         self.project_window(&ctx);
         self.ifc_export_window(&ctx);
         self.calibrate_window(&ctx);
+        self.sheets_export_window(&ctx);
         self.new_project_window(&ctx);
         self.marks_window(&ctx);
         self.graphic_styles_window(&ctx);
@@ -7384,6 +7725,7 @@ fn kind_word(k: &ElementKind) -> &'static str {
         ElementKind::Units(_) => "project units",
         ElementKind::Project(_) => "project information",
         ElementKind::Reference(_) => "reference",
+        ElementKind::PaperMark(_) => "paper mark",
         ElementKind::MarkRules(_) => "mark numbering",
         ElementKind::StylePack(_) => "style pack",
         ElementKind::View(_) => "view",
@@ -7816,6 +8158,106 @@ mod box_select_tests {
         );
         frame(&mut app, vec![egui::Event::PointerMoved(b)]);
         assert!(!app.selection.is_empty(), "status: {}", app.status);
+    }
+}
+
+#[cfg(test)]
+mod sheet_tools_tests {
+    use super::*;
+
+    fn a_sheet(app: &CreaBimApp) -> ElementId {
+        sheets::sheets(app.doc.model())
+            .first()
+            .map(|(id, _)| *id)
+            .expect("the test project has sheets")
+    }
+
+    #[test]
+    fn the_header_buttons_reach_their_actions() {
+        // MU22: these were handled but never routed from a click
+        let mut app = crate::app::test_app();
+        let ctx = egui::Context::default();
+        let before = app.plan.temp_dims_off;
+        app.run_action(&ctx, "view.tempdims");
+        assert_ne!(app.plan.temp_dims_off, before, "temporary dimensions toggle");
+        app.run_action(&ctx, "sheet.preview");
+        assert!(app.print_preview, "print preview toggles");
+        app.run_action(&ctx, "export.sheets");
+        assert!(app.sheets_export_open, "Export sheets opens");
+    }
+
+    #[test]
+    fn a_north_arrow_and_a_scale_bar_go_on_the_sheet_and_into_its_pdf() {
+        let mut app = crate::app::test_app();
+        let ctx = egui::Context::default();
+        let sheet = a_sheet(&app);
+        app.active_view = Some(sheet);
+        let page = |app: &CreaBimApp| {
+            creabim_geom::sheet::sheets_pdf_of(app.doc.model(), &app.sheet_info(), &[sheet]).len()
+        };
+        let plain = page(&app);
+        app.run_action(&ctx, "sheet.north");
+        let north = app.selection.active.expect("the north arrow is selected");
+        app.run_action(&ctx, "sheet.scalebar");
+        let bar = app.selection.active.expect("the scale bar is selected");
+        let marks: Vec<&creabim_core::PaperMark> = app
+            .doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::PaperMark(m) => Some(m),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(marks.len(), 2);
+        assert!(marks.iter().all(|m| m.sheet == sheet));
+        // inside the sheet, clear of each other
+        let s = sheets::sheet_of(app.doc.model(), sheet).unwrap().clone();
+        let (_, tb_hi) = creabim_geom::sheet::title_block_box(app.doc.model(), sheet).unwrap();
+        for m in &marks {
+            let (lo, hi) = m.bounds();
+            assert!(lo.x > 0.0 && lo.y > 0.0 && hi.x < s.width && hi.y < s.height, "{lo} {hi}");
+            assert!(lo.y > tb_hi.y, "clear of the title block: {lo} over {tb_hi}");
+        }
+        assert!(page(&app) > plain, "the PDF draws them");
+        // they move with Move, and only across the sheet
+        let r = app.doc.commit(creabim_core::Transaction::new("t").replace(
+            app.doc.model().get(north).unwrap().clone(),
+            creabim_core::transform::transformed(
+                app.doc.model(),
+                app.doc.model().get(north).unwrap(),
+                &creabim_core::transform::Xform::Move(glam::DVec3::new(5.0, 0.0, 0.0)),
+            )
+            .unwrap(),
+        ));
+        assert!(r.is_ok());
+        // their Properties draw
+        app.selection.only(bar);
+        let ctx = egui::Context::default();
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 900.0))),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(raw, |ui| {
+            app.properties_header(ui);
+            app.properties(ui);
+        });
+        out.textures_delta.clear();
+    }
+
+    #[test]
+    fn export_sheets_writes_chosen_sheets_one_pdf_each() {
+        let mut app = crate::app::test_app();
+        let all: Vec<ElementId> = sheets::sheets(app.doc.model()).iter().map(|(id, _)| *id).collect();
+        app.sheets_export.scope = ExportScope::Chosen;
+        app.sheets_export.chosen = all.iter().take(2).copied().collect();
+        assert_eq!(app.sheets_to_export(false).len(), all.len().min(2));
+        app.sheets_export.each = true;
+        app.export_sheets_now(false);
+        assert!(app.status.starts_with("Exported"), "{}", app.status);
+        app.sheets_export.scope = ExportScope::This;
+        app.active_view = None;
+        assert!(app.sheets_to_export(false).is_empty());
     }
 }
 

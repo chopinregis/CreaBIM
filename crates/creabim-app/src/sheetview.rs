@@ -24,6 +24,8 @@ pub struct SheetState {
     /// Crop edge being dragged: viewport, edge (left, right, bottom, top)
     /// and the crop when the drag began.
     crop_drag: Option<(ElementId, usize, [DVec2; 2])>,
+    /// A paper mark being moved: it, where it was, and the grab point.
+    mark_drag: Option<(ElementId, DVec2, DVec2)>,
 }
 
 /// Sheet millimetres (y up) to screen points.
@@ -478,6 +480,67 @@ pub fn show(
     }
     if response.drag_stopped() {
         state.crop_drag = None;
+    }
+
+    // north arrows and scale bars on the sheet (MU22): a click picks one,
+    // a drag moves it, millimetre by millimetre
+    if state.active.is_none() && plan.tool == planview::Tool::Select {
+        let marks: Vec<(ElementId, DVec2, (DVec2, DVec2))> = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::PaperMark(m) if m.sheet == sheet_id => Some((e.id, m.at, m.bounds())),
+                _ => None,
+            })
+            .collect();
+        let at_point = |p: DVec2| {
+            marks
+                .iter()
+                .rev()
+                .find(|(_, _, (lo, hi))| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y)
+        };
+        let hovered = response.hover_pos().map(|p| xf.to_paper(p)).and_then(at_point);
+        for (id, _, (lo, hi)) in &marks {
+            let lit = selection.contains(*id);
+            if lit || hovered.is_some_and(|h| h.0 == *id) {
+                painter.rect_stroke(
+                    xf.rect_of(*lo, *hi).expand(3.0),
+                    2.0,
+                    egui::Stroke::new(1.5, if lit { ACCENT } else { hoverpick::HOVER.gamma_multiply(0.7) }),
+                    egui::StrokeKind::Outside,
+                );
+            }
+        }
+        if response.drag_started_by(egui::PointerButton::Primary) {
+            let press = ui.input(|i| i.pointer.press_origin()).or(pointer);
+            if let Some(p) = press.map(|p| xf.to_paper(p)) {
+                if let Some((id, at, _)) = at_point(p) {
+                    state.mark_drag = Some((*id, *at, p));
+                    selection.only(*id);
+                }
+            }
+        }
+        if let Some((id, at0, grab)) = state.mark_drag {
+            if let (true, Some(p)) = (response.dragged_by(egui::PointerButton::Primary), pointer) {
+                let to = (at0 + xf.to_paper(p) - grab).round();
+                let r = doc.edit_merged(id, "Move paper mark", |e| {
+                    if let ElementKind::PaperMark(m) = &mut e.kind {
+                        m.at = to;
+                    }
+                });
+                error = r.err().map(|e| e.to_string());
+            }
+            if response.drag_stopped() {
+                state.mark_drag = None;
+            }
+            return error;
+        }
+        if response.clicked() {
+            if let Some((id, _, _)) = pointer.map(|p| xf.to_paper(p)).and_then(at_point) {
+                selection.only(*id);
+                return error;
+            }
+        }
     }
 
     // notes written on the sheet itself

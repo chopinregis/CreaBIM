@@ -111,6 +111,7 @@ impl Element {
             ElementKind::SheetTemplate(_) => vec![],
             // a reference's view is soft: without it, it shows nothing
             ElementKind::Reference(_) => vec![],
+            ElementKind::PaperMark(m) => vec![m.sheet],
             ElementKind::Units(_)
             | ElementKind::Project(_)
             | ElementKind::MarkRules(_)
@@ -177,6 +178,7 @@ impl Element {
             ElementKind::Units(_) => "ProjectUnits",
             ElementKind::Project(_) => "ProjectInfo",
             ElementKind::Reference(_) => "Reference",
+            ElementKind::PaperMark(_) => "IfcAnnotation",
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
@@ -347,6 +349,13 @@ impl Element {
             ElementKind::TextStyle(s) => s.validate(),
             ElementKind::SheetTemplate(t) => t.validate(),
             ElementKind::Units(_) | ElementKind::Project(_) => Ok(()),
+            ElementKind::PaperMark(m) => {
+                if m.at.is_finite() && m.size > 0.0 {
+                    Ok(())
+                } else {
+                    Err("a paper mark needs a place and a size".into())
+                }
+            }
             ElementKind::Reference(r) => {
                 if r.scale.is_finite() && r.scale > 0.0 && r.at.is_finite() && r.rotation.is_finite() {
                     Ok(())
@@ -434,6 +443,8 @@ pub enum ElementKind {
     Project(crate::project::ProjectInfo),
     /// Something traced over in views (Trace & Reference v2, MU19).
     Reference(crate::reference::Reference),
+    /// A north arrow or scale bar on a sheet (MU22).
+    PaperMark(crate::papermark::PaperMark),
     /// The project's mark numbering rules: at most one per project, read
     /// through [`crate::marks::rules`].
     MarkRules(crate::marks::MarkRules),
@@ -503,6 +514,7 @@ impl ElementKind {
             ElementKind::Units(_) => "Units",
             ElementKind::Project(_) => "Project information",
             ElementKind::Reference(_) => "Reference",
+            ElementKind::PaperMark(m) => match m.kind { crate::papermark::PaperMarkKind::NorthArrow { .. } => "North arrow", crate::papermark::PaperMarkKind::ScaleBar { .. } => "Scale bar" },
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",

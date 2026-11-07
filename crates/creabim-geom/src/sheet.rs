@@ -572,6 +572,135 @@ pub fn draw_sheet_notes(c: &mut dyn Canvas, model: &Model, sheet: ElementId) {
         items: crate::annotate::sheet_notes(model, sheet),
     };
     paper::draw(c, &notes, &PAPER);
+    draw_paper_marks(c, model, sheet);
+}
+
+/// Where a sheet's title block is, as drawn (its template's or the built-in
+/// one): the box round what its frame draws in the lower half of the
+/// sheet, inside the border (MU22). Paper marks are placed clear of it.
+pub fn title_block_box(model: &Model, sheet: ElementId) -> Option<(DVec2, DVec2)> {
+    struct Points(Vec<DVec2>);
+    impl Canvas for Points {
+        fn line(&mut self, pts: &[DVec2], _: Stroke) {
+            self.0.extend_from_slice(pts);
+        }
+        fn fill(&mut self, pts: &[DVec2], _: f64) {
+            self.0.extend_from_slice(pts);
+        }
+        fn text_angle(&mut self, at: DVec2, size: f64, _: &str, _: Anchor, _: f64) {
+            self.0.push(at);
+            self.0.push(at + DVec2::new(0.0, size));
+        }
+        fn image(&mut self, lo: DVec2, hi: DVec2, _: Option<(DVec2, DVec2)>, _: &std::sync::Arc<crate::raster::Raster>) {
+            self.0.push(lo);
+            self.0.push(hi);
+        }
+    }
+    let s = sheet_of(model, sheet)?;
+    let mut c = Points(vec![]);
+    let title = model.get(sheet).map(|e| e.name.as_str()).unwrap_or("");
+    draw_frame(&mut c, model, s, title, "1:100", &SheetInfo::default());
+    let (w, h) = (s.width, s.height);
+    let on_border = |p: &DVec2| {
+        (p.x - BINDING).abs() < 0.05
+            || (p.x - (w - MARGIN)).abs() < 0.05
+            || (p.y - MARGIN).abs() < 0.05
+            || (p.y - (h - MARGIN)).abs() < 0.05
+            || p.x <= 0.05
+            || p.y <= 0.05
+            || p.x >= w - 0.05
+            || p.y >= h - 0.05
+    };
+    let inside: Vec<DVec2> = c
+        .0
+        .into_iter()
+        .filter(|p| p.y < h * 0.5 && !on_border(p))
+        .collect();
+    let first = *inside.first()?;
+    let (lo, hi) = inside
+        .iter()
+        .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+    Some((lo, hi))
+}
+
+/// The north arrows and scale bars on a sheet (MU22).
+pub fn draw_paper_marks(c: &mut dyn Canvas, model: &Model, sheet: ElementId) {
+    let north = model.project_info().map_or(0.0, |(_, p)| p.true_north);
+    for e in model.iter() {
+        if let ElementKind::PaperMark(m) = &e.kind {
+            if m.sheet == sheet {
+                draw_paper_mark(c, m, north);
+            }
+        }
+    }
+}
+
+/// One paper mark, in sheet millimetres.
+pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_north: f64) {
+    use creabim_core::PaperMarkKind;
+    match &m.kind {
+        PaperMarkKind::NorthArrow { .. } => {
+            let s = m.size;
+            let turn = DVec2::from_angle(m.north_angle(true_north).to_radians());
+            let at = |p: DVec2| m.at + turn.rotate(p);
+            let tip = at(DVec2::new(0.0, 0.5 * s));
+            let notch = at(DVec2::new(0.0, -0.18 * s));
+            let left = at(DVec2::new(-0.24 * s, -0.36 * s));
+            let right = at(DVec2::new(0.24 * s, -0.36 * s));
+            c.circle(m.at, 0.42 * s, Stroke::solid(0.25, 0.0));
+            // half black, half white, as drawn by hand
+            c.fill(&[tip, notch, left], 0.0);
+            c.polygon(&[tip, right, notch, left], Stroke::solid(0.3, 0.0));
+            c.text(at(DVec2::new(0.0, 0.5 * s + 3.2)), 3.5, "N", Anchor::Middle);
+        }
+        PaperMarkKind::ScaleBar {
+            scale,
+            length,
+            parts,
+        } => {
+            let parts = (*parts).max(1) as usize;
+            let w = length * 1000.0 / scale.max(1.0);
+            let h = m.size;
+            let seg = w / parts as f64;
+            let o = m.at;
+            for i in 0..parts {
+                let x0 = o.x + seg * i as f64;
+                let box_ = [
+                    DVec2::new(x0, o.y),
+                    DVec2::new(x0 + seg, o.y),
+                    DVec2::new(x0 + seg, o.y + h),
+                    DVec2::new(x0, o.y + h),
+                ];
+                if i % 2 == 0 {
+                    c.fill(&box_, 0.0);
+                }
+                c.polygon(&box_, Stroke::solid(0.2, 0.0));
+            }
+            let step = length / parts as f64;
+            let num = |v: f64| {
+                if (v - v.round()).abs() < 1e-6 {
+                    format!("{v:.0}")
+                } else {
+                    format!("{v:.1}")
+                }
+            };
+            for i in 0..=parts {
+                let x = o.x + seg * i as f64;
+                let t = if i == parts {
+                    format!("{} m", num(step * i as f64))
+                } else {
+                    num(step * i as f64)
+                };
+                c.text(DVec2::new(x, o.y + h + 1.2), 2.2, &t, Anchor::Middle);
+            }
+            c.text(
+                DVec2::new(o.x, o.y - 3.6),
+                2.2,
+                &format!("1:{:.0}", scale),
+                Anchor::Start,
+            );
+        }
+    }
 }
 
 pub fn sheet_svg(model: &Model, sheet: ElementId, info: &SheetInfo) -> Option<String> {
@@ -584,8 +713,14 @@ pub fn sheet_svg(model: &Model, sheet: ElementId, info: &SheetInfo) -> Option<St
 
 /// All sheets as one PDF, a page per sheet in sheet-number order.
 pub fn sheets_pdf(model: &Model, info: &SheetInfo) -> Vec<u8> {
+    let all: Vec<ElementId> = sheets(model).into_iter().map(|(id, _)| id).collect();
+    sheets_pdf_of(model, info, &all)
+}
+
+/// The sheets `ids` as one PDF, a page each in sheet-number order (MU22).
+pub fn sheets_pdf_of(model: &Model, info: &SheetInfo, ids: &[ElementId]) -> Vec<u8> {
     let mut pdf = PdfWriter::new();
-    for (id, s) in sheets(model) {
+    for (id, s) in sheets(model).into_iter().filter(|(id, _)| ids.contains(id)) {
         let views = placed_views(model, id, &mut |v| view_drawing(model, v));
         let mut page = pdf.page(DVec2::new(s.width, s.height));
         draw_sheet(&mut page, model, id, &views, info);

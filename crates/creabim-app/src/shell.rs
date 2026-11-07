@@ -1569,7 +1569,10 @@ impl CreaBimApp {
                 }
             }
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
-            | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" => {
+            | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms"
+            // (these four were handled below but never routed here: MU22)
+            | "view.tempdims" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" => {
                 self.view_action(head)
             }
             "rooms.fromnotes" => {
@@ -1742,6 +1745,9 @@ impl CreaBimApp {
                 let r = creabim_geom::xlsx::schedules_xlsx(model, &stem(&self.path))
                     .and_then(|b| std::fs::write(&out, b).map_err(|e| e.to_string()));
                 self.report(r, format!("Exported {n} schedules and a summary to {out}"));
+            }
+            "export.pdf" if !cfg!(test) => {
+                self.sheets_export_open = true;
             }
             "export.pdf" => {
                 let Some(out) = self.export_to(with_extension(&self.path, "pdf")) else {
@@ -1990,6 +1996,18 @@ impl CreaBimApp {
                     self.status = "Open a plan or a section first: references show in them.".into();
                 }
             }
+            "sheet.text" => {
+                self.plan.tool = Tool::Note;
+                self.plan.cancel();
+                self.status = "Text on the sheet: click where it starts, then type.".into();
+            }
+            "sheet.north" | "sheet.scalebar" => {
+                if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
+                    self.add_paper_mark(sheet, what == "sheet.north");
+                }
+            }
+            "sheet.pdf" => self.export_sheets_now(true),
+            "export.sheets" => self.sheets_export_open = true,
             "sheet.preview" => {
                 self.print_preview = !self.print_preview;
                 self.status = if self.print_preview {
@@ -2512,9 +2530,30 @@ impl CreaBimApp {
                 .filter(|o| o["key"] != "gridgroups" && o["kind"] != "sep"),
         );
         if self.active_view.is_some_and(|id| self.is_sheet(id)) {
+            // compose
             options.push(json!({
                 "kind": "menu", "key": "placeview", "label": "", "value": "Place view…",
                 "icon": "place-view", "hint": "Put a view on this sheet", "wide": true,
+            }));
+            // paper marks: what belongs to the sheet, not to a view (MU22)
+            options.push(json!({"kind": "sep"}));
+            options.push(json!({
+                "kind": "button", "id": "sheet.text", "icon": "text",
+                "hint": "Text on the sheet: click where it goes (N)",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.north", "icon": "north-arrow",
+                "hint": "A north arrow, turned to the project's north; drag it where it goes",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.scalebar", "icon": "scale-bar",
+                "hint": "A scale bar at the sheet's drawing scale; drag it where it goes",
+            }));
+            // output
+            options.push(json!({"kind": "sep"}));
+            options.push(json!({
+                "kind": "button", "id": "sheet.pdf", "icon": "file-text",
+                "hint": "This sheet as a PDF (Ctrl+P); all or chosen sheets: File › Export › Sheets as PDF (Ctrl+Shift+P)",
             }));
             // the sheet as it prints, on white, while the paper is dark (MU21)
             options.push(json!({

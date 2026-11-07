@@ -148,6 +148,11 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             g.end = t.point2(g.end);
         }
         // a reference moves, turns and scales about its centre with them
+        // a paper mark only moves across its sheet
+        ElementKind::PaperMark(m) => match t {
+            Xform::Move(d) => m.at += d.truncate(),
+            _ => return None,
+        },
         ElementKind::Reference(r) => match t {
             Xform::Move(d) => r.at += d.truncate(),
             Xform::Rotate { degrees, .. } => {
