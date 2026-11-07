@@ -213,58 +213,76 @@ fn lerp(a: Color32, b: Color32, t: f32) -> Color32 {
 /// Returns the row's response and the rect left for a ? button beside the
 /// title.
 pub fn header(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, egui::Rect) {
+    // as Blender's panels (MU20): a band a step darker than the panel, a
+    // thin open chevron at the left that turns down when the section is
+    // open, the title in bold after it, a dotted grip at the right
     let w = ui.available_width();
-    let h = 28.0;
+    let h = if indent { 26.0 } else { 28.0 };
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
     if ui.is_rect_visible(rect) {
         let v = ui.visuals();
+        let band = {
+            let p = v.panel_fill;
+            let (to, t) = if v.dark_mode {
+                (255.0, 0.05)
+            } else {
+                (0.0, 0.045)
+            };
+            let m = |c: u8| (c as f32 + (to - c as f32) * t).round() as u8;
+            Color32::from_rgb(m(p.r()), m(p.g()), m(p.b()))
+        };
         let fill = if resp.hovered() {
             v.widgets.hovered.weak_bg_fill
         } else if indent {
             Color32::TRANSPARENT
         } else {
-            v.widgets.inactive.weak_bg_fill.gamma_multiply(0.55)
+            band
         };
-        ui.painter().rect_filled(rect, 6.0, fill);
-        if !indent {
-            // a top-level section reads as a row of its own
-            ui.painter().rect_stroke(
-                rect,
-                6.0,
-                v.widgets.noninteractive.bg_stroke,
-                egui::StrokeKind::Inside,
-            );
-        }
-        let left = rect.left() + if indent { 18.0 } else { 8.0 };
-        let font = egui::FontId::proportional(if indent { 13.0 } else { 13.5 });
-        let g = ui.painter().layout(
-            title.to_string(),
-            font,
-            v.strong_text_color(),
-            (w - 60.0).max(10.0),
-        );
-        let tw = g.size().x;
-        ui.painter().galley(
-            egui::pos2(left, rect.center().y - g.size().y / 2.0),
-            g,
-            v.strong_text_color(),
-        );
-        // the chevron: right when shut, down when open, turning between
+        ui.painter().rect_filled(rect, 5.0, fill);
+        let ink = v.strong_text_color();
+        let soft = v.weak_text_color();
+        // the chevron: › when shut, ˅ when open, turning between
         let t = ui.ctx().animate_bool_responsive(resp.id, open);
-        let c = egui::pos2(rect.right() - 14.0, rect.center().y);
+        let c = egui::pos2(
+            rect.left() + if indent { 18.0 } else { 12.0 },
+            rect.center().y,
+        );
         let ang = t * std::f32::consts::FRAC_PI_2;
         let rot = |p: Vec2| {
             let (s, co) = ang.sin_cos();
             c + Vec2::new(p.x * co - p.y * s, p.x * s + p.y * co)
         };
         let pts = [
-            rot(Vec2::new(-2.5, -5.0)),
-            rot(Vec2::new(2.5, 0.0)),
-            rot(Vec2::new(-2.5, 5.0)),
+            rot(Vec2::new(-1.8, -3.6)),
+            rot(Vec2::new(1.8, 0.0)),
+            rot(Vec2::new(-1.8, 3.6)),
         ];
-        let stroke = egui::Stroke::new(1.6, v.weak_text_color());
+        let stroke = egui::Stroke::new(1.3, ink);
         ui.painter().line_segment([pts[0], pts[1]], stroke);
         ui.painter().line_segment([pts[1], pts[2]], stroke);
+        let left = c.x + 10.0;
+        let font = egui::FontId::proportional(if indent { 13.0 } else { 13.5 });
+        let g = ui
+            .painter()
+            .layout(title.to_string(), font, ink, (w - 70.0).max(10.0));
+        let tw = g.size().x;
+        ui.painter()
+            .galley(egui::pos2(left, rect.center().y - g.size().y / 2.0), g, ink);
+        // a dotted grip at the right, as Blender's
+        if !indent {
+            for row in 0..2 {
+                for col in 0..3 {
+                    ui.painter().circle_filled(
+                        egui::pos2(
+                            rect.right() - 18.0 + col as f32 * 3.5,
+                            rect.center().y - 1.8 + row as f32 * 3.6,
+                        ),
+                        0.8,
+                        soft.gamma_multiply(0.7),
+                    );
+                }
+            }
+        }
         let help = egui::Rect::from_min_size(
             egui::pos2(left + tw + 6.0, rect.center().y - 8.0),
             Vec2::splat(16.0),

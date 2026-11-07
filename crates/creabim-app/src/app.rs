@@ -124,6 +124,12 @@ pub struct CreaBimApp {
     geometry_key: Option<GeometryKey>,
     /// Drawings and the 3D view on dark paper this frame (A4-3).
     paper_is_dark: bool,
+    /// The Properties tab showing (MU19); it stays when the selection
+    /// changes, as Blender's does.
+    prop_tab: PropTab,
+    /// The tool and whether something was selected, last frame: a change
+    /// can pick the tab (MU19).
+    prop_seen: (Tool, bool),
     /// Sheets as they print, on white, whatever the paper (MU21).
     print_preview: bool,
     scene: Vec<SceneItem>,
@@ -289,6 +295,8 @@ impl CreaBimApp {
             viewport,
             geometry_key: None,
             paper_is_dark: false,
+            prop_tab: PropTab::Element,
+            prop_seen: (Tool::Select, false),
             print_preview: false,
             scene: vec![],
             plan: PlanState::default(),
@@ -4654,8 +4662,20 @@ impl CreaBimApp {
         if self.crop_pick.is_some() {
             self.crop_pick_banner(ui);
         }
+        let tab = self.prop_tab;
         let Some(id) = self.selection.active else {
-            if self.plan.tool != Tool::Select && self.next_element_panel(ui) {
+            if tab == PropTab::Next {
+                self.next_element_panel(ui);
+                return;
+            }
+            if tab == PropTab::Project {
+                self.project_props(ui);
+                return;
+            }
+            if tab == PropTab::Model3d {
+                self.visibility_panel(ui, gridvis::VisTarget::Window3d, Some("3D view"));
+                ui.add_space(8.0);
+                self.crop_list(ui, self.crop_owner());
                 return;
             }
             ui.label(
@@ -4668,6 +4688,10 @@ impl CreaBimApp {
             // with nothing selected, the view shown in the 2D pane
             if let Some(gridvis::VisTarget::View(v)) = self.vis_target(false) {
                 ui.add_space(8.0);
+                if tab == PropTab::Trace {
+                    self.trace_panel(ui, v);
+                    return;
+                }
                 let name = self.doc.model().get(v).map_or("", |e| e.name.as_str());
                 let name = name.to_string();
                 self.visibility_panel(
@@ -4675,7 +4699,6 @@ impl CreaBimApp {
                     gridvis::VisTarget::View(v),
                     Some(&format!("View: {name}")),
                 );
-                self.trace_panel(ui, v);
                 // a section's or elevation's drawing style, as a plan's (MU21)
                 if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
                     if matches!(view.kind, ViewKind::Section { .. }) {
@@ -4735,80 +4758,45 @@ impl CreaBimApp {
                 // its range, template and overrides
                 self.view_graphics_sections(ui, v);
             }
-            ui.add_space(8.0);
-            self.visibility_panel(ui, gridvis::VisTarget::Window3d, Some("3D view"));
-            ui.add_space(8.0);
-            self.crop_list(ui, self.crop_owner());
             return;
         };
         let Some(e) = self.doc.model().get(id).cloned() else {
             return;
         };
-        if self.selection.len() > 1 {
-            // how many of each kind, then the active element below
-            let mut kinds: Vec<(&str, usize)> = Vec::new();
-            for e in self
-                .selection
-                .all()
-                .iter()
-                .filter_map(|i| self.doc.model().get(*i))
-            {
-                let k = kind_word(&e.kind);
-                match kinds.iter_mut().find(|(l, _)| *l == k) {
-                    Some((_, n)) => *n += 1,
-                    None => kinds.push((k, 1)),
-                }
+        // (its name, mark and actions are in the pinned header above)
+        if tab == PropTab::View {
+            if let Some(gridvis::VisTarget::View(v)) = self.vis_target(false) {
+                self.visibility_panel(ui, gridvis::VisTarget::View(v), None);
+                self.view_graphics_sections(ui, v);
             }
-            let list: Vec<String> = kinds
-                .iter()
-                .map(|(k, n)| format!("{n} {}", plural(k, *n)))
-                .collect();
-            ui.label(format!(
-                "{} selected: {}.",
-                self.selection.len(),
-                list.join(", ")
-            ));
-            ui.label(
-                egui::RichText::new(
-                    "G, R, S, Shift+D, Delete, Ctrl+C and H act on all of them. Below is the last one picked; Shift+click picks another.",
-                )
-                .weak(),
-            );
-            ui.separator();
+            return;
         }
-        // an object is what its type says: a basin an IfcSanitaryTerminal
-        let class = creabim_core::objects::type_of(self.doc.model(), &e)
-            .map_or_else(|| e.ifc_class().to_string(), |t| t.ifc.class.clone());
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(class).weak());
-            // what this kind of element is, and its page in the guide
-            let page = crate::help::element_page(&e.kind);
-            let title = crate::help::text(page.split('#').next().unwrap_or(page))
-                .map(crate::help::title)
-                .unwrap_or("This element");
-            self.quick_help_button(ui, page, title);
-        });
-        let mut name = e.name.clone();
-        if matches!(e.kind, ElementKind::Level(_)) {
-            // a level is renamed with the plans named after it, once typed
-            self.level_name_field(ui, id, &e.name);
-        } else if crate::props::row(ui, "Name", |ui| {
-            crate::props::fill(
-                ui,
-                egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center),
-            )
-            .changed()
-        }) {
-            let r = self
-                .doc
-                .edit_merged(id, "Rename", |e| e.name = name.clone());
-            self.report(r, "Renamed.");
+        if tab == PropTab::Project {
+            self.project_props(ui);
+            return;
         }
-        self.mark_field(ui, id);
-        ui.add_space(4.0);
-        // its actions, under its name (brief 02, 2.7)
-        self.action_bar(ui);
-        ui.add_space(6.0);
+        if tab == PropTab::Data {
+            self.assign_panel(ui, id);
+            return;
+        }
+        if tab == PropTab::Joins {
+            if creabim_core::joins::joinable(&e.kind)
+                && self.prop_header(ui, "joins", "Junctions", true, Some("joins"))
+            {
+                self.joins_section(ui, id);
+            }
+            self.cuts_panel(ui, id);
+            return;
+        }
+        if tab == PropTab::Graphics {
+            if matches!(e.kind, ElementKind::View(_)) {
+                self.visibility_panel(ui, gridvis::VisTarget::View(id), None);
+                self.view_graphics_sections(ui, id);
+            } else {
+                self.element_override_section(ui, id);
+            }
+            return;
+        }
         if creabim_core::types::TypeCategory::of(&e.kind).is_some() {
             self.type_picker(ui, id);
         }
@@ -6144,19 +6132,7 @@ impl CreaBimApp {
             self.extrude_sketch();
             return;
         }
-        if show_visibility {
-            ui.add_space(6.0);
-            self.visibility_panel(ui, gridvis::VisTarget::View(id), None);
-            self.view_graphics_sections(ui, id);
-        } else {
-            self.element_override_section(ui, id);
-        }
-        if creabim_core::joins::joinable(&e.kind) {
-            ui.add_space(6.0);
-            if self.prop_header(ui, "joins", "Junctions", false, Some("joins")) {
-                self.joins_section(ui, id);
-            }
-        }
+        let _ = show_visibility;
         if redraw {
             self.plan.cancel();
             self.plan.tool = Tool::Select;
@@ -6173,9 +6149,232 @@ impl CreaBimApp {
                 self.status = o.hint();
             }
         }
+    }
 
-        self.assign_panel(ui, id);
-        self.cuts_panel(ui, id);
+    /// The top of Properties, pinned while its tabs scroll (MU19/MU20):
+    /// what the selected element is, its name and mark, and its actions.
+    fn properties_header(&mut self, ui: &mut egui::Ui) {
+        let Some(id) = self.selection.active else {
+            ui.label(
+                egui::RichText::new("PROPERTIES")
+                    .size(11.0)
+                    .strong()
+                    .color(ui.visuals().weak_text_color()),
+            );
+            return;
+        };
+        let Some(e) = self.doc.model().get(id).cloned() else {
+            return;
+        };
+        if self.selection.len() > 1 {
+            // how many of each kind, then the active element below
+            let mut kinds: Vec<(&str, usize)> = Vec::new();
+            for e in self
+                .selection
+                .all()
+                .iter()
+                .filter_map(|i| self.doc.model().get(*i))
+            {
+                let k = kind_word(&e.kind);
+                match kinds.iter_mut().find(|(l, _)| *l == k) {
+                    Some((_, n)) => *n += 1,
+                    None => kinds.push((k, 1)),
+                }
+            }
+            let list: Vec<String> = kinds
+                .iter()
+                .map(|(k, n)| format!("{n} {}", plural(k, *n)))
+                .collect();
+            ui.label(format!(
+                "{} selected: {}.",
+                self.selection.len(),
+                list.join(", ")
+            ));
+            ui.label(
+                egui::RichText::new(
+                    "G, R, S, Shift+D, Delete, Ctrl+C and H act on all of them. Below is the last one picked; Shift+click picks another.",
+                )
+                .weak(),
+            );
+            ui.separator();
+        }
+        // an object is what its type says: a basin an IfcSanitaryTerminal
+        let class = creabim_core::objects::type_of(self.doc.model(), &e)
+            .map_or_else(|| e.ifc_class().to_string(), |t| t.ifc.class.clone());
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(class).weak());
+            // what this kind of element is, and its page in the guide
+            let page = crate::help::element_page(&e.kind);
+            let title = crate::help::text(page.split('#').next().unwrap_or(page))
+                .map(crate::help::title)
+                .unwrap_or("This element");
+            self.quick_help_button(ui, page, title);
+        });
+        let mut name = e.name.clone();
+        if matches!(e.kind, ElementKind::Level(_)) {
+            // a level is renamed with the plans named after it, once typed
+            self.level_name_field(ui, id, &e.name);
+        } else if crate::props::row(ui, "Name", |ui| {
+            crate::props::fill(
+                ui,
+                egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center),
+            )
+            .changed()
+        }) {
+            let r = self
+                .doc
+                .edit_merged(id, "Rename", |e| e.name = name.clone());
+            self.report(r, "Renamed.");
+        }
+        self.mark_field(ui, id);
+        ui.add_space(4.0);
+        // its actions, under its name (brief 02, 2.7)
+        self.action_bar(ui);
+        ui.add_space(6.0);
+    }
+
+    /// The tabs Properties shows now, in order (MU19).
+    fn prop_tabs(&self) -> Vec<PropTab> {
+        let mut out = vec![];
+        match self
+            .selection
+            .active
+            .and_then(|id| self.doc.model().get(id))
+        {
+            Some(_) => {
+                out.extend([
+                    PropTab::Element,
+                    PropTab::Joins,
+                    PropTab::Graphics,
+                    PropTab::Data,
+                ]);
+            }
+            None => {
+                if self.plan.tool != Tool::Select {
+                    out.push(PropTab::Next);
+                }
+            }
+        }
+        if matches!(self.vis_target(false), Some(gridvis::VisTarget::View(_))) {
+            out.push(PropTab::View);
+            if self.selection.active.is_none() {
+                out.push(PropTab::Trace);
+            }
+        }
+        if self.selection.active.is_none() {
+            out.push(PropTab::Model3d);
+        }
+        out.push(PropTab::Project);
+        out
+    }
+
+    /// The Project tab: what the whole project holds (MU19).
+    fn project_props(&mut self, ui: &mut egui::Ui) {
+        crate::props::section(ui, "Project");
+        let info = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        let name = if info.name.trim().is_empty() {
+            "No name yet".to_string()
+        } else {
+            info.name.clone()
+        };
+        crate::props::row(ui, "Name", |ui| ui.label(name));
+        if !info.client.trim().is_empty() {
+            crate::props::row(ui, "Client", |ui| ui.label(info.client.clone()));
+        }
+        if ui.button("Project information…").clicked() {
+            self.project_open = true;
+        }
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            if ui.button("Levels…").clicked() {
+                self.open_levels();
+            }
+            if ui.button("Materials…").clicked() {
+                self.open_materials(None);
+            }
+        });
+    }
+
+    /// The strip of tab icons at Properties' left (MU19).
+    fn prop_strip(&mut self, ui: &mut egui::Ui, tabs: &[PropTab]) {
+        let p = crate::theme::Palette::of(ui.ctx());
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 4.0;
+            for t in tabs {
+                let (r, resp) =
+                    ui.allocate_exact_size(egui::vec2(30.0, 30.0), egui::Sense::click());
+                let on = *t == self.prop_tab;
+                if on {
+                    ui.painter().rect_filled(r, 7.0, p.accent);
+                } else if resp.hovered() {
+                    ui.painter()
+                        .rect_filled(r, 7.0, p.accent.gamma_multiply(0.15));
+                }
+                let ink = if on { Color32::WHITE } else { p.text };
+                crate::svgicon::paint(ui.painter(), r.shrink(6.0), t.icon(), ink);
+                if resp.on_hover_text(t.label()).clicked() {
+                    self.prop_tab = *t;
+                }
+            }
+        });
+    }
+}
+
+/// The tabs of Properties (MU19): what a tab holds is its sections.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PropTab {
+    /// The next element a placing tool makes.
+    Next,
+    /// What it is: its type, sizes and build.
+    Element,
+    /// Its junctions and booleans.
+    Joins,
+    /// How views show it: overrides, visibility.
+    Graphics,
+    /// IFC class and data.
+    Data,
+    /// The view in the focused area.
+    View,
+    /// What is traced under the view.
+    Trace,
+    /// The 3D view: what it shows, crop boxes.
+    Model3d,
+    /// The project: information, levels, materials.
+    Project,
+}
+
+impl PropTab {
+    fn label(self) -> &'static str {
+        match self {
+            PropTab::Next => "Next element",
+            PropTab::Element => "Element",
+            PropTab::Joins => "Junctions and booleans",
+            PropTab::Graphics => "Graphics",
+            PropTab::Data => "Data (IFC)",
+            PropTab::View => "View",
+            PropTab::Trace => "Trace and reference",
+            PropTab::Model3d => "3D view",
+            PropTab::Project => "Project",
+        }
+    }
+
+    fn icon(self) -> &'static str {
+        match self {
+            PropTab::Next => "plus",
+            PropTab::Element => "box",
+            PropTab::Joins => "join",
+            PropTab::Graphics => "palette",
+            PropTab::Data => "table-2",
+            PropTab::View => "eye",
+            PropTab::Trace => "underlay",
+            PropTab::Model3d => "cuboid",
+            PropTab::Project => "house",
+        }
     }
 }
 
@@ -6347,12 +6546,40 @@ impl eframe::App for CreaBimApp {
                 bar.bar_width = 6.0;
                 bar.bar_inner_margin = 4.0;
                 inner.spacing_mut().scroll = bar;
-                egui::ScrollArea::vertical()
-                    .auto_shrink(false)
-                    .show(&mut inner, |ui| {
-                        ui.set_max_width(rect.width() - 10.0);
-                        self.properties(ui)
+                // the pinned header, then the tab strip and the tab's
+                // sections, which scroll (MU19)
+                inner.set_max_width(rect.width());
+                self.properties_header(&mut inner);
+                let tabs = self.prop_tabs();
+                // a placing tool just picked opens its Next tab; a first
+                // selection opens Element; otherwise the tab stays
+                let now = (self.plan.tool, self.selection.active.is_some());
+                if now != self.prop_seen {
+                    if now.0 != self.prop_seen.0 && now.0 != Tool::Select && !now.1 {
+                        self.prop_tab = PropTab::Next;
+                    } else if now.1 && !self.prop_seen.1 {
+                        self.prop_tab = PropTab::Element;
+                    }
+                    self.prop_seen = now;
+                }
+                if !tabs.contains(&self.prop_tab) {
+                    self.prop_tab = tabs[0];
+                }
+                // a tool just picked opens its Next tab; a new selection
+                // with no tab of its own opens Element
+                inner.add_space(4.0);
+                inner.horizontal_top(|ui| {
+                    self.prop_strip(ui, &tabs);
+                    ui.add_space(4.0);
+                    ui.vertical(|ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink(false)
+                            .show(ui, |ui| {
+                                ui.set_max_width(rect.width() - 50.0);
+                                self.properties(ui)
+                            });
                     });
+                });
                 ui.allocate_rect(rect, egui::Sense::hover());
             })
             .response
@@ -7142,5 +7369,53 @@ mod box_select_tests {
         );
         frame(&mut app, vec![egui::Event::PointerMoved(b)]);
         assert!(!app.selection.is_empty(), "status: {}", app.status);
+    }
+}
+
+#[cfg(test)]
+mod prop_tab_tests {
+    use super::*;
+
+    fn draw(app: &mut CreaBimApp) {
+        let ctx = egui::Context::default();
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 900.0))),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(raw, |ui| {
+            app.properties_header(ui);
+            app.properties(ui);
+        });
+        out.textures_delta.clear();
+    }
+
+    #[test]
+    fn every_properties_tab_draws_for_a_wall_and_for_nothing_selected() {
+        let mut app = crate::app::test_app();
+        let wall = app
+            .doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Wall(_)))
+            .unwrap()
+            .id;
+        app.selection.only(wall);
+        let tabs = app.prop_tabs();
+        assert_eq!(&tabs[..4], &[PropTab::Element, PropTab::Joins, PropTab::Graphics, PropTab::Data]);
+        for t in tabs {
+            app.prop_tab = t;
+            draw(&mut app);
+        }
+        app.selection.clear();
+        let tabs = app.prop_tabs();
+        assert!(tabs.contains(&PropTab::Model3d) && tabs.contains(&PropTab::Project));
+        for t in tabs {
+            app.prop_tab = t;
+            draw(&mut app);
+        }
+        app.plan.tool = Tool::Window;
+        assert_eq!(app.prop_tabs()[0], PropTab::Next);
+        app.prop_tab = PropTab::Next;
+        draw(&mut app);
     }
 }
