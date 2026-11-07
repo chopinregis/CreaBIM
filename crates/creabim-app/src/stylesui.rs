@@ -75,7 +75,7 @@ fn weight_combo(
     let mut changed = false;
     let text = w.map_or("As drawn".to_string(), |w| w.label());
     egui::ComboBox::from_id_salt(salt)
-        .width(108.0)
+        .width(ui.spacing().combo_width.max(108.0))
         .selected_text(text)
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(w, None, "As drawn").changed();
@@ -114,7 +114,7 @@ fn pattern_combo(
 ) -> bool {
     let mut changed = false;
     egui::ComboBox::from_id_salt(salt)
-        .width(84.0)
+        .width(ui.spacing().combo_width.max(84.0))
         .selected_text(p.as_ref().map_or("As drawn", |p| p.label()))
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(p, None, "As drawn").changed();
@@ -155,7 +155,7 @@ fn name_combo(
 ) -> bool {
     let mut changed = false;
     egui::ComboBox::from_id_salt(salt)
-        .width(108.0)
+        .width(ui.spacing().combo_width.max(108.0))
         .selected_text(v.as_deref().unwrap_or(none))
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(v, None, none).changed();
@@ -386,27 +386,32 @@ pub(super) fn look_ui(
         Some(n) => format!("Pack default ({n})"),
         None => "None".to_string(),
     };
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Template").on_hover_text(
-            "A named bundle of scale, style, hidden categories, pens, overrides and cues from the project's style pack. Change the template and every view using it changes.",
-        );
+    let none = none.replace("Pack default", "Default");
+    crate::props::row(ui, "Template", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         if name_combo(ui, "view_template", &names, &mut v.look.template, &none) {
             label = Some("View template");
         }
+    })
+    ;
+    crate::props::row(ui, "Style pack", |ui| {
+        ui.add(egui::Label::new(egui::RichText::new(pack.name.clone()).weak()).truncate())
+            .on_hover_text("A named bundle of scale, style, hidden categories, pens, overrides and cues from the project's style pack. Change the template and every view using it changes.")
     });
-    ui.label(egui::RichText::new(format!("Style pack: {}", pack.name)).weak());
     // depth cues
     let c = &mut v.look.cues;
-    ui.horizontal(|ui| {
-        ui.label("Fade with distance").on_hover_text(
-            "Lines and fills further from the cut or the viewer draw lighter, up to this much at the far end of the view. Sections, elevations and plans from above.",
-        );
-        if ui.add(egui::Slider::new(&mut c.fade, 0.0..=0.9)).changed() {
+    crate::props::row(ui, "Fade", |ui| {
+        ui.spacing_mut().slider_width = (ui.available_width() - 56.0).max(40.0);
+        if ui
+            .add(egui::Slider::new(&mut c.fade, 0.0..=0.9).max_decimals(2))
+            .on_hover_text("Lines and fills further from the cut or the viewer draw lighter, up to this much at the far end of the view. Sections, elevations and plans from above.")
+            .changed()
+        {
             label = Some("Depth cues");
         }
     });
     let mut sun = c.shadows.is_some();
-    if crate::props::switch(ui, &mut sun, "Sun shadows")
+    if crate::props::check(ui, "Shadows", &mut sun, "Sun")
         .on_hover_text("Shadows cast on the ground, in plans from above")
         .changed()
     {
@@ -418,26 +423,18 @@ pub(super) fn look_ui(
         label = Some("Depth cues");
     }
     if let Some(s) = &mut c.shadows {
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Toward");
-            label = label.or(ui
-                .add(
-                    egui::DragValue::new(&mut s.direction)
-                        .speed(1.0)
-                        .suffix("°"),
-                )
+        crate::props::row(ui, "Toward", |ui| {
+            label = label.or(crate::props::fill(ui, egui::DragValue::new(&mut s.direction).speed(1.0).suffix("°"))
                 .changed()
                 .then_some("Depth cues"));
-            ui.label("Length");
-            label = label.or(ui
-                .add(
-                    egui::DragValue::new(&mut s.length)
-                        .speed(0.05)
-                        .range(0.0..=5.0),
-                )
+        });
+        crate::props::row(ui, "Length", |ui| {
+            label = label.or(crate::props::fill(ui, egui::DragValue::new(&mut s.length).speed(0.05).range(0.0..=5.0))
                 .changed()
                 .then_some("Depth cues"));
-            ui.label("Strength");
+        });
+        crate::props::row(ui, "Strength", |ui| {
+            ui.spacing_mut().slider_width = (ui.available_width() - 56.0).max(40.0);
             label = label.or(ui
                 .add(egui::Slider::new(&mut s.opacity, 0.05..=1.0))
                 .changed()
@@ -446,7 +443,7 @@ pub(super) fn look_ui(
     }
     // overrides by category
     ui.add_space(4.0);
-    ui.label(egui::RichText::new("Overrides").strong()).on_hover_text(
+    ui.label(egui::RichText::new("Overrides").strong().size(12.0)).on_hover_text(
         "How a category or one element draws in this view only: halftone, its weight, colour or line pattern, its hatch off",
     );
     let mut remove = None;
@@ -478,8 +475,10 @@ pub(super) fn look_ui(
         label = Some("Graphic override");
     }
     let mut add = None;
+    crate::props::row(ui, "", |ui| {
     egui::ComboBox::from_id_salt("add_override")
         .selected_text("Add a category…")
+        .width(ui.available_width())
         .show_ui(ui, |ui| {
             for c in STYLED {
                 let taken = v
@@ -492,6 +491,7 @@ pub(super) fn look_ui(
                 }
             }
         });
+    });
     if let Some(c) = add {
         v.look.override_mut(Target::Category(c)).halftone = true;
         label = Some("Graphic override");
@@ -502,25 +502,27 @@ pub(super) fn look_ui(
 /// The fields of one override. True when one changed.
 pub(super) fn override_fields(ui: &mut egui::Ui, o: &mut Override) -> bool {
     let mut changed = false;
-    ui.horizontal_wrapped(|ui| {
-        changed |= crate::props::switch(ui, &mut o.halftone, "Halftone")
-            .on_hover_text("Drawn half-strength, mixed toward white")
-            .changed();
-        let mut hatch_off = o.hatch == Some(false);
-        if crate::props::switch(ui, &mut hatch_off, "No hatch")
-            .on_hover_text("Leave out the hatch lines of its cut faces")
-            .changed()
-        {
-            o.hatch = hatch_off.then_some(false);
-            changed = true;
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Weight");
+    // one setting a row, as Blender's (MU22)
+    changed |= crate::props::check(ui, "Draw", &mut o.halftone, "Halftone")
+        .on_hover_text("Drawn half-strength, mixed toward white")
+        .changed();
+    let mut hatch_off = o.hatch == Some(false);
+    if crate::props::check(ui, "", &mut hatch_off, "No hatch")
+        .on_hover_text("Leave out the hatch lines of its cut faces")
+        .changed()
+    {
+        o.hatch = hatch_off.then_some(false);
+        changed = true;
+    }
+    crate::props::row(ui, "Weight", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         changed |= weight_combo(ui, "ov_weight", &mut o.weight);
-        ui.label("Line");
+    });
+    crate::props::row(ui, "Line", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         changed |= pattern_combo(ui, "ov_pattern", &mut o.pattern);
-        ui.label("Colour");
+    });
+    crate::props::row(ui, "Colour", |ui| {
         changed |= colour_pick(ui, &mut o.colour, false, "A colour of its own in this view");
     });
     changed
@@ -586,7 +588,7 @@ impl CreaBimApp {
             if let Some(l) = look_ui(ui, self.doc.model(), &mut v) {
                 label = Some(l);
             }
-            if ui.button("Graphic styles…").clicked() {
+            if crate::props::row(ui, "", |ui| crate::props::fill(ui, egui::Button::new("Graphic styles…")).clicked()) {
                 self.gstyles.open = true;
             }
         }
@@ -638,7 +640,6 @@ impl CreaBimApp {
             .find(|o| o.target == Target::Element(id))
             .cloned()
             .unwrap_or_else(|| Override::new(Target::Element(id)));
-        ui.label(egui::RichText::new("How this element draws in the open view only.").weak());
         if override_fields(ui, &mut o) {
             *v.look.override_mut(Target::Element(id)) = o;
             v.look.tidy();

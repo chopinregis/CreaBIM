@@ -30,6 +30,61 @@ impl CreaBimApp {
     /// The Mark field of a selected element: what it is typed as, or
     /// (greyed in the empty field) the number the rules give it, and a
     /// warning when another element has the same mark.
+    /// The mark as a small field at the end of the header line (MU22).
+    pub(super) fn mark_inline(&mut self, ui: &mut egui::Ui, id: ElementId, width: f32) {
+        let model = self.doc.model();
+        let Some(e) = model.get(id) else { return };
+        if !markable(&e.kind) || width <= 0.0 {
+            return;
+        }
+        let shown = marks::mark_of(model, id);
+        let typed = marks::manual(e).is_some();
+        let mut text = e.mark.clone().unwrap_or_default();
+        let hint = match (&shown, typed) {
+            (Some(m), false) => m.clone(),
+            _ => "Mark".into(),
+        };
+        let changed = ui
+            .add_sized(
+                [width, 22.0],
+                egui::TextEdit::singleline(&mut text)
+                    .hint_text(hint)
+                    .horizontal_align(egui::Align::Max)
+                    .vertical_align(egui::Align::Center),
+            )
+            .on_hover_text(
+                "Mark: what its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering).",
+            )
+            .changed();
+        if changed {
+            let value = (!text.trim().is_empty()).then(|| text.clone());
+            let r = self.doc.edit_merged(id, "Mark", |e| e.mark = value.clone());
+            self.report(r, "Mark changed.");
+        }
+    }
+
+    /// A mark used twice, said under the header.
+    pub(super) fn mark_warning(&mut self, ui: &mut egui::Ui, id: ElementId) {
+        let model = self.doc.model();
+        if let Some((m, others)) = marks::duplicates(model)
+            .into_iter()
+            .find(|(_, ids)| ids.contains(&id))
+        {
+            let n = others.len() - 1;
+            ui.label(
+                egui::RichText::new(format!(
+                    "⚠ {m} is also the mark of {n} other element{}.",
+                    if n == 1 { "" } else { "s" }
+                ))
+                .color(ui.visuals().warn_fg_color),
+            );
+            if ui.small_button("Select them").clicked() {
+                self.selection.extend(others.clone(), false);
+            }
+        }
+    }
+
+    #[allow(dead_code)]
     pub(super) fn mark_field(&mut self, ui: &mut egui::Ui, id: ElementId) {
         let model = self.doc.model();
         let Some(e) = model.get(id) else { return };

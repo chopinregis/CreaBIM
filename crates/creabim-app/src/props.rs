@@ -9,12 +9,95 @@ use eframe::egui::{self, Color32, Response, Sense, Ui, Vec2};
 /// The label column's width for a row `width` wide: wide enough for most
 /// labels, never more than 40% of the row.
 pub fn label_width(width: f32) -> f32 {
-    (width * 0.4).clamp(96.0, 180.0)
+    (width * 0.4).clamp(72.0, 160.0)
 }
 
 /// Narrower than this, a row stacks: its label above, its control the
-/// full width below (A4-1).
-pub const STACK_BELOW: f32 = 300.0;
+/// full width below (A4-1). As Blender, rows keep one line down to a
+/// narrow panel and cut their labels instead (MU22).
+pub const STACK_BELOW: f32 = 170.0;
+
+/// A section open on this layer: where its box starts, filled once the
+/// next section starts or [`close_box`] is called (MU22, as Blender's
+/// panels: each section a gentle box, a gap between boxes).
+#[derive(Clone, Copy)]
+struct OpenBox {
+    shape: egui::layers::ShapeIdx,
+    left: f32,
+    right: f32,
+    top: f32,
+    header_bottom: f32,
+    pass: u64,
+}
+
+fn box_id(ui: &Ui) -> egui::Id {
+    egui::Id::new(("props.box", ui.layer_id()))
+}
+
+/// The fill of a section's box: a tone off the panel.
+pub fn box_fill(v: &egui::Visuals) -> Color32 {
+    let p = v.panel_fill;
+    let (to, t) = if v.dark_mode { (255.0, 0.045) } else { (0.0, 0.035) };
+    let m = |c: u8| (c as f32 + (to - c as f32) * t).round() as u8;
+    Color32::from_rgb(m(p.r()), m(p.g()), m(p.b()))
+}
+
+/// Draw sections as boxes on this layer from now on (`true`), or stop
+/// (Properties turns them on round its sections).
+pub fn boxes(ui: &mut Ui, on: bool) {
+    let id = box_id(ui).with("on");
+    let pass = ui.ctx().cumulative_pass_nr();
+    ui.ctx().data_mut(|d| {
+        if on {
+            d.insert_temp(id, pass);
+        } else {
+            d.remove::<u64>(id);
+        }
+    });
+}
+
+fn boxes_on(ui: &Ui) -> bool {
+    let id = box_id(ui).with("on");
+    let pass = ui.ctx().cumulative_pass_nr();
+    ui.ctx().data(|d| d.get_temp::<u64>(id)) == Some(pass)
+}
+
+/// Close the open section's box, if any: it ends under its last row.
+pub fn close_box(ui: &mut Ui) {
+    let id = box_id(ui);
+    let Some(b) = ui.ctx().data_mut(|d| {
+        let got = d.get_temp::<OpenBox>(id);
+        d.remove::<OpenBox>(id);
+        got
+    }) else {
+        return;
+    };
+    if b.pass != ui.ctx().cumulative_pass_nr() {
+        return;
+    }
+    let y = ui.cursor().top();
+    let content = y > b.header_bottom + 3.0;
+    if content {
+        ui.add_space(4.0);
+    }
+    let bottom = if content { y + 4.0 } else { b.header_bottom };
+    let v = ui.visuals();
+    let rect = egui::Rect::from_min_max(egui::pos2(b.left - PAD, b.top), egui::pos2(b.right + PAD, bottom));
+    ui.painter().set(
+        b.shape,
+        egui::Shape::rect_filled(rect, 4.0, box_fill(v)),
+    );
+    ui.add_space(4.0);
+}
+
+/// A box reaches this far past the content column on each side, which
+/// is the margin its rows keep inside it.
+const PAD: f32 = 6.0;
+
+/// (Rows needed an inset before boxes took a margin; none now.)
+fn inset(_ui: &Ui) -> f32 {
+    0.0
+}
 
 /// A row: `label` at the left, in the label column, then `add`'s controls
 /// filling the rest. A label too long for its column is cut with … and
@@ -35,8 +118,10 @@ pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
             })
             .inner;
     }
-    let lw = label_width(ui.available_width());
-    ui.horizontal(|ui| {
+    let w = ui.available_width() - inset(ui);
+    let lw = label_width(w);
+    let h0 = ui.spacing().interact_size.y;
+    ui.allocate_ui_with_layout(Vec2::new(w, h0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
         let h = ui.spacing().interact_size.y;
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(lw, h), Sense::hover());
         let muted = ui.visuals().widgets.noninteractive.fg_stroke.color;
@@ -55,14 +140,15 @@ pub fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
             job.wrap = egui::text::TextWrapping::truncate_at_width(lw - 6.0);
             let g = ui.painter().layout_job(job);
             ui.painter().galley(
-                rect.left_center() - Vec2::new(0.0, g.size().y / 2.0),
+                rect.right_center() - Vec2::new(g.size().x + 6.0, g.size().y / 2.0),
                 g,
                 muted,
             );
             resp.on_hover_text(label);
         } else {
+            // against its control, as Blender's
             ui.painter().galley(
-                rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0),
+                rect.right_center() - Vec2::new(galley.size().x + 6.0, galley.size().y / 2.0),
                 galley,
                 muted,
             );
@@ -98,7 +184,7 @@ pub fn picture_option(
             } else {
                 v.widgets.hovered.weak_bg_fill
             };
-            ui.painter().rect_filled(rect, 5.0, fill);
+            ui.painter().rect_filled(rect, 3.0, fill);
         }
         let ink = v.text_color();
         let pic = egui::Rect::from_min_size(
@@ -119,19 +205,101 @@ pub fn picture_option(
 
 /// A plain heading inside a window, for grouping rows.
 pub fn section(ui: &mut Ui, title: &str) {
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new(title).strong());
-    ui.add_space(2.0);
+    if boxes_on(ui) {
+        // in Properties, a box of its own with the title as its band (MU22)
+        close_box(ui);
+        let shape = ui.painter().add(egui::Shape::Noop);
+        let w = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 24.0), Sense::hover());
+        let ink = ui.visuals().strong_text_color();
+        let mut job = egui::text::LayoutJob::single_section(
+            title.to_string(),
+            egui::TextFormat::simple(egui::FontId::proportional(12.5), ink),
+        );
+        job.wrap = egui::text::TextWrapping::truncate_at_width((w - 24.0).max(10.0));
+        let g = ui.painter().layout_job(job);
+        ui.painter().galley(
+            egui::pos2(rect.left() + 10.0, rect.center().y - g.size().y / 2.0),
+            g,
+            ink,
+        );
+        let b = OpenBox {
+            shape,
+            left: rect.left(),
+            right: rect.right(),
+            top: rect.top(),
+            header_bottom: rect.bottom(),
+            pass: ui.ctx().cumulative_pass_nr(),
+        };
+        ui.ctx().data_mut(|d| d.insert_temp(box_id(ui), b));
+        return;
+    }
+    ui.add_space(4.0);
+    ui.add(egui::Label::new(egui::RichText::new(title).strong()).truncate());
+    ui.add_space(1.0);
 }
 
 /// An on/off switch in the theme's accent colour, the label at the left
 /// and the switch at the right. It answers like a checkbox: `.changed()`
 /// when clicked.
 pub fn switch(ui: &mut Ui, on: &mut bool, label: impl Into<egui::WidgetText>) -> Response {
+    check(ui, "", on, label)
+}
+
+/// A small check box and its text, sized to its text: for grids of them
+/// (a view's categories), as Blender's (MU22).
+pub fn tick(ui: &mut Ui, on: &mut bool, label: &str, width: f32) -> Response {
+    let h = 19.0;
+    let (rect, mut resp) = ui.allocate_exact_size(Vec2::new(width, h), Sense::click());
+    if resp.clicked() {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    let enabled = ui.is_enabled();
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, enabled, *on, label));
+    if ui.is_rect_visible(rect) {
+        let v = ui.visuals();
+        let accent = v.selection.bg_fill;
+        let ink = if enabled { v.text_color() } else { v.weak_text_color() };
+        let b = egui::Rect::from_center_size(egui::pos2(rect.left() + 7.0, rect.center().y), Vec2::splat(13.0));
+        if *on {
+            ui.painter().rect_filled(b, 3.0, if enabled { accent } else { accent.gamma_multiply(0.5) });
+            let t = egui::Stroke::new(1.7, Color32::WHITE);
+            ui.painter().line_segment([b.left_center() + Vec2::new(3.0, 0.5), b.center() + Vec2::new(-1.0, 3.0)], t);
+            ui.painter().line_segment([b.center() + Vec2::new(-1.0, 3.0), b.right_top() + Vec2::new(-3.0, 3.5)], t);
+        } else {
+            ui.painter().rect_filled(b, 3.0, v.widgets.inactive.weak_bg_fill);
+            ui.painter().rect_stroke(b, 3.0, v.widgets.inactive.bg_stroke, egui::StrokeKind::Inside);
+        }
+        if resp.hovered() && enabled {
+            ui.painter().rect_stroke(b.expand(1.0), 4.0, egui::Stroke::new(1.0, accent), egui::StrokeKind::Outside);
+        }
+        let mut job = egui::text::LayoutJob::single_section(
+            label.to_string(),
+            egui::TextFormat::simple(egui::TextStyle::Body.resolve(ui.style()), ink),
+        );
+        job.wrap = egui::text::TextWrapping::truncate_at_width((width - 22.0).max(10.0));
+        let g = ui.painter().layout_job(job);
+        let elided = g.elided;
+        ui.painter().galley(egui::pos2(rect.left() + 19.0, rect.center().y - g.size().y / 2.0), g, ink);
+        if elided {
+            resp = resp.on_hover_text(label.to_string());
+        }
+    }
+    resp
+}
+
+/// A check box with `group` in the label column, as Blender's "Show In":
+/// the first of a group carries its name, the rest an empty label.
+pub fn check(ui: &mut Ui, group: &str, on: &mut bool, label: impl Into<egui::WidgetText>) -> Response {
     let label: egui::WidgetText = label.into();
     let text = label.text().to_string();
-    let w = ui.available_width();
-    let h = ui.spacing().interact_size.y;
+    let w = ui.available_width() - inset(ui);
+    // as Blender's (MU22): a check box in the value column, its text after
+    // it; the label column left empty, so on/off settings line up under
+    // the fields above them
+    let h = (ui.spacing().interact_size.y - 2.0).max(20.0);
+    let lw = if w < STACK_BELOW { 0.0 } else { label_width(w) };
     let (rect, mut resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
     if resp.clicked() {
         *on = !*on;
@@ -148,63 +316,54 @@ pub fn switch(ui: &mut Ui, on: &mut bool, label: impl Into<egui::WidgetText>) ->
         } else {
             v.weak_text_color()
         };
-        // the label, cut to leave the switch its room
-        let sw = Vec2::new(30.0, 16.0);
+        if !group.is_empty() && lw > 0.0 {
+            let muted = v.widgets.noninteractive.fg_stroke.color;
+            let mut job = egui::text::LayoutJob::single_section(
+                group.to_string(),
+                egui::TextFormat::simple(egui::TextStyle::Body.resolve(ui.style()), muted),
+            );
+            job.wrap = egui::text::TextWrapping::truncate_at_width(lw - 6.0);
+            let g = ui.painter().layout_job(job);
+            ui.painter().galley(
+                rect.left_center() + Vec2::new(lw - 6.0 - g.size().x, -g.size().y / 2.0),
+                g,
+                muted,
+            );
+        }
+        let accent = v.selection.bg_fill;
+        let field = v.widgets.inactive.weak_bg_fill;
+        let edge = v.widgets.inactive.bg_stroke;
+        let x0 = rect.left() + lw;
+        let b = egui::Rect::from_center_size(egui::pos2(x0 + 8.0, rect.center().y), Vec2::splat(14.0));
+        if *on {
+            ui.painter().rect_filled(b, 3.0, if enabled { accent } else { accent.gamma_multiply(0.5) });
+            let t = egui::Stroke::new(1.8, Color32::WHITE);
+            ui.painter().line_segment([b.left_center() + Vec2::new(3.0, 0.5), b.center() + Vec2::new(-1.0, 3.5)], t);
+            ui.painter().line_segment([b.center() + Vec2::new(-1.0, 3.5), b.right_top() + Vec2::new(-3.0, 3.5)], t);
+        } else {
+            ui.painter().rect_filled(b, 3.0, field);
+            ui.painter().rect_stroke(b, 3.0, edge, egui::StrokeKind::Inside);
+        }
+        if resp.hovered() && enabled {
+            ui.painter().rect_stroke(b.expand(1.0), 4.0, egui::Stroke::new(1.0, accent), egui::StrokeKind::Outside);
+        }
         let mut job = egui::text::LayoutJob::single_section(
             text.clone(),
             egui::TextFormat::simple(egui::TextStyle::Body.resolve(ui.style()), ink),
         );
-        job.wrap = egui::text::TextWrapping::truncate_at_width((w - sw.x - 12.0).max(10.0));
+        job.wrap = egui::text::TextWrapping::truncate_at_width((rect.right() - x0 - 24.0).max(10.0));
         let g = ui.painter().layout_job(job);
+        let elided = g.elided;
         ui.painter().galley(
-            rect.left_center() - Vec2::new(0.0, g.size().y / 2.0),
+            egui::pos2(x0 + 22.0, rect.center().y - g.size().y / 2.0),
             g,
             ink,
         );
-        let r = egui::Rect::from_center_size(
-            egui::pos2(rect.right() - sw.x / 2.0 - 2.0, rect.center().y),
-            sw,
-        );
-        paint_switch(ui, resp.id, r, *on, resp.hovered() && enabled, enabled);
+        if elided {
+            resp = resp.on_hover_text(text.clone());
+        }
     }
     resp
-}
-
-/// Paint a switch in `r`: a rounded track, accent when on, with its knob.
-/// `id` is the switch's own, so its slide animates when it is flipped and
-/// never when the panel scrolls it (MU19).
-pub fn paint_switch(ui: &Ui, id: egui::Id, r: egui::Rect, on: bool, hovered: bool, enabled: bool) {
-    let v = ui.visuals();
-    let t = ui.ctx().animate_bool_responsive(id.with("switch"), on);
-    let accent = v.selection.stroke.color;
-    let off = v.widgets.inactive.bg_fill;
-    let mut track = lerp(off, accent, t);
-    if !enabled {
-        track = track.gamma_multiply(0.5);
-    } else if hovered {
-        track = lerp(track, v.text_color(), 0.12);
-    }
-    let rad = r.height() / 2.0;
-    ui.painter().rect(
-        r,
-        rad,
-        track,
-        egui::Stroke::new(1.0, lerp(v.widgets.inactive.bg_stroke.color, accent, t)),
-        egui::StrokeKind::Inside,
-    );
-    let x = egui::lerp((r.left() + rad)..=(r.right() - rad), t);
-    ui.painter()
-        .circle_filled(egui::pos2(x, r.center().y), rad - 2.5, Color32::WHITE);
-}
-
-fn lerp(a: Color32, b: Color32, t: f32) -> Color32 {
-    let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
-    Color32::from_rgba_unmultiplied(
-        m(a.r(), b.r()),
-        m(a.g(), b.g()),
-        m(a.b(), b.b()),
-        m(a.a(), b.a()),
-    )
 }
 
 /// A section header of Properties: a full-width row with the title in
@@ -216,9 +375,25 @@ pub fn header(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, 
     // as Blender's panels (MU20): a band a step darker than the panel, a
     // thin open chevron at the left that turns down when the section is
     // open, the title in bold after it, a dotted grip at the right
-    let w = ui.available_width();
-    let h = if indent { 26.0 } else { 28.0 };
+    let boxed = !indent && boxes_on(ui);
+    if boxed {
+        close_box(ui);
+    }
+    let w = ui.available_width() - if indent { inset(ui) } else { 0.0 };
+    let h = if indent { 22.0 } else { 24.0 };
+    let shape = boxed.then(|| ui.painter().add(egui::Shape::Noop));
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
+    if let Some(shape) = shape {
+        let b = OpenBox {
+            shape,
+            left: rect.left(),
+            right: rect.right(),
+            top: rect.top(),
+            header_bottom: rect.bottom(),
+            pass: ui.ctx().cumulative_pass_nr(),
+        };
+        ui.ctx().data_mut(|d| d.insert_temp(box_id(ui), b));
+    }
     if ui.is_rect_visible(rect) {
         let v = ui.visuals();
         let band = {
@@ -231,22 +406,25 @@ pub fn header(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, 
             let m = |c: u8| (c as f32 + (to - c as f32) * t).round() as u8;
             Color32::from_rgb(m(p.r()), m(p.g()), m(p.b()))
         };
-        let fill = if resp.hovered() {
-            v.widgets.hovered.weak_bg_fill
-        } else if indent {
-            Color32::TRANSPARENT
-        } else {
-            band
-        };
-        ui.painter().rect_filled(rect, 5.0, fill);
+        // in a box, the box itself is the band (MU22); hovered, lighter
+        if !boxed && !indent {
+            ui.painter().rect_filled(rect, 4.0, band);
+        }
+        if resp.hovered() {
+            ui.painter()
+                .rect_filled(rect, 4.0, v.widgets.hovered.weak_bg_fill.gamma_multiply(0.5));
+        }
         let ink = v.strong_text_color();
         let soft = v.weak_text_color();
         // the chevron: › when shut, ˅ when open, turning between
         let t = ui.ctx().animate_bool_responsive(resp.id, open);
-        let c = egui::pos2(
-            rect.left() + if indent { 18.0 } else { 12.0 },
-            rect.center().y,
-        );
+        if indent {
+            // a sub-section, as Blender's: flush with its section, its
+            // header on a band a shade deeper than the box (MU22)
+            let deeper = if v.dark_mode { Color32::from_black_alpha(40) } else { Color32::from_black_alpha(14) };
+            ui.painter().rect_filled(rect, 3.0, deeper);
+        }
+        let c = egui::pos2(rect.left() + 12.0, rect.center().y);
         let ang = t * std::f32::consts::FRAC_PI_2;
         let rot = |p: Vec2| {
             let (s, co) = ang.sin_cos();
@@ -261,10 +439,14 @@ pub fn header(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, 
         ui.painter().line_segment([pts[0], pts[1]], stroke);
         ui.painter().line_segment([pts[1], pts[2]], stroke);
         let left = c.x + 10.0;
-        let font = egui::FontId::proportional(if indent { 13.0 } else { 13.5 });
-        let g = ui
-            .painter()
-            .layout(title.to_string(), font, ink, (w - 70.0).max(10.0));
+        let font = egui::FontId::proportional(if indent { 12.0 } else { 12.5 });
+        // one line, cut with … (MU22): a band never grows taller
+        let mut job = egui::text::LayoutJob::single_section(
+            title.to_string(),
+            egui::TextFormat::simple(font, ink),
+        );
+        job.wrap = egui::text::TextWrapping::truncate_at_width((w - 70.0).max(10.0));
+        let g = ui.painter().layout_job(job);
         let tw = g.size().x;
         ui.painter()
             .galley(egui::pos2(left, rect.center().y - g.size().y / 2.0), g, ink);
@@ -344,9 +526,9 @@ mod tests {
     fn the_label_column_is_two_fifths_of_the_row_and_narrow_rows_stack() {
         // A4-1: about 40 %, never under 96 px, and no wider than 180
         assert_eq!(label_width(300.0), 120.0);
-        assert_eq!(label_width(1000.0), 180.0);
-        assert_eq!(label_width(200.0), 96.0);
-        // below 300 px the label goes above its control
-        assert_eq!(STACK_BELOW, 300.0);
+        assert_eq!(label_width(1000.0), 160.0);
+        assert_eq!(label_width(150.0), 72.0);
+        // only below 170 px does the label go above its control (MU22)
+        assert_eq!(STACK_BELOW, 170.0);
     }
 }

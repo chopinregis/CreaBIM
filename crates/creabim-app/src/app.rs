@@ -4953,13 +4953,6 @@ impl CreaBimApp {
     }
 
     fn properties(&mut self, ui: &mut egui::Ui) {
-        ui.label(
-            egui::RichText::new("PROPERTIES")
-                .size(11.0)
-                .strong()
-                .color(ui.visuals().weak_text_color()),
-        );
-        ui.add_space(4.0);
         if self.crop_pick.is_some() {
             self.crop_pick_banner(ui);
         }
@@ -4979,9 +4972,6 @@ impl CreaBimApp {
                 self.crop_list(ui, self.crop_owner());
                 return;
             }
-            ui.label(
-                "Nothing selected. Click an element in the plan, the 3D view or the model list.",
-            );
             if self.plan.tool == Tool::Grid {
                 ui.add_space(8.0);
                 self.grid_systems_panel(ui);
@@ -6461,12 +6451,19 @@ impl CreaBimApp {
     /// what the selected element is, its name and mark, and its actions.
     fn properties_header(&mut self, ui: &mut egui::Ui) {
         let Some(id) = self.selection.active else {
-            ui.label(
-                egui::RichText::new("PROPERTIES")
-                    .size(11.0)
-                    .strong()
-                    .color(ui.visuals().weak_text_color()),
-            );
+            // the open tab's name, as Blender's context line
+            ui.horizontal(|ui| {
+                let p = crate::theme::Palette::of(ui.ctx());
+                let (r, _) = ui.allocate_exact_size(egui::vec2(16.0, 22.0), egui::Sense::hover());
+                crate::svgicon::paint(
+                    ui.painter(),
+                    egui::Rect::from_center_size(r.center(), egui::vec2(15.0, 15.0)),
+                    self.prop_tab.icon(),
+                    p.muted,
+                );
+                ui.add(egui::Label::new(egui::RichText::new(self.prop_tab.label()).strong()).truncate());
+            });
+            ui.add_space(2.0);
             return;
         };
         let Some(e) = self.doc.model().get(id).cloned() else {
@@ -6507,8 +6504,38 @@ impl CreaBimApp {
         // an object is what its type says: a basin an IfcSanitaryTerminal
         let class = creabim_core::objects::type_of(self.doc.model(), &e)
             .map_or_else(|| e.ifc_class().to_string(), |t| t.ifc.class.clone());
+        // one line, as on the board (MU22): its class in a pill, the name
+        // to type over, its mark at the right; the actions below
+        let pal = crate::theme::Palette::of(ui.ctx());
+        let mut name = e.name.clone();
+        let mut renamed = false;
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(class).weak());
+            ui.spacing_mut().item_spacing.x = 4.0;
+            let pill = egui::RichText::new(class.trim_start_matches("Ifc").to_string())
+                .size(11.0)
+                .color(pal.accent);
+            let resp = egui::Frame::new()
+                .fill(pal.accent.gamma_multiply(0.14))
+                .corner_radius(8.0)
+                .inner_margin(egui::Margin::symmetric(6, 1))
+                .show(ui, |ui| ui.label(pill))
+                .response;
+            resp.on_hover_text(class.clone());
+            if !matches!(e.kind, ElementKind::Level(_)) {
+                let mark_w = if marksui::markable(&e.kind) { 64.0 } else { 0.0 };
+                let w = (ui.available_width() - mark_w - 26.0).max(40.0);
+                renamed = ui
+                    .add_sized(
+                        [w, 22.0],
+                        egui::TextEdit::singleline(&mut name)
+                            .font(egui::FontId::proportional(13.0))
+                            .frame(egui::Frame::NONE)
+                            .vertical_align(egui::Align::Center),
+                    )
+                    .on_hover_text("Its name: click to rename")
+                    .changed();
+                self.mark_inline(ui, id, mark_w);
+            }
             // what this kind of element is, and its page in the guide
             let page = crate::help::element_page(&e.kind);
             let title = crate::help::text(page.split('#').next().unwrap_or(page))
@@ -6516,27 +6543,22 @@ impl CreaBimApp {
                 .unwrap_or("This element");
             self.quick_help_button(ui, page, title);
         });
-        let mut name = e.name.clone();
         if matches!(e.kind, ElementKind::Level(_)) {
             // a level is renamed with the plans named after it, once typed
             self.level_name_field(ui, id, &e.name);
-        } else if crate::props::row(ui, "Name", |ui| {
-            crate::props::fill(
-                ui,
-                egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center),
-            )
-            .changed()
-        }) {
+        } else if renamed {
             let r = self
                 .doc
                 .edit_merged(id, "Rename", |e| e.name = name.clone());
             self.report(r, "Renamed.");
         }
-        self.mark_field(ui, id);
-        ui.add_space(4.0);
+        self.mark_warning(ui, id);
         // its actions, under its name (brief 02, 2.7)
         self.action_bar(ui);
-        ui.add_space(6.0);
+        ui.add_space(2.0);
+        let r = ui.available_rect_before_wrap();
+        ui.painter().hline(r.x_range(), r.top(), egui::Stroke::new(1.0, pal.border));
+        ui.add_space(3.0);
     }
 
     /// The tabs Properties shows now, in order (MU19).
@@ -6607,27 +6629,79 @@ impl CreaBimApp {
     }
 
     /// The strip of tab icons at Properties' left (MU19).
-    fn prop_strip(&mut self, ui: &mut egui::Ui, tabs: &[PropTab]) {
+    fn prop_strip(&mut self, ui: &mut egui::Ui, tabs: &[PropTab], height: f32) {
+        // as Blender's (MU22): a column a tone darker than the panel, flush
+        // at its edge; 26 px cells with 16 px icons; the open tab painted
+        // in the panel's own colour so it reads as one piece with what it
+        // shows, with a thin accent bar at its left
         let p = crate::theme::Palette::of(ui.ctx());
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 4.0;
-            for t in tabs {
-                let (r, resp) =
-                    ui.allocate_exact_size(egui::vec2(30.0, 30.0), egui::Sense::click());
-                let on = *t == self.prop_tab;
-                if on {
-                    ui.painter().rect_filled(r, 7.0, p.accent);
-                } else if resp.hovered() {
-                    ui.painter()
-                        .rect_filled(r, 7.0, p.accent.gamma_multiply(0.15));
+        let panel = ui.visuals().panel_fill;
+        let column = {
+            let (to, t) = if p.dark { (0.0, 0.25) } else { (0.0, 0.06) };
+            let m = |c: u8| (c as f32 + (to - c as f32) * t).round() as u8;
+            Color32::from_rgb(m(panel.r()), m(panel.g()), m(panel.b()))
+        };
+        const W: f32 = 30.0;
+        const CELL: f32 = 26.0;
+        let top = ui.cursor().min;
+        let strip = egui::Rect::from_min_size(top, egui::vec2(W, height));
+        ui.painter().rect_filled(strip, 0.0, column);
+        ui.allocate_ui_with_layout(
+            egui::vec2(W, height),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                ui.add_space(4.0);
+                let mut last_group = None;
+                for t in tabs {
+                    let group = t.group();
+                    if last_group.is_some_and(|g| g != group) {
+                        // a gap and a hairline between groups, as Blender's
+                        let (r, _) = ui.allocate_exact_size(egui::vec2(W, 9.0), egui::Sense::hover());
+                        ui.painter().line_segment(
+                            [
+                                egui::pos2(r.left() + 7.0, r.center().y),
+                                egui::pos2(r.right() - 7.0, r.center().y),
+                            ],
+                            egui::Stroke::new(1.0, p.border),
+                        );
+                    }
+                    last_group = Some(group);
+                    let (row, resp) =
+                        ui.allocate_exact_size(egui::vec2(W, CELL), egui::Sense::click());
+                    let r = egui::Rect::from_min_max(
+                        egui::pos2(row.left() + 2.0, row.top()),
+                        row.max,
+                    );
+                    let on = *t == self.prop_tab;
+                    if on {
+                        ui.painter().rect_filled(
+                            r,
+                            egui::CornerRadius {
+                                nw: 4,
+                                sw: 4,
+                                ne: 0,
+                                se: 0,
+                            },
+                            panel,
+                        );
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(r.min + egui::vec2(0.0, 4.0), egui::vec2(2.0, CELL - 8.0)),
+                            1.0,
+                            p.accent,
+                        );
+                    } else if resp.hovered() {
+                        ui.painter().rect_filled(r.shrink(1.0), 4.0, p.accent.gamma_multiply(0.12));
+                    }
+                    let ink = if on { p.accent } else { p.muted };
+                    let icon = egui::Rect::from_center_size(r.center(), egui::vec2(16.0, 16.0));
+                    crate::svgicon::paint(ui.painter(), icon, t.icon(), ink);
+                    if resp.on_hover_text(t.label()).clicked() {
+                        self.prop_tab = *t;
+                    }
                 }
-                let ink = if on { Color32::WHITE } else { p.text };
-                crate::svgicon::paint(ui.painter(), r.shrink(6.0), t.icon(), ink);
-                if resp.on_hover_text(t.label()).clicked() {
-                    self.prop_tab = *t;
-                }
-            }
-        });
+            },
+        );
     }
 }
 
@@ -6655,6 +6729,16 @@ pub(crate) enum PropTab {
 }
 
 impl PropTab {
+    /// The strip's groups, a hairline apart: what is selected, the view,
+    /// the whole project.
+    fn group(self) -> u8 {
+        match self {
+            PropTab::Next | PropTab::Element | PropTab::Joins | PropTab::Graphics | PropTab::Data => 0,
+            PropTab::View | PropTab::Trace | PropTab::Model3d => 1,
+            PropTab::Project => 2,
+        }
+    }
+
     fn label(self) -> &'static str {
         match self {
             PropTab::Next => "Next element",
@@ -6824,8 +6908,13 @@ impl eframe::App for CreaBimApp {
             .default_size(self.shell.settings.right_width)
             .size_range(220.0..=640.0)
             .frame(
-                egui::Frame::side_top_panel(ui.style())
-                    .inner_margin(egui::Margin::symmetric(12, 12)),
+                // flush at the left, where the tab column is (MU22)
+                egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin {
+                    left: 0,
+                    right: 4,
+                    top: 0,
+                    bottom: 4,
+                }),
             )
             .show(ui, |ui| {
                 // the panel keeps the width it was given: what is wider
@@ -6836,9 +6925,20 @@ impl eframe::App for CreaBimApp {
                 let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect));
                 inner.set_clip_rect(clip);
                 inner.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                // one grid for every row (A4-1): 28 px controls, and the
-                // scroll bar in a gutter of its own, never over a field
-                inner.spacing_mut().interact_size.y = 28.0;
+                // one grid for every row (A4-1): controls as tight as
+                // Blender's (MU22), the scroll bar in a gutter of its own
+                inner.spacing_mut().interact_size.y = 24.0;
+                // text a size down, as Blender's panels (MU22): rows fit
+                // on one line at the panel's usual width
+                for (style, font) in inner.style_mut().text_styles.iter_mut() {
+                    font.size = match style {
+                        egui::TextStyle::Small => 10.5,
+                        egui::TextStyle::Heading => 14.0,
+                        _ => (font.size - 1.5).clamp(11.0, 12.5),
+                    };
+                }
+                inner.spacing_mut().item_spacing = egui::vec2(4.0, 3.0);
+                inner.spacing_mut().button_padding = egui::vec2(6.0, 2.0);
                 // editable fields (dropdowns, numbers, text) in the field
                 // colour, a tone apart from the panel, as Blender does, so
                 // they read at a glance as things you can change (MU20)
@@ -6852,10 +6952,10 @@ impl eframe::App for CreaBimApp {
                 bar.bar_width = 6.0;
                 bar.bar_inner_margin = 4.0;
                 inner.spacing_mut().scroll = bar;
-                // the pinned header, then the tab strip and the tab's
-                // sections, which scroll (MU19)
+                // as Blender's editor (MU22): the tab column down the left
+                // edge, a tone darker, then the pinned header and the
+                // tab's sections, which scroll
                 inner.set_max_width(rect.width());
-                self.properties_header(&mut inner);
                 let tabs = self.prop_tabs();
                 // a placing tool just picked opens its Next tab; a first
                 // selection opens Element; otherwise the tab stays
@@ -6873,16 +6973,24 @@ impl eframe::App for CreaBimApp {
                 }
                 // a tool just picked opens its Next tab; a new selection
                 // with no tab of its own opens Element
-                inner.add_space(4.0);
                 inner.horizontal_top(|ui| {
-                    self.prop_strip(ui, &tabs);
-                    ui.add_space(4.0);
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    self.prop_strip(ui, &tabs, rect.height());
+                    ui.add_space(12.0);
                     ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 3.0);
+                        let w = ui.available_width();
+                        ui.set_max_width(w);
+                        ui.add_space(4.0);
+                        self.properties_header(ui);
                         egui::ScrollArea::vertical()
                             .auto_shrink(false)
                             .show(ui, |ui| {
-                                ui.set_max_width(rect.width() - 50.0);
-                                self.properties(ui)
+                                ui.set_max_width(w - 16.0);
+                                crate::props::boxes(ui, true);
+                                self.properties(ui);
+                                crate::props::close_box(ui);
+                                crate::props::boxes(ui, false);
                             });
                     });
                 });
@@ -7395,8 +7503,16 @@ fn plan_graphics_ui(
     scale: f64,
 ) -> Option<&'static str> {
     let mut label = None;
-    ui.add_space(4.0);
-    ui.label(egui::RichText::new("Graphics").strong());
+    // its own box, folding as the others (MU22)
+    let id = egui::Id::new("props.view.graphics.open");
+    let open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(true);
+    let (resp, _) = crate::props::header(ui, "Graphics", open, false);
+    if resp.clicked() {
+        ui.ctx().data_mut(|d| d.insert_temp(id, !open));
+    }
+    if !open {
+        return None;
+    }
     // how what is cut is drawn (A4-11)
     crate::props::row(ui, "Drawing style", |ui| {
         egui::ComboBox::from_id_salt("view.drawing_style")
@@ -7414,15 +7530,15 @@ fn plan_graphics_ui(
                 }
             });
     });
-    if crate::props::switch(ui, &mut g.below_fill, "Tint what lies below the cut")
+    if crate::props::check(ui, "Below the cut", &mut g.below_fill, "Tinted")
         .on_hover_text("Furniture, fittings and imported meshes under the cut get a light fill.")
         .changed()
     {
         label = Some("Below-cut fill");
     }
     if g.below_fill {
-        ui.horizontal(|ui| {
-            ui.label("Strength");
+        crate::props::row(ui, "Strength", |ui| {
+            ui.spacing_mut().slider_width = (ui.available_width() - 56.0).max(40.0);
             if ui
                 .add(egui::Slider::new(&mut g.below_strength, 0.05..=1.0))
                 .changed()
@@ -7430,12 +7546,15 @@ fn plan_graphics_ui(
                 label = Some("Below-cut fill");
             }
         });
-        if crate::props::switch(ui, &mut g.below_grey, "In grey, not material colours").changed() {
+        if crate::props::check(ui, "", &mut g.below_grey, "In grey")
+            .on_hover_text("Grey, not the materials' colours")
+            .changed()
+        {
             label = Some("Below-cut fill");
         }
     }
     let mut to_level = g.range.view_depth.is_none();
-    if crate::props::switch(ui, &mut to_level, "View depth: down to the level below")
+    if crate::props::check(ui, "View depth", &mut to_level, "To the level below")
         .on_hover_text(
             "How far below its floor the plan looks, through holes in the floor such as a stair well.",
         )
@@ -7445,15 +7564,14 @@ fn plan_graphics_ui(
         label = Some("View depth");
     }
     if let Some(d) = &mut g.range.view_depth {
-        ui.horizontal(|ui| {
-            ui.label("View depth below the floor");
-            if ui.add(crate::units::drag(d).range(0.0..=100.0)).changed() {
+        crate::props::row(ui, "Below the floor", |ui| {
+            if crate::props::fill(ui, crate::units::drag(d).range(0.0..=100.0)).changed() {
                 label = Some("View depth");
             }
         });
     }
     let mut auto = g.weights.is_none();
-    if crate::props::switch(ui, &mut auto, "Line weights from the style pack")
+    if crate::props::check(ui, "Line weights", &mut auto, "From the style pack")
         .on_hover_text("The style pack's pens for the view's scale: in the Standard pack, heavier at 1:50 and larger, lighter at 1:100 and smaller.")
         .changed()
     {

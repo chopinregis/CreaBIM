@@ -131,7 +131,11 @@ impl CreaBimApp {
             .copied()
             .unwrap_or(default_open);
         // a sub-section (a key with a dot, "view.pens") is set in
-        let indent = key.contains('.');
+        // (visibility and a view's range and template are sections of
+        // their own, boxed, not sub-sections: MU22)
+        let indent = key.contains('.')
+            && !key.starts_with("visibility.")
+            && !key.starts_with("view.");
         let (resp, help_at) = crate::props::header(ui, title, open, indent);
         let resp = resp.on_hover_text(if open {
             "Click to fold this section"

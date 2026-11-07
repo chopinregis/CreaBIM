@@ -740,50 +740,89 @@ impl CreaBimApp {
                 })
                 .unwrap_or_default();
             let n = types::instances(model, t).len();
-            ui.label(egui::RichText::new(format!("{summary} · {}", plural(n, "instance"))).weak());
-            if overrides.is_empty() {
-                ui.label(egui::RichText::new("Everything from its type").weak());
-            } else {
-                let list: Vec<&str> = overrides.iter().map(|p| p.label()).collect();
-                ui.label(
-                    egui::RichText::new(format!("Overrides: {}", list.join(", ")))
-                        .color(Color32::from_rgb(220, 130, 40)),
-                )
-                .on_hover_text(
-                    "What this element sets for itself: a change to its type leaves these alone",
+            // one line, as Blender packs it (MU22): how many, then the
+            // type's actions as links; what it is on hover
+            let ink = ui.visuals().strong_text_color();
+            let link = |ui: &mut egui::Ui, text: &str| {
+                let r = ui.add(
+                    egui::Button::new(egui::RichText::new(text).color(ink))
+                        .frame(false)
+                        .small(),
                 );
-            }
-            ui.horizontal_wrapped(|ui| {
-                if !overrides.is_empty() {
-                    if ui
-                        .small_button("Reset to type")
-                        .on_hover_text("Drop its overrides: take every value from its type")
+                if r.hovered() {
+                    let b = r.rect;
+                    ui.painter().hline(b.x_range(), b.bottom() - 2.0, egui::Stroke::new(1.0, ink));
+                }
+                r
+            };
+            crate::props::row(ui, "Instances", |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.label(n.to_string()).on_hover_text(summary.clone());
+                    ui.label(egui::RichText::new("·").weak());
+                    if link(ui, "Select all")
+                        .on_hover_text("Select every element of this type")
                         .clicked()
                     {
-                        asks.push(TypeAsk::Reset(id));
+                        asks.push(TypeAsk::SelectInstances(t));
                     }
-                    if ui
-                        .small_button("Update type")
-                        .on_hover_text("Make its values the type's: every other instance follows")
-                        .clicked()
-                    {
-                        asks.push(TypeAsk::SaveToType(id));
-                    }
-                }
-                if ui
-                    .small_button("Select all instances")
-                    .on_hover_text("Select every element of this type")
-                    .clicked()
-                {
-                    asks.push(TypeAsk::SelectInstances(t));
-                }
-                if ui.small_button("Edit type…").clicked() {
-                    self.types.open = true;
-                    self.types.current = Some(t);
-                }
+                })
             });
-        }
-        if cat != TypeCategory::Object
+            crate::props::row(ui, "", |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    if link(ui, "Edit type…").clicked() {
+                        self.types.open = true;
+                        self.types.current = Some(t);
+                    }
+                    if cat != TypeCategory::Object {
+                        ui.label(egui::RichText::new("·").weak());
+                        if link(ui, "New type")
+                            .on_hover_text("A new type with its values, which it becomes an instance of")
+                            .clicked()
+                        {
+                            asks.push(TypeAsk::FromElement(id));
+                        }
+                    }
+                })
+            });
+            if !overrides.is_empty() {
+                let list: Vec<&str> = overrides.iter().map(|p| p.label()).collect();
+                crate::props::row(ui, "Overrides", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(list.join(", "))
+                                    .color(Color32::from_rgb(220, 130, 40)),
+                            )
+                            .truncate(),
+                        )
+                        .on_hover_text(
+                            "What this element sets for itself: a change to its type leaves these alone",
+                        );
+                    })
+                });
+                crate::props::row(ui, "", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        if link(ui, "Reset to type")
+                            .on_hover_text("Drop its overrides: take every value from its type")
+                            .clicked()
+                        {
+                            asks.push(TypeAsk::Reset(id));
+                        }
+                        ui.label(egui::RichText::new("·").weak());
+                        if link(ui, "Update type")
+                            .on_hover_text("Make its values the type's: every other instance follows")
+                            .clicked()
+                        {
+                            asks.push(TypeAsk::SaveToType(id));
+                        }
+                    })
+                });
+            }
+        } else if cat != TypeCategory::Object
             && ui
                 .small_button("Make a type of it")
                 .on_hover_text("A new type with its values, which it becomes an instance of")
