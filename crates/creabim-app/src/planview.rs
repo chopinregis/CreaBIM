@@ -6046,8 +6046,10 @@ mod dimension_chain_tests {
             .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. })))
             .unwrap()
             .id;
-        let mut state = PlanState::default();
-        state.dim_chain = true;
+        let mut state = PlanState {
+            dim_chain: true,
+            ..Default::default()
+        };
         let mut sel = Selection::default();
         let h = |x: f64| (HostPoint::free(DVec2::new(x, 0.0)), DVec2::new(x, 0.0));
         let ax = creabim_core::DimAxis::Horizontal;
