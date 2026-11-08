@@ -669,7 +669,7 @@ impl CreaBimApp {
             if r.clicked() {
                 asks.push(Ask::Popup("area.mode".into(), r.rect));
             }
-            mode_w += 96.0;
+            mode_w += 110.0;
             if editing {
                 for (k, icon, tip) in [
                     (1u8, "pick-vertex", "Points (1): corners, ends, vertices"),
@@ -1328,7 +1328,7 @@ fn name_button(ui: &mut egui::Ui, name: &str, w: f32, p: &crate::theme::Palette)
 /// colour while editing.
 fn mode_button(ui: &mut egui::Ui, editing: bool, p: &crate::theme::Palette) -> egui::Response {
     let text = if editing { "Edit mode" } else { "Object mode" };
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(92.0, 24.0), egui::Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(106.0, 24.0), egui::Sense::click());
     let fill = if editing {
         egui::Color32::from_rgb(253, 235, 223)
     } else if resp.hovered() {
