@@ -28,6 +28,9 @@ pub struct TextLook {
     pub shape: TagShape,
     /// A dimension line leaves gaps where tags and notes cross it.
     pub breaks: bool,
+    /// A note's lines centred on one axis, each by its real width (MU29:
+    /// room tags, placed by estimated widths, read ragged).
+    pub centred: bool,
 }
 
 /// Size of dimension ticks and arrows, paper mm.
@@ -52,6 +55,7 @@ impl From<TextStyle> for TextLook {
             end_size: s.end_size.unwrap_or(END_SIZE),
             shape: s.tag_shape,
             breaks: s.break_at_tags,
+            centred: false,
         }
     }
 }
@@ -641,6 +645,12 @@ impl Annotation {
                     * mm;
                 for (i, l) in lines.iter().enumerate() {
                     let y = at - DVec2::Y * step * i as f64;
+                    // centred notes: every line on the block's middle
+                    let (y, anchor) = if look.centred {
+                        (y + DVec2::X * width / 2.0, Anchor::Middle)
+                    } else {
+                        (y, Anchor::Start)
+                    };
                     // a markdown heading: underlined (MU26)
                     let text = match l.strip_prefix(UNDERLINE) {
                         Some(t) => {
@@ -654,7 +664,7 @@ impl Annotation {
                         at: y,
                         text: text.to_string(),
                         angle: 0.0,
-                        anchor: Anchor::Start,
+                        anchor,
                     });
                 }
                 if let Some(target) = leader {

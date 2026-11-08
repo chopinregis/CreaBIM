@@ -165,6 +165,50 @@ fn on_sheet(doc: &Document, sheet: ElementId, selection: &Selection) -> Vec<crea
 /// Esc or a right-click puts it back. `Some` when it took the frame (with
 /// an error, if any).
 #[allow(clippy::too_many_arguments)]
+/// Points on a sheet the Move tool snaps to (MU29): the paper's corners,
+/// marks' and notes' anchors and corners, views' corners and centres, but
+/// none of what is being moved.
+fn sheet_snaps(doc: &Document, sheet: ElementId, views: &[PlacedView], skip: &[ElementId]) -> Vec<DVec2> {
+    let model = doc.model();
+    let mut out = vec![];
+    let corners = |out: &mut Vec<DVec2>, lo: DVec2, hi: DVec2| {
+        out.extend([lo, hi, DVec2::new(lo.x, hi.y), DVec2::new(hi.x, lo.y), (lo + hi) / 2.0]);
+    };
+    if let Some(s) = sheet::sheet_of(model, sheet) {
+        corners(&mut out, DVec2::ZERO, DVec2::new(s.width, s.height));
+    }
+    for e in model.iter().filter(|e| !skip.contains(&e.id)) {
+        match &e.kind {
+            ElementKind::PaperMark(m) if m.sheet == sheet => {
+                out.push(m.at);
+                let (lo, hi) = m.bounds();
+                corners(&mut out, lo, hi);
+            }
+            ElementKind::Note(n) if n.view == sheet => out.push(n.at),
+            _ => {}
+        }
+    }
+    for v in views.iter().filter(|v| !skip.contains(&v.viewport)) {
+        corners(&mut out, v.bounds.0, v.bounds.1);
+    }
+    out
+}
+
+/// `p` pulled onto the nearest of `points` within `tol`, else onto the
+/// guides; and the point it took, to mark.
+fn snap_on_sheet(p: DVec2, points: &[DVec2], guides: &[(bool, f64)], tol: f64) -> (DVec2, bool) {
+    if let Some(q) = points
+        .iter()
+        .filter(|q| q.distance(p) < tol)
+        .min_by(|a, b| a.distance(p).total_cmp(&b.distance(p)))
+    {
+        return (*q, true);
+    }
+    let g = snap_guides(p, &[DVec2::ZERO], guides, tol);
+    (g, g != p)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn sheet_move(
     ui: &egui::Ui,
     doc: &mut Document,
@@ -175,9 +219,26 @@ fn sheet_move(
     plan: &mut PlanState,
     selection: &Selection,
     painter: &egui::Painter,
+    views: &[PlacedView],
+    guides: &[(bool, f64)],
 ) -> Option<Option<String>> {
     use crate::modal::Mode;
-    let here = response.hover_pos().map(|p| xf.to_paper(p));
+    // snapped to what is on the sheet and to its guides (MU29)
+    let skip: Vec<ElementId> = state
+        .moving
+        .as_ref()
+        .map(|(items, _)| items.iter().map(|e| e.id).collect())
+        .unwrap_or_else(|| selection.all());
+    let points = sheet_snaps(doc, sheet, views, &skip);
+    let tol = 8.0 / xf.zoom as f64;
+    let here = response.hover_pos().map(|p| {
+        let (q, took) = snap_on_sheet(xf.to_paper(p), &points, guides, tol);
+        if took {
+            let at = xf.to_screen(q);
+            painter.rect_stroke(Rect::from_center_size(at, Vec2::splat(9.0)), 1.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Middle);
+        }
+        q
+    });
     if state.moving.is_none() {
         let armed = matches!(plan.armed, Some((Mode::Move, false)));
         let g = response.hovered()
@@ -242,7 +303,7 @@ fn sheet_move(
             }
         }
         (Some(b), Some(p)) => {
-            let by = (p - b).round();
+            let by = p - b;
             painter.line_segment([xf.to_screen(b), xf.to_screen(b + by)], egui::Stroke::new(1.0, ACCENT));
             error = put(doc, by);
             if response.clicked() {
@@ -741,7 +802,8 @@ pub fn show(
         if dragging_guide == Some(Some(i)) {
             continue;
         }
-        painter.line_segment(line_of(*vertical, *at), egui::Stroke::new(1.0, guide_ink.gamma_multiply(0.8)));
+        // dashed, so they read as guides, never as drawing (MU29)
+        painter.extend(egui::Shape::dashed_line(&line_of(*vertical, *at), egui::Stroke::new(1.0, guide_ink.gamma_multiply(0.85)), 6.0, 4.0));
     }
     if on && state.active.is_none() && plan.tool == planview::Tool::Select {
         let near_guide = |q: Pos2| {
@@ -987,7 +1049,7 @@ pub fn show(
     // Move (the toolbar's or M) and G on what is written on the sheet
     // itself: notes and paper marks (MU23)
     if state.active.is_none() {
-        if let Some(r) = sheet_move(ui, doc, sheet_id, &response, &xf, state, plan, selection, &painter) {
+        if let Some(r) = sheet_move(ui, doc, sheet_id, &response, &xf, state, plan, selection, &painter, views, &guides) {
             return r.or(error);
         }
     }

@@ -1014,7 +1014,11 @@ kbd {
 }
 
 /* MU27: the browser folded to a rail of its groups */
-.rail { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 6px; height: 100%; background: var(--panel); }
-.rail-btn { width: 32px; height: 30px; border: 0; background: transparent; border-radius: 6px; display: grid; place-items: center; color: var(--muted); cursor: pointer; }
+.rail { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; height: 100%; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; background: var(--panel); }
+.rail::-webkit-scrollbar { display: none; }
+.rail-btn { flex: none; width: 32px; height: 28px; border: 0; background: transparent; border-radius: 6px; display: grid; place-items: center; color: var(--muted); cursor: pointer; }
 .rail-btn:hover { background: var(--raise); color: var(--text); }
 .rail-btn svg.i { width: 18px; height: 18px; }
+
+/* MU29: a quiet line under the tool line, as between the rows above it */
+.bar3 { border-bottom: 1px solid var(--border); }

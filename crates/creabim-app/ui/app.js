@@ -226,14 +226,16 @@
     // folded to a rail (MU27): one icon a group; a click opens the browser
     // on that group
     if (S.folded) {
-      let rail = `<div class="rail"><button class="rail-btn" data-act="browser.fold" title="Open the project browser (Ctrl+[)">${icon("panel-left-open")}</button>`;
-      for (const g of S.groups) rail += `<button class="rail-btn" data-act="browser.fold" data-railgroup="${esc(g.key)}" title="${esc(g.title)} (${g.rows.length})">${icon(g.icon)}</button>`;
+      // a click lists the group's items beside the rail, to pick one
+      // without opening the browser (MU29); the wheel scrolls the rail
+      let rail = `<div class="rail">`;
+      for (const g of S.groups) rail += `<button class="rail-btn" data-popup="rail:${esc(g.key)}" title="${esc(g.title)} (${g.rows.length})">${icon(g.icon)}</button>`;
       root.innerHTML = rail + `</div>`;
       return;
     }
     let html = `<div class="browser"><div class="browser-head"><div class="title">${icon("layout-dashboard")}Project<span class="count">${esc(S.count)}</span>` +
       `<button class="gact fold" data-fold="${anyOpen ? 0 : 1}" title="${anyOpen ? "Collapse every group" : "Expand every group"}">${icon(anyOpen ? "chevrons-down-up" : "chevrons-up-down")}</button>` +
-      `<button class="gact" data-act="browser.fold" title="Fold the browser to a rail (Ctrl+[)">${icon("panel-left-close")}</button></div>` +
+      `</div>` +
       `<label class="search">${icon("search")}<input data-key="filter" data-live="1" placeholder="Find views and elements" value="${esc(local.filter)}"></label></div><div class="tree">`;
     let any = false;
     for (const g of S.groups) {

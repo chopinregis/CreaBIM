@@ -108,6 +108,11 @@ pub struct CreaBimApp {
     /// What the 2D pane shows: a view (plan, section, elevation, 3D) or a sheet.
     active_view: Option<ElementId>,
     sheet: SheetState,
+    /// Each area's own sheet state (MU29: two areas on sheets shared one,
+    /// so one cancelled the other's drags and their cameras moved together).
+    sheets: HashMap<usize, SheetState>,
+    /// The area being drawn now.
+    pub(super) area_now: usize,
     /// Generated drawings by view, with the model revision they were made at.
     drawings: HashMap<ElementId, (u64, Drawing)>,
     /// Drawings and the 3D scene being built off the UI thread.
@@ -307,6 +312,8 @@ impl CreaBimApp {
             face: None,
             active_view: None,
             sheet: SheetState::default(),
+            sheets: HashMap::new(),
+            area_now: 0,
             drawings: HashMap::new(),
             builds: Default::default(),
             looks: HashMap::new(),
@@ -396,6 +403,7 @@ impl CreaBimApp {
         self.crop_pick = None;
         self.active_view = None;
         self.sheet = SheetState::default();
+        self.sheets.clear();
         self.drawings.clear();
         self.looks.clear();
         self.xray_drawings.clear();
@@ -4641,7 +4649,7 @@ impl CreaBimApp {
                 view,
                 &views,
                 &info,
-                &mut self.sheet,
+                self.sheets.entry(self.area_now).or_default(),
                 &mut self.plan,
                 &mut self.selection,
             );
@@ -8073,22 +8081,6 @@ impl CreaBimApp {
                         }
                     }
                 }
-                // fold Properties to this column, or open it again (MU27)
-                ui.add_space(8.0);
-                let folded = self.shell.settings.right_folded;
-                let (r, resp) = ui.allocate_exact_size(egui::vec2(W, CELL), egui::Sense::click());
-                if resp.hovered() {
-                    ui.painter().rect_filled(r.shrink(1.0), 4.0, p.accent.gamma_multiply(0.12));
-                }
-                let icon = egui::Rect::from_center_size(r.center(), egui::vec2(16.0, 16.0));
-                crate::svgicon::paint(ui.painter(), icon, if folded { "panel-right-open" } else { "panel-right-close" }, p.muted);
-                if resp
-                    .on_hover_text(if folded { "Open Properties (Ctrl+])" } else { "Fold Properties to its tabs (Ctrl+])" })
-                    .clicked()
-                {
-                    self.shell.settings.right_folded = !folded;
-                    self.shell.settings.store();
-                }
             },
         );
     }
@@ -8523,6 +8515,19 @@ impl eframe::App for CreaBimApp {
                 // pushes the panel wider as the selection changes
                 let rect = ui.available_rect_before_wrap();
                 let clip = rect.expand2(egui::vec2(6.0, 0.0)).intersect(ui.clip_rect());
+                let folded = self.shell.settings.right_folded;
+                let edge = ui.max_rect();
+                if fold_handle(
+                    ui.ctx(),
+                    "props",
+                    egui::pos2(edge.left() - 11.0, edge.center().y - 23.0),
+                    folded,
+                    true,
+                    if folded { "Open Properties (Ctrl+])" } else { "Fold Properties to its tabs (Ctrl+])" },
+                ) {
+                    self.shell.settings.right_folded = !folded;
+                    self.shell.settings.store();
+                }
                 let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect));
                 inner.set_clip_rect(clip);
                 inner.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
@@ -9623,4 +9628,34 @@ mod prop_tab_tests {
 /// Is the tool drawing an outline on a face (an extrusion or a void)?
 fn on_face_now(plan: &crate::planview::PlanState) -> bool {
     crate::partstool::on_face(plan).is_some()
+}
+
+/// A slim handle on a panel's edge that folds or opens it (MU29): a
+/// control of the panel, not one of its tabs. `left_of` puts it on the
+/// panel's left edge, pointing the way it will go.
+pub(crate) fn fold_handle(ctx: &egui::Context, id: &str, at: egui::Pos2, folded: bool, left_of: bool, tip: &str) -> bool {
+    let p = crate::theme::Palette::of(ctx);
+    let mut clicked = false;
+    egui::Area::new(egui::Id::new(("fold-handle", id)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(at)
+        .show(ctx, |ui| {
+            let (r, resp) = ui.allocate_exact_size(egui::vec2(11.0, 46.0), egui::Sense::click());
+            let fill = if resp.hovered() { p.raise2 } else { p.raise.gamma_multiply(0.8) };
+            let round = if left_of {
+                egui::CornerRadius { nw: 6, sw: 6, ne: 0, se: 0 }
+            } else {
+                egui::CornerRadius { nw: 0, sw: 0, ne: 6, se: 6 }
+            };
+            ui.painter().rect(r, round, fill, egui::Stroke::new(1.0, p.border), egui::StrokeKind::Inside);
+            // a small chevron: which way it goes
+            let c = r.center();
+            let s = if folded == left_of { -1.0 } else { 1.0 };
+            let ink = if resp.hovered() { p.text } else { p.muted };
+            let pts = [c + egui::vec2(-1.5 * s, -4.0), c + egui::vec2(1.5 * s, 0.0), c + egui::vec2(-1.5 * s, 4.0)];
+            ui.painter().line_segment([pts[0], pts[1]], egui::Stroke::new(1.4, ink));
+            ui.painter().line_segment([pts[1], pts[2]], egui::Stroke::new(1.4, ink));
+            clicked = resp.on_hover_text(tip).clicked();
+        });
+    clicked
 }

@@ -11,7 +11,7 @@ use shell::icon_name;
 /// The height of an area's header, in points.
 /// A view area's header height (A4-2): 26 px controls with 4 px above and
 /// below.
-pub(super) const HEADER: f32 = 34.0;
+pub(super) const HEADER: f32 = 38.0;
 
 /// The areas as they are now.
 #[derive(Clone, Debug)]
@@ -333,6 +333,7 @@ impl CreaBimApp {
                     let t = std::time::Instant::now();
                     let own = !seen.insert(*v) && !self.plan.linked_areas.contains(&i);
                     self.plan.area = own.then_some(i);
+                    self.area_now = i;
                     ui.push_id(("area", i), |ui| self.show_plan(ui, body, background));
                     self.plan.area = None;
                     timings.push(format!(
@@ -1307,8 +1308,10 @@ fn icon_btn(
     enabled: bool,
     p: &crate::theme::Palette,
 ) -> egui::Response {
+    // as Blender's header (MU29): a middle tone under every toggle, the
+    // accent when on, icons a step quieter than text until hovered
     let (r, resp) = ui.allocate_exact_size(
-        egui::vec2(24.0, 24.0),
+        egui::vec2(26.0, 26.0),
         if enabled {
             Sense::click()
         } else {
@@ -1318,16 +1321,22 @@ fn icon_btn(
     let fill = if on {
         p.accent.gamma_multiply(0.22)
     } else if resp.hovered() && enabled {
-        p.raise
+        p.raise2
     } else {
-        Color32::TRANSPARENT
+        p.raise.gamma_multiply(0.55)
     };
-    ui.painter().rect_filled(r, 6.0, fill);
-    let mut c = if on { p.accent } else { p.text };
+    ui.painter().rect_filled(r, 5.0, fill);
+    let mut c = if on {
+        p.accent
+    } else if resp.hovered() {
+        p.text
+    } else {
+        p.muted
+    };
     if !enabled {
         c = c.gamma_multiply(0.35);
     }
-    crate::svgicon::paint(ui.painter(), r.shrink(4.0), icon, c);
+    crate::svgicon::paint(ui.painter(), r.shrink(5.0), icon, c);
     resp
 }
 
@@ -1340,13 +1349,9 @@ fn pill(
     p: &crate::theme::Palette,
 ) -> egui::Response {
     let (r, resp) = ui.allocate_exact_size(egui::vec2(34.0, 26.0), Sense::click());
-    let fill = if resp.hovered() {
-        p.raise2
-    } else if strong {
-        p.raise
-    } else {
-        Color32::TRANSPARENT
-    };
+    // the view-type menu: the darker tone, as Blender's editor-type button
+    let _ = strong;
+    let fill = if resp.hovered() { p.raise2.gamma_multiply(1.1) } else { p.raise2 };
     ui.painter().rect_filled(r, 6.0, fill);
     let ir = Rect::from_min_size(r.min + egui::vec2(3.0, 4.0), egui::vec2(18.0, 18.0));
     crate::svgicon::paint(ui.painter(), ir, icon, p.text);
@@ -1365,10 +1370,8 @@ fn name_button(ui: &mut egui::Ui, name: &str, w: f32, p: &crate::theme::Palette)
         .painter()
         .layout_no_wrap(name.to_string(), font.clone(), p.text);
     let width = (galley.size().x + 26.0).min(w);
-    let (r, resp) = ui.allocate_exact_size(egui::vec2(width, 24.0), Sense::click());
-    if resp.hovered() {
-        ui.painter().rect_filled(r, 6.0, p.raise);
-    }
+    let (r, resp) = ui.allocate_exact_size(egui::vec2(width, 26.0), Sense::click());
+    ui.painter().rect_filled(r, 6.0, if resp.hovered() { p.raise2 } else { p.raise });
     let clip = Rect::from_min_max(r.min, egui::pos2(r.right() - 16.0, r.bottom()));
     ui.painter().with_clip_rect(clip).galley(
         egui::pos2(r.left() + 6.0, r.center().y - galley.size().y / 2.0),
@@ -1387,16 +1390,18 @@ fn name_button(ui: &mut egui::Ui, name: &str, w: f32, p: &crate::theme::Palette)
 /// colour while editing.
 fn mode_button(ui: &mut egui::Ui, editing: bool, p: &crate::theme::Palette) -> egui::Response {
     let text = if editing { "Edit mode" } else { "Object mode" };
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(106.0, 24.0), egui::Sense::click());
+    // the theme's colours, the accent while editing (MU29: a fixed orange
+    // clashed with the themes)
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(106.0, 26.0), egui::Sense::click());
     let fill = if editing {
-        egui::Color32::from_rgb(253, 235, 223)
+        p.accent.gamma_multiply(if resp.hovered() { 0.3 } else { 0.2 })
     } else if resp.hovered() {
-        p.accent.gamma_multiply(0.12)
+        p.raise2.gamma_multiply(1.1)
     } else {
-        p.field
+        p.raise2
     };
     ui.painter().rect_filled(rect, 6.0, fill);
-    let ink = if editing { egui::Color32::from_rgb(166, 64, 10) } else { p.text };
+    let ink = if editing { p.accent } else { p.text };
     ui.painter().text(
         rect.left_center() + egui::vec2(8.0, 0.0),
         egui::Align2::LEFT_CENTER,

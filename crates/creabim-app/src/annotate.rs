@@ -1300,10 +1300,10 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
                 }
             }
         });
-    ui.horizontal(|ui| {
-        ui.label("Size on paper");
-        if ui
-            .add(
+    // full-width fields in the label column, as every other row (MU29)
+    crate::props::row(ui, "Size on paper", |ui| {
+        if crate::props::fill(
+            ui,
                 egui::DragValue::new(&mut s.size)
                     .speed(0.05)
                     .range(0.5..=50.0)
@@ -1418,11 +1418,10 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             label = Some("Leader end");
         }
     });
-    ui.horizontal(|ui| {
+    crate::props::row(ui, "End size", |ui| {
         let mut size = s.end_size.unwrap_or(creabim_geom::annotation::END_SIZE);
-        ui.label("End size");
-        if ui
-            .add(
+        if crate::props::fill(
+            ui,
                 egui::DragValue::new(&mut size)
                     .speed(0.05)
                     .range(0.5..=10.0)

@@ -712,15 +712,16 @@ pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_nor
             let s = m.size;
             let turn = DVec2::from_angle(m.north_angle(true_north).to_radians());
             let at = |p: DVec2| m.at + turn.rotate(p);
-            let tip = at(DVec2::new(0.0, 0.5 * s));
-            let notch = at(DVec2::new(0.0, -0.18 * s));
-            let left = at(DVec2::new(-0.24 * s, -0.36 * s));
-            let right = at(DVec2::new(0.24 * s, -0.36 * s));
+            // the arrow inside its circle, the tip just touching it (MU29)
+            let tip = at(DVec2::new(0.0, 0.40 * s));
+            let notch = at(DVec2::new(0.0, -0.14 * s));
+            let left = at(DVec2::new(-0.21 * s, -0.31 * s));
+            let right = at(DVec2::new(0.21 * s, -0.31 * s));
             c.circle(m.at, 0.42 * s, Stroke::solid(0.25, 0.0));
             // half black, half white, as drawn by hand
             c.fill(&[tip, notch, left], 0.0);
             c.polygon(&[tip, right, notch, left], Stroke::solid(0.3, 0.0));
-            c.text(at(DVec2::new(0.0, 0.5 * s + 3.2)), 3.5, "N", Anchor::Middle);
+            c.text(at(DVec2::new(0.0, 0.42 * s + 3.0)), 3.5, "N", Anchor::Middle);
         }
         PaperMarkKind::Cloud { rev, arc, .. } => {
             // scallops of about `arc` mm round the outline, bulging out

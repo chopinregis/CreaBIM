@@ -378,6 +378,9 @@ pub fn room_tag_text(model: &Model, id: ElementId, fields: &[RoomField]) -> Stri
 
 /// A room's tag as drawing text: its lines stacked and centred on `at`.
 pub fn room_tag_item(id: ElementId, text: String, at: DVec2, look: TextLook, mm: f64) -> PlanItem {
+    // its lines centred by their real widths (MU29)
+    let mut look = look;
+    look.centred = true;
     let lines: Vec<&str> = text.split('\n').collect();
     let width = lines.iter().map(|l| look.width(l)).fold(0.0, f64::max) * mm;
     let step = look.size * 1.5 * mm;

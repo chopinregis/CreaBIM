@@ -373,6 +373,22 @@ impl CreaBimApp {
         if let Some(items) = self.area_menu(key) {
             return items;
         }
+        // a group of the folded browser's rail: its items, to pick (MU29)
+        if let Some(group) = key.strip_prefix("rail:") {
+            let state = self.left_state();
+            let Some(g) = state["groups"].as_array().and_then(|gs| gs.iter().find(|g| g["key"].as_str() == Some(group))) else {
+                return vec![];
+            };
+            let mut items = vec![];
+            for r in g["rows"].as_array().into_iter().flatten().take(60) {
+                items.push(
+                    Item::new(format!("railpick:{}", r["id"].as_str().unwrap_or("")), r["name"].as_str().unwrap_or(""))
+                        .icon(crate::svgicon::named(r["icon"].as_str().unwrap_or("")))
+                        .checked(r["sel"].as_bool().unwrap_or(false)),
+                );
+            }
+            return items;
+        }
         match key {
             "menu:CreaBIM" => self.app_menu(),
             "units.menu" => self.unit_items(),
@@ -1556,6 +1572,16 @@ impl CreaBimApp {
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
+            "railpick" => {
+                if let Some(e) = self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
+                    let (id, opens) = (e.id, matches!(e.kind, ElementKind::View(_) | ElementKind::Sheet(_)));
+                    self.selection.only(id);
+                    if opens {
+                        self.active_view = Some(id);
+                    }
+                    self.face = None;
+                }
+            }
             "browser.fold" => {
                 self.shell.settings.left_folded = !self.shell.settings.left_folded;
                 self.shell.settings.store();
@@ -3467,6 +3493,18 @@ impl CreaBimApp {
             .rect;
         // the page sits just inside the edge so the edge stays grabbable
         let left = left.with_max_x(left.max.x - 3.0);
+        // the browser's fold handle on its right edge (MU29)
+        if crate::app::fold_handle(
+            &ctx,
+            "browser",
+            egui::pos2(left.right() + 3.0, left.center().y - 23.0),
+            folded,
+            false,
+            if folded { "Open the project browser (Ctrl+[)" } else { "Fold the browser to a rail (Ctrl+[)" },
+        ) {
+            self.shell.settings.left_folded = !folded;
+            self.shell.settings.store();
+        }
         let width = (left.width() + 3.0).round();
         if !folded
             && (width - self.shell.settings.left_width).abs() >= 1.0
