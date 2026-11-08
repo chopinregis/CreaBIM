@@ -3503,17 +3503,17 @@ fn rest_points(
         const DWELL: f64 = 0.4;
         const KEEP: usize = 4;
         if !drawing {
-            (*rested) = (vec![], None);
+            *rested = (vec![], None);
             return;
         }
         let now = ctx.input(|i| i.time);
         let Some(p) = snap.filter(|s| s.kind.is_point()).map(|s| s.p) else {
-            (*rested).1 = None;
+            rested.1 = None;
             return;
         };
-        match (*rested).1 {
+        match rested.1 {
             Some((q, since)) if q.distance(p) < 1e-9 => {
-                let pts = &mut (*rested).0;
+                let pts = &mut rested.0;
                 if now - since > DWELL && !pts.iter().any(|r| r.distance(p) < 1e-9) {
                     pts.push(p);
                     if pts.len() > KEEP {
@@ -3522,7 +3522,7 @@ fn rest_points(
                 }
             }
             _ => {
-                (*rested).1 = Some((p, now));
+                rested.1 = Some((p, now));
                 ctx.request_repaint_after(std::time::Duration::from_millis(450));
             }
         }
