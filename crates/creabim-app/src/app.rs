@@ -7502,8 +7502,57 @@ fn paper_mark_fields(
 ) -> Option<&'static str> {
     use creabim_core::PaperMarkKind;
     let mut label = None;
+    let color = &mut m.color;
     match &mut m.kind {
-        PaperMarkKind::Cloud { w, h, rev, date, what } => {
+        PaperMarkKind::Cloud { w, h, rev, date, what, points, arc } => {
+            // its shape: a box sized by its grips, or points of its own
+            // (MU25)
+            let mut free = points.len() >= 3;
+            crate::props::row(ui, "Shape", |ui| {
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(!free, "Box").on_hover_text("Drag its corner and edge grips to size it").clicked() && free {
+                        let (lo, hi) = points.iter().fold((DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)), |(a, b), p| (a.min(*p), b.max(*p)));
+                        *w = (hi.x - lo.x).max(5.0);
+                        *h = (hi.y - lo.y).max(5.0);
+                        points.clear();
+                        free = false;
+                        label = Some("Revision cloud shape");
+                    }
+                    if ui
+                        .selectable_label(free, "Freeform")
+                        .on_hover_text("Its own points: drag one to move it, drag a + to add one, right-click one to remove it")
+                        .clicked()
+                        && !free
+                    {
+                        let (x, y) = (*w / 2.0, *h / 2.0);
+                        *points = vec![DVec2::new(-x, -y), DVec2::new(x, -y), DVec2::new(x, y), DVec2::new(-x, y)];
+                        free = true;
+                        label = Some("Revision cloud shape");
+                    }
+                });
+            });
+            crate::props::row(ui, "Scallops", |ui| {
+                if crate::props::fill(ui, egui::DragValue::new(arc).speed(0.1).range(2.0..=30.0).suffix(" mm"))
+                    .on_hover_text("How long each arc is along the outline")
+                    .changed()
+                {
+                    label = Some("Revision cloud");
+                }
+            });
+            crate::props::row(ui, "Colour", |ui| {
+                ui.horizontal(|ui| {
+                    let mut own = color.is_some();
+                    if ui.checkbox(&mut own, "Own").on_hover_text("Black without one").changed() {
+                        *color = own.then_some([0.85, 0.1, 0.1]);
+                        label = Some("Revision cloud colour");
+                    }
+                    if let Some(c) = color {
+                        if ui.color_edit_button_rgb(c).changed() {
+                            label = Some("Revision cloud colour");
+                        }
+                    }
+                })
+            });
             let text = |ui: &mut egui::Ui, name: &str, v: &mut String| {
                 crate::props::row(ui, name, |ui| {
                     crate::props::fill(ui, egui::TextEdit::singleline(v)).changed()
@@ -7512,14 +7561,18 @@ fn paper_mark_fields(
             if text(ui, "Revision", rev) | text(ui, "Date", date) | text(ui, "What changed", what) {
                 label = Some("Revision cloud");
             }
-            for (name, v) in [("Width", w), ("Height", h)] {
-                crate::props::row(ui, name, |ui| {
-                    if crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).range(5.0..=800.0).suffix(" mm"))
-                        .changed()
-                    {
-                        label = Some("Revision cloud");
-                    }
-                });
+            if !free {
+                for (name, v) in [("Width", w), ("Height", h)] {
+                    crate::props::row(ui, name, |ui| {
+                        if crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).range(5.0..=800.0).suffix(" mm"))
+                            .changed()
+                        {
+                            label = Some("Revision cloud");
+                        }
+                    });
+                }
+            } else {
+                ui.label(egui::RichText::new(format!("{} points: drag one to move it, drag a + to add one, right-click one to remove it.", points.len())).weak());
             }
         }
         PaperMarkKind::RevisionTable => {

@@ -701,16 +701,23 @@ pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_nor
             c.polygon(&[tip, right, notch, left], Stroke::solid(0.3, 0.0));
             c.text(at(DVec2::new(0.0, 0.5 * s + 3.2)), 3.5, "N", Anchor::Middle);
         }
-        PaperMarkKind::Cloud { w, h, rev, .. } => {
-            // scallops of about 6 mm round the box, bulging out
-            let (lo, hi) = (m.at - DVec2::new(w / 2.0, h / 2.0), m.at + DVec2::new(w / 2.0, h / 2.0));
-            let corners = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
+        PaperMarkKind::Cloud { rev, arc, .. } => {
+            // scallops of about `arc` mm round the outline, bulging out
+            let corners = m.cloud_outline();
             let stroke = Stroke::solid(0.35, 0.0);
-            for k in 0..4 {
-                let (a, b) = (corners[k], corners[(k + 1) % 4]);
+            let ink = |c: &mut dyn Canvas, pts: &[DVec2]| match m.color {
+                Some(rgb) => c.line_rgb(pts, stroke, rgb),
+                None => c.line(pts, stroke),
+            };
+            let k = corners.len();
+            for q in 0..k {
+                let (a, b) = (corners[q], corners[(q + 1) % k]);
                 let len = a.distance(b);
-                let n = (len / 6.0).ceil().max(1.0) as usize;
-                let dir = (b - a) / len.max(1e-9);
+                if len < 1e-6 {
+                    continue;
+                }
+                let n = (len / arc.max(1.0)).ceil().max(1.0) as usize;
+                let dir = (b - a) / len;
                 let out = DVec2::new(dir.y, -dir.x);
                 for i in 0..n {
                     let (s, e) = (a + (b - a) * (i as f64 / n as f64), a + (b - a) * ((i + 1) as f64 / n as f64));
@@ -722,9 +729,12 @@ pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_nor
                             mid - dir * r * t.cos() + out * r * t.sin()
                         })
                         .collect();
-                    c.line(&pts, stroke);
+                    ink(c, &pts);
                 }
             }
+            let hi = corners
+                .iter()
+                .fold(DVec2::splat(f64::MIN), |a, p| a.max(*p));
             // its revision in a triangle at the top right
             let tip = hi + DVec2::new(4.0, 4.0);
             let s = m.size * 1.6;

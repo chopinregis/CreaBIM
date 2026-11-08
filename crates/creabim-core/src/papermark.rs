@@ -28,6 +28,13 @@ pub enum PaperMarkKind {
         date: String,
         #[serde(default)]
         what: String,
+        /// A freeform outline, offsets from `at` in mm (MU25); empty, the
+        /// `w` by `h` box.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        points: Vec<DVec2>,
+        /// The scallops' length along the outline, mm.
+        #[serde(default = "arc_default")]
+        arc: f64,
     },
     /// The sheet's revisions: one row per revision cloud on it, from `at`
     /// (its lower left), `size` mm text.
@@ -44,6 +51,13 @@ pub struct PaperMark {
     /// A north arrow's height, a scale bar's thickness, millimetres.
     pub size: f64,
     pub kind: PaperMarkKind,
+    /// Its own colour (sRGB, 0..1); black without one (MU25).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<[f32; 3]>,
+}
+
+fn arc_default() -> f64 {
+    6.0
 }
 
 impl PaperMark {
@@ -53,6 +67,7 @@ impl PaperMark {
             at,
             size: 18.0,
             kind: PaperMarkKind::NorthArrow { rotation: None },
+            color: None,
         }
     }
 
@@ -69,6 +84,7 @@ impl PaperMark {
                 length: round_length(0.06 * scale),
                 parts: 5,
             },
+            color: None,
         }
     }
 
@@ -84,7 +100,10 @@ impl PaperMark {
                 rev: rev.into(),
                 date: String::new(),
                 what: String::new(),
+                points: vec![],
+                arc: 6.0,
             },
+            color: None,
         }
     }
 
@@ -95,15 +114,19 @@ impl PaperMark {
             at,
             size: 2.5,
             kind: PaperMarkKind::RevisionTable,
+            color: None,
         }
     }
 
     /// Its extent on the sheet, millimetres (lower left, upper right).
     pub fn bounds(&self) -> (DVec2, DVec2) {
         match &self.kind {
-            PaperMarkKind::Cloud { w, h, .. } => {
-                let half = DVec2::new(w / 2.0, h / 2.0) + DVec2::splat(self.size);
-                (self.at - half, self.at + half + DVec2::new(8.0, 8.0))
+            PaperMarkKind::Cloud { arc, .. } => {
+                let (lo, hi) = self
+                    .cloud_outline()
+                    .iter()
+                    .fold((DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)), |(a, b), p| (a.min(*p), b.max(*p)));
+                (lo - DVec2::splat(arc / 2.0), hi + DVec2::splat(arc / 2.0) + DVec2::new(8.0, 8.0))
             }
             PaperMarkKind::RevisionTable => {
                 (self.at, self.at + DVec2::new(110.0, self.size * 2.4 * 5.0))
@@ -120,6 +143,30 @@ impl PaperMark {
                 )
             }
         }
+    }
+
+    /// A revision cloud's outline on the sheet, anticlockwise: its
+    /// freeform points, else the corners of its box.
+    pub fn cloud_outline(&self) -> Vec<DVec2> {
+        let PaperMarkKind::Cloud { w, h, points, .. } = &self.kind else {
+            return vec![];
+        };
+        let mut out: Vec<DVec2> = if points.len() >= 3 {
+            points.iter().map(|p| self.at + *p).collect()
+        } else {
+            let (x, y) = (w / 2.0, h / 2.0);
+            [(-x, -y), (x, -y), (x, y), (-x, y)]
+                .iter()
+                .map(|(a, b)| self.at + DVec2::new(*a, *b))
+                .collect()
+        };
+        let area: f64 = (0..out.len())
+            .map(|i| out[i].perp_dot(out[(i + 1) % out.len()]))
+            .sum();
+        if area < 0.0 {
+            out.reverse();
+        }
+        out
     }
 
     /// The angle a north arrow points, degrees anticlockwise from up.
@@ -151,6 +198,28 @@ pub fn round_length(m: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cloud_follows_its_own_points_either_way_round() {
+        let mut m = PaperMark::cloud(ElementId::new(), DVec2::new(100.0, 100.0), "A");
+        assert_eq!(m.cloud_outline().len(), 4);
+        if let PaperMarkKind::Cloud { points, .. } = &mut m.kind {
+            // clockwise, an L of five points
+            *points = vec![
+                DVec2::new(0.0, 0.0),
+                DVec2::new(0.0, 40.0),
+                DVec2::new(20.0, 40.0),
+                DVec2::new(20.0, 20.0),
+                DVec2::new(50.0, 0.0),
+            ];
+        }
+        let o = m.cloud_outline();
+        assert_eq!(o.len(), 5);
+        let area: f64 = (0..5).map(|i| o[i].perp_dot(o[(i + 1) % 5])).sum();
+        assert!(area > 0.0, "turned anticlockwise, so scallops bulge out");
+        let (lo, hi) = m.bounds();
+        assert!(lo.x < 100.0 && hi.x > 150.0 && hi.y > 140.0);
+    }
 
     #[test]
     fn a_scale_bar_is_a_round_length_about_six_centimetres_long() {

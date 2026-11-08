@@ -3992,12 +3992,22 @@ fn drag_section_line(
     Some(r.err().map(|e| e.to_string()))
 }
 
-/// This frame's wheel input, split as touchpads expect (MU24): a
-/// two-finger scroll (pixel steps) pans, returned as screen points the
-/// view follows; a mouse wheel (line steps) and a pinch zoom, returned as
-/// a zoom amount in the units of `smooth_scroll_delta.y`.
+/// This frame's wheel input, split as touchpads expect (MU24, MU25): a
+/// two-finger scroll pans, returned as screen points the view follows; a
+/// mouse wheel and a pinch zoom, returned as a zoom amount in the units of
+/// `smooth_scroll_delta.y`.
+///
+/// Windows reports a precision touchpad's scroll in lines, as a wheel's,
+/// so the unit alone can't tell them apart: a wheel notch is a whole line
+/// straight up or down, a touchpad sends fractions of lines and sideways
+/// steps. Once a gesture shows itself as a touchpad's, the rest of it
+/// (within 0.4 s) pans too.
 pub(crate) fn wheel(ui: &egui::Ui) -> (egui::Vec2, f32) {
-    ui.input(|i| {
+    let id = egui::Id::new("touchpad-gesture");
+    let now = ui.input(|i| i.time);
+    let last: f64 = ui.ctx().data(|d| d.get_temp(id)).unwrap_or(-10.0);
+    let mut seen = None;
+    let out = ui.input(|i| {
         let mut pan = egui::Vec2::ZERO;
         let mut zoom = 0.0;
         for e in &i.raw.events {
@@ -4008,13 +4018,29 @@ pub(crate) fn wheel(ui: &egui::Ui) -> (egui::Vec2, f32) {
                 ..
             } = e
             {
-                match unit {
-                    // a pinch (Ctrl and pixel steps) and Ctrl+wheel are in
-                    // zoom_delta already
-                    _ if modifiers.ctrl || modifiers.command => {}
-                    egui::MouseWheelUnit::Point => pan += *delta,
-                    egui::MouseWheelUnit::Line => zoom += delta.y * 40.0,
-                    egui::MouseWheelUnit::Page => zoom += delta.y * 400.0,
+                if modifiers.ctrl || modifiers.command {
+                    // a pinch and Ctrl+wheel are in zoom_delta already
+                    continue;
+                }
+                let whole = |v: f32| (v - v.round()).abs() < 1e-3;
+                let touchpad = match unit {
+                    egui::MouseWheelUnit::Point => true,
+                    egui::MouseWheelUnit::Line => {
+                        delta.x.abs() > 1e-3 || !whole(delta.y) || now - last < 0.4
+                    }
+                    egui::MouseWheelUnit::Page => false,
+                };
+                if touchpad {
+                    seen = Some(now);
+                    pan += match unit {
+                        egui::MouseWheelUnit::Point => *delta,
+                        _ => *delta * 40.0,
+                    };
+                } else {
+                    zoom += match unit {
+                        egui::MouseWheelUnit::Page => delta.y * 400.0,
+                        _ => delta.y * 40.0,
+                    };
                 }
             }
         }
@@ -4023,7 +4049,14 @@ pub(crate) fn wheel(ui: &egui::Ui) -> (egui::Vec2, f32) {
             zoom += (pinch - 1.0) * 500.0;
         }
         (pan, zoom)
-    })
+    });
+    if let Some(t) = seen {
+        if t - last > 0.4 {
+            crate::actlog::line("wheel: a touchpad scroll, panning");
+        }
+        ui.ctx().data_mut(|d| d.insert_temp(id, t));
+    }
+    out
 }
 
 /// Centre and zoom that fit a drawing in the pane.
@@ -4087,7 +4120,8 @@ pub(crate) fn nav_column(
         }
         crate::svgicon::paint(&painter, r.shrink(6.0), icon, p.text.gamma_multiply(fade));
         let zoom = |by: f32| {
-            let k = (scale * by).clamp(2.0, 2000.0);
+            // plans count points per metre, sheets per millimetre (MU25)
+            let k = (scale * by).clamp(0.05, 5000.0);
             Some((center, k))
         };
         match i {

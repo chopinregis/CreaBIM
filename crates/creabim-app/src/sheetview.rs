@@ -26,9 +26,84 @@ pub struct SheetState {
     crop_drag: Option<(ElementId, usize, [DVec2; 2])>,
     /// A paper mark being moved: it, where it was, and the grab point.
     mark_drag: Option<(ElementId, DVec2, DVec2)>,
+    /// A revision cloud's grip being dragged (MU25): the cloud as it was
+    /// and which grip.
+    cloud_grip: Option<(creabim_core::Element, CloudGrip)>,
     /// Move or G on the sheet's own notes and marks (MU23): them as they
     /// were, and the base point once picked.
     moving: Option<(Vec<creabim_core::Element>, Option<DVec2>)>,
+}
+
+/// A revision cloud's grips (MU25).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum CloudGrip {
+    /// A box's corner or edge: which sides it moves (-1, 0 or 1 in x, y).
+    Side(i8, i8),
+    /// A freeform outline's point.
+    Node(usize),
+    /// The middle of a freeform edge: dragged, a new point there.
+    Insert(usize),
+}
+
+/// The grips of a selected cloud, on paper.
+fn cloud_grips(m: &creabim_core::PaperMark) -> Vec<(CloudGrip, DVec2)> {
+    let creabim_core::PaperMarkKind::Cloud { w, h, points, .. } = &m.kind else {
+        return vec![];
+    };
+    if points.len() >= 3 {
+        let pts: Vec<DVec2> = points.iter().map(|p| m.at + *p).collect();
+        let n = pts.len();
+        let mut out: Vec<(CloudGrip, DVec2)> =
+            pts.iter().enumerate().map(|(i, p)| (CloudGrip::Node(i), *p)).collect();
+        out.extend((0..n).map(|i| (CloudGrip::Insert(i), (pts[i] + pts[(i + 1) % n]) / 2.0)));
+        out
+    } else {
+        let mut out = vec![];
+        for sx in [-1i8, 0, 1] {
+            for sy in [-1i8, 0, 1] {
+                if sx != 0 || sy != 0 {
+                    let p = m.at + DVec2::new(*w / 2.0 * sx as f64, *h / 2.0 * sy as f64);
+                    out.push((CloudGrip::Side(sx, sy), p));
+                }
+            }
+        }
+        out
+    }
+}
+
+/// `was` with grip `g` dragged to `to` (paper mm).
+fn drag_cloud(was: &creabim_core::PaperMark, g: CloudGrip, to: DVec2) -> creabim_core::PaperMark {
+    let mut m = was.clone();
+    let at = m.at;
+    if let creabim_core::PaperMarkKind::Cloud { w, h, points, .. } = &mut m.kind {
+        match g {
+            CloudGrip::Side(sx, sy) => {
+                let (mut lo, mut hi) = (at - DVec2::new(*w, *h) / 2.0, at + DVec2::new(*w, *h) / 2.0);
+                if sx < 0 {
+                    lo.x = to.x.min(hi.x - 5.0);
+                }
+                if sx > 0 {
+                    hi.x = to.x.max(lo.x + 5.0);
+                }
+                if sy < 0 {
+                    lo.y = to.y.min(hi.y - 5.0);
+                }
+                if sy > 0 {
+                    hi.y = to.y.max(lo.y + 5.0);
+                }
+                *w = hi.x - lo.x;
+                *h = hi.y - lo.y;
+                m.at = (lo + hi) / 2.0;
+            }
+            CloudGrip::Node(i) => {
+                if let Some(p) = points.get_mut(i) {
+                    *p = to - at;
+                }
+            }
+            CloudGrip::Insert(i) => points.insert(i + 1, to - at),
+        }
+    }
+    m
 }
 
 /// What `sheet` itself holds of the selection: its notes and paper marks.
@@ -432,7 +507,35 @@ pub fn show(
         let z = (rect.width() / s.width as f32).min(rect.height() / s.height as f32) * 0.92;
         (size / 2.0, z)
     };
-    if let Some((c, z)) = crate::planview::nav_column(ui, rect, sheet_id, fit, None, center, zoom) {
+    // the selection on the sheet: views, paper marks, notes (MU25)
+    let picked = {
+        let model = doc.model();
+        let mut lo = DVec2::splat(f64::MAX);
+        let mut hi = DVec2::splat(f64::MIN);
+        for id in selection.all() {
+            let b = if let Some(v) = views.iter().find(|v| v.viewport == id || v.view == id) {
+                Some(v.bounds)
+            } else {
+                match model.get(id).map(|e| &e.kind) {
+                    Some(ElementKind::PaperMark(m)) if m.sheet == sheet_id => Some(m.bounds()),
+                    Some(ElementKind::Note(n)) if n.view == sheet_id => {
+                        Some((n.at - DVec2::new(5.0, 5.0), n.at + DVec2::new(60.0, 10.0)))
+                    }
+                    _ => None,
+                }
+            };
+            if let Some((a, b)) = b {
+                lo = lo.min(a);
+                hi = hi.max(b);
+            }
+        }
+        (lo.x <= hi.x).then(|| {
+            let span = (hi - lo).max(DVec2::splat(10.0));
+            let z = (rect.width() as f64 / span.x).min(rect.height() as f64 / span.y) * 0.7;
+            ((lo + hi) / 2.0, (z as f32).clamp(0.2, 60.0))
+        })
+    };
+    if let Some((c, z)) = crate::planview::nav_column(ui, rect, sheet_id, fit, picked, center, zoom) {
         center = c;
         zoom = z;
     }
@@ -652,6 +755,84 @@ pub fn show(
                 .rev()
                 .find(|(_, _, (lo, hi))| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y)
         };
+        // a selected revision cloud's grips: size its box, or move, add
+        // and (right-click) remove its points (MU25)
+        let cloud = selection.active.filter(|_| selection.len() == 1).and_then(|id| {
+            doc.model().get(id).filter(|e| {
+                matches!(&e.kind, ElementKind::PaperMark(m)
+                    if m.sheet == sheet_id && matches!(m.kind, creabim_core::PaperMarkKind::Cloud { .. }))
+            })
+        });
+        if let Some(e) = cloud.cloned() {
+            let ElementKind::PaperMark(m) = &e.kind else { unreachable!() };
+            let grips = cloud_grips(m);
+            let near = |p: Pos2| {
+                grips
+                    .iter()
+                    .map(|(g, q)| (*g, xf.to_screen(*q)))
+                    .filter(|(_, q)| q.distance(p) < 8.0)
+                    .min_by(|a, b| a.1.distance(p).total_cmp(&b.1.distance(p)))
+                    .map(|(g, _)| g)
+            };
+            let over = response.hover_pos().and_then(near);
+            for (g, q) in &grips {
+                let at = xf.to_screen(*q);
+                let lit = over == Some(*g) || state.cloud_grip.as_ref().is_some_and(|c| c.1 == *g);
+                match g {
+                    CloudGrip::Insert(_) => {
+                        painter.circle(at, if lit { 5.0 } else { 3.5 }, Color32::WHITE, egui::Stroke::new(1.2, ACCENT));
+                        painter.line_segment([at - Vec2::new(2.0, 0.0), at + Vec2::new(2.0, 0.0)], egui::Stroke::new(1.0, ACCENT));
+                        painter.line_segment([at - Vec2::new(0.0, 2.0), at + Vec2::new(0.0, 2.0)], egui::Stroke::new(1.0, ACCENT));
+                    }
+                    _ => {
+                        let r = Rect::from_center_size(at, Vec2::splat(if lit { 10.0 } else { 8.0 }));
+                        painter.rect(r, 1.0, if lit { ACCENT } else { Color32::WHITE }, egui::Stroke::new(1.3, ACCENT), egui::StrokeKind::Middle);
+                    }
+                }
+            }
+            if over.is_some() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            }
+            if response.drag_started_by(egui::PointerButton::Primary) {
+                let press = ui.input(|i| i.pointer.press_origin()).or(pointer);
+                if let Some(g) = press.and_then(near) {
+                    state.cloud_grip = Some((e.clone(), g));
+                }
+            }
+            if let Some((was, g)) = state.cloud_grip.clone() {
+                if let (true, Some(p)) = (response.dragged_by(egui::PointerButton::Primary), pointer) {
+                    if let ElementKind::PaperMark(m0) = &was.kind {
+                        let to = xf.to_paper(p);
+                        let to = DVec2::new((to.x * 2.0).round() / 2.0, (to.y * 2.0).round() / 2.0);
+                        let m1 = drag_cloud(m0, g, to);
+                        let r = doc.edit_merged(was.id, "Shape revision cloud", |e| {
+                            e.kind = ElementKind::PaperMark(m1.clone())
+                        });
+                        error = r.err().map(|e| e.to_string());
+                    }
+                }
+                if response.drag_stopped() {
+                    // an inserted point keeps being dragged as that point
+                    state.cloud_grip = None;
+                }
+                return error;
+            }
+            if response.secondary_clicked() {
+                if let Some(CloudGrip::Node(i)) = response.hover_pos().and_then(near) {
+                    let r = doc.edit(e.id, "Remove a cloud point", |e| {
+                        if let ElementKind::PaperMark(m) = &mut e.kind {
+                            if let creabim_core::PaperMarkKind::Cloud { points, .. } = &mut m.kind {
+                                if points.len() > 3 {
+                                    points.remove(i);
+                                }
+                            }
+                        }
+                    });
+                    error = r.err().map(|e| e.to_string());
+                    return error;
+                }
+            }
+        }
         let hovered = response.hover_pos().map(|p| xf.to_paper(p)).and_then(at_point);
         for (id, _, (lo, hi)) in &marks {
             let lit = selection.contains(*id);
