@@ -846,6 +846,11 @@ impl Modal {
         }
         Some(match self.stage {
             Stage::Base | Stage::Reference => vec![],
+            // a duplicate's copy lies on its original, drawn as one with
+            // it: leaving the copy out would leave the original's points
+            // out too. The snaps freeze as the copy starts to follow,
+            // still on the original, so nothing snaps to it moving (MU26)
+            Stage::Follow if self.duplicated => vec![],
             Stage::Follow => {
                 let mut ids = self.ids();
                 for id in self.ids() {

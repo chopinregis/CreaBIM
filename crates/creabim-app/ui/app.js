@@ -1014,6 +1014,37 @@
     document.addEventListener("mouseup", up);
   }
 
+  // Hints shown by the app in its theme (MU26): the system's black
+  // tooltip is kept from showing, the text goes to the app instead.
+  (function () {
+    let timer = null, shown = null;
+    function hide() {
+      clearTimeout(timer);
+      timer = null;
+      if (shown) { shown = null; post({ t: "tip", text: "" }); }
+    }
+    document.addEventListener("mouseover", (e) => {
+      const el = e.target.closest && e.target.closest("[title], [data-tip]");
+      if (!el) { hide(); return; }
+      if (el.hasAttribute("title")) {
+        el.dataset.tip = el.getAttribute("title");
+        el.removeAttribute("title");
+      }
+      if (el === shown) return;
+      hide();
+      const text = el.dataset.tip || "";
+      if (!text) return;
+      timer = setTimeout(() => {
+        const r = el.getBoundingClientRect();
+        shown = el;
+        post({ t: "tip", text, x: r.left, y: r.top, w: r.width, h: r.height });
+      }, 450);
+    });
+    document.addEventListener("mouseleave", hide);
+    document.addEventListener("mousedown", hide, true);
+    document.addEventListener("wheel", hide, { passive: true });
+  })();
+
   document.addEventListener("contextmenu", (e) => e.preventDefault());
   post({ t: "ready" });
 })();

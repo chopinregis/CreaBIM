@@ -1985,6 +1985,11 @@ pub struct Sheet {
     /// Values for its template's own fields, by name.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub fields: std::collections::BTreeMap<String, String>,
+    /// Guide lines to place things by, as Inkscape's (MU26): never
+    /// printed. `true` for an up-and-down guide at that many mm across,
+    /// `false` for one across at that many mm up.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub guides: Vec<(bool, f64)>,
 }
 
 impl Sheet {
@@ -2009,6 +2014,7 @@ impl Sheet {
             height,
             template: None,
             fields: Default::default(),
+            guides: vec![],
         }
     }
 

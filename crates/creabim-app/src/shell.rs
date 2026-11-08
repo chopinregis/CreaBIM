@@ -26,6 +26,9 @@ pub(super) struct Shell {
     /// The theme and panel widths, kept between sessions.
     pub settings: crate::files::Settings,
     popup: Option<Popup>,
+    /// A web row's hint to show as the app's own themed tooltip (MU26):
+    /// its text and the control it is for, in window points.
+    web_tip: Option<(String, egui::Rect)>,
     /// Keys pressed while a page had the keyboard, for the views.
     pub keys: Vec<egui::Event>,
     /// Ctrl, Shift or Alt came with the keys fed last frame, and are to
@@ -58,6 +61,7 @@ impl Default for Shell {
             theme: Theme::default(),
             settings: Default::default(),
             popup: None,
+            web_tip: None,
             keys: vec![],
             keys_held: false,
             menu_3d: false,
@@ -3086,6 +3090,19 @@ impl CreaBimApp {
                 }
                 self.run_action(ctx, &id);
             }
+            "tip" => {
+                // a web row's hint, drawn by the app in its theme (MU26)
+                let text = b["text"].as_str().unwrap_or("").trim().to_string();
+                self.shell.web_tip = match (&self.shell.web, text.is_empty()) {
+                    (Some(web), false) => {
+                        let o = web.rects[msg.pane as usize].min;
+                        let f = |k: &str| b[k].as_f64().unwrap_or(0.0) as f32;
+                        let r = egui::Rect::from_min_size(o + egui::vec2(f("x"), f("y")), egui::vec2(f("w"), f("h")));
+                        Some((text, r))
+                    }
+                    _ => None,
+                };
+            }
             "popup" => {
                 let Some(web) = &self.shell.web else { return };
                 let origin = web.rects[msg.pane as usize].min;
@@ -3217,6 +3234,22 @@ impl CreaBimApp {
             .unwrap_or_default();
         for m in msgs {
             self.handle_web(&ctx, m);
+        }
+        // a web row's hint, as the app's own tooltips look (MU26)
+        if let Some((text, r)) = self.shell.web_tip.clone().filter(|_| self.shell.popup.is_none()) {
+            let screen = ctx.content_rect();
+            let below = r.bottom() + 6.0;
+            let x = r.left().min(screen.right() - 380.0).max(screen.left() + 4.0);
+            egui::Area::new(egui::Id::new("web-tip"))
+                .order(egui::Order::Tooltip)
+                .fixed_pos(egui::pos2(x, below))
+                .interactable(false)
+                .show(&ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_max_width(360.0);
+                        ui.label(text);
+                    });
+                });
         }
         // a tool picked off the tab shown (by its key, a menu or the
         // palette) brings its own tab

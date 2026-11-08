@@ -1488,15 +1488,21 @@ pub fn style_inline(
     };
     let users = style_users(doc.model(), id);
     let mut label = None;
-    egui::CollapsingHeader::new(format!("Edit \u{201c}{}\u{201d}", e.name))
-        .id_salt(("style", id))
-        .open(open.then_some(true))
-        .show(ui, |ui| {
-            label = style_ui(ui, &mut s);
-            ui.label(
-                egui::RichText::new(format!("Changes every one of its {users} users.")).weak(),
-            );
-        });
+    // a section of its own, with the panel's chevron (MU26)
+    let key = egui::Id::new(("style.open", id));
+    if open {
+        ui.ctx().data_mut(|d| d.insert_temp(key, true));
+    }
+    let shown = ui.ctx().data(|d| d.get_temp::<bool>(key)).unwrap_or(false);
+    let title = format!("Text style \u{201c}{}\u{201d}", e.name);
+    let (resp, _) = crate::props::header(ui, &title, shown, false);
+    if resp.clicked() {
+        ui.ctx().data_mut(|d| d.insert_temp(key, !shown));
+    }
+    if shown {
+        label = style_ui(ui, &mut s);
+        ui.label(egui::RichText::new(format!("Changes every one of its {users} users.")).weak());
+    }
     let label = label?;
     let r = doc.edit_merged(id, label, |e| e.kind = ElementKind::TextStyle(s));
     Some(match r {

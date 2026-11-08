@@ -3311,12 +3311,16 @@ impl CreaBimApp {
             ((Some(l), pts), Some(_)) if *l == level => pts.iter().map(|p| p.extend(z)).collect(),
             _ => vec![],
         };
-        let track = snaps::track_points(&chain, &[]);
+        // and the points rested on, as in plans (MU26: walls, beams and
+        // the other level tools in 3D too)
+        let rested: Vec<DVec3> = self.rested_3d.0.iter().map(|p| p.truncate().extend(z)).collect();
+        let track = snaps::track_points(&chain, &rested);
         let Some((snap, align)) =
             snapper.snap_tracked(&snap_cfg, hover, project, from, &track, free)
         else {
             return;
         };
+        rest_points(&mut self.rested_3d, ui.ctx(), Some(&snap), true);
         let p = snap.p.truncate();
         let at = p.extend(z);
         // a point snapped above or below the working plane drops onto it:
@@ -3482,20 +3486,34 @@ impl CreaBimApp {
     /// plans; a frame is asked for after the dwell, as nothing repaints
     /// while the pointer rests (MU24).
     fn rest_3d(&mut self, ctx: &egui::Context, snap: Option<&crate::snaps::Snap>, drawing: bool) {
+        rest_points(&mut self.rested_3d, ctx, snap, drawing);
+    }
+}
+
+/// [`CreaBimApp::rest_3d`] on the rested points alone, for callers that
+/// hold another part of the app.
+#[allow(clippy::type_complexity)]
+fn rest_points(
+    rested: &mut (Vec<DVec3>, Option<(DVec3, f64)>),
+    ctx: &egui::Context,
+    snap: Option<&crate::snaps::Snap>,
+    drawing: bool,
+) {
+    {
         const DWELL: f64 = 0.4;
         const KEEP: usize = 4;
         if !drawing {
-            self.rested_3d = (vec![], None);
+            (*rested) = (vec![], None);
             return;
         }
         let now = ctx.input(|i| i.time);
         let Some(p) = snap.filter(|s| s.kind.is_point()).map(|s| s.p) else {
-            self.rested_3d.1 = None;
+            (*rested).1 = None;
             return;
         };
-        match self.rested_3d.1 {
+        match (*rested).1 {
             Some((q, since)) if q.distance(p) < 1e-9 => {
-                let pts = &mut self.rested_3d.0;
+                let pts = &mut (*rested).0;
                 if now - since > DWELL && !pts.iter().any(|r| r.distance(p) < 1e-9) {
                     pts.push(p);
                     if pts.len() > KEEP {
@@ -3504,12 +3522,15 @@ impl CreaBimApp {
                 }
             }
             _ => {
-                self.rested_3d.1 = Some((p, now));
+                (*rested).1 = Some((p, now));
                 ctx.request_repaint_after(std::time::Duration::from_millis(450));
             }
         }
     }
 
+}
+
+impl CreaBimApp {
     /// Drawing a slab, or redrawing a slab or wall, in the 3D view, on its
     /// level, with snaps.
     fn outline_3d(
@@ -6597,6 +6618,21 @@ impl CreaBimApp {
                         crate::annotate::LookEdit::Changed(l) => label = l,
                         crate::annotate::LookEdit::NewStyle => new_style = true,
                         crate::annotate::LookEdit::None => {}
+                    }
+                    // where it sits, typed (MU26): mm on a sheet, lengths
+                    // in a view
+                    let on_sheet = self.is_sheet(n.view);
+                    for (name, v) in [("X", &mut n.at.x), ("Y", &mut n.at.y)] {
+                        crate::props::row(ui, name, |ui| {
+                            let r = if on_sheet {
+                                crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).suffix(" mm"))
+                            } else {
+                                crate::props::fill(ui, crate::units::drag(v))
+                            };
+                            if r.changed() {
+                                label = "Place note";
+                            }
+                        });
                     }
                 }
                 ElementKind::Units(_) => {

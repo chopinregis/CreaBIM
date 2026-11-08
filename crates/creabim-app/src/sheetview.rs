@@ -31,9 +31,40 @@ pub struct SheetState {
     cloud_grip: Option<(creabim_core::Element, CloudGrip)>,
     /// A selection box being dragged on empty paper: where it began.
     band: Option<Pos2>,
+    /// A guide being dragged (MU26): its index (None: a new one off a
+    /// ruler) and whether it runs up and down.
+    guide_drag: Option<(Option<usize>, bool)>,
     /// Move or G on the sheet's own notes and marks (MU23): them as they
     /// were, and the base point once picked.
     moving: Option<(Vec<creabim_core::Element>, Option<DVec2>)>,
+}
+
+/// The ruler strips a guide is dragged out of, along the sheet pane's top
+/// and left edges.
+const RULER: f32 = 12.0;
+
+/// `p` pulled onto the sheet's guides within `tol` mm, testing it at each
+/// of `offsets` (a box's edges round it, say): up-and-down guides take x,
+/// across guides y.
+fn snap_guides(p: DVec2, offsets: &[DVec2], guides: &[(bool, f64)], tol: f64) -> DVec2 {
+    let mut out = p;
+    let mut best = [tol, tol];
+    for (vertical, at) in guides {
+        let a = usize::from(!*vertical);
+        for o in offsets {
+            let v = if *vertical { p.x + o.x } else { p.y + o.y };
+            let d = (v - at).abs();
+            if d < best[a] {
+                best[a] = d;
+                if *vertical {
+                    out.x = at - o.x;
+                } else {
+                    out.y = at - o.y;
+                }
+            }
+        }
+    }
+    out
 }
 
 /// A revision cloud's grips (MU25).
@@ -603,6 +634,128 @@ pub fn show(
         painter.rect_stroke(inner, 3.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Outside);
     }
 
+    // guides (MU26): ruler strips along the top and left edges to drag
+    // them out of; dragged back onto a ruler, a guide goes
+    let guides = s.guides.clone();
+    let top = Rect::from_min_max(rect.left_top() + Vec2::new(RULER, 0.0), egui::pos2(rect.right(), rect.top() + RULER));
+    let left = Rect::from_min_max(rect.left_top() + Vec2::new(0.0, RULER), egui::pos2(rect.left() + RULER, rect.bottom()));
+    let guide_ink = Color32::from_rgb(40, 170, 220);
+    {
+        let p = crate::theme::Palette::of(ui.ctx());
+        for r in [top, left] {
+            painter.rect_filled(r, 0.0, p.panel.gamma_multiply(0.85));
+        }
+        // a tick every 10 mm of paper, longer each 50
+        let step = 10.0;
+        let (lo, hi) = (xf.to_paper(rect.left_top()), xf.to_paper(rect.right_bottom()));
+        if zoom * step as f32 > 4.0 {
+            let mut x = (lo.x / step).floor() * step;
+            while x < hi.x {
+                let sx = xf.to_screen(DVec2::new(x, 0.0)).x;
+                let len = if (x / 50.0).round() * 50.0 == x { RULER * 0.7 } else { RULER * 0.35 };
+                painter.line_segment([egui::pos2(sx, top.bottom()), egui::pos2(sx, top.bottom() - len)], egui::Stroke::new(1.0, p.muted));
+                x += step;
+            }
+            let mut y = (hi.y / step).floor() * step;
+            while y < lo.y {
+                let sy = xf.to_screen(DVec2::new(0.0, y)).y;
+                let len = if (y / 50.0).round() * 50.0 == y { RULER * 0.7 } else { RULER * 0.35 };
+                painter.line_segment([egui::pos2(left.right(), sy), egui::pos2(left.right() - len, sy)], egui::Stroke::new(1.0, p.muted));
+                y += step;
+            }
+        }
+    }
+    let line_of = |vertical: bool, at: f64| -> [Pos2; 2] {
+        if vertical {
+            let x = xf.to_screen(DVec2::new(at, 0.0)).x;
+            [egui::pos2(x, rect.top() + RULER), egui::pos2(x, rect.bottom())]
+        } else {
+            let y = xf.to_screen(DVec2::new(0.0, at)).y;
+            [egui::pos2(rect.left() + RULER, y), egui::pos2(rect.right(), y)]
+        }
+    };
+    let dragging_guide = state.guide_drag.map(|g| g.0);
+    for (i, (vertical, at)) in guides.iter().enumerate() {
+        if dragging_guide == Some(Some(i)) {
+            continue;
+        }
+        painter.line_segment(line_of(*vertical, *at), egui::Stroke::new(1.0, guide_ink.gamma_multiply(0.8)));
+    }
+    if state.active.is_none() && plan.tool == planview::Tool::Select {
+        let near_guide = |q: Pos2| {
+            guides.iter().position(|(vertical, at)| {
+                let [a, _] = line_of(*vertical, *at);
+                if *vertical { (q.x - a.x).abs() < 4.0 } else { (q.y - a.y).abs() < 4.0 }
+            })
+        };
+        let hover = response.hover_pos();
+        if let Some(h) = hover {
+            if top.contains(h) || left.contains(h) {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+            } else if let Some(i) = near_guide(h) {
+                ui.ctx().set_cursor_icon(if guides[i].0 {
+                    egui::CursorIcon::ResizeHorizontal
+                } else {
+                    egui::CursorIcon::ResizeVertical
+                });
+            }
+        }
+        if response.drag_started_by(egui::PointerButton::Primary) {
+            if let Some(q) = ui.input(|i| i.pointer.press_origin()) {
+                if top.contains(q) {
+                    state.guide_drag = Some((None, false));
+                } else if left.contains(q) {
+                    state.guide_drag = Some((None, true));
+                } else if let Some(i) = near_guide(q) {
+                    state.guide_drag = Some((Some(i), guides[i].0));
+                }
+            }
+        }
+        if let Some((which, vertical)) = state.guide_drag {
+            if let Some(q) = response.interact_pointer_pos().or(hover) {
+                let at = xf.to_paper(q);
+                let at = if vertical { at.x } else { at.y };
+                let at = (at * 2.0).round() / 2.0;
+                painter.line_segment(line_of(vertical, at), egui::Stroke::new(1.5, guide_ink));
+                painter.text(
+                    q + Vec2::new(10.0, -10.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    format!("{at:.1} mm"),
+                    egui::FontId::proportional(11.0),
+                    guide_ink,
+                );
+                if response.drag_stopped() {
+                    let gone = top.contains(q) || left.contains(q) || !rect.contains(q);
+                    let _ = doc.edit(sheet_id, if gone { "Remove guide" } else { "Place guide" }, |e| {
+                        if let ElementKind::Sheet(sh) = &mut e.kind {
+                            match (which, gone) {
+                                (Some(i), true) if i < sh.guides.len() => {
+                                    sh.guides.remove(i);
+                                }
+                                (Some(i), false) if i < sh.guides.len() => sh.guides[i] = (vertical, at),
+                                (None, false) => sh.guides.push((vertical, at)),
+                                _ => {}
+                            }
+                        }
+                    });
+                    plan.status = Some(if gone {
+                        "Guide removed.".into()
+                    } else {
+                        "Guide placed: marks, notes and views snap to it. Drag it back onto a ruler to remove it.".into()
+                    });
+                    state.guide_drag = None;
+                }
+            }
+            if !response.dragged() && !response.drag_stopped() {
+                state.guide_drag = None;
+            }
+            if let Some(look) = &nav_look {
+                crate::planview::nav_draw(ui, look);
+            }
+            return None;
+        }
+    }
+
     if let Some(look) = &nav_look {
         crate::planview::nav_draw(ui, look);
     }
@@ -843,6 +996,7 @@ pub fn show(
                     if let ElementKind::PaperMark(m0) = &was.kind {
                         let to = xf.to_paper(p);
                         let to = DVec2::new((to.x * 2.0).round() / 2.0, (to.y * 2.0).round() / 2.0);
+                        let to = snap_guides(to, &[DVec2::ZERO], &s.guides, 6.0 / zoom as f64);
                         let m1 = drag_cloud(m0, g, to);
                         let r = doc.edit_merged(was.id, "Shape revision cloud", |e| {
                             e.kind = ElementKind::PaperMark(m1.clone())
@@ -896,6 +1050,19 @@ pub fn show(
         if let Some((id, at0, grab)) = state.mark_drag {
             if let (true, Some(p)) = (response.dragged_by(egui::PointerButton::Primary), pointer) {
                 let to = (at0 + xf.to_paper(p) - grab).round();
+                let bx = mark_boxes.iter().find(|(m, _)| *m == id).map(|(_, b)| *b);
+                let offs: Vec<DVec2> = match bx {
+                    Some((lo, hi)) => {
+                        let now = doc.model().get(id).and_then(|e| match &e.kind {
+                            ElementKind::PaperMark(m) => Some(m.at),
+                            _ => None,
+                        });
+                        let c = now.unwrap_or(at0);
+                        vec![DVec2::ZERO, lo - c, hi - c]
+                    }
+                    None => vec![DVec2::ZERO],
+                };
+                let to = snap_guides(to, &offs, &s.guides, 6.0 / zoom as f64);
                 let r = doc.edit_merged(id, "Move paper mark", |e| {
                     if let ElementKind::PaperMark(m) = &mut e.kind {
                         m.at = to;
@@ -977,29 +1144,51 @@ pub fn show(
                 } else {
                     painter.rect_stroke(r, 0.0, stroke, egui::StrokeKind::Middle);
                 }
-                if response.drag_stopped() {
-                    let (pa, pb) = (xf.to_paper(a), xf.to_paper(b));
-                    let (lo, hi) = (pa.min(pb), pa.max(pb));
-                    let take = |(l, h): (DVec2, DVec2)| {
-                        if touching {
-                            l.x <= hi.x && h.x >= lo.x && l.y <= hi.y && h.y >= lo.y
-                        } else {
-                            l.x >= lo.x && h.x <= hi.x && l.y >= lo.y && h.y <= hi.y
-                        }
-                    };
-                    let mut ids: Vec<ElementId> =
-                        mark_boxes.iter().filter(|(_, bx)| take(*bx)).map(|(id, _)| *id).collect();
-                    let model = doc.model();
-                    ids.extend(note_items.iter().filter_map(|it| match it {
-                        creabim_geom::PlanItem::Annotation { id, .. } => match model.get(*id).map(|e| &e.kind) {
-                            Some(ElementKind::Note(n)) => {
-                                take((n.at - DVec2::splat(2.0), n.at + DVec2::splat(2.0))).then_some(*id)
+                // what the box catches, lit as it is dragged (MU26)
+                let (pa, pb) = (xf.to_paper(a), xf.to_paper(b));
+                let (lo, hi) = (pa.min(pb), pa.max(pb));
+                let take = |(l, h): (DVec2, DVec2)| {
+                    if touching {
+                        l.x <= hi.x && h.x >= lo.x && l.y <= hi.y && h.y >= lo.y
+                    } else {
+                        l.x >= lo.x && h.x <= hi.x && l.y >= lo.y && h.y <= hi.y
+                    }
+                };
+                let lit = egui::Stroke::new(2.0, ACCENT);
+                let mut ids: Vec<ElementId> = vec![];
+                for (id, bx) in &mark_boxes {
+                    if take(*bx) {
+                        ids.push(*id);
+                        painter.rect_stroke(xf.rect_of(bx.0, bx.1).expand(3.0), 2.0, lit, egui::StrokeKind::Outside);
+                    }
+                }
+                let pxf = planview::Xf { rect, center, scale: zoom };
+                let model = doc.model();
+                for it in &note_items {
+                    if let creabim_geom::PlanItem::Annotation { id, item } = it {
+                        if let Some(ElementKind::Note(n)) = model.get(*id).map(|e| &e.kind) {
+                            if take((n.at - DVec2::splat(2.0), n.at + DVec2::splat(2.0))) {
+                                ids.push(*id);
+                                crate::annotate::paint_weighted(&painter, &pxf, item, ACCENT, 1.0, planview::TRACE);
                             }
-                            _ => None,
-                        },
-                        _ => None,
-                    }));
-                    ids.extend(views.iter().filter(|v| take(v.bounds)).map(|v| v.viewport));
+                        }
+                    }
+                }
+                for v in views {
+                    if take(v.bounds) {
+                        ids.push(v.viewport);
+                        painter.rect_stroke(xf.rect_of(v.bounds.0, v.bounds.1).expand(4.0), 2.0, lit, egui::StrokeKind::Outside);
+                    }
+                }
+                let n = ids.len();
+                painter.text(
+                    b + Vec2::new(12.0, 12.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("{n}"),
+                    egui::FontId::proportional(12.0),
+                    ACCENT,
+                );
+                if response.drag_stopped() {
                     let add = ui.input(|i| i.modifiers.shift);
                     selection.extend(ids.iter().copied(), add);
                     plan.status = Some(match ids.len() {
@@ -1088,6 +1277,15 @@ pub fn show(
                     5.0,
                     4.0,
                 ));
+            }
+            // and onto the sheet's guides, by its centre or its edges
+            if let Some(v) = views.iter().find(|v| v.viewport == id) {
+                let now = match doc.model().get(id).map(|e| &e.kind) {
+                    Some(ElementKind::Viewport(vp)) => vp.center,
+                    _ => moved,
+                };
+                let offs = [DVec2::ZERO, v.bounds.0 - now, v.bounds.1 - now];
+                moved = snap_guides(moved, &offs, &s.guides, tol);
             }
             let r = doc.edit_merged(id, "Move view on sheet", |e| {
                 if let ElementKind::Viewport(vp) = &mut e.kind {
