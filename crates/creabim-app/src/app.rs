@@ -155,6 +155,9 @@ pub struct CreaBimApp {
     snaps_3d: Option<(u64, Vec<ElementId>, Snapper)>,
     /// First click of a two-click tool in the 3D view, on a level.
     pending_3d: Option<(DVec2, ElementId)>,
+    /// Points rested on while drawing in 3D, that the next point lines up
+    /// with, and the one being rested on now (MU24: as in plans).
+    rested_3d: (Vec<DVec3>, Option<(DVec3, f64)>),
     /// Where the 3D right-click menu was opened, and the face there.
     menu_at_3d: Option<DVec3>,
     menu_plane_3d: Option<Workplane>,
@@ -317,6 +320,7 @@ impl CreaBimApp {
             box_3d: None,
             snaps_3d: None,
             pending_3d: None,
+            rested_3d: (vec![], None),
             menu_at_3d: None,
             menu_plane_3d: None,
             guide_from: None,
@@ -3421,6 +3425,39 @@ impl CreaBimApp {
         }
     }
 
+    /// While drawing in 3D, a point snapped to and rested on for a moment
+    /// joins the points the next one lines up with (the last four), as in
+    /// plans; a frame is asked for after the dwell, as nothing repaints
+    /// while the pointer rests (MU24).
+    fn rest_3d(&mut self, ctx: &egui::Context, snap: Option<&crate::snaps::Snap>, drawing: bool) {
+        const DWELL: f64 = 0.4;
+        const KEEP: usize = 4;
+        if !drawing {
+            self.rested_3d = (vec![], None);
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        let Some(p) = snap.filter(|s| s.kind.is_point()).map(|s| s.p) else {
+            self.rested_3d.1 = None;
+            return;
+        };
+        match self.rested_3d.1 {
+            Some((q, since)) if q.distance(p) < 1e-9 => {
+                let pts = &mut self.rested_3d.0;
+                if now - since > DWELL && !pts.iter().any(|r| r.distance(p) < 1e-9) {
+                    pts.push(p);
+                    if pts.len() > KEEP {
+                        pts.remove(0);
+                    }
+                }
+            }
+            _ => {
+                self.rested_3d.1 = Some((p, now));
+                ctx.request_repaint_after(std::time::Duration::from_millis(450));
+            }
+        }
+    }
+
     /// Drawing a slab, or redrawing a slab or wall, in the 3D view, on its
     /// level, with snaps.
     fn outline_3d(
@@ -3451,16 +3488,20 @@ impl CreaBimApp {
             let from = outline.points.last().map(|p| p.extend(outline.z));
             let snapper = &self.snaps_3d.as_ref()?.2;
             let shape: Vec<DVec3> = outline.points.iter().map(|p| p.extend(outline.z)).collect();
-            let track = snaps::track_points(&shape, &[]);
+            let rested: Vec<DVec3> = self.rested_3d.0.iter().map(|p| p.truncate().extend(outline.z)).collect();
+            let track = snaps::track_points(&shape, &rested);
             let (s, align) = snapper.snap_tracked(&snap_cfg, h, project, from, &track, free)?;
             if let Some(c) = project(s.p.truncate().extend(outline.z)) {
                 if s.kind != SnapKind::Grid {
                     snaps::draw_tracked(painter, project, s, align, c, from.and_then(project));
                 }
             }
-            Some((h, s.p.truncate()))
+            Some((h, s.p.truncate(), s))
         });
         outline.draw(painter, project, hover.map(|h| h.1));
+        // resting on a point lines the next corner up with it (MU24)
+        self.rest_3d(ui.ctx(), hover.as_ref().map(|h| &h.2), true);
+        let hover = hover.map(|(h, p, _)| (h, p));
         let click = match (response.clicked(), hover) {
             (true, Some((h, p))) => Some((p, outline.near_first(h, project))),
             _ => None,
@@ -3657,7 +3698,7 @@ impl CreaBimApp {
             .filter(|_| mine)
             .map(|d| d.points.iter().map(|p| d.plane.to_model(*p)).collect())
             .unwrap_or_default();
-        let track = snaps::track_points(&shape, &[]);
+        let track = snaps::track_points(&shape, &self.rested_3d.0);
         let plane = self.plan.sketch.as_ref().filter(|_| mine).map(|d| d.plane);
         let tracked = hover.and_then(|h| {
             let snapper = &self.snaps_3d.as_ref()?.2;
@@ -3679,6 +3720,9 @@ impl CreaBimApp {
         };
         let tracked = tracked.filter(|(s, _)| near_plane(s.p));
         let snapped = tracked.map(|t| t.0);
+        // resting on a point lines the next one up with it (MU24)
+        let drawing = self.plan.sketch.is_some() || self.plan.tool != Tool::Select;
+        self.rest_3d(ui.ctx(), snapped.as_ref(), drawing);
         if let Some((s, align)) = tracked {
             if let Some(c) = project(s.p) {
                 snaps::draw_tracked(painter, project, s, align, c, last.and_then(project));
