@@ -1319,7 +1319,7 @@ fn icon_btn(
         },
     );
     let fill = if on {
-        p.accent.gamma_multiply(0.22)
+        p.accent.gamma_multiply(0.14)
     } else if resp.hovered() && enabled {
         p.raise2
     } else {
@@ -1354,7 +1354,8 @@ fn pill(
     let fill = if resp.hovered() { p.raise2.gamma_multiply(1.1) } else { p.raise2 };
     ui.painter().rect_filled(r, 6.0, fill);
     let ir = Rect::from_min_size(r.min + egui::vec2(3.0, 4.0), egui::vec2(18.0, 18.0));
-    crate::svgicon::paint(ui.painter(), ir, icon, p.text);
+    // the same quiet shade as the rail's icons until hovered (MU29)
+    crate::svgicon::paint(ui.painter(), ir, icon, if resp.hovered() { p.text } else { p.muted });
     let cr = Rect::from_min_size(
         egui::pos2(r.right() - 12.0, r.center().y - 4.0),
         egui::vec2(8.0, 8.0),

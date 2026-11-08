@@ -3551,6 +3551,19 @@ fn keyboard_edits(
                 None => response.hovered(),
             }
     };
+    // a tool's move still waiting for its base point follows the pointer
+    // into another area (MU29: crossing a view on the way left it stuck
+    // there): it is put back and armed again for this one
+    let follows = state.modal.as_ref().is_some_and(|m| {
+        m.flow == Flow::Tool && m.stage() == Stage::Base && response.hovered() && !mine(m)
+    });
+    if follows {
+        if let Some(mut old) = state.modal.take() {
+            let again = (old.mode, old.duplicated);
+            old.discard(doc);
+            state.armed = Some(again);
+        }
+    }
     if let Some(m) = state.modal.as_mut().filter(|m| mine(m)) {
         m.owner = Some(response.id);
         // Shift+click while the base point is picked adds or takes away

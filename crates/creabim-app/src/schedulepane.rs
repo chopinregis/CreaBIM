@@ -12,7 +12,10 @@ const INK: Color32 = Color32::from_rgb(31, 37, 43);
 const MUTED: Color32 = Color32::from_rgb(110, 116, 122);
 const HEADER: Color32 = Color32::from_rgb(236, 238, 236);
 const STRIPE: Color32 = Color32::from_rgb(246, 247, 245);
-const SELECTED: Color32 = Color32::from_rgb(255, 236, 214);
+// a soft tone that dark paper turns dark too, and an accent bar at the
+// row's left (MU29: the orange fill stayed light, its text unreadable)
+const SELECTED: Color32 = Color32::from_rgb(222, 228, 238);
+const SELECTED_BAR: Color32 = Color32::from_rgb(230, 120, 30);
 const RULE: Color32 = Color32::from_rgb(224, 226, 222);
 const ACCENT: Color32 = Color32::from_rgb(200, 100, 20);
 const ROW_H: f32 = 28.0;
@@ -273,6 +276,9 @@ pub fn show(
                 None
             };
             let rr = row(ui, fill);
+            if selected {
+                ui.painter().rect_filled(egui::Rect::from_min_size(rr.min, egui::vec2(3.0, rr.height())), 1.0, SELECTED_BAR);
+            }
             for (i, (c, col)) in cells(rr).into_iter().zip(&table.columns).enumerate() {
                 let text = &r.cells[i];
                 let inner = c.shrink2(egui::vec2(PAD - 3.0, 3.0));

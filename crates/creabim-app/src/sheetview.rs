@@ -243,7 +243,15 @@ fn sheet_move(
         let armed = matches!(plan.armed, Some((Mode::Move, false)));
         let g = response.hovered()
             && matches!(planview::start_keys(ui.ctx()), Some((Mode::Move, false)));
-        if !(armed && response.hovered() || g) {
+        // the toolbar's Move starts with its base click, in the area
+        // clicked (MU29: crossing another sheet's area took it there)
+        let base_click = armed && response.clicked();
+        if armed && response.hovered() {
+            if let Some(h) = here {
+                painter.circle_stroke(xf.to_screen(h), 5.0, egui::Stroke::new(1.5, ACCENT));
+            }
+        }
+        if !(base_click || g) {
             return None;
         }
         let items = on_sheet(doc, sheet, selection);
@@ -251,7 +259,7 @@ fn sheet_move(
             return None;
         }
         plan.armed = None;
-        let base = if g { here } else { None };
+        let base = if g || base_click { here } else { None };
         plan.status = Some(if base.is_some() {
             "Move: move the pointer and click where it goes. Esc or right-click puts it back.".into()
         } else {

@@ -415,7 +415,19 @@ impl CreaBimApp {
             "look" => crate::camera::Look::ALL
                 .iter()
                 .enumerate()
-                .map(|(i, l)| Item::new(format!("nav.look:{i}"), l.label()))
+                .map(|(i, l)| {
+                    // a cube with the face looked at filled (MU29)
+                    let icon = match l.label() {
+                        "Top" => "look-top",
+                        "Bottom" => "look-bottom",
+                        "Front" => "look-front",
+                        "Back" => "look-back",
+                        "Right" => "look-right",
+                        "Left" => "look-left",
+                        _ => "look-iso",
+                    };
+                    Item::new(format!("nav.look:{i}"), l.label()).icon(icon)
+                })
                 .collect(),
             "views" => {
                 let mut items = vec![];
@@ -2977,10 +2989,29 @@ impl CreaBimApp {
                     ])),
                     _ => None,
                 };
+                // each group its own picture (MU29: many shared the cube)
+                let title = group_title(&class);
                 let icon = match class.as_str() {
                     "ElementType" => "element-types",
                     "IfcFurniture" => "sofa",
-                    c => icon_name(Icon::of_class(c)),
+                    _ => match title.to_lowercase().as_str() {
+                        t if t.contains("curtain") => "curtain-wall",
+                        t if t.contains("opening") || t.contains("shaft") => "shaft",
+                        t if t.contains("railing") => "railing",
+                        t if t.contains("footing") => "footing",
+                        t if t.contains("room") => "room",
+                        t if t.contains("ceiling") => "ceiling",
+                        t if t.contains("join") => "join",
+                        t if t.contains("stair") => "stair",
+                        t if t.contains("detail") => "callout",
+                        t if t.contains("note") => "sticky-note",
+                        t if t.contains("text style") => "anno-styles",
+                        t if t.contains("tag") => "tag",
+                        t if t.contains("template") => "sheet-template",
+                        t if t.contains("planting") || t.contains("tree") => "tree",
+                        t if t.contains("void") => "void",
+                        _ => icon_name(Icon::of_class(&class)),
+                    },
                 };
                 json!({
                     "key": class, "title": group_title(&class), "icon": icon,
