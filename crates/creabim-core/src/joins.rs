@@ -670,6 +670,34 @@ fn meeting<'a>(
     }
 }
 
+/// Whether a wall in line with `o` (parallel, on the same line) has an end
+/// near `p` on the far side of `me`'s line from `o`: `o` and it are one
+/// run that `me` meets at a T.
+fn continues_past(walls: &[Joinable], me: &Joinable, o: &Joinable, p: DVec2, d_in: DVec2) -> bool {
+    let dir = o.wall.direction();
+    let n = d_in.perp();
+    let reach = me.wall.thickness.max(o.wall.thickness) * 1.5;
+    let o_side = {
+        let q = if o.wall.start.distance(p) <= o.wall.end.distance(p) {
+            o.wall.start
+        } else {
+            o.wall.end
+        };
+        (q - p).dot(n).signum()
+    };
+    walls.iter().any(|o2| {
+        if o2.id == me.id || o2.id == o.id || o2.wall.level != me.wall.level {
+            return false;
+        }
+        let in_line = dir.perp_dot(o2.wall.direction()).abs() < 0.02
+            && (o2.wall.start - o.wall.start).dot(dir.perp()).abs() < 0.05;
+        in_line
+            && [o2.wall.start, o2.wall.end]
+                .iter()
+                .any(|q2| q2.distance(p) < reach && (*q2 - p).dot(n).signum() != o_side)
+    })
+}
+
 /// The walls of the model that can join, with their cores.
 fn joinables(model: &Model) -> Vec<Joinable<'_>> {
     model
@@ -760,6 +788,25 @@ fn joins_among(walls: &[Joinable], rules: &[JoinRule]) -> HashMap<ElementId, Wal
                     };
                     let t_o = o.wall.thickness / 2.0;
                     let rule = rules.iter().find(|r| r.joins(me.id, o.id));
+                    // a wall in line with `o` carrying on past this end on
+                    // the other side: the two are one run this wall meets
+                    // at a T, so it stops at their face rather than mitre
+                    // against one of them (MU23: a slanted end, artifacts)
+                    let tee_run = rule.is_none() && continues_past(walls, me, o, p, d_in);
+                    if tee_run {
+                        let ext = butt(p, d_in, t, q, *d_out, t_o, false).map(|(l, r)| (l, r, 0.0));
+                        if let Some((left, right, core)) = ext {
+                            let (l, r) = if local_left > 0.0 { (left, right) } else { (right, left) };
+                            if at_end {
+                                ends.end = [l, r];
+                                ends.core[1] = core;
+                            } else {
+                                ends.start = [l, r];
+                                ends.core[0] = core;
+                            }
+                        }
+                        continue;
+                    }
                     match rule.map(|r| (r.cleanup, r.wins(me.id, o.id), r.corner)) {
                         // not joined: a square end, the two overlapping
                         Some((false, _, _)) => None,

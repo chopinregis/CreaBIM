@@ -251,6 +251,7 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             let max = (w.length() - o.width).max(0.0);
             o.offset = (o.offset + d.truncate().dot(w.direction())).clamp(0.0, max);
             o.sill = (o.sill + d.z).max(0.0);
+            crate::walls::clamp_opening(model, o);
         }
         ElementKind::FreeMesh(m) => {
             let z = DVec3::Z * elevation(m.level);
@@ -952,7 +953,11 @@ mod tests {
         let ElementKind::Opening(o) = transformed(&m, m.get(id).unwrap(), &t).unwrap().kind else {
             panic!()
         };
-        assert!((o.offset + o.width - wall_len).abs() < 1e-9);
+        // it stops at the end of the wall's clear stretch: at the wall
+        // joined at its corner, not inside it (MU23)
+        let (_, hi) = crate::walls::clear_span(&m, o.host);
+        assert!(hi <= wall_len + 1e-9);
+        assert!((o.offset + o.width - hi).abs() < 1e-9, "{} {} {hi}", o.offset, o.width);
         let turn = Xform::Rotate {
             center: DVec2::ZERO,
             degrees: 10.0,

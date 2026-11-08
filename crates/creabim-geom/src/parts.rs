@@ -571,8 +571,30 @@ pub fn scene_items(model: &Model, e: &Element) -> Vec<SceneItem> {
 pub fn plan_items(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
     let z = |l: ElementId| members::elevation(model, l) + cut;
     match &e.kind {
-        // voids show through what they cut
-        ElementKind::Part(p) if p.void => vec![],
+        // a void: what it cuts shows the cut; the void itself is its
+        // footprint, dashed, so it can be seen and picked (MU23)
+        ElementKind::Part(p) if p.void => {
+            let Some(mesh) = part_mesh(model, p) else {
+                return vec![];
+            };
+            let item = SceneItem {
+                id: e.id,
+                mesh,
+                color: VOID_COLOR,
+                surface: PLAIN_SURFACE,
+                ghost: true,
+                layer: None,
+                finish: None,
+            };
+            let mut out = vec![];
+            let crease = if matches!(p.form, creabim_core::parts::Form::Sweep { .. }) {
+                0.906
+            } else {
+                0.995
+            };
+            overhead_outline_creased(&item, &mut out, crease);
+            out
+        }
         ElementKind::Part(p) => {
             let Some(mesh) = part_mesh(model, p) else {
                 return vec![];
@@ -588,11 +610,19 @@ pub fn plan_items(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
             };
             let mut out = vec![];
             let cut_z = z(p.level);
+            // a sweep's seams along a curve are smooth, not edges (MU23)
+            let crease = if matches!(p.form, creabim_core::parts::Form::Sweep { .. }) {
+                0.906
+            } else {
+                0.995
+            };
             match item.mesh.bounds() {
                 // wholly above the cut, like a coping on a low wall: its
                 // outline dashed, as overhead
-                Some((lo, _)) if lo.z as f64 > cut_z + 1e-6 => overhead_outline(&item, &mut out),
-                _ => crate::plan::sliced_plan(model, &item, cut_z, &mut out),
+                Some((lo, _)) if lo.z as f64 > cut_z + 1e-6 => {
+                    overhead_outline_creased(&item, &mut out, crease)
+                }
+                _ => crate::plan::sliced_plan_creased(model, &item, cut_z, &mut out, crease),
             }
             out
         }
@@ -603,10 +633,10 @@ pub fn plan_items(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
 
 /// A part's edges seen from below, flattened and dashed: how something
 /// above the plan cut is drawn.
-fn overhead_outline(item: &SceneItem, out: &mut Vec<PlanItem>) {
+fn overhead_outline_creased(item: &SceneItem, out: &mut Vec<PlanItem>, crease: f32) {
     let key = |p: DVec2| ((p.x * 1e3).round() as i64, (p.y * 1e3).round() as i64);
     let mut seen = std::collections::HashSet::new();
-    for (a, b) in crate::section::feature_edges(item) {
+    for (a, b) in crate::section::feature_edges_over(item, crease) {
         let (a, b) = (a.truncate(), b.truncate());
         if a.distance(b) < 1e-4 {
             continue;
@@ -1226,5 +1256,80 @@ mod tests {
             let (_, hi) = mesh_of(&m, &p).unwrap().0.bounds().unwrap();
             assert!(hi.z > 1.0 && hi.z < 6.5, "{form:?} {hi}");
         }
+    }
+}
+
+#[cfg(test)]
+mod plan_look_tests {
+    use super::*;
+    use creabim_core::parts::Path;
+
+    fn level_model() -> (Model, ElementId) {
+        let level = Element::new(
+            "L",
+            ElementKind::Level(creabim_core::Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let id = level.id;
+        (Model::from_elements(vec![level]).unwrap(), id)
+    }
+
+    /// A step 900 wide and 510 high, swept round a tight curve.
+    fn curved_step(level: ElementId, void: bool) -> Element {
+        let points: Vec<DVec3> = (0..=24)
+            .map(|i| {
+                let a = PI * i as f64 / 24.0;
+                DVec3::new(2.0 * a.cos(), 2.0 * a.sin(), 0.0)
+            })
+            .collect();
+        let profile = vec![
+            DVec2::new(-0.45, 0.0),
+            DVec2::new(0.45, 0.0),
+            DVec2::new(0.45, 0.51),
+            DVec2::new(-0.45, 0.51),
+        ];
+        Element::new(
+            "Steps",
+            ElementKind::Part(Part {
+                level,
+                form: Form::Sweep {
+                    profile,
+                    path: Path::Points {
+                        points,
+                        closed: false,
+                        normal: None,
+                    },
+                },
+                void,
+                material: None,
+                ifc_class: creabim_core::parts::PROXY.into(),
+            }),
+        )
+    }
+
+    #[test]
+    fn a_curved_sweep_draws_no_ribs_and_a_void_draws_dashed() {
+        // MU23: the seams between a curved sweep's segments drew as short
+        // ribs; a void drew nothing at all in plan
+        let (m, level) = level_model();
+        let step = curved_step(level, false);
+        let items = plan_items(&m, &step, 1.2);
+        let ribs = items
+            .iter()
+            // across the step, away from its two ends (whose end faces are
+            // real edges, at y = 0)
+            .filter(|i| matches!(i, PlanItem::Line { a, b, .. }
+                if (a.length() - b.length()).abs() > 0.5 && (a.y + b.y) / 2.0 > 0.1))
+            .count();
+        assert_eq!(ribs, 0, "lines across the step, from its inner edge to its outer one");
+        assert!(!items.is_empty(), "its edges are drawn");
+        let void = curved_step(level, true);
+        let items = plan_items(&m, &void, 1.2);
+        assert!(!items.is_empty(), "a void shows in plan");
+        assert!(items
+            .iter()
+            .all(|i| matches!(i, PlanItem::Line { pen: Pen::Hidden, .. })));
     }
 }

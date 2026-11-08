@@ -5770,6 +5770,8 @@ fn place_opening(
             return Ok(());
         }
         o.offset = (u - o.width / 2.0).clamp(0.0, len - o.width);
+        // clear of a corner (MU23)
+        creabim_core::walls::clamp_opening(doc.model(), o);
     }
     selection.only(e.id);
     doc.commit(Transaction::new(format!("Place {}", name.to_lowercase())).insert(e))

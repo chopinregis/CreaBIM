@@ -1061,6 +1061,13 @@ fn crop_along(a: DVec3, b: DVec3, lo: f64, hi: f64) -> Option<(DVec3, DVec3)> {
 /// Edges where the surface creases, plus open boundaries. Coplanar
 /// triangulation edges inside a flat face are skipped.
 pub fn feature_edges(item: &SceneItem) -> Vec<(DVec3, DVec3)> {
+    feature_edges_over(item, 0.995)
+}
+
+/// [`feature_edges`] with its own crease: faces meeting at more than
+/// `acos(cos)` keep their edge. A sweep along a curve uses a wider one
+/// (25°), so the seams between its segments don't draw as ribs (MU23).
+pub fn feature_edges_over(item: &SceneItem, cos: f32) -> Vec<(DVec3, DVec3)> {
     let key = |p: [f32; 3]| {
         let q = |v: f32| (v as f64 * 1e4).round() as i64;
         (q(p[0]), q(p[1]), q(p[2]))
@@ -1090,7 +1097,7 @@ pub fn feature_edges(item: &SceneItem) -> Vec<(DVec3, DVec3)> {
     let mut out: Vec<(DVec3, DVec3)> = edges
         .into_values()
         .filter(|(_, _, ns)| {
-            ns.len() == 1 || ns.iter().any(|a| ns.iter().any(|b| a.dot(*b) < 0.995))
+            ns.len() == 1 || ns.iter().any(|a| ns.iter().any(|b| a.dot(*b) < cos))
         })
         .map(|(a, b, _)| (a, b))
         .collect();

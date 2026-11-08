@@ -1434,10 +1434,17 @@ pub fn apply(
                 return Err("its wall is gone".into());
             };
             let along = round(d.truncate().dot(w.direction()), step);
-            if right {
-                o.width = (o.width + along).min(w.length() - o.offset);
+            // a jamb stops at a wall joined at the corner (MU23)
+            let (lo, hi) = creabim_core::walls::clear_span(model, o.host);
+            let (lo, hi) = if o.offset >= lo - 1e-9 && o.offset + o.width <= hi + 1e-9 {
+                (lo, hi)
             } else {
-                let along = along.max(-o.offset);
+                (0.0, w.length())
+            };
+            if right {
+                o.width = (o.width + along).min(hi - o.offset);
+            } else {
+                let along = along.max(lo - o.offset);
                 o.offset += along;
                 o.width -= along;
             }
@@ -1542,6 +1549,7 @@ pub fn apply(
             };
             let along = round(d.truncate().dot(w.direction()), step);
             o.offset = (o.offset + along).clamp(0.0, (w.length() - o.width).max(0.0));
+            creabim_core::walls::clamp_opening(model, o);
         }
         (ElementKind::Beam(b), HandleKind::BeamWidth) => {
             let n = (b.end - b.start).normalize_or_zero().perp();

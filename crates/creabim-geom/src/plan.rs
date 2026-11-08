@@ -2020,6 +2020,18 @@ pub(crate) fn sliced_plan(
     z: f64,
     items: &mut Vec<PlanItem>,
 ) {
+    sliced_plan_creased(model, item, z, items, 0.995);
+}
+
+/// [`sliced_plan`] with its own crease for the edges seen below the cut
+/// (see [`crate::section::feature_edges_over`]).
+pub(crate) fn sliced_plan_creased(
+    model: &Model,
+    item: &crate::scene::SceneItem,
+    z: f64,
+    items: &mut Vec<PlanItem>,
+    crease: f32,
+) {
     let mut cut: Vec<(DVec2, DVec2)> = Vec::new();
     for lp in crate::slice::slice(&item.mesh, z) {
         let n = lp.len();
@@ -2044,7 +2056,7 @@ pub(crate) fn sliced_plan(
             hatch,
         });
     }
-    for (a, b) in crate::section::feature_edges(item) {
+    for (a, b) in crate::section::feature_edges_over(item, crease) {
         let (a, b) = if a.z <= b.z { (a, b) } else { (b, a) };
         if a.z >= z - 1e-6 {
             continue;
