@@ -315,6 +315,20 @@ impl CreaBimApp {
             c.frame_hidden = !shown;
             label = Some("Show or hide crop box");
         }
+        crate::props::row(ui, "Outside", |ui| {
+            egui::ComboBox::from_id_salt(("crop.outside", id))
+                .selected_text(c.outside.label())
+                .show_ui(ui, |ui| {
+                    for o in cropbox::Outside::ALL {
+                        if ui.selectable_label(c.outside == o, o.label()).clicked() && c.outside != o {
+                            c.outside = o;
+                            label = Some("What shows outside the crop box");
+                        }
+                    }
+                })
+                .response
+                .on_hover_text("What shows of what the box crops away whole: nothing, a ghost of what is selected, or a ghost of all of it")
+        });
         ui.add_space(4.0);
         ui.label("What it crops");
         let only = matches!(c.scope, CropScope::Only(_));
@@ -596,7 +610,18 @@ impl CreaBimApp {
             return vec![];
         }
         let mut out = vec![];
-        for id in self.selection.all() {
+        // a box that always ghosts takes in everything; the others only
+        // the selection, unless they hide it (MU26)
+        let always = boxes
+            .iter()
+            .any(|(_, c)| c.enabled && c.outside == cropbox::Outside::AlwaysGhost);
+        let ids: Vec<ElementId> = if always {
+            model.iter().map(|e| e.id).collect()
+        } else {
+            self.selection.all()
+        };
+        for id in ids {
+            let selected = self.selection.contains(id);
             let Some(e) = model.get(id) else { continue };
             if matches!(e.kind, ElementKind::CropBox(_) | ElementKind::View(_)) {
                 continue;
@@ -608,10 +633,16 @@ impl CreaBimApp {
                 ElementKind::Opening(o) => Some(o.host),
                 _ => None,
             };
-            if let Some((b, _)) = boxes
-                .iter()
-                .find(|(_, c)| c.enabled && c.crops(id, host) && c.misses(lo, hi))
-            {
+            if let Some((b, _)) = boxes.iter().find(|(_, c)| {
+                c.enabled
+                    && c.crops(id, host)
+                    && c.misses(lo, hi)
+                    && match c.outside {
+                        cropbox::Outside::Hidden => false,
+                        cropbox::Outside::GhostSelected => selected,
+                        cropbox::Outside::AlwaysGhost => true,
+                    }
+            }) {
                 out.push((id, (lo, hi), b.id));
             }
         }
@@ -661,10 +692,23 @@ impl CreaBimApp {
         rect: egui::Rect,
         outside: &[(ElementId, (DVec3, DVec3), ElementId)],
     ) {
-        let Some((_, _, b)) = outside.first() else {
+        let picked: Vec<(ElementId, (DVec3, DVec3), ElementId)> =
+            outside.iter().filter(|o| self.selection.contains(o.0)).copied().collect();
+        let outside = &picked[..];
+        let Some((first, _, b)) = outside.first() else {
+            self.outside_said = None;
             return;
         };
         let b = *b;
+        // said once in the status bar too, as a new element lands outside
+        if self.outside_said != Some(*first) {
+            self.outside_said = Some(*first);
+            let name = self.doc.model().get(*first).map_or("It".into(), |e| e.name.clone());
+            let bx = self.doc.model().get(b).map_or("the crop box".into(), |e| e.name.clone());
+            self.status = format!(
+                "{name} is outside {bx}, so the 3D view crops it away: extend the box, show it anyway or turn the crop off (the chip at the top)."
+            );
+        }
         let name = self
             .doc
             .model()

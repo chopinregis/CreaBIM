@@ -25,6 +25,34 @@ pub enum CropScope {
     Only(Vec<ElementId>),
 }
 
+/// What a crop box shows of what lies wholly outside it (A5-4).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Outside {
+    /// Nothing.
+    Hidden,
+    /// A ghost of what is selected, so nothing vanishes without a word.
+    #[default]
+    GhostSelected,
+    /// A ghost of everything it takes away.
+    AlwaysGhost,
+}
+
+impl Outside {
+    pub const ALL: [Outside; 3] = [Outside::Hidden, Outside::GhostSelected, Outside::AlwaysGhost];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Outside::Hidden => "Hidden",
+            Outside::GhostSelected => "Ghost when selected",
+            Outside::AlwaysGhost => "Always ghost",
+        }
+    }
+
+    fn is_default(&self) -> bool {
+        *self == Outside::default()
+    }
+}
+
 /// An axis-aligned box, in model metres, that crops a 3D view.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CropBox {
@@ -46,6 +74,9 @@ pub struct CropBox {
     /// it anyway" on something outside the box (A5-4).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub except: Vec<ElementId>,
+    /// What shows of what lies outside it.
+    #[serde(default, skip_serializing_if = "Outside::is_default")]
+    pub outside: Outside,
 }
 
 fn yes() -> bool {
@@ -73,6 +104,7 @@ impl CropBox {
             enabled: true,
             frame_hidden: false,
             except: vec![],
+            outside: Outside::GhostSelected,
         }
     }
 

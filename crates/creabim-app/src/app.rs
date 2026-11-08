@@ -234,6 +234,8 @@ pub struct CreaBimApp {
     last_export_dir: Option<std::path::PathBuf>,
     /// The crop box whose elements clicks in the 3D view are picking.
     crop_pick: Option<ElementId>,
+    /// The element outside a crop box the status bar last spoke of.
+    outside_said: Option<ElementId>,
     /// The Settings window is open.
     settings_open: bool,
     /// The Project information window (A7-5).
@@ -369,6 +371,7 @@ impl CreaBimApp {
             boxed: None,
             last_export_dir: None,
             crop_pick: None,
+            outside_said: None,
             status: "Loaded the sample house. Orbit with the middle button (or Alt + left drag), pan with right drag, zoom with the wheel; a left drag selects with a box.".into(),
         }
     }
