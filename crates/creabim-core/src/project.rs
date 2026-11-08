@@ -33,6 +33,10 @@ pub struct ProjectInfo {
     pub building_name: String,
     /// "Dwelling", "Office", "School".
     pub building_use: String,
+    /// The project's notepad (MU26): notes and to-dos, markdown, kept with
+    /// the project and never printed.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 impl ProjectInfo {

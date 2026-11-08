@@ -745,7 +745,7 @@ pub fn note_item(
                 leader,
                 elbow: leader.and(n.elbow),
             },
-            text: n.text.clone(),
+            text: crate::annotation::lay_out_note(&n.text, &look, n.width, n.markdown),
             look,
             mm,
         }),

@@ -238,6 +238,8 @@ pub struct CreaBimApp {
     settings_open: bool,
     /// The Project information window (A7-5).
     project_open: bool,
+    /// A note open in its own big editor window (MU26).
+    note_editor: Option<ElementId>,
     /// The project information being edited, until Apply.
     project_draft: Option<creabim_core::ProjectInfo>,
     /// Export > IFC: the window asking how walls and slabs go out (MU20).
@@ -350,6 +352,7 @@ impl CreaBimApp {
             levels: Default::default(),
             settings_open: false,
             project_open: false,
+            note_editor: None,
             project_draft: None,
             ifc_dialog: false,
             new_project_classic: false,
@@ -3531,6 +3534,135 @@ fn rest_points(
 }
 
 impl CreaBimApp {
+    /// The project's notepad (MU26): its to-dos as ticks, its notes as
+    /// text, a line to add a to-do, and the whole as markdown to edit.
+    fn notes_pad(&mut self, ui: &mut egui::Ui) {
+        let mut info = self.doc.model().project_info().map(|(_, p)| p.clone()).unwrap_or_default();
+        let before = info.notes.clone();
+        crate::props::section(ui, "Notes and to-dos");
+        let lines: Vec<String> = info.notes.lines().map(str::to_string).collect();
+        let (mut done, mut open) = (0, 0);
+        let mut out: Vec<String> = Vec::with_capacity(lines.len());
+        for l in &lines {
+            let t = l.trim_start();
+            let todo = t.strip_prefix("- [ ] ").map(|r| (false, r)).or_else(|| {
+                t.strip_prefix("- [x] ").or(t.strip_prefix("- [X] ")).map(|r| (true, r))
+            });
+            match todo {
+                Some((mut on, rest)) => {
+                    if on { done += 1 } else { open += 1 }
+                    let text = if on {
+                        egui::RichText::new(rest).strikethrough().weak()
+                    } else {
+                        egui::RichText::new(rest)
+                    };
+                    if ui.checkbox(&mut on, text).changed() {
+                        out.push(format!("- [{}] {rest}", if on { "x" } else { " " }));
+                        continue;
+                    }
+                }
+                None if t.starts_with('#') => {
+                    ui.label(egui::RichText::new(t.trim_start_matches('#').trim()).strong());
+                }
+                None if t.is_empty() => {
+                    ui.add_space(4.0);
+                }
+                None => {
+                    ui.label(t);
+                }
+            }
+            out.push(l.clone());
+        }
+        if lines.is_empty() {
+            ui.label(egui::RichText::new("Nothing yet. Add a to-do below, or write notes as text.").weak());
+        } else if done + open > 0 {
+            ui.label(egui::RichText::new(format!("{done} of {} done", done + open)).weak());
+        }
+        info.notes = out.join("\n");
+        // a new to-do
+        let key = egui::Id::new("notes.new");
+        let mut new: String = ui.ctx().data(|d| d.get_temp(key)).unwrap_or_default();
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut new)
+                .vertical_align(egui::Align::Center)
+                .hint_text("Add a to-do, Enter")
+                .desired_width(f32::INFINITY),
+        );
+        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !new.trim().is_empty() {
+            if !info.notes.is_empty() {
+                info.notes.push('\n');
+            }
+            info.notes.push_str(&format!("- [ ] {}", new.trim()));
+            new.clear();
+            r.request_focus();
+        }
+        ui.ctx().data_mut(|d| d.insert_temp(key, new));
+        if crate::props::subsection(ui, "notes.text", "Edit as text (markdown)", false) {
+            ui.add(
+                egui::TextEdit::multiline(&mut info.notes)
+                    .desired_rows(10)
+                    .desired_width(f32::INFINITY)
+                    .font(egui::TextStyle::Monospace),
+            );
+            ui.label(egui::RichText::new("- [ ] a to-do, - [x] done, # a heading. Kept with the project, never printed.").weak());
+        }
+        if info.notes != before {
+            let tx = creabim_core::set_project(self.doc.model(), info);
+            let r = self.doc.commit_merged(tx);
+            if let Err(e) = r {
+                self.status = format!("Couldn't do that: {e}");
+            }
+        }
+    }
+
+    /// A note's text in a window of its own, large, for long text and
+    /// markdown (MU26). Changes go in as typed, one undo step a pause.
+    fn note_editor_window(&mut self, ctx: &egui::Context) {
+        let Some(id) = self.note_editor else { return };
+        let Some(ElementKind::Note(n)) = self.doc.model().get(id).map(|e| e.kind.clone()) else {
+            self.note_editor = None;
+            return;
+        };
+        let mut n = n;
+        let mut open = true;
+        let mut changed = false;
+        egui::Window::new("Note text")
+            .id(egui::Id::new(("note-editor", id)))
+            .open(&mut open)
+            .default_size([520.0, 420.0])
+            .resizable(true)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    changed |= ui.checkbox(&mut n.markdown, "Markdown").changed();
+                    ui.label(
+                        egui::RichText::new("# heading  - bullet  1. numbered  - [ ] to do").weak(),
+                    );
+                });
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    changed |= ui
+                        .add(
+                            egui::TextEdit::multiline(&mut n.text)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(18)
+                                .font(egui::TextStyle::Monospace),
+                        )
+                        .changed();
+                });
+            });
+        if changed {
+            let r = self
+                .doc
+                .edit_merged(id, "Note text", |e| e.kind = ElementKind::Note(n.clone()));
+            if let Err(e) = r {
+                self.status = format!("Couldn't do that: {e}");
+            }
+        }
+        if !open {
+            self.note_editor = None;
+        }
+    }
+
     /// Drawing a slab, or redrawing a slab or wall, in the 3D view, on its
     /// level, with snaps.
     fn outline_3d(
@@ -5732,6 +5864,10 @@ impl CreaBimApp {
                 self.project_props(ui);
                 return;
             }
+            if tab == PropTab::Notes {
+                self.notes_pad(ui);
+                return;
+            }
             if tab == PropTab::Model3d {
                 self.visibility_panel(ui, gridvis::VisTarget::Window3d, Some("3D view"));
                 self.crop_list(ui, self.crop_owner());
@@ -5827,6 +5963,10 @@ impl CreaBimApp {
         }
         if tab == PropTab::Project {
             self.project_props(ui);
+            return;
+        }
+        if tab == PropTab::Notes {
+            self.notes_pad(ui);
             return;
         }
         if tab == PropTab::Data {
@@ -6619,6 +6759,13 @@ impl CreaBimApp {
                         crate::annotate::LookEdit::NewStyle => new_style = true,
                         crate::annotate::LookEdit::None => {}
                     }
+                    if ui
+                        .button("Edit in a window\u{2026}")
+                        .on_hover_text("A bigger editor for long text, beside the drawing")
+                        .clicked()
+                    {
+                        self.note_editor = Some(id);
+                    }
                     // where it sits, typed (MU26): mm on a sheet, lengths
                     // in a view
                     let on_sheet = self.is_sheet(n.view);
@@ -7396,6 +7543,7 @@ impl CreaBimApp {
             out.push(PropTab::Model3d);
         }
         out.push(PropTab::Project);
+        out.push(PropTab::Notes);
         out
     }
 
@@ -7730,6 +7878,8 @@ pub(crate) enum PropTab {
     Model3d,
     /// The project: information, levels, materials.
     Project,
+    /// The project's notepad: notes and to-dos (MU26).
+    Notes,
 }
 
 impl PropTab {
@@ -7743,7 +7893,7 @@ impl PropTab {
             | PropTab::Graphics
             | PropTab::Data => 0,
             PropTab::View | PropTab::Trace | PropTab::Model3d => 1,
-            PropTab::Project => 2,
+            PropTab::Project | PropTab::Notes => 2,
         }
     }
 
@@ -7758,6 +7908,7 @@ impl PropTab {
             PropTab::Trace => "Trace and reference",
             PropTab::Model3d => "3D view",
             PropTab::Project => "Project",
+            PropTab::Notes => "Notes and to-dos",
         }
     }
 
@@ -7772,6 +7923,7 @@ impl PropTab {
             PropTab::Trace => "underlay",
             PropTab::Model3d => "cuboid",
             PropTab::Project => "house",
+            PropTab::Notes => "sticky-note",
         }
     }
 }
@@ -8094,6 +8246,7 @@ impl eframe::App for CreaBimApp {
             self.geometry_key = None;
         }
         self.project_window(&ctx);
+        self.note_editor_window(&ctx);
         self.ifc_export_window(&ctx);
         self.reference_steps();
         self.calibrate_window(&ctx);

@@ -454,6 +454,13 @@ pub struct Note {
     /// the style says otherwise).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader_end: Option<Terminator>,
+    /// A text box (MU26): lines wrap to this width, paper mm; none, each
+    /// line runs as long as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    /// Read the text as markdown: headings, bullets, numbers, checkboxes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub markdown: bool,
 }
 
 impl Note {
@@ -467,6 +474,8 @@ impl Note {
             color: None,
             elbow: None,
             leader_end: None,
+            width: None,
+            markdown: false,
         }
     }
 

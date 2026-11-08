@@ -1565,6 +1565,31 @@ pub fn note_ui(
     if r.changed() {
         label = Some("Note text");
     }
+    // a text box (MU26): wraps to a width, reads markdown
+    let mut boxed = n.width.is_some();
+    crate::props::row(ui, "Box", |ui| {
+        ui.horizontal(|ui| {
+            if ui
+                .checkbox(&mut boxed, "Wrap at")
+                .on_hover_text("Lines wrap to this width on paper; off, each line runs as long as it is")
+                .changed()
+            {
+                n.width = boxed.then_some(60.0);
+                label = Some("Note box");
+            }
+            if let Some(w) = &mut n.width {
+                if ui.add(egui::DragValue::new(w).speed(0.5).range(5.0..=800.0).suffix(" mm")).changed() {
+                    label = Some("Note box");
+                }
+            }
+        });
+    });
+    if crate::props::switch(ui, &mut n.markdown, "Markdown")
+        .on_hover_text("# heading (capitals, underlined), - bullet, 1. numbered, - [ ] and - [x] checkboxes; **bold** and *italic* marks are dropped on paper")
+        .changed()
+    {
+        label = Some("Note markdown");
+    }
     let mut leader = n.leader.is_some();
     if crate::props::switch(ui, &mut leader, "Leader")
         .on_hover_text("An arrow from the note to what it is about. Drag its square to move it.")
