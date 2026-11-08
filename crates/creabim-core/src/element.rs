@@ -1614,6 +1614,10 @@ pub struct View {
     /// that view inside the callout's box, at its own scale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callout: Option<Callout>,
+    /// Draw room tags in this view: unset, on except in detail and callout
+    /// views, where a tag at 1:10 is a scribble (A5-7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room_tags: Option<bool>,
     /// How a section or elevation shows each level's head: turned off, or
     /// dragged away from where it would sit. Levels not listed show their
     /// heads where the automatic layout puts them.
@@ -1853,6 +1857,7 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            room_tags: None,
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1877,6 +1882,7 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            room_tags: None,
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1898,6 +1904,7 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            room_tags: None,
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1920,6 +1927,7 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            room_tags: None,
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1927,6 +1935,12 @@ impl View {
 
     /// A detail view of the box `a`..`b` on `parent` (a plan or a
     /// section), at `scale`: a copy of the parent's view, cropped.
+    /// Whether room tags draw here (A5-7): off by default in a detail or
+    /// callout view, else on.
+    pub fn shows_room_tags(&self) -> bool {
+        self.room_tags.unwrap_or(self.callout.is_none())
+    }
+
     pub fn callout(parent_id: ElementId, parent: &View, a: DVec2, b: DVec2, scale: f64) -> Self {
         Self {
             kind: parent.kind.clone(),
@@ -1941,6 +1955,7 @@ impl View {
             ceiling_plan: parent.ceiling_plan,
             graphics: parent.graphics.clone(),
             callout: Some(Callout::new(parent_id, a, b)),
+            room_tags: None,
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -2137,6 +2152,17 @@ mod tests {
         let o: Opening = serde_json::from_str(&partial).unwrap();
         assert_eq!(o.frame.width, 0.08);
         assert_eq!(o.frame.depth, OpeningFrame::default().depth);
+    }
+
+    #[test]
+    fn room_tags_are_off_by_default_only_in_callouts() {
+        let plan = View::schedule(ScheduleCategory::ALL[0]);
+        assert!(plan.shows_room_tags());
+        let mut detail = plan.clone();
+        detail.callout = Some(Callout::new(ElementId::new(), DVec2::ZERO, DVec2::ONE));
+        assert!(!detail.shows_room_tags());
+        detail.room_tags = Some(true);
+        assert!(detail.shows_room_tags());
     }
 
     #[test]

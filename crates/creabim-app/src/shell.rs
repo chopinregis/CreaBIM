@@ -1552,6 +1552,12 @@ impl CreaBimApp {
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
+            "view.zoomscale" => {
+                if let Some(v) = self.active_view {
+                    self.plan.zoom_to_scale = Some(v);
+                    self.status = "At the drawing's scale: 1 mm on paper is 1 mm on screen.".into();
+                }
+            }
             "nav.orbitsel" => self.orbit_selection = !self.orbit_selection,
             "nav.ortho" => self.camera.ortho = !self.camera.ortho,
             "nav.zoomin" => self.camera.zoom(2.0),
@@ -1576,7 +1582,7 @@ impl CreaBimApp {
                 }
             }
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
-            | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms"
+            | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
             | "view.tempdims" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
@@ -2028,6 +2034,17 @@ impl CreaBimApp {
                     .doc
                     .edit_merged(id, "Change view", |e| e.kind = ElementKind::View(v.clone()));
                 self.report(r, "View changed.");
+            }
+            "view.roomtags" => {
+                let Some(mut v) = self.view(id).cloned() else {
+                    return;
+                };
+                let on = !v.shows_room_tags();
+                v.room_tags = Some(on);
+                let r = self
+                    .doc
+                    .edit_merged(id, "Change view", |e| e.kind = ElementKind::View(v.clone()));
+                self.report(r, if on { "Room tags shown in this view." } else { "Room tags hidden in this view." });
             }
             "view.tagrooms" => {
                 self.status = match crate::roomtool::tag_rooms(&mut self.doc, id) {
@@ -2575,6 +2592,11 @@ impl CreaBimApp {
                 options.push(json!({
                     "kind": "button", "id": "view.tagrooms", "label": "Tag rooms", "icon": "room",
                     "hint": "Tag every room on this plan that has no tag here yet",
+                }));
+                options.push(json!({
+                    "kind": "toggle", "id": "view.roomtags", "label": "Show room tags",
+                    "on": shown.as_ref().is_some_and(|v| v.shows_room_tags()), "icon": "tag",
+                    "hint": "Draw this view's room tags. Off by default in detail and callout views, where they come out tiny",
                 }));
                 options.push(json!({
                     "kind": "toggle", "id": "view.ceiling", "label": "Ceiling plan",

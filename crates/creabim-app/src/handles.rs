@@ -804,7 +804,10 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             };
             let z0 = elevation(model, Some(w.level)) + w.base_offset;
             let u = w.direction();
-            let face = w.start + w.direction().perp() * (w.thickness / 2.0 + 0.01);
+            // on the jambs, at the middle of the wall's depth, so they read
+            // as part of the opening at every scale (A5-5); not on a face,
+            // where at 1:10 they floated beside it
+            let face = w.start;
             let at = |along: f64, up: f64| (face + u * along).extend(z0 + up);
             let mid = o.offset + o.width / 2.0;
             let mut out = vec![

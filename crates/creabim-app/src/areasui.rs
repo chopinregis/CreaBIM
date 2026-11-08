@@ -829,6 +829,13 @@ impl CreaBimApp {
                         _ => {}
                     }
                 }
+                if self.active_view.is_some_and(|v| !self.is_sheet(v)) && self.rect_2d.is_some() {
+                    items.push(
+                        Item::new("view.zoomscale", "Zoom to scale")
+                            .icon(crate::svgicon::named("ruler"))
+                            .hint("Show the drawing at its scale: 1 mm on paper is 1 mm on screen"),
+                    );
+                }
                 if !items.is_empty() {
                     items.push(Item::Separator);
                 }

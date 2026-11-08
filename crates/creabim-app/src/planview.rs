@@ -314,6 +314,9 @@ enum Handle {
 pub struct PlanState {
     /// Pan and zoom per view: centre in drawing units, pixels per metre.
     pub cameras: HashMap<ElementId, (DVec2, f32)>,
+    /// A view to show at its drawing scale on the next frame: 1 paper mm
+    /// on 1 screen mm (A5-7, the view's More menu).
+    pub zoom_to_scale: Option<ElementId>,
     /// A second area showing the same view pans and zooms on its own
     /// (A4-4): the area being drawn when it does, and those cameras.
     pub area: Option<usize>,
@@ -536,6 +539,7 @@ impl Default for PlanState {
     fn default() -> Self {
         Self {
             cameras: HashMap::new(),
+            zoom_to_scale: None,
             area: None,
             area_cameras: HashMap::new(),
             linked_areas: Default::default(),
@@ -763,6 +767,13 @@ pub fn show(
             }
         }
     };
+    if style.camera.is_none() && state.zoom_to_scale == Some(view) {
+        state.zoom_to_scale = None;
+        if let Some(ElementKind::View(v)) = doc.model().get(view).map(|e| &e.kind) {
+            // a metre is 1000/scale paper mm; a screen mm is 96/25.4 points
+            scale = (1000.0 / v.scale.max(1.0) * 96.0 / 25.4) as f32;
+        }
+    }
     let tool = match (kind, state.tool) {
         (PaneKind::Axonometric, Tool::Tag) => Tool::Tag,
         (PaneKind::Axonometric, Tool::Note) => Tool::Note,

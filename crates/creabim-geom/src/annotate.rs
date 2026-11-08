@@ -846,6 +846,9 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     model.get(t.host).map(|h| &h.kind),
                     Some(ElementKind::Room(_))
                 ) {
+                    if !view.shows_room_tags() {
+                        continue;
+                    }
                     let outline = match model.get(t.host).map(|h| &h.kind) {
                         Some(ElementKind::Room(r)) => {
                             creabim_core::room::shape_of(model, r).map(|s| {
