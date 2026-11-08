@@ -2636,29 +2636,29 @@ impl CreaBimApp {
             // paper marks: what belongs to the sheet, not to a view (MU22)
             options.push(json!({"kind": "sep"}));
             options.push(json!({
-                "kind": "button", "id": "sheet.text", "icon": "text",
+                "kind": "button", "id": "sheet.text", "label": "Text", "icon": "text",
                 "hint": "Text on the sheet: click where it goes (N)",
             }));
             options.push(json!({
-                "kind": "button", "id": "sheet.north", "icon": "north-arrow",
+                "kind": "button", "id": "sheet.north", "label": "North arrow", "icon": "north-arrow",
                 "hint": "A north arrow, turned to the project's north; drag it where it goes",
             }));
             options.push(json!({
-                "kind": "button", "id": "sheet.scalebar", "icon": "scale-bar",
+                "kind": "button", "id": "sheet.scalebar", "label": "Scale bar", "icon": "scale-bar",
                 "hint": "A scale bar at the sheet's drawing scale; drag it where it goes",
             }));
             options.push(json!({
-                "kind": "button", "id": "sheet.cloud", "icon": "revision-cloud",
+                "kind": "button", "id": "sheet.cloud", "label": "Revision cloud", "icon": "revision-cloud",
                 "hint": "A revision cloud round a change, with the next revision letter",
             }));
             options.push(json!({
-                "kind": "button", "id": "sheet.revtable", "icon": "table-2",
+                "kind": "button", "id": "sheet.revtable", "label": "Revisions table", "icon": "table-2",
                 "hint": "The sheet's revisions table: a row for each revision cloud on it",
             }));
             // output
             options.push(json!({"kind": "sep"}));
             options.push(json!({
-                "kind": "button", "id": "sheet.pdf", "icon": "file-text",
+                "kind": "button", "id": "sheet.pdf", "label": "Sheet as PDF", "icon": "file-text",
                 "hint": "This sheet as a PDF (Ctrl+P); all or chosen sheets: File › Export › Sheets as PDF (Ctrl+Shift+P)",
             }));
             // the sheet as it prints, on white, while the paper is dark (MU21)
@@ -3503,7 +3503,7 @@ impl CreaBimApp {
             }
             ui.separator();
             ui.label("File:");
-            ui.add(egui::TextEdit::singleline(&mut self.path).desired_width(220.0));
+            ui.add(egui::TextEdit::singleline(&mut self.path).vertical_align(egui::Align::Center).desired_width(220.0));
         });
         if let Some(id) = picked {
             let ctx = ui.ctx().clone();

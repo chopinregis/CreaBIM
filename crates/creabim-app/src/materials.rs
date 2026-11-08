@@ -208,7 +208,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
 
             ui.label("Description");
             if ui
-                .add(egui::TextEdit::singleline(&mut m.description).desired_width(170.0))
+                .add(egui::TextEdit::singleline(&mut m.description).vertical_align(egui::Align::Center).desired_width(170.0))
                 .changed()
             {
                 label = "Material description";
@@ -571,7 +571,7 @@ impl CreaBimApp {
                     ui.selectable_value(&mut self.mat.tab, MatTab::Library, "Library");
                     ui.separator();
                     ui.add(
-                        egui::TextEdit::singleline(&mut self.mat.filter)
+                        egui::TextEdit::singleline(&mut self.mat.filter).vertical_align(egui::Align::Center)
                             .hint_text("Find")
                             .desired_width(140.0),
                     );
@@ -708,7 +708,7 @@ impl CreaBimApp {
                         let mut name = e.name.clone();
                         if ui
                             .add(
-                                egui::TextEdit::singleline(&mut name)
+                                egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center)
                                     .font(egui::TextStyle::Heading)
                                     .desired_width(240.0),
                             )

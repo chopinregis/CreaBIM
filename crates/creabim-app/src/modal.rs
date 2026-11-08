@@ -1563,7 +1563,7 @@ impl Modal {
                             Mode::Scale => "Factor",
                         });
                         ui.add(
-                            egui::TextEdit::singleline(&mut self.typed)
+                            egui::TextEdit::singleline(&mut self.typed).vertical_align(egui::Align::Center)
                                 .desired_width(60.0)
                                 .hint_text("type"),
                         );

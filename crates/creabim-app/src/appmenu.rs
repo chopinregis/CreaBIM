@@ -533,7 +533,7 @@ impl CreaBimApp {
                 let text = |ui: &mut egui::Ui, label: &str, v: &mut String, hint: &str| {
                     crate::props::row(ui, label, |ui| {
                         ui.add(
-                            egui::TextEdit::singleline(v)
+                            egui::TextEdit::singleline(v).vertical_align(egui::Align::Center)
                                 .hint_text(hint)
                                 .desired_width(ui.available_width()),
                         );

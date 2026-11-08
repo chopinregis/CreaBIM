@@ -294,7 +294,7 @@ pub fn show(
                     Some(Field::Name) => {
                         let mut name = e.name.clone();
                         if ui
-                            .put(inner, egui::TextEdit::singleline(&mut name))
+                            .put(inner, egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center))
                             .changed()
                         {
                             edit = Some((r.id, Box::new(move |e| e.name = name)));

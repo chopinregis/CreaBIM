@@ -650,7 +650,7 @@ impl CreaBimApp {
                     }
                 });
                 ui.add(
-                    egui::TextEdit::singleline(&mut cat.filter)
+                    egui::TextEdit::singleline(&mut cat.filter).vertical_align(egui::Align::Center)
                         .hint_text("Search")
                         .desired_width(220.0),
                 );
@@ -776,7 +776,7 @@ impl CreaBimApp {
                 });
                 ui.horizontal(|ui| {
                     ui.add(
-                        egui::TextEdit::singleline(&mut cat.save_name)
+                        egui::TextEdit::singleline(&mut cat.save_name).vertical_align(egui::Align::Center)
                             .hint_text("Name")
                             .desired_width(200.0),
                     );

@@ -118,7 +118,7 @@ impl CreaBimApp {
         let r = crate::props::row(ui, "Name", |ui| {
             crate::props::fill(
                 ui,
-                egui::TextEdit::singleline(draft).id_salt(("level-name", id)),
+                egui::TextEdit::singleline(draft).vertical_align(egui::Align::Center).id_salt(("level-name", id)),
             )
         });
         if r.lost_focus() && draft.trim() != name && !draft.trim().is_empty() {
@@ -291,7 +291,7 @@ impl CreaBimApp {
                 ui.end_row();
                 for (i, (id, name, l)) in list.iter().enumerate().rev() {
                     let draft = self.levels.names.entry(*id).or_insert_with(|| name.clone());
-                    let r = ui.add_sized([150.0, 20.0], egui::TextEdit::singleline(draft));
+                    let r = ui.add_sized([150.0, 20.0], egui::TextEdit::singleline(draft).vertical_align(egui::Align::Center));
                     if r.lost_focus() && draft.trim() != name && !draft.trim().is_empty() {
                         asks.push(Ask::Rename(*id, draft.trim().to_string()));
                     } else if !r.has_focus() && *draft != *name {

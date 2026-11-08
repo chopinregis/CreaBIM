@@ -4773,7 +4773,7 @@ impl CreaBimApp {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_width(240.0);
                     ui.label(egui::RichText::new("Add").strong());
-                    let r = ui.add(egui::TextEdit::singleline(&mut q).hint_text("Type to find a tool"));
+                    let r = ui.add(egui::TextEdit::singleline(&mut q).vertical_align(egui::Align::Center).hint_text("Type to find a tool"));
                     r.request_focus();
                     let want = q.to_lowercase();
                     let found: Vec<Tool> = Tool::ALL
@@ -7555,7 +7555,7 @@ fn paper_mark_fields(
             });
             let text = |ui: &mut egui::Ui, name: &str, v: &mut String| {
                 crate::props::row(ui, name, |ui| {
-                    crate::props::fill(ui, egui::TextEdit::singleline(v)).changed()
+                    crate::props::fill(ui, egui::TextEdit::singleline(v).vertical_align(egui::Align::Center)).changed()
                 })
             };
             if text(ui, "Revision", rev) | text(ui, "Date", date) | text(ui, "What changed", what) {

@@ -47,7 +47,7 @@ impl CreaBimApp {
         let changed = ui
             .add_sized(
                 [width, ui.spacing().interact_size.y],
-                egui::TextEdit::singleline(&mut text)
+                egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center)
                     .hint_text(hint)
                     .vertical_align(egui::Align::Center),
             )
@@ -98,7 +98,7 @@ impl CreaBimApp {
             _ => "None".into(),
         };
         let changed = crate::props::row(ui, "Mark", |ui| {
-            crate::props::fill(ui, egui::TextEdit::singleline(&mut text).hint_text(hint))
+            crate::props::fill(ui, egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center).hint_text(hint))
                 .on_hover_text(
                     "What its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering).",
                 )
@@ -337,8 +337,8 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
             for class in MarkClass::ALL {
                 let r = rules.rule_mut(class);
                 ui.checkbox(&mut r.auto, class.label());
-                ui.add(egui::TextEdit::singleline(&mut r.prefix).desired_width(44.0));
-                ui.add(egui::TextEdit::singleline(&mut r.separator).desired_width(24.0));
+                ui.add(egui::TextEdit::singleline(&mut r.prefix).vertical_align(egui::Align::Center).desired_width(44.0));
+                ui.add(egui::TextEdit::singleline(&mut r.separator).vertical_align(egui::Align::Center).desired_width(24.0));
                 ui.add(egui::DragValue::new(&mut r.padding).range(1..=6));
                 ui.checkbox(&mut r.by_level, "");
                 egui::ComboBox::from_id_salt(("mark_order", class))

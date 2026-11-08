@@ -377,7 +377,7 @@ impl CreaBimApp {
                                 let model = self.doc.model();
                                 let mut n = name.clone();
                                 if ui
-                                    .add(egui::TextEdit::singleline(&mut n).font(egui::TextStyle::Heading))
+                                    .add(egui::TextEdit::singleline(&mut n).vertical_align(egui::Align::Center).font(egui::TextStyle::Heading))
                                     .changed()
                                 {
                                     asks.push(TypeAsk::Rename(id, n));

@@ -757,7 +757,7 @@ impl CreaBimApp {
                         });
                     ui.label("Name");
                     if ui
-                        .add(egui::TextEdit::singleline(&mut pack.name).desired_width(140.0))
+                        .add(egui::TextEdit::singleline(&mut pack.name).vertical_align(egui::Align::Center).desired_width(140.0))
                         .changed()
                     {
                         label = "Rename style pack";
@@ -1155,7 +1155,7 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
                         .join(" ");
                     ui.label("Dashes");
                     if ui
-                        .add(egui::TextEdit::singleline(&mut dashes).desired_width(80.0))
+                        .add(egui::TextEdit::singleline(&mut dashes).vertical_align(egui::Align::Center).desired_width(80.0))
                         .on_hover_text("Dash, gap, dash, gap…, spaced; 0 is a dot. Empty is solid.")
                         .changed()
                     {

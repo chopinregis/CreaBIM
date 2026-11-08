@@ -584,7 +584,7 @@ impl CreaBimApp {
         ui.horizontal(|ui| {
             ui.label("From a path");
             ui.add(
-                egui::TextEdit::singleline(&mut self.drafting.path)
+                egui::TextEdit::singleline(&mut self.drafting.path).vertical_align(egui::Align::Center)
                     .hint_text(".dxf, .svg or another .creabim project")
                     .desired_width(360.0),
             );
@@ -669,9 +669,9 @@ impl CreaBimApp {
         let mut remove = None;
         for (i, (k, v)) in t.fields.iter_mut().enumerate() {
             ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(k).desired_width(110.0));
+                ui.add(egui::TextEdit::singleline(k).vertical_align(egui::Align::Center).desired_width(110.0));
                 if ui
-                    .add(egui::TextEdit::singleline(v).desired_width(200.0))
+                    .add(egui::TextEdit::singleline(v).vertical_align(egui::Align::Center).desired_width(200.0))
                     .changed()
                 {
                     label = Some("Field value");
@@ -708,7 +708,7 @@ impl CreaBimApp {
                     if let TitleItem::Text { text, size, .. } = item {
                         ui.horizontal(|ui| {
                             if ui
-                                .add(egui::TextEdit::singleline(text).desired_width(260.0))
+                                .add(egui::TextEdit::singleline(text).vertical_align(egui::Align::Center).desired_width(260.0))
                                 .changed()
                             {
                                 label = Some("Template text");
@@ -917,7 +917,7 @@ impl CreaBimApp {
                 let mut v = sh.fields.get(&k).cloned().unwrap_or_default();
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut v)
+                        egui::TextEdit::singleline(&mut v).vertical_align(egui::Align::Center)
                             .hint_text(default)
                             .desired_width(180.0),
                     )

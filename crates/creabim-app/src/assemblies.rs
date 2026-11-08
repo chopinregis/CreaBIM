@@ -643,7 +643,7 @@ impl CreaBimApp {
                 let mut name = e.name.clone();
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut name)
+                        egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center)
                             .font(egui::TextStyle::Heading)
                             .desired_width(320.0),
                     )
@@ -662,7 +662,7 @@ impl CreaBimApp {
                 let mut description = a.description.clone();
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut description)
+                        egui::TextEdit::singleline(&mut description).vertical_align(egui::Align::Center)
                             .hint_text("Description")
                             .desired_width(420.0),
                     )

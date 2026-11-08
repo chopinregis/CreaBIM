@@ -598,9 +598,19 @@ pub fn show(
         painter.rect_stroke(inner, 3.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Outside);
     }
 
-    // pre-selection: the view under the pointer, and the others under it
-    // where views overlap
+    // pre-selection: what is under the pointer, topmost first, and the
+    // others under it where things overlap (Tab cycles them): paper
+    // marks, notes, then views (MU25)
     let pane = Pane::Sheet(sheet_id);
+    let note_items = creabim_geom::annotate::sheet_notes(doc.model(), sheet_id);
+    let mark_boxes: Vec<(ElementId, (DVec2, DVec2))> = doc
+        .model()
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::PaperMark(m) if m.sheet == sheet_id => Some((e.id, m.bounds())),
+            _ => None,
+        })
+        .collect();
     if state.active.is_none() && !response.dragged() {
         let pointer = response
             .hover_pos()
@@ -614,12 +624,20 @@ pub fn show(
             doc.model(),
             |p| {
                 let p = xf.to_paper(p);
-                views
+                let mut out: Vec<ElementId> = mark_boxes
                     .iter()
                     .rev()
-                    .filter(|v| contains(v, p))
-                    .map(|v| v.viewport)
-                    .collect()
+                    .filter(|(_, (lo, hi))| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y)
+                    .map(|(id, _)| *id)
+                    .collect();
+                out.extend(note_items.iter().rev().filter_map(|it| match it {
+                    creabim_geom::PlanItem::Annotation { id, item } if item.hit(p, 6.0 / zoom as f64, 1.0) => {
+                        Some(*id)
+                    }
+                    _ => None,
+                }));
+                out.extend(views.iter().rev().filter(|v| contains(v, p)).map(|v| v.viewport));
+                out
             },
         );
         if said.is_some() {
@@ -627,6 +645,18 @@ pub fn show(
         }
     }
     let lit = hoverpick::highlighted(&plan.hover).filter(|id| !selection.contains(*id));
+    let hover_stroke = egui::Stroke::new(1.5, hoverpick::HOVER.gamma_multiply(0.7));
+    for it in &note_items {
+        if let creabim_geom::PlanItem::Annotation { id, item } = it {
+            if Some(*id) == lit {
+                let pxf = planview::Xf { rect, center, scale: zoom };
+                crate::annotate::paint_weighted(&painter, &pxf, item, hover_stroke.color, 1.0, planview::TRACE);
+            }
+        }
+    }
+    if let Some((_, (lo, hi))) = mark_boxes.iter().find(|(id, _)| Some(*id) == lit) {
+        painter.rect_stroke(xf.rect_of(*lo, *hi).expand(3.0), 2.0, hover_stroke, egui::StrokeKind::Outside);
+    }
     if let Some(v) = views.iter().find(|v| Some(v.viewport) == lit) {
         let (lo, hi) = v.bounds;
         painter.rect_stroke(

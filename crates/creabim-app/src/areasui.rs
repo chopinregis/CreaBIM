@@ -1006,7 +1006,7 @@ impl CreaBimApp {
             .open(&mut open)
             .show(ctx, |ui| {
                 ui.label("A name for these areas, to pick from Workspace at the top right:");
-                let r = ui.add(egui::TextEdit::singleline(&mut name).desired_width(220.0));
+                let r = ui.add(egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center).desired_width(220.0));
                 r.request_focus();
                 done = ui.input(|i| i.key_pressed(egui::Key::Enter)) || ui.button("Save").clicked();
             });
@@ -1132,7 +1132,10 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
         tip += &format!(": {v}");
     }
     if let Some(h) = c["hint"].as_str() {
-        tip += &format!("\n{h}");
+        if !tip.is_empty() {
+            tip.push('\n');
+        }
+        tip += h;
     }
     let icon = c["icon"].as_str().unwrap_or("");
     match c["kind"].as_str()? {
