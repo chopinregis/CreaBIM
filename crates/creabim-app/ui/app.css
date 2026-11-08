@@ -993,3 +993,7 @@ kbd {
 .np-btn { height: 32px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border-2); color: var(--text); background: var(--panel); font-weight: 550; }
 .np-btn:hover { background: var(--raise); }
 .np-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* a tool that can't be used in the view in front: greyed, why on hover (MU24) */
+.tool.off, .tool:disabled { opacity: .32; cursor: default; }
+.tool.off:hover { background: transparent; }

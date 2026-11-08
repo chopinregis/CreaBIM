@@ -137,6 +137,8 @@ pub struct CreaBimApp {
     sheets_export: SheetsExport,
     /// A reference to take away, asked from its Properties (MU23).
     remove_ref: Option<ElementId>,
+    /// Shift+A's Add menu, open, with what is typed in it (MU24).
+    add_menu: Option<String>,
     scene: Vec<SceneItem>,
     plan: PlanState,
     placement: PlanPlacement,
@@ -309,6 +311,7 @@ impl CreaBimApp {
             sheets_export_open: false,
             sheets_export: SheetsExport::default(),
             remove_ref: None,
+            add_menu: None,
             scene: vec![],
             plan: PlanState::default(),
             placement: PlanPlacement::Docked,
@@ -1109,6 +1112,42 @@ impl CreaBimApp {
         {
             self.toggle_edit_mode();
         }
+        // the Annotate board's keys (MU24): D Dimension, T Tag, N Note;
+        // Shift+A the Add menu, with nothing selected (with a selection it
+        // keeps selecting all of its type); PgUp / PgDn the previous and
+        // next sheet, or view of the same kind
+        if !ctx.egui_wants_keyboard_input() && self.plan.modal.is_none() && self.add_menu.is_none() {
+            let (d, t, n, add, prev, next) = ctx.input(|i| {
+                let m = i.modifiers;
+                let plain = !m.command && !m.alt && !m.shift;
+                (
+                    plain && i.key_pressed(egui::Key::D),
+                    plain && i.key_pressed(egui::Key::T),
+                    plain && i.key_pressed(egui::Key::N),
+                    m.shift && !m.command && !m.alt && i.key_pressed(egui::Key::A),
+                    plain && i.key_pressed(egui::Key::PageUp),
+                    plain && i.key_pressed(egui::Key::PageDown),
+                )
+            });
+            let empty = self.selection.is_empty();
+            // (with a selection, D toggles its grips' live dimensions)
+            if d && empty {
+                self.pick_tool(ctx, Tool::Dimension);
+            }
+            if t {
+                self.pick_tool(ctx, Tool::Tag);
+            }
+            if n {
+                self.pick_tool(ctx, Tool::Note);
+            }
+            if add && empty {
+                self.add_menu = Some(String::new());
+            }
+            if prev || next {
+                self.step_view(if next { 1 } else { -1 });
+            }
+        }
+        self.add_menu_window(ctx);
         // Ctrl+P: this sheet as a PDF; Ctrl+Shift+P: Export sheets (MU22)
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::P)) {
             self.sheets_export_open = true;
@@ -1252,7 +1291,9 @@ impl CreaBimApp {
             let m = i.modifiers;
             (!typing && m.shift && !m.alt && i.key_pressed(egui::Key::A)).then_some(m.command)
         });
-        if let Some(project) = similar.filter(|_| self.plan.tool == Tool::Select) {
+        if let Some(project) =
+            similar.filter(|_| self.plan.tool == Tool::Select && !self.selection.is_empty())
+        {
             self.shell.context_3d = !self.last_in_2d;
             self.select_similar(if project { "type.project" } else { "type.view" });
         }
@@ -4661,6 +4702,103 @@ impl CreaBimApp {
 
     /// Trace and reference for view `v` (MU18): what shows under it, in what
     /// colour and strength, moved or turned to compare.
+    /// Take up `tool`, as its button does.
+    fn pick_tool(&mut self, ctx: &egui::Context, tool: Tool) {
+        if let Some(i) = Tool::ALL.iter().position(|t| *t == tool) {
+            self.run_action(ctx, &format!("tool:{i}"));
+        }
+    }
+
+    /// The sheet, or the view of the same kind, `by` places on in the
+    /// project's order (PgUp / PgDn, MU24).
+    fn step_view(&mut self, by: i32) {
+        let Some(now) = self.active_view else { return };
+        let model = self.doc.model();
+        let kind = |id: ElementId| match model.get(id).map(|e| &e.kind) {
+            Some(ElementKind::Sheet(_)) => Some(0u8),
+            Some(ElementKind::View(v)) => Some(match v.kind {
+                ViewKind::Plan { .. } => 1,
+                ViewKind::Section { .. } => 2,
+                ViewKind::Axonometric { .. } => 3,
+                ViewKind::Schedule { .. } => 4,
+            }),
+            _ => None,
+        };
+        let Some(k) = kind(now) else { return };
+        let list: Vec<(ElementId, String)> = if k == 0 {
+            sheets::sheets(model)
+                .into_iter()
+                .map(|(id, s)| (id, format!("{} {}", s.number, model.get(id).map_or("", |e| e.name.as_str()))))
+                .collect()
+        } else {
+            model
+                .iter()
+                .filter(|e| kind(e.id) == Some(k))
+                .map(|e| (e.id, e.name.clone()))
+                .collect()
+        };
+        let Some(i) = list.iter().position(|(id, _)| *id == now) else { return };
+        let j = (i as i32 + by).rem_euclid(list.len() as i32) as usize;
+        let (id, name) = list[j].clone();
+        self.active_view = Some(id);
+        self.status = format!("{name} ({}/{}). PgUp / PgDn step through them.", j + 1, list.len());
+    }
+
+    /// Shift+A (MU24, as Blender's Add menu): every tool, found by typing,
+    /// the ones that can't be used in the view in front greyed.
+    fn add_menu_window(&mut self, ctx: &egui::Context) {
+        let Some(mut q) = self.add_menu.clone() else { return };
+        let mut pick = None;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        let at = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(ctx.content_rect().center());
+        let shown = egui::Area::new(egui::Id::new("add.menu"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(at)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_width(240.0);
+                    ui.label(egui::RichText::new("Add").strong());
+                    let r = ui.add(egui::TextEdit::singleline(&mut q).hint_text("Type to find a tool"));
+                    r.request_focus();
+                    let want = q.to_lowercase();
+                    let found: Vec<Tool> = Tool::ALL
+                        .iter()
+                        .copied()
+                        .filter(|t| *t != Tool::Select && t.label().to_lowercase().contains(&want))
+                        .collect();
+                    egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                        for t in &found {
+                            if ui
+                                .add(egui::Button::new(t.label()).frame(false))
+                                .on_hover_text(t.hint())
+                                .clicked()
+                            {
+                                pick = Some(*t);
+                            }
+                        }
+                    });
+                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        pick = found.first().copied();
+                    }
+                    if found.is_empty() {
+                        ui.label(egui::RichText::new("Nothing by that name").weak());
+                    }
+                });
+            });
+        let outside = ctx
+            .input(|i| i.pointer.interact_pos())
+            .is_some_and(|p| !shown.response.rect.contains(p));
+        if ctx.input(|i| i.pointer.any_click()) && outside {
+            close = true;
+        }
+        if let Some(t) = pick {
+            self.add_menu = None;
+            self.pick_tool(ctx, t);
+            return;
+        }
+        self.add_menu = if close { None } else { Some(q) };
+    }
+
     /// A north arrow or a scale bar on `sheet`, where it usually goes:
     /// over the title block's right end, or its left (MU22).
     fn add_paper_mark(&mut self, sheet: ElementId, north: bool) {

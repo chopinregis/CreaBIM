@@ -1217,6 +1217,13 @@ impl CreaBimApp {
                 }
             }
             "tool" => {
+                if let Some(why) = index
+                    .and_then(|i| Tool::ALL.get(i))
+                    .and_then(|t| self.tool_unusable(*t).map(|w| (t.label(), w)))
+                {
+                    self.status = format!("{}: not here, {}.", why.0, why.1);
+                    return;
+                }
                 if let Some(t) = index.and_then(|i| Tool::ALL.get(i)) {
                     // a detail path being drawn is kept, not dropped
                     crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
@@ -1654,6 +1661,37 @@ impl CreaBimApp {
                     self.grid_vis_action(head, arg);
                 }
             }
+        }
+    }
+
+    /// Why `t` can't be used in the view in front, if it can't: the
+    /// annotation tools on a sheet, in 3D or a schedule (MU24).
+    pub(super) fn tool_unusable(&self, t: Tool) -> Option<&'static str> {
+        let front = self.active_view.and_then(|v| match self.doc.model().get(v).map(|e| &e.kind) {
+            Some(ElementKind::Sheet(_)) => Some("sheet"),
+            Some(ElementKind::View(view)) => Some(match view.kind {
+                ViewKind::Plan { .. } | ViewKind::Section { .. } => "drawing",
+                ViewKind::Axonometric { .. } => "3d",
+                ViewKind::Schedule { .. } => "schedule",
+            }),
+            _ => None,
+        });
+        let measures = matches!(
+            t,
+            Tool::Dimension
+                | Tool::Angle
+                | Tool::Radius
+                | Tool::Diameter
+                | Tool::ArcLength
+                | Tool::SpotLevel
+                | Tool::Tag
+                | Tool::Detail
+        );
+        match front? {
+            "sheet" if measures => Some("on a sheet, double-click a view to dimension or tag inside it"),
+            "3d" if measures || t == Tool::Note => Some("annotation goes in plans, sections and sheets, not the 3D view"),
+            "schedule" if measures || t == Tool::Note => Some("a schedule takes no annotation"),
+            _ => None,
         }
     }
 
@@ -2347,10 +2385,17 @@ impl CreaBimApp {
             .settings
             .tools_tab
             .min(crate::tooltabs::TABS.len() - 1);
+        let unusable = |t: Tool| self.tool_unusable(t);
         let tool = |t: Tool| {
             let i = Tool::ALL.iter().position(|x| *x == t).unwrap_or(0);
+            let off = unusable(t);
+            let hint = match off {
+                Some(why) => format!("{} (not here: {why})", t.hint()),
+                None => t.hint().to_string(),
+            };
             json!({
-                "kind": "tool", "id": format!("tool:{i}"), "label": t.label(), "hint": t.hint(),
+                "kind": "tool", "id": format!("tool:{i}"), "label": t.label(), "hint": hint,
+                "off": off.is_some(),
                 // while Move, Rotate and the rest wait or run, it is
                 // their button that is lit, not Select's (MU19)
                 "icon": tool_icon(t),

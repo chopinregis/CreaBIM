@@ -475,6 +475,25 @@ pub fn show(
         }
     }
     sheet::draw_sheet_notes(&mut canvas, doc.model(), sheet_id);
+    // working inside a view (double-click): the rest of the sheet greys
+    // out, so it is clear where clicks go (MU24, Annotate board step 2)
+    if let Some(v) = state.active.and_then(|a| views.iter().find(|v| v.viewport == a)) {
+        let (lo, hi) = v.bounds;
+        let inner = xf.rect_of(lo, hi).expand(6.0);
+        let veil = Color32::from_rgba_unmultiplied(120, 124, 128, 90);
+        let outer = paper_rect.intersect(rect);
+        for r in [
+            Rect::from_min_max(outer.min, egui::pos2(outer.max.x, inner.min.y)),
+            Rect::from_min_max(egui::pos2(outer.min.x, inner.max.y), outer.max),
+            Rect::from_min_max(egui::pos2(outer.min.x, inner.min.y), egui::pos2(inner.min.x, inner.max.y)),
+            Rect::from_min_max(egui::pos2(inner.max.x, inner.min.y), egui::pos2(outer.max.x, inner.max.y)),
+        ] {
+            if r.is_positive() {
+                painter.rect_filled(r, 0.0, veil);
+            }
+        }
+        painter.rect_stroke(inner, 3.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Outside);
+    }
 
     // pre-selection: the view under the pointer, and the others under it
     // where views overlap

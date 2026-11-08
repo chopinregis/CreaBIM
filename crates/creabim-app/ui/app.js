@@ -126,7 +126,7 @@
     const tools = S.tools.map((t) =>
       t.kind === "sep" ? `<span class="vsep"></span>` :
       t.kind === "menu" ? `<button class="tool ${t.open ? "on" : ""}" data-popup="${esc(t.key)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}${icon("chevron-down", "tchev")}</button>` :
-      `<button class="tool ${t.active ? "on" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}</button>`).join("");
+      `<button class="tool ${t.active ? "on" : ""} ${t.off ? "off" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}</button>`).join("");
     const html =
       `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="About, updates, settings and exit"><span class="logo">${mark(true)}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
       `<div class="quick">${quick}</div><span class="spacer"></span><div class="doc" title="${esc(S.doc.path)}${S.doc.unsaved === false ? "" : " · unsaved changes"}">${S.doc.unsaved === false ? "" : `<span class="dot"></span>`}${esc(S.doc.name)}</div>${S.right.map(control).join("")}</div>` +
