@@ -587,6 +587,148 @@ impl CreaBimApp {
         }
     }
 
+    /// Selected elements an active crop box takes away whole (A5-4): each
+    /// one's bounds, and the first box that misses it.
+    pub(super) fn outside_crop(&self) -> Vec<(ElementId, (DVec3, DVec3), ElementId)> {
+        let model = self.doc.model();
+        let boxes = cropbox::crop_boxes(model, self.crop_owner());
+        if boxes.iter().all(|(_, c)| !c.enabled) {
+            return vec![];
+        }
+        let mut out = vec![];
+        for id in self.selection.all() {
+            let Some(e) = model.get(id) else { continue };
+            if matches!(e.kind, ElementKind::CropBox(_) | ElementKind::View(_)) {
+                continue;
+            }
+            let Some((lo, hi)) = creabim_core::parts::element_bounds(model, e) else {
+                continue;
+            };
+            let host = match &e.kind {
+                ElementKind::Opening(o) => Some(o.host),
+                _ => None,
+            };
+            if let Some((b, _)) = boxes
+                .iter()
+                .find(|(_, c)| c.enabled && c.crops(id, host) && c.misses(lo, hi))
+            {
+                out.push((id, (lo, hi), b.id));
+            }
+        }
+        out
+    }
+
+    /// What lies outside the crop drawn as a ghost: a dashed box and a faint
+    /// fill in the crop colour, so nothing vanishes without a word (A5-4).
+    pub(super) fn draw_outside_crop(
+        &self,
+        painter: &egui::Painter,
+        project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+        outside: &[(ElementId, (DVec3, DVec3), ElementId)],
+    ) {
+        let stroke = egui::Stroke::new(1.4, FRAME);
+        for (_, (lo, hi), _) in outside {
+            let c = CropBox::new(None, *lo, *hi);
+            let corners: Vec<egui::Pos2> = (0..8)
+                .filter_map(|i| {
+                    project(DVec3::new(
+                        if i & 1 == 0 { lo.x } else { hi.x },
+                        if i & 2 == 0 { lo.y } else { hi.y },
+                        if i & 4 == 0 { lo.z } else { hi.z },
+                    ))
+                })
+                .collect();
+            if corners.len() == 8 {
+                painter.add(egui::Shape::convex_polygon(
+                    hull(&corners),
+                    FRAME.gamma_multiply(0.12),
+                    egui::Stroke::NONE,
+                ));
+            }
+            for (a, b) in c.edges() {
+                if let (Some(pa), Some(pb)) = (project(a), project(b)) {
+                    painter.add(egui::Shape::dashed_line(&[pa, pb], stroke, 5.0, 4.0));
+                }
+            }
+        }
+    }
+
+    /// The chip at the top of the 3D area for what the crop takes away:
+    /// extend the box, show it anyway, or turn the crop off (A5-4).
+    pub(super) fn outside_crop_chip(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        outside: &[(ElementId, (DVec3, DVec3), ElementId)],
+    ) {
+        let Some((_, _, b)) = outside.first() else {
+            return;
+        };
+        let b = *b;
+        let name = self
+            .doc
+            .model()
+            .get(b)
+            .map_or("the crop box".into(), |e| e.name.clone());
+        let mut pick = None;
+        egui::Area::new(ui.id().with("outside-crop"))
+            .fixed_pos(rect.center_top() + Vec2::new(-200.0, 10.0))
+            .order(egui::Order::Foreground)
+            .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let n = outside.len();
+                        let text = if n == 1 {
+                            format!("Outside {name}")
+                        } else {
+                            format!("{n} selected outside {name}")
+                        };
+                        ui.label(egui::RichText::new(text).color(FRAME).strong());
+                        if ui
+                            .button("Extend the box")
+                            .on_hover_text("Grow the box to take it in: one undo step")
+                            .clicked()
+                        {
+                            pick = Some(0);
+                        }
+                        if ui
+                            .button("Show anyway")
+                            .on_hover_text("Leave it whole: the box no longer crops it")
+                            .clicked()
+                        {
+                            pick = Some(1);
+                        }
+                        if ui
+                            .button("Turn crop off")
+                            .on_hover_text("Switch the box off; it keeps its place")
+                            .clicked()
+                        {
+                            pick = Some(2);
+                        }
+                    });
+                });
+            });
+        let mine = outside.iter().filter(|o| o.2 == b);
+        match pick {
+            Some(0) => {
+                let (lo, hi) = mine.fold(
+                    (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN)),
+                    |(a, z), o| (a.min(o.1 .0), z.max(o.1 .1)),
+                );
+                self.edit_crop(b, "Extend the crop box", |c| {
+                    c.min = c.min.min(lo - DVec3::splat(MARGIN));
+                    c.max = c.max.max(hi + DVec3::splat(MARGIN));
+                });
+            }
+            Some(1) => {
+                let ids: Vec<ElementId> = mine.map(|o| o.0).collect();
+                self.edit_crop(b, "Show it anyway", |c| c.except.extend(ids));
+            }
+            Some(2) => self.edit_crop(b, "Crop box off", |c| c.enabled = false),
+            _ => {}
+        }
+    }
+
     /// The crop box whose frame is near screen point `p`, to click it.
     pub(super) fn crop_frame_near(
         &self,
@@ -612,6 +754,32 @@ impl CreaBimApp {
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(id, _)| id)
     }
+}
+
+/// The convex hull of `p`.
+fn hull(p: &[egui::Pos2]) -> Vec<egui::Pos2> {
+    let mut v: Vec<egui::Pos2> = p.to_vec();
+    v.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
+    let cross = |o: egui::Pos2, a: egui::Pos2, b: egui::Pos2| {
+        (a - o).x * (b - o).y - (a - o).y * (b - o).x
+    };
+    let mut h: Vec<egui::Pos2> = vec![];
+    for pass in 0..2 {
+        let start = h.len();
+        let it: Vec<egui::Pos2> = if pass == 0 {
+            v.clone()
+        } else {
+            v.iter().rev().copied().collect()
+        };
+        for q in it {
+            while h.len() >= start + 2 && cross(h[h.len() - 2], h[h.len() - 1], q) <= 0.0 {
+                h.pop();
+            }
+            h.push(q);
+        }
+        h.pop();
+    }
+    h
 }
 
 #[cfg(test)]

@@ -42,6 +42,10 @@ pub struct CropBox {
     /// the box is selected, to edit it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub frame_hidden: bool,
+    /// Elements it leaves whole although its scope takes them in: "Show
+    /// it anyway" on something outside the box (A5-4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub except: Vec<ElementId>,
 }
 
 fn yes() -> bool {
@@ -68,7 +72,14 @@ impl CropBox {
             scope: CropScope::All,
             enabled: true,
             frame_hidden: false,
+            except: vec![],
         }
+    }
+
+    /// Whether the box `lo`..`hi` lies wholly outside it, so it crops
+    /// all of it away.
+    pub fn misses(&self, lo: DVec3, hi: DVec3) -> bool {
+        lo.cmpgt(self.max).any() || hi.cmplt(self.min).any()
     }
 
     pub fn size(&self) -> DVec3 {
@@ -82,6 +93,9 @@ impl CropBox {
     /// Does this box crop element `id`? `hosts` maps a door or window to
     /// its wall, so picking a wall takes its openings along.
     pub fn crops(&self, id: ElementId, host: Option<ElementId>) -> bool {
+        if self.except.contains(&id) || host.is_some_and(|h| self.except.contains(&h)) {
+            return false;
+        }
         match &self.scope {
             CropScope::All => true,
             CropScope::Only(ids) => ids.contains(&id) || host.is_some_and(|h| ids.contains(&h)),
@@ -233,6 +247,17 @@ mod tests {
             .model()
             .iter()
             .all(|e| !matches!(e.kind, ElementKind::CropBox(_))));
+    }
+
+    #[test]
+    fn what_lies_outside_is_seen_and_can_be_left_whole() {
+        let mut c = CropBox::new(None, DVec3::ZERO, DVec3::splat(4.0));
+        assert!(c.misses(DVec3::new(5.0, 0.0, 0.0), DVec3::new(6.0, 1.0, 1.0)));
+        assert!(!c.misses(DVec3::new(3.0, 0.0, 0.0), DVec3::new(6.0, 1.0, 1.0)));
+        let id = ElementId::new();
+        assert!(c.crops(id, None));
+        c.except.push(id);
+        assert!(!c.crops(id, None));
     }
 
     #[test]

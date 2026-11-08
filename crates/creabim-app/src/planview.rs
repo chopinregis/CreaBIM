@@ -6560,6 +6560,7 @@ mod tests {
             scope: Default::default(),
             enabled: true,
             frame_hidden: false,
+            except: vec![],
         };
         let e = creabim_core::Element::new("Crop", ElementKind::CropBox(crop));
         let id = e.id;

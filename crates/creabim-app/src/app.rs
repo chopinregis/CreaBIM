@@ -2124,6 +2124,11 @@ impl CreaBimApp {
         self.draw_sketches(&painter, &project);
         self.draw_grid_bubbles(&painter, &project);
         self.draw_crop_frames(&painter, &project);
+        let outside = self.outside_crop();
+        if !outside.is_empty() {
+            self.draw_outside_crop(&painter, &project, &outside);
+            self.outside_crop_chip(ui, rect, &outside);
+        }
         self.hover_3d(ui, &response, &painter, &project, &ray, modal_here);
         self.view_cube(ui, rect);
 
