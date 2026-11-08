@@ -209,6 +209,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "copy",
                 "Find and remove elements sitting exactly on a copy of themselves (left by a Duplicate that never moved)",
             ),
+            act(
+                "cleanup.overlap",
+                "Overlapping walls",
+                "walls-overlap",
+                "Find walls running along each other and overlapping: the plan merges them, but in 3D they stay two solids. Merge keeps one wall covering both",
+            ),
             Sep,
             Entry::Menu {
                 key: "tab:ifc",

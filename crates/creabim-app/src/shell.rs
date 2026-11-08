@@ -1607,6 +1607,52 @@ impl CreaBimApp {
                     self.report(r, format!("Removed {n} copies that sat exactly on their originals. Ctrl+Z brings them back."));
                 }
             }
+            "cleanup.overlap" => {
+                // walls along each other (MU27): the first time it selects
+                // them; asked again with them selected, it merges each pair
+                let pairs = creabim_core::checks::overlapping_walls(self.doc.model());
+                if pairs.is_empty() {
+                    self.status = "No walls overlap along their length.".into();
+                    return;
+                }
+                let all: Vec<ElementId> = pairs.iter().flat_map(|(a, b)| [*a, *b]).collect();
+                let picked = all.iter().all(|id| self.selection.contains(*id));
+                if !picked {
+                    self.selection.extend(all.iter().copied(), false);
+                    self.status = format!(
+                        "{} pair(s) of walls overlap along their length (selected). Run Overlapping walls again to merge each pair into one wall covering both.",
+                        pairs.len()
+                    );
+                    return;
+                }
+                let model = self.doc.model();
+                let mut tx = creabim_core::Transaction::new("Merge overlapping walls");
+                let mut gone: Vec<ElementId> = vec![];
+                for (a, b) in &pairs {
+                    if gone.contains(a) || gone.contains(b) {
+                        continue;
+                    }
+                    let (Some(ea), Some(eb)) = (model.get(*a), model.get(*b)) else { continue };
+                    let (ElementKind::Wall(wa), ElementKind::Wall(wb)) = (&ea.kind, &eb.kind) else { continue };
+                    // the thicker one stays, stretched over both
+                    let (keep, k, other, o) = if wa.thickness >= wb.thickness { (ea, wa, eb, wb) } else { (eb, wb, ea, wa) };
+                    let d = k.direction();
+                    let along = |p: glam::DVec2| (p - k.start).dot(d);
+                    let lo = [0.0, along(o.start), along(o.end)].into_iter().fold(f64::MAX, f64::min);
+                    let hi = [k.length(), along(o.start), along(o.end)].into_iter().fold(f64::MIN, f64::max);
+                    let mut after = keep.clone();
+                    if let ElementKind::Wall(w) = &mut after.kind {
+                        w.start = k.start + d * lo;
+                        w.end = k.start + d * hi;
+                    }
+                    tx = tx.replace(keep.clone(), after);
+                    gone.push(other.id);
+                }
+                let tx = tx.remove_all_cascade(model, &gone);
+                let r = self.doc.commit(tx);
+                self.selection.clear();
+                self.report(r, format!("Merged {} pair(s) of overlapping walls. Ctrl+Z undoes it.", gone.len()));
+            }
             "rooms.fromnotes" => {
                 self.status = crate::roomtool::rooms_from_notes(&mut self.doc);
             }

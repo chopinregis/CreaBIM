@@ -246,6 +246,8 @@ pub struct CreaBimApp {
     project_open: bool,
     /// A note open in its own big editor window (MU26).
     note_editor: Option<ElementId>,
+    /// The model revision last checked for overlapping walls.
+    overlap_seen: u64,
     /// Guides to copy from a sheet to every other one, next frame.
     copy_guides: Option<(ElementId, Vec<(bool, f64)>)>,
     /// The project information being edited, until Apply.
@@ -362,6 +364,7 @@ impl CreaBimApp {
             project_open: false,
             note_editor: None,
             copy_guides: None,
+            overlap_seen: 0,
             project_draft: None,
             ifc_dialog: false,
             new_project_classic: false,
@@ -3780,7 +3783,31 @@ impl CreaBimApp {
 
     /// A note's text in a window of its own, large, for long text and
     /// markdown (MU26). Changes go in as typed, one undo step a pause.
+    /// After an edit, say so if a selected wall now overlaps another along
+    /// its length (MU27): it looks merged in plan but stays two in 3D.
+    fn warn_overlaps(&mut self) {
+        let rev = self.doc.model().revision();
+        if self.overlap_seen == rev {
+            return;
+        }
+        self.overlap_seen = rev;
+        let picked = self.selection.all();
+        if picked.is_empty() {
+            return;
+        }
+        let pairs = creabim_core::checks::overlapping_walls(self.doc.model());
+        if let Some((a, b)) = pairs.iter().find(|(a, b)| picked.contains(a) || picked.contains(b)) {
+            let name = |id: &ElementId| self.doc.model().get(*id).map_or("a wall".into(), |e| e.name.clone());
+            self.status = format!(
+                "{} now overlaps {} along its length: one wall in plan, two in 3D. Manage \u{203a} Overlapping walls merges them.",
+                name(a),
+                name(b)
+            );
+        }
+    }
+
     fn note_editor_window(&mut self, ctx: &egui::Context) {
+        self.warn_overlaps();
         if let Some((from, g)) = self.copy_guides.take() {
             let others: Vec<ElementId> = self
                 .doc
