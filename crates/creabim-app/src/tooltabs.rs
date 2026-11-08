@@ -95,6 +95,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::SpotLevel),
             Sep,
             T(Tool::Tag),
+            act(
+                "tag.all",
+                "Tag all",
+                "tags",
+                "Tag every door, window, fixture and room in the view that has no tag yet (Shift+T)",
+            ),
             T(Tool::Note),
             Sep,
             T(Tool::Detail),

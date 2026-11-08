@@ -514,7 +514,7 @@ impl ElementKind {
             ElementKind::Units(_) => "Units",
             ElementKind::Project(_) => "Project information",
             ElementKind::Reference(_) => "Reference",
-            ElementKind::PaperMark(m) => match m.kind { crate::papermark::PaperMarkKind::NorthArrow { .. } => "North arrow", crate::papermark::PaperMarkKind::ScaleBar { .. } => "Scale bar" },
+            ElementKind::PaperMark(m) => match m.kind { crate::papermark::PaperMarkKind::NorthArrow { .. } => "North arrow", crate::papermark::PaperMarkKind::ScaleBar { .. } => "Scale bar", crate::papermark::PaperMarkKind::Cloud { .. } => "Revision cloud", crate::papermark::PaperMarkKind::RevisionTable => "Revisions table" },
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",

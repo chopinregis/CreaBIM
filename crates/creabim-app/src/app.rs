@@ -1129,6 +1129,12 @@ impl CreaBimApp {
                     plain && i.key_pressed(egui::Key::PageDown),
                 )
             });
+            let tag_all = ctx.input(|i| {
+                i.modifiers.shift && !i.modifiers.command && !i.modifiers.alt && i.key_pressed(egui::Key::T)
+            });
+            if tag_all {
+                self.run_action(ctx, "tag.all");
+            }
             let empty = self.selection.is_empty();
             // (with a selection, D toggles its grips' live dimensions)
             if d && empty {
@@ -4805,6 +4811,48 @@ impl CreaBimApp {
 
     /// A north arrow or a scale bar on `sheet`, where it usually goes:
     /// over the title block's right end, or its left (MU22).
+    /// A revision cloud (the next letter after the project's last), or the
+    /// sheet's revisions table, on `sheet` (Annotate board step 4).
+    fn add_revision_mark(&mut self, sheet: ElementId, table: bool) {
+        let model = self.doc.model();
+        let Some(s) = sheets::sheet_of(model, sheet) else { return };
+        let (w, h) = (s.width, s.height);
+        let mark = if table {
+            let m = creabim_geom::sheet::MARGIN;
+            let top = creabim_geom::sheet::title_block_box(model, sheet).map_or(m + 45.0, |(_, hi)| hi.y);
+            creabim_core::PaperMark::revision_table(sheet, glam::DVec2::new(w - m - 112.0, top + 34.0))
+        } else {
+            let last = model
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ElementKind::PaperMark(pm) => match &pm.kind {
+                        creabim_core::PaperMarkKind::Cloud { rev, .. } => rev.chars().next(),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .max();
+            let next = last.map_or('A', |c| ((c as u8).saturating_add(1)) as char).to_string();
+            creabim_core::PaperMark::cloud(sheet, glam::DVec2::new(w / 2.0, h / 2.0), &next)
+        };
+        let what = if table { "Revisions table" } else { "Revision cloud" };
+        let e = Element::new(what, ElementKind::PaperMark(mark));
+        let id = e.id;
+        if self
+            .doc
+            .commit(creabim_core::Transaction::new(format!("Add {}", what.to_lowercase())).insert(e))
+            .is_ok()
+        {
+            self.selection.only(id);
+            self.prop_tab = PropTab::Element;
+            self.status = if table {
+                "Revisions table added: a row for each revision cloud on this sheet. Drag it where it goes.".into()
+            } else {
+                "Revision cloud added: drag it over the change, size it, and say what changed in Properties.".into()
+            };
+        }
+    }
+
     fn add_paper_mark(&mut self, sheet: ElementId, north: bool) {
         let model = self.doc.model();
         let Some(s) = sheets::sheet_of(model, sheet) else {
@@ -5839,6 +5887,8 @@ impl CreaBimApp {
                 ElementKind::PaperMark(m) => match m.kind {
                     creabim_core::PaperMarkKind::NorthArrow { .. } => "North arrow",
                     creabim_core::PaperMarkKind::ScaleBar { .. } => "Scale bar",
+                    creabim_core::PaperMarkKind::Cloud { .. } => "Revision cloud",
+                    creabim_core::PaperMarkKind::RevisionTable => "Revisions table",
                 },
                 _ => "Settings",
             }
@@ -7448,6 +7498,35 @@ fn paper_mark_fields(
     use creabim_core::PaperMarkKind;
     let mut label = None;
     match &mut m.kind {
+        PaperMarkKind::Cloud { w, h, rev, date, what } => {
+            let text = |ui: &mut egui::Ui, name: &str, v: &mut String| {
+                crate::props::row(ui, name, |ui| {
+                    crate::props::fill(ui, egui::TextEdit::singleline(v)).changed()
+                })
+            };
+            if text(ui, "Revision", rev) | text(ui, "Date", date) | text(ui, "What changed", what) {
+                label = Some("Revision cloud");
+            }
+            for (name, v) in [("Width", w), ("Height", h)] {
+                crate::props::row(ui, name, |ui| {
+                    if crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).range(5.0..=800.0).suffix(" mm"))
+                        .changed()
+                    {
+                        label = Some("Revision cloud");
+                    }
+                });
+            }
+        }
+        PaperMarkKind::RevisionTable => {
+            crate::props::row(ui, "Text", |ui| {
+                if crate::props::fill(ui, egui::DragValue::new(&mut m.size).speed(0.1).range(1.5..=6.0).suffix(" mm"))
+                    .changed()
+                {
+                    label = Some("Revisions table");
+                }
+            });
+            ui.label(egui::RichText::new("A row for each revision cloud on this sheet.").weak());
+        }
         PaperMarkKind::NorthArrow { rotation } => {
             let mut own = rotation.is_some();
             if crate::props::check(ui, "Points to", &mut own, "An angle of its own")

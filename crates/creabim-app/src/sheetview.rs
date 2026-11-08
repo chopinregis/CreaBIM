@@ -767,7 +767,37 @@ pub fn show(
     }
     if let (Some((id, c0, grab)), Some(p)) = (state.drag, pointer) {
         if response.dragged_by(egui::PointerButton::Primary) {
-            let moved = (c0 + xf.to_paper(p) - grab).round();
+            let mut moved = (c0 + xf.to_paper(p) - grab).round();
+            // Align views (Annotate board): in line with another view's
+            // centre across or up the sheet, within 6 px, a guide shown
+            let tol = 6.0 / zoom as f64;
+            let others: Vec<DVec2> = views
+                .iter()
+                .filter(|v| v.viewport != id)
+                .filter_map(|v| match doc.model().get(v.viewport).map(|e| &e.kind) {
+                    Some(ElementKind::Viewport(vp)) => Some(vp.center),
+                    _ => None,
+                })
+                .collect();
+            let guide = egui::Stroke::new(1.0, ACCENT);
+            if let Some(o) = others.iter().find(|o| (o.x - moved.x).abs() < tol) {
+                moved.x = o.x;
+                painter.extend(egui::Shape::dashed_line(
+                    &[xf.to_screen(DVec2::new(o.x, o.y)), xf.to_screen(DVec2::new(o.x, moved.y))],
+                    guide,
+                    5.0,
+                    4.0,
+                ));
+            }
+            if let Some(o) = others.iter().find(|o| (o.y - moved.y).abs() < tol) {
+                moved.y = o.y;
+                painter.extend(egui::Shape::dashed_line(
+                    &[xf.to_screen(DVec2::new(o.x, o.y)), xf.to_screen(DVec2::new(moved.x, o.y))],
+                    guide,
+                    5.0,
+                    4.0,
+                ));
+            }
             let r = doc.edit_merged(id, "Move view on sheet", |e| {
                 if let ElementKind::Viewport(vp) = &mut e.kind {
                     vp.center = moved;

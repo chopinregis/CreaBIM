@@ -1579,7 +1579,8 @@ impl CreaBimApp {
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms"
             // (these four were handled below but never routed here: MU22)
             | "view.tempdims" | "view.reference" | "sheet.preview" | "sheet.text"
-            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" => {
+            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
+            | "sheet.revtable" | "tag.all" => {
                 self.view_action(head)
             }
             "cleanup.stacked" => {
@@ -2059,6 +2060,22 @@ impl CreaBimApp {
                 }
             }
             "sheet.pdf" => self.export_sheets_now(true),
+            "sheet.cloud" | "sheet.revtable" => {
+                if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
+                    self.add_revision_mark(sheet, what == "sheet.revtable");
+                }
+            }
+            "tag.all" => {
+                // doors and windows, fixtures and rooms, at once (Annotate board)
+                let Some(view) = self.active_view else { return };
+                let a = planview::tag_openings(&mut self.doc, view).unwrap_or(0);
+                let b = planview::tag_fixtures(&mut self.doc, view).unwrap_or(0);
+                let c = crate::roomtool::tag_rooms(&mut self.doc, view).unwrap_or(0);
+                self.status = match a + b + c {
+                    0 => "Everything here is tagged already (tags go on plans and sections).".into(),
+                    _ => format!("Tagged {a} doors and windows, {b} fixtures, {c} rooms. Drag a tag to move it."),
+                };
+            }
             "export.sheets" => self.sheets_export_open = true,
             "sheet.preview" => {
                 self.print_preview = !self.print_preview;
@@ -2607,6 +2624,14 @@ impl CreaBimApp {
             options.push(json!({
                 "kind": "button", "id": "sheet.scalebar", "icon": "scale-bar",
                 "hint": "A scale bar at the sheet's drawing scale; drag it where it goes",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.cloud", "icon": "revision-cloud",
+                "hint": "A revision cloud round a change, with the next revision letter",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.revtable", "icon": "table-2",
+                "hint": "The sheet's revisions table: a row for each revision cloud on it",
             }));
             // output
             options.push(json!({"kind": "sep"}));

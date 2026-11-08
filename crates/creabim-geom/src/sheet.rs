@@ -626,12 +626,60 @@ pub fn title_block_box(model: &Model, sheet: ElementId) -> Option<(DVec2, DVec2)
 /// The north arrows and scale bars on a sheet (MU22).
 pub fn draw_paper_marks(c: &mut dyn Canvas, model: &Model, sheet: ElementId) {
     let north = model.project_info().map_or(0.0, |(_, p)| p.true_north);
+    // the sheet's revisions, for its table
+    let mut revs: Vec<(String, String, String)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::PaperMark(m) if m.sheet == sheet => match &m.kind {
+                creabim_core::PaperMarkKind::Cloud { rev, date, what, .. } => {
+                    Some((rev.clone(), date.clone(), what.clone()))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    revs.sort();
+    revs.dedup_by(|a, b| a.0 == b.0);
     for e in model.iter() {
         if let ElementKind::PaperMark(m) = &e.kind {
             if m.sheet == sheet {
-                draw_paper_mark(c, m, north);
+                if matches!(m.kind, creabim_core::PaperMarkKind::RevisionTable) {
+                    draw_revision_table(c, m, &revs);
+                } else {
+                    draw_paper_mark(c, m, north);
+                }
             }
         }
+    }
+}
+
+/// The revisions table: REV, DATE, DESCRIPTION, a row per revision.
+fn draw_revision_table(c: &mut dyn Canvas, m: &creabim_core::PaperMark, revs: &[(String, String, String)]) {
+    let t = m.size;
+    let row = t * 2.4;
+    let cols = [0.0, 14.0, 40.0, 110.0];
+    let thin = Stroke::solid(0.18, 0.0);
+    let rows = revs.len() + 1;
+    let top = m.at.y + row * rows as f64;
+    for i in 0..=rows {
+        let y = m.at.y + row * i as f64;
+        c.line(&[DVec2::new(m.at.x, y), DVec2::new(m.at.x + cols[3], y)], thin);
+    }
+    for x in cols {
+        c.line(&[DVec2::new(m.at.x + x, m.at.y), DVec2::new(m.at.x + x, top)], thin);
+    }
+    let cell = |c: &mut dyn Canvas, r: usize, col: usize, s: &str| {
+        let y = top - row * (r as f64 + 1.0) + row * 0.32;
+        c.text(DVec2::new(m.at.x + cols[col] + 1.5, y), t, s, Anchor::Start);
+    };
+    cell(c, 0, 0, "REV");
+    cell(c, 0, 1, "DATE");
+    cell(c, 0, 2, "DESCRIPTION");
+    for (i, (rev, date, what)) in revs.iter().enumerate() {
+        cell(c, i + 1, 0, rev);
+        cell(c, i + 1, 1, date);
+        cell(c, i + 1, 2, what);
     }
 }
 
@@ -653,6 +701,38 @@ pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_nor
             c.polygon(&[tip, right, notch, left], Stroke::solid(0.3, 0.0));
             c.text(at(DVec2::new(0.0, 0.5 * s + 3.2)), 3.5, "N", Anchor::Middle);
         }
+        PaperMarkKind::Cloud { w, h, rev, .. } => {
+            // scallops of about 6 mm round the box, bulging out
+            let (lo, hi) = (m.at - DVec2::new(w / 2.0, h / 2.0), m.at + DVec2::new(w / 2.0, h / 2.0));
+            let corners = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
+            let stroke = Stroke::solid(0.35, 0.0);
+            for k in 0..4 {
+                let (a, b) = (corners[k], corners[(k + 1) % 4]);
+                let len = a.distance(b);
+                let n = (len / 6.0).ceil().max(1.0) as usize;
+                let dir = (b - a) / len.max(1e-9);
+                let out = DVec2::new(dir.y, -dir.x);
+                for i in 0..n {
+                    let (s, e) = (a + (b - a) * (i as f64 / n as f64), a + (b - a) * ((i + 1) as f64 / n as f64));
+                    let mid = (s + e) / 2.0;
+                    let r = s.distance(e) / 2.0;
+                    let pts: Vec<DVec2> = (0..=8)
+                        .map(|j| {
+                            let t = std::f64::consts::PI * j as f64 / 8.0;
+                            mid - dir * r * t.cos() + out * r * t.sin()
+                        })
+                        .collect();
+                    c.line(&pts, stroke);
+                }
+            }
+            // its revision in a triangle at the top right
+            let tip = hi + DVec2::new(4.0, 4.0);
+            let s = m.size * 1.6;
+            let tri = [tip + DVec2::new(-s, -s * 0.6), tip + DVec2::new(s, -s * 0.6), tip + DVec2::new(0.0, s * 1.1)];
+            c.polygon(&tri, Stroke::solid(0.3, 0.0));
+            c.text(tip + DVec2::new(0.0, -s * 0.25), m.size, rev, Anchor::Middle);
+        }
+        PaperMarkKind::RevisionTable => {}
         PaperMarkKind::ScaleBar {
             scale,
             length,

@@ -497,6 +497,7 @@ pub const KEYS: &[Binding] = &[
     key(VIEWS, "Ctrl+P", "The sheet in front as a PDF"),
     key(VIEWS, "D", "Dimension (with nothing selected; with a selection, D shows or hides its live dimensions)"),
     key(VIEWS, "T", "Tag"),
+    key(VIEWS, "Shift+T", "Tag all: every door, window, fixture and room not tagged yet"),
     key(VIEWS, "N", "Note (on a sheet: text on the paper)"),
     key(VIEWS, "Shift+A", "Add: find any tool by typing (with nothing selected; with a selection, all of its type)"),
     key(VIEWS, "PageUp", "The previous sheet, or view of the same kind"),

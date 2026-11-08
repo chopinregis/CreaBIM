@@ -37,3 +37,25 @@ fn a_sheet_draws_its_north_arrow_and_scale_bar() {
         std::fs::write(std::path::Path::new(&dir).join("paper_marks.svg"), after).unwrap();
     }
 }
+
+#[test]
+fn a_revision_cloud_and_the_revisions_table_draw_on_the_sheet() {
+    let mut doc = creabim_core::Document::from_model(creabim_core::sample::sample_house());
+    let sheet = creabim_geom::sheet::sheets(doc.model())[0].0;
+    let mut cloud = PaperMark::cloud(sheet, DVec2::new(100.0, 100.0), "B");
+    if let creabim_core::PaperMarkKind::Cloud { what, date, .. } = &mut cloud.kind {
+        *what = "Window W3 moved".into();
+        *date = "2026-11-08".into();
+    }
+    let table = PaperMark::revision_table(sheet, DVec2::new(200.0, 80.0));
+    doc.commit(
+        Transaction::new("revs")
+            .insert(Element::new("Revision cloud", ElementKind::PaperMark(cloud)))
+            .insert(Element::new("Revisions table", ElementKind::PaperMark(table))),
+    )
+    .unwrap();
+    let svg = creabim_geom::sheet::sheet_svg(doc.model(), sheet, &Default::default()).unwrap();
+    for t in [">REV<", ">B<", "Window W3 moved", "2026-11-08"] {
+        assert!(svg.contains(t), "{t}");
+    }
+}

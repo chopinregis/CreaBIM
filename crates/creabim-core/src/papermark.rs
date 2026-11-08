@@ -18,6 +18,20 @@ pub enum PaperMarkKind {
     /// A bar `length` metres long at 1:`scale`, in `parts` alternating
     /// black and white parts, numbered in metres.
     ScaleBar { scale: f64, length: f64, parts: u8 },
+    /// A revision cloud round a change, `w` by `h` mm about `at`, with its
+    /// revision's letter, date and what changed (Annotate board step 4).
+    Cloud {
+        w: f64,
+        h: f64,
+        rev: String,
+        #[serde(default)]
+        date: String,
+        #[serde(default)]
+        what: String,
+    },
+    /// The sheet's revisions: one row per revision cloud on it, from `at`
+    /// (its lower left), `size` mm text.
+    RevisionTable,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -58,9 +72,42 @@ impl PaperMark {
         }
     }
 
+    /// A revision cloud `w` by `h` about `at`.
+    pub fn cloud(sheet: ElementId, at: DVec2, rev: &str) -> Self {
+        Self {
+            sheet,
+            at,
+            size: 4.0,
+            kind: PaperMarkKind::Cloud {
+                w: 60.0,
+                h: 40.0,
+                rev: rev.into(),
+                date: String::new(),
+                what: String::new(),
+            },
+        }
+    }
+
+    /// The revisions table, from `at`.
+    pub fn revision_table(sheet: ElementId, at: DVec2) -> Self {
+        Self {
+            sheet,
+            at,
+            size: 2.5,
+            kind: PaperMarkKind::RevisionTable,
+        }
+    }
+
     /// Its extent on the sheet, millimetres (lower left, upper right).
     pub fn bounds(&self) -> (DVec2, DVec2) {
         match &self.kind {
+            PaperMarkKind::Cloud { w, h, .. } => {
+                let half = DVec2::new(w / 2.0, h / 2.0) + DVec2::splat(self.size);
+                (self.at - half, self.at + half + DVec2::new(8.0, 8.0))
+            }
+            PaperMarkKind::RevisionTable => {
+                (self.at, self.at + DVec2::new(110.0, self.size * 2.4 * 5.0))
+            }
             PaperMarkKind::NorthArrow { .. } => {
                 let r = self.size * 0.6;
                 (self.at - DVec2::splat(r), self.at + DVec2::new(r, r + 4.0))
