@@ -451,6 +451,14 @@ pub struct PlanState {
     pub hover_guide: Option<(ElementId, snaps::TempGuide)>,
     /// The Dimension tool's axis; none picks it from where the line goes.
     pub dim_axis: Option<creabim_core::DimAxis>,
+    /// Continuous dimensions (MU23 board): each click after the first
+    /// dimension adds the next on the same line.
+    pub dim_chain: bool,
+    /// The line a chain runs on: its axis and a point on it.
+    pub chain_line: Option<(creabim_core::DimAxis, DVec2)>,
+    /// Rows of dimensions land on steps of this many paper mm from what
+    /// they measure (0: free).
+    pub dim_step_mm: f64,
     /// The axis a dimension is held to while Shift is down.
     dim_lock: Option<creabim_core::DimAxis>,
     /// The Align tool's picks so far.
@@ -586,6 +594,9 @@ impl Default for PlanState {
             guide_step: 45.0,
             hover_guide: None,
             dim_axis: None,
+            dim_chain: false,
+            chain_line: None,
+            dim_step_mm: 0.0,
             dim_lock: None,
             align: Default::default(),
             hover: None,
@@ -620,6 +631,7 @@ impl PlanState {
     pub fn cancel(&mut self) {
         self.pending = None;
         self.dim.clear();
+        self.chain_line = None;
         self.anno.clear();
         self.tag_host = None;
         self.sketch = None;
@@ -2361,7 +2373,18 @@ pub fn show(
             }
             (_, Tool::Dimension) => match (dim_hover, &view_def) {
                 (Some(hp), Some(_)) => {
-                    dimension_tool(doc, view, hp, raw, dim_axis, state, selection)
+                    {
+                        let lines: Vec<(DVec2, DVec2, f64)> = plan
+                            .items
+                            .iter()
+                            .filter_map(|it| match it {
+                                PlanItem::Dimension { a, b, offset, .. } => Some((*a, *b, *offset)),
+                                _ => None,
+                            })
+                            .collect();
+                        let tol = 8.0 / xf.scale as f64;
+                        dimension_tool(doc, view, hp, raw, dim_axis, state, selection, &lines, tol)
+                    }
                 }
                 _ => Ok(()),
             },
@@ -5014,7 +5037,11 @@ fn keep_guide(
     ))
 }
 
-/// A click with the Dimension tool: first point, second point, then where the line goes.
+/// A click with the Dimension tool: first point, second point, then where
+/// the line goes. Continuous: then each click adds the next on that line.
+/// The line snaps onto another dimension's line within `tol`, and to the
+/// spacing steps (MU23 board).
+#[allow(clippy::too_many_arguments)]
 fn dimension_tool(
     doc: &mut Document,
     view: ElementId,
@@ -5023,7 +5050,27 @@ fn dimension_tool(
     axis: creabim_core::DimAxis,
     state: &mut PlanState,
     selection: &mut Selection,
+    others: &[(DVec2, DVec2, f64)],
+    tol: f64,
 ) -> Result<(), creabim_core::ModelError> {
+    // a chain: the next point, at once, on the chain's line
+    if let (Some((axis, on_line)), 1) = (state.chain_line, state.dim.len()) {
+        let (a, pa) = state.dim[0];
+        if hit.1.distance(pa) < 1e-3 {
+            return Ok(());
+        }
+        let (b, pb) = hit;
+        // the line stays where it is, whichever way the chain runs
+        let offset = dim_offset(axis, pa, pb, on_line);
+        let mut d = Dimension::linear(view, a, b, offset);
+        d.axis = axis;
+        let e = state
+            .anno
+            .styled(Element::new("Dimension", ElementKind::Dimension(d)));
+        selection.only(e.id);
+        state.dim = vec![hit];
+        return doc.commit(Transaction::new("Add dimension").insert(e));
+    }
     match state.dim.len() {
         0 => {
             state.dim.push(hit);
@@ -5045,13 +5092,48 @@ fn dimension_tool(
             } else {
                 creabim_core::DimAxis::Aligned
             };
-            let offset = dim_offset(axis, pa, pb, raw);
+            let mut offset = dim_offset(axis, pa, pb, raw);
+            let u = axis.direction(pa, pb).unwrap_or((pb - pa).normalize_or_zero());
+            let n = u.perp();
+            // onto another dimension's line, parallel and near (MU23)
+            let mine = pa.dot(n) + offset;
+            let mut aligned = false;
+            for (oa, ob, oo) in others {
+                let ou = (*ob - *oa).normalize_or_zero();
+                if ou.perp_dot(u).abs() > 1e-3 {
+                    continue;
+                }
+                let theirs = oa.dot(n) + *oo * ou.perp().dot(n);
+                if (theirs - mine).abs() < tol {
+                    offset = theirs - pa.dot(n);
+                    aligned = true;
+                    break;
+                }
+            }
+            // else on spacing steps from what it measures
+            if !aligned && state.dim_step_mm > 0.0 {
+                let scale = match doc.model().get(view).map(|e| &e.kind) {
+                    Some(ElementKind::View(v)) => v.scale,
+                    _ => 50.0,
+                };
+                let step = state.dim_step_mm / 1000.0 * scale;
+                offset = (offset / step).round() * step;
+                if offset.abs() < 1e-9 {
+                    offset = step.copysign(dim_offset(axis, pa, pb, raw));
+                }
+            }
             let mut d = Dimension::linear(view, a, b, offset);
             d.axis = axis;
             let e = state
                 .anno
                 .styled(Element::new("Dimension", ElementKind::Dimension(d)));
             selection.only(e.id);
+            if state.dim_chain {
+                // the chain goes on from the second point, on this line
+                state.chain_line = Some((axis, pa + n * offset));
+                state.dim = vec![(b, pb)];
+                state.status = Some("Continuous: click the next point; Esc or right-click ends the chain.".into());
+            }
             doc.commit(Transaction::new("Add dimension").insert(e))
         }
     }
@@ -5947,6 +6029,71 @@ fn rest_on(
             }
         }
         _ => state.rest = Some((p, now)),
+    }
+}
+
+#[cfg(test)]
+mod dimension_chain_tests {
+    use super::*;
+
+    #[test]
+    fn a_continuous_chain_stays_on_one_line_and_rows_snap_together() {
+        // MU23 board: continuous dimensions, and lines onto other lines
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let view = doc
+            .model()
+            .iter()
+            .find(|e| matches!(&e.kind, ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. })))
+            .unwrap()
+            .id;
+        let mut state = PlanState::default();
+        state.dim_chain = true;
+        let mut sel = Selection::default();
+        let h = |x: f64| (HostPoint::free(DVec2::new(x, 0.0)), DVec2::new(x, 0.0));
+        let ax = creabim_core::DimAxis::Horizontal;
+        let mut click = |doc: &mut creabim_core::Document, state: &mut PlanState, x: f64, raw: DVec2| {
+            dimension_tool(doc, view, h(x), raw, ax, state, &mut sel, &[], 0.1).unwrap();
+        };
+        click(&mut doc, &mut state, 0.0, DVec2::ZERO);
+        click(&mut doc, &mut state, 2.0, DVec2::ZERO);
+        click(&mut doc, &mut state, 1.0, DVec2::new(1.0, 1.5)); // the line, 1.5 up
+        click(&mut doc, &mut state, 5.0, DVec2::ZERO); // the chain goes on
+        click(&mut doc, &mut state, 6.5, DVec2::ZERO);
+        let dims: Vec<(f64, f64)> = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Dimension(d) if d.view == view => Some((d.a.local.x, d.offset)),
+                _ => None,
+            })
+            .collect();
+        // the three just made are the last ones
+        let made: Vec<&(f64, f64)> = dims.iter().rev().take(3).collect();
+        assert_eq!(
+            made.iter().map(|d| d.0).collect::<Vec<_>>(),
+            vec![5.0, 2.0, 0.0],
+            "{dims:?}"
+        );
+        for (_, off) in made {
+            assert!((off - 1.5).abs() < 1e-9, "on one line: {dims:?}");
+        }
+        // a new row placed near another dimension's line lands on it
+        state.cancel();
+        state.dim_chain = false;
+        let others = [(DVec2::new(0.0, 0.0), DVec2::new(2.0, 0.0), 3.0)];
+        dimension_tool(&mut doc, view, h(10.0), DVec2::ZERO, ax, &mut state, &mut sel, &others, 0.2).unwrap();
+        dimension_tool(&mut doc, view, h(12.0), DVec2::ZERO, ax, &mut state, &mut sel, &others, 0.2).unwrap();
+        dimension_tool(&mut doc, view, h(11.0), DVec2::new(11.0, 3.1), ax, &mut state, &mut sel, &others, 0.2).unwrap();
+        let last = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Dimension(d) if d.view == view && (d.a.local.x - 10.0).abs() < 1e-9 => Some(d.offset),
+                _ => None,
+            })
+            .last()
+            .unwrap();
+        assert!((last - 3.0).abs() < 1e-9, "{last}");
     }
 }
 

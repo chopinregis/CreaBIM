@@ -63,6 +63,28 @@ impl CreaBimApp {
                 ));
             }
             out.push(seg(items));
+            // continuous, and the spacing rows land on (MU23 board)
+            out.push(seg(vec![opt(
+                "dim.chain".into(),
+                "Continuous",
+                self.plan.dim_chain,
+                "After the first dimension, each click adds the next on the same line; Esc or right-click ends it",
+            )]));
+            let now = self.plan.dim_step_mm;
+            out.push(seg(
+                [(0.0, "Free"), (5.0, "5 mm"), (7.0, "7 mm"), (10.0, "10 mm")]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (v, l))| {
+                        opt(
+                            format!("dim.step:{i}"),
+                            l,
+                            (now - v).abs() < 1e-9,
+                            "Spacing: dimension lines land on steps of this much on paper from what they measure, so rows stay even. They also snap onto other dimensions' lines",
+                        )
+                    })
+                    .collect(),
+            ));
         }
         let style_menu = match tool {
             Tool::Dimension
@@ -179,6 +201,13 @@ impl CreaBimApp {
                     Some(3) => Some(DimAxis::Vertical),
                     _ => None,
                 };
+            }
+            "dim.chain" => {
+                self.plan.dim_chain = !self.plan.dim_chain;
+                self.plan.chain_line = None;
+            }
+            "dim.step" => {
+                self.plan.dim_step_mm = [0.0, 5.0, 7.0, 10.0][index.unwrap_or(0).min(3)];
             }
             "align.mode" => {
                 if let Some(m) = index.and_then(|i| crate::aligntool::AlignMode::ALL.get(i)) {
