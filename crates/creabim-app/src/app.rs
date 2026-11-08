@@ -58,7 +58,7 @@ mod objectsui;
 #[path = "selectsimilar.rs"]
 mod selectsimilar;
 #[path = "shell.rs"]
-mod shell;
+pub(crate) mod shell;
 #[path = "stylesui.rs"]
 mod stylesui;
 #[path = "typepreview.rs"]
@@ -450,6 +450,14 @@ impl CreaBimApp {
                 self.path = path.to_string();
                 self.saved_revision = Some(self.doc.model().revision());
                 self.status = format!("Opened {path}");
+                // copies a Duplicate left on their originals (MU24)
+                let stacked = creabim_core::checks::stacked_copies(self.doc.model()).len();
+                if stacked > 0 {
+                    self.status = format!(
+                        "Opened {path}. {stacked} element{} sit exactly on a copy of themselves: Manage › Copies on originals removes them.",
+                        if stacked == 1 { "" } else { "s" }
+                    );
+                }
             }
             Err(e) => self.status = format!("Couldn't open {path}: {e}"),
         }
@@ -820,6 +828,25 @@ impl CreaBimApp {
         let Some(pick) = pick else {
             return;
         };
+        match pick {
+            crate::viewcube::Pick::FitAll => {
+                self.frame_3d();
+                self.status = "Framed everything.".into();
+                ui.ctx().request_repaint();
+                return;
+            }
+            crate::viewcube::Pick::FitSel => {
+                if self.selection.is_empty() {
+                    self.status = "Select something to frame first.".into();
+                } else {
+                    self.frame_selection();
+                    self.status = "Framed the selection.".into();
+                }
+                ui.ctx().request_repaint();
+                return;
+            }
+            _ => {}
+        }
         if pick == crate::viewcube::Pick::Projection {
             self.camera.ortho = !self.camera.ortho;
             self.status = if self.camera.ortho {
@@ -1966,7 +1993,11 @@ impl CreaBimApp {
             self.orbit_3d(response.drag_delta());
         }
         if response.hovered() {
-            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+            // two fingers on a touchpad pan; a wheel and a pinch zoom (MU24)
+            let (pan, scroll) = crate::planview::wheel(ui);
+            if pan != egui::Vec2::ZERO {
+                self.camera.pan(GVec2::new(pan.x, pan.y), rect.height());
+            }
             if scroll != 0.0 {
                 let aspect = rect.width() / rect.height().max(1.0);
                 match response.hover_pos() {
@@ -3700,7 +3731,19 @@ impl CreaBimApp {
             _ => None,
         };
         let accent = Color32::from_rgb(230, 120, 30);
+        let rect_preview = crate::partstool::on_face(&self.plan).is_some()
+            && self.plan.slab_mode == crate::slabtool::SlabMode::Rectangle;
         match self.plan.sketch.as_ref().filter(|_| mine) {
+            // a rectangle on a face shows whole as the corner follows (MU24)
+            Some(d) if rect_preview && d.points.len() == 1 && on_plane.is_some() => {
+                let (a, b) = (d.points[0], on_plane.unwrap_or_default());
+                let corners = [a, DVec2::new(b.x, a.y), b, DVec2::new(a.x, b.y), a];
+                let pts: Vec<egui::Pos2> = corners
+                    .iter()
+                    .filter_map(|c| project(d.plane.to_model(*c)))
+                    .collect();
+                painter.add(egui::Shape::line(pts, egui::Stroke::new(2.0, accent)));
+            }
             Some(d) => d.draw(painter, project, on_plane),
             None => {
                 if let Some(plane) = hover.and_then(candidate) {
@@ -3834,10 +3877,18 @@ impl CreaBimApp {
                     }
                     let draft = SketchDraft::new(plane, None);
                     let shape = crate::sketch::shape(ui.ctx());
-                    self.status = format!(
-                        "Workplane set. {}",
-                        crate::sketch::hint(shape, Some(&draft))
-                    );
+                    // what each outline mode does on a face (MU24)
+                    let on_face = crate::partstool::on_face(&self.plan).is_some();
+                    self.status = match (on_face, self.plan.slab_mode) {
+                        (true, crate::slabtool::SlabMode::Rectangle) => {
+                            "Workplane set. Click the opposite corner of the rectangle.".into()
+                        }
+                        (true, crate::slabtool::SlabMode::FillRoom | crate::slabtool::SlabMode::FromSketch) => format!(
+                            "Workplane set. Fill room and From sketch work on a level; on a face, click the corners. {}",
+                            crate::sketch::hint(shape, Some(&draft))
+                        ),
+                        _ => format!("Workplane set. {}", crate::sketch::hint(shape, Some(&draft))),
+                    };
                     self.plan.sketch = Some(draft);
                 }
             }
@@ -4825,7 +4876,8 @@ impl CreaBimApp {
             r.colour = None;
             r.opacity = 0.6;
         }
-        let name = format!("Reference: {}", crate::trace::label(model, &r.source));
+        // named for what it shows, without a prefix eating the field (MU24)
+        let name = crate::trace::label(model, &r.source);
         let e = Element::new(name.clone(), ElementKind::Reference(r));
         let id = e.id;
         if self
@@ -4997,8 +5049,7 @@ impl CreaBimApp {
                 ui.add_sized(
                     [w, 22.0],
                     egui::Label::new(egui::RichText::new(name.clone()).strong()).truncate(),
-                )
-                .on_hover_text(path.clone().unwrap_or_else(|| name.clone()));
+                );
                 if crate::props::icon_button(ui, "copy", "Copy the name").clicked() {
                     ui.ctx().copy_text(name.clone());
                 }
@@ -5020,8 +5071,7 @@ impl CreaBimApp {
                     ui.add_sized(
                         [w, 22.0],
                         egui::Label::new(egui::RichText::new(p.clone()).weak()).truncate(),
-                    )
-                    .on_hover_text(p.clone());
+                    );
                     if crate::props::icon_button(ui, "refresh-cw", "Read the file again, after it changed").clicked() {
                         self.plan.ref_cache.forget(id);
                     }
@@ -5226,44 +5276,47 @@ impl CreaBimApp {
                 label = Some("Picture width");
             }
         }
+        // three equal buttons across the row, as Blender's (MU24)
+        let mut pressed = None;
         ui.horizontal(|ui| {
-            if ui
-                .button("Calibrate…")
-                .on_hover_text("Click two points on it a known distance apart, then type that distance: it is scaled to fit (the first point stays).")
-                .clicked()
+            ui.spacing_mut().item_spacing.x = 3.0;
+            let w = ((ui.available_width() - 6.0) / 3.0).max(40.0);
+            for (i, (text, tip)) in [
+                ("Calibrate…", "Click two points on it a known distance apart, then type that distance: it is scaled to fit (the first point stays)."),
+                ("Align…", "Click two points on it (a wall line on a scan), then two on the model, a guide or an edge: it turns and moves so the first line lies on the second. Its size stays."),
+                ("Back in place", "Where it was drawn: no move, turn or scale."),
+            ]
+            .into_iter()
+            .enumerate()
             {
+                if ui
+                    .add_sized([w, 24.0], egui::Button::new(text).truncate())
+                    .on_hover_text(tip)
+                    .clicked()
+                {
+                    pressed = Some(i);
+                }
+            }
+        });
+        match pressed {
+            Some(0) => {
                 self.plan.calibrate = Some((id, vec![]));
                 self.plan.align_ref = None;
                 self.status = "Calibrate: click a first point on the reference (Alt: no snapping; Shift: square to it).".into();
             }
-            if ui
-                .button("Align…")
-                .on_hover_text("Click two points on it (a wall line on a scan), then two on the model, a guide or an edge: it turns and moves so the first line lies on the second. Its size stays.")
-                .clicked()
-            {
+            Some(1) => {
                 self.plan.align_ref = Some((id, vec![]));
                 self.plan.calibrate = None;
                 self.status = "Align: click a first point on the reference.".into();
             }
-            if ui
-                .button("Back in place")
-                .on_hover_text("Where it was drawn: no move, turn or scale.")
-                .clicked()
-            {
+            Some(_) => {
                 if let Some(b) = r.bounds {
                     r.in_place(b);
                     label = Some("Reference back in place");
                 }
             }
-            if !matches!(r.source, RefSource::View(_))
-                && ui
-                    .button("Reload")
-                    .on_hover_text("Read the file again, after it changed.")
-                    .clicked()
-            {
-                self.plan.ref_cache.forget(id);
-            }
-        });
+            None => {}
+        }
         label
     }
 
@@ -6986,7 +7039,7 @@ impl CreaBimApp {
             self.level_name_field(ui, id, &e.name);
         } else {
             let mut name = e.name.clone();
-            if crate::props::row(ui, "Name", |ui| {
+            if crate::props::head_row(ui, "Name", |ui| {
                 crate::props::fill(
                     ui,
                     egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center),
@@ -6999,7 +7052,7 @@ impl CreaBimApp {
                 self.report(r, "Renamed.");
             }
         }
-        crate::props::row(ui, "IFC class", |ui| {
+        crate::props::head_row(ui, "IFC class", |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 ui.add(egui::Label::new(egui::RichText::new(class.clone()).color(pal.accent)).truncate());
@@ -7012,7 +7065,7 @@ impl CreaBimApp {
             })
         });
         if marksui::markable(&e.kind) {
-            crate::props::row(ui, "Mark", |ui| {
+            crate::props::head_row(ui, "Mark", |ui| {
                 let w = ui.available_width();
                 self.mark_inline(ui, id, w);
             });
@@ -7562,7 +7615,10 @@ impl eframe::App for CreaBimApp {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing = egui::vec2(4.0, 3.0);
                         let w = ui.available_width();
-                        ui.set_max_width(w);
+                        // the header as wide as the boxes under it, which
+                        // leave the scroll bar its gutter: wider, its
+                        // fields and Delete ran off the panel (MU24)
+                        ui.set_max_width(w - 16.0);
                         ui.add_space(4.0);
                         self.properties_header(ui);
                         egui::ScrollArea::vertical()

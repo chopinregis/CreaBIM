@@ -419,7 +419,8 @@ pub fn show(
         center -= DVec2::new(d.x as f64, -d.y as f64);
     }
     if response.hovered() || state.active.is_some() && ui.rect_contains_pointer(rect) {
-        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+        let (pan, scroll) = crate::planview::wheel(ui);
+        center -= DVec2::new(pan.x as f64, -pan.y as f64) / zoom as f64;
         if let (true, Some(hover)) = (scroll != 0.0, ui.input(|i| i.pointer.hover_pos())) {
             let before = PaperXf { rect, center, zoom }.to_paper(hover);
             zoom = (zoom * (1.0 + scroll * 0.002)).clamp(0.2, 60.0);
@@ -431,7 +432,7 @@ pub fn show(
         let z = (rect.width() / s.width as f32).min(rect.height() / s.height as f32) * 0.92;
         (size / 2.0, z)
     };
-    if let Some((c, z)) = crate::planview::nav_column(ui, rect, sheet_id, fit, center, zoom) {
+    if let Some((c, z)) = crate::planview::nav_column(ui, rect, sheet_id, fit, None, center, zoom) {
         center = c;
         zoom = z;
     }

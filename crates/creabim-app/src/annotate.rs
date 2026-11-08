@@ -40,10 +40,16 @@ pub fn ink(look: &TextLook, selected: bool, highlight: Color32) -> Color32 {
 /// Text height on screen, in pixels, for a look in a pane at `mm` drawing
 /// units per paper mm.
 pub fn text_px(look: &TextLook, mm: f64, xf: &Xf) -> f32 {
-    // its true size at this zoom: zoomed out, text shrinks with the
-    // drawing and is left out once too small to read (MU23), instead of
-    // staying large and spilling past what it labels
-    ((look.size * mm * xf.scale as f64) as f32).max(1.0)
+    let px = (look.size * mm * xf.scale as f64) as f32;
+    if (mm - 1.0).abs() < 1e-9 {
+        // on a sheet's paper (mm = 1): its true size, shrinking with the
+        // sheet and left out once too small, never spilling off (MU23)
+        px.max(1.0)
+    } else {
+        // in a view while working: never under 9 px, readable at any
+        // scale; sheets and PDFs keep the paper size (A5-7)
+        px.max(9.0)
+    }
 }
 
 /// Text on screen in a look's family, weight and slant, turned `angle`

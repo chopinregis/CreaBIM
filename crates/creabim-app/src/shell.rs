@@ -119,7 +119,7 @@ pub(super) fn view_style_icon(s: ViewStyle) -> &'static str {
     }
 }
 
-fn tool_icon(t: Tool) -> &'static str {
+pub(crate) fn tool_icon(t: Tool) -> &'static str {
     match t {
         Tool::Select => "mouse-pointer-2",
         Tool::Wall => "wall",
@@ -1574,6 +1574,20 @@ impl CreaBimApp {
             | "view.tempdims" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" => {
                 self.view_action(head)
+            }
+            "cleanup.stacked" => {
+                // copies left on their originals (MU24): one undo step
+                let ids = creabim_core::checks::stacked_copies(self.doc.model());
+                if ids.is_empty() {
+                    self.status = "No element sits on a copy of itself.".into();
+                } else {
+                    let n = ids.len();
+                    let tx = creabim_core::Transaction::new("Remove copies on their originals")
+                        .remove_all_cascade(self.doc.model(), &ids);
+                    let r = self.doc.commit(tx);
+                    self.selection.clear();
+                    self.report(r, format!("Removed {n} copies that sat exactly on their originals. Ctrl+Z brings them back."));
+                }
             }
             "rooms.fromnotes" => {
                 self.status = crate::roomtool::rooms_from_notes(&mut self.doc);

@@ -60,6 +60,10 @@ pub enum Pick {
     Zoom,
     /// The pan button: dragged, not clicked.
     Pan,
+    /// Frame everything, from where it is looked at (MU24: from the header).
+    FitAll,
+    /// Frame the selection.
+    FitSel,
 }
 
 /// The yaw and pitch that look from `d` toward the target. Straight down
@@ -413,7 +417,8 @@ impl ViewCube {
         let c = Pos2::new(col_x - 96.0, rect.top() + 72.0);
         let area = Rect::from_min_max(
             Pos2::new(c.x - 80.0, rect.top() + 4.0),
-            Pos2::new(rect.right() - 4.0, rect.top() + 190.0),
+            // eight buttons now (MU24): the column reaches 250 px down
+            Pos2::new(rect.right() - 4.0, rect.top() + 250.0),
         );
         if !rect.contains_rect(area) {
             self.area = None;
@@ -436,7 +441,7 @@ impl ViewCube {
         // 28 px buttons, 10 px under the header, 34 px wide
         let column = Rect::from_min_size(
             Pos2::new(col_x - 17.0, rect.top() + 7.0),
-            Vec2::new(34.0, 6.0 * 28.0 + 6.0),
+            Vec2::new(34.0, 8.0 * 28.0 + 6.0),
         );
         painter.rect(
             column,
@@ -636,6 +641,8 @@ impl ViewCube {
         let buttons = [
             (Pick::Zoom, "Zoom: drag up to zoom in, down to zoom out"),
             (Pick::Pan, "Pan: drag to move the view"),
+            (Pick::FitAll, "Frame everything (Home)"),
+            (Pick::FitSel, "Frame the selection (.)"),
             (
                 Pick::Home,
                 "Home: frame everything from the three-quarter view",
@@ -674,7 +681,25 @@ impl ViewCube {
             if lit {
                 painter.rect_filled(square, 6.0, accent.gamma_multiply(0.18));
             }
-            button_icon(&painter, at, what, ortho, mark);
+            // the drawing areas' icons, 16 px in a 28 px cell, where one
+            // exists (MU24: the two columns looked different)
+            let svg = match what {
+                Pick::Zoom => Some("zoom-in"),
+                Pick::Pan => Some("move"),
+                Pick::FitAll => Some("frame-all"),
+                Pick::FitSel => Some("frame-selection"),
+                Pick::Home => Some("house"),
+                _ => None,
+            };
+            match svg {
+                Some(name) => crate::svgicon::paint(
+                    &painter,
+                    egui::Rect::from_center_size(at, Vec2::splat(16.0)),
+                    name,
+                    mark,
+                ),
+                None => button_icon(&painter, at, what, ortho, mark),
+            }
             if lit {
                 tip = Some(hint.to_string());
                 if clicked && !matches!(what, Pick::Zoom | Pick::Pan) {
@@ -703,7 +728,7 @@ impl ViewCube {
 
 /// The icon on one of the cube's round buttons, centred on `c`.
 fn button_icon(painter: &egui::Painter, c: Pos2, what: Pick, ortho: bool, colour: Color32) {
-    let stroke = Stroke::new(1.4, colour);
+    let stroke = Stroke::new(1.6, colour);
     let line = |pts: &[(f32, f32)]| {
         painter.add(Shape::line(
             pts.iter().map(|(x, y)| c + Vec2::new(*x, *y)).collect(),
@@ -720,7 +745,7 @@ fn button_icon(painter: &egui::Painter, c: Pos2, what: Pick, ortho: bool, colour
             // three quarters of a circle and its arrowhead
             // left turns anticlockwise, right clockwise
             let dir = -(q as f32);
-            let r = 4.6;
+            let r = 6.0;
             let pts: Vec<(f32, f32)> = (0..=18)
                 .map(|i| {
                     let t = (-60.0 + 270.0 * i as f32 / 18.0).to_radians();
@@ -785,7 +810,8 @@ fn button_icon(painter: &egui::Painter, c: Pos2, what: Pick, ortho: bool, colour
                 ));
             }
         }
-        Pick::From(_) => {}
+        // drawn from the icon set (see the column)
+        Pick::From(_) | Pick::FitAll | Pick::FitSel => {}
     }
 }
 
@@ -800,7 +826,7 @@ pub fn target_of(pick: Pick, cam: &OrbitCamera) -> Option<(f32, f32)> {
             (yaw / FRAC_PI_4).round() * FRAC_PI_4 + q as f32 * FRAC_PI_2,
             pitch,
         )),
-        Pick::Home | Pick::Projection | Pick::Zoom | Pick::Pan => None,
+        Pick::Home | Pick::Projection | Pick::Zoom | Pick::Pan | Pick::FitAll | Pick::FitSel => None,
     }
 }
 
@@ -814,6 +840,8 @@ pub fn said(pick: Pick) -> String {
         Pick::Quarter(1) => "Turned a quarter to the left.".into(),
         Pick::Quarter(_) => "Turned a quarter to the right.".into(),
         Pick::Home => "Framed everything.".into(),
+        Pick::FitAll => "Framed everything.".into(),
+        Pick::FitSel => "Framed the selection.".into(),
         Pick::Projection | Pick::Zoom | Pick::Pan => String::new(),
     }
 }

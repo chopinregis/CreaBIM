@@ -148,6 +148,27 @@ fn inset(_ui: &Ui) -> f32 {
     0.0
 }
 
+/// A header row (MU24): a short `label` from the far left, its control
+/// taking the rest, as Blender's name field at the top of Properties.
+pub fn head_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let w = ui.available_width();
+    let h = ui.spacing().interact_size.y;
+    ui.allocate_ui_with_layout(Vec2::new(w, h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+        let muted = ui.visuals().widgets.noninteractive.fg_stroke.color;
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(58.0, h), Sense::hover());
+        let mut job = egui::text::LayoutJob::single_section(
+            label.to_string(),
+            egui::TextFormat::simple(egui::TextStyle::Body.resolve(ui.style()), muted),
+        );
+        job.wrap = egui::text::TextWrapping::truncate_at_width(54.0);
+        let g = ui.painter().layout_job(job);
+        ui.painter().galley(rect.left_center() - Vec2::new(0.0, g.size().y / 2.0), g, muted);
+        add(ui)
+    })
+    .inner
+}
+
 /// A row: `label` at the left, in the label column, then `add`'s controls
 /// filling the rest. A label too long for its column is cut with … and
 /// shows whole when hovered.

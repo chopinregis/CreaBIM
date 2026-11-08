@@ -783,7 +783,9 @@ pub fn show(
         center -= DVec2::new(d.x as f64, -d.y as f64);
     }
     if response.hovered() {
-        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+        // a touchpad's two fingers pan; a wheel and a pinch zoom (MU24)
+        let (pan, scroll) = wheel(ui);
+        center -= DVec2::new(pan.x as f64, -pan.y as f64) / scale as f64;
         if scroll != 0.0 {
             if let Some(hover) = response.hover_pos() {
                 let xf = Xf {
@@ -805,7 +807,17 @@ pub fn show(
     // zoom and pan buttons, for a mouse without a wheel button or a
     // trackpad (MU18): zoom in, zoom out, fit, and a hand dragged to pan
     if style.decorations && style.camera.is_none() {
-        if let Some((c, k)) = nav_column(ui, rect, view, || fit(plan, rect), center, scale) {
+        // the selection, framed as the drawing is (MU24)
+        let picked = creabim_geom::PlanView {
+            items: plan
+                .items
+                .iter()
+                .filter(|i| selection.contains(i.id()))
+                .cloned()
+                .collect(),
+        };
+        let fit_sel = (!picked.items.is_empty()).then(|| fit(&picked, rect));
+        if let Some((c, k)) = nav_column(ui, rect, view, || fit(plan, rect), fit_sel, center, scale) {
             center = c;
             scale = k;
         }
@@ -3938,6 +3950,40 @@ fn drag_section_line(
     Some(r.err().map(|e| e.to_string()))
 }
 
+/// This frame's wheel input, split as touchpads expect (MU24): a
+/// two-finger scroll (pixel steps) pans, returned as screen points the
+/// view follows; a mouse wheel (line steps) and a pinch zoom, returned as
+/// a zoom amount in the units of `smooth_scroll_delta.y`.
+pub(crate) fn wheel(ui: &egui::Ui) -> (egui::Vec2, f32) {
+    ui.input(|i| {
+        let mut pan = egui::Vec2::ZERO;
+        let mut zoom = 0.0;
+        for e in &i.raw.events {
+            if let egui::Event::MouseWheel {
+                unit,
+                delta,
+                modifiers,
+                ..
+            } = e
+            {
+                match unit {
+                    // a pinch (Ctrl and pixel steps) and Ctrl+wheel are in
+                    // zoom_delta already
+                    _ if modifiers.ctrl || modifiers.command => {}
+                    egui::MouseWheelUnit::Point => pan += *delta,
+                    egui::MouseWheelUnit::Line => zoom += delta.y * 40.0,
+                    egui::MouseWheelUnit::Page => zoom += delta.y * 400.0,
+                }
+            }
+        }
+        let pinch = i.zoom_delta();
+        if (pinch - 1.0).abs() > 1e-4 {
+            zoom += (pinch - 1.0) * 500.0;
+        }
+        (pan, zoom)
+    })
+}
+
 /// Centre and zoom that fit a drawing in the pane.
 /// The column of zoom and pan buttons at a drawing area's top right; the
 /// camera it asks for, if any.
@@ -3946,19 +3992,20 @@ pub(crate) fn nav_column(
     rect: Rect,
     view: ElementId,
     fit_to: impl Fn() -> (DVec2, f32),
+    fit_sel: Option<(DVec2, f32)>,
     center: DVec2,
     scale: f32,
 ) -> Option<(DVec2, f32)> {
     let size = 28.0;
     let x = rect.right() - size - 10.0;
     let y0 = rect.top() + 10.0;
-    if rect.width() < 200.0 || rect.height() < 4.0 * size + 30.0 {
+    if rect.width() < 200.0 || rect.height() < 5.0 * size + 30.0 {
         return None;
     }
     let p = crate::theme::Palette::of(ui.ctx());
     let column = Rect::from_min_size(
         egui::pos2(x - 3.0, y0 - 3.0),
-        egui::vec2(size + 6.0, 4.0 * size + 6.0),
+        egui::vec2(size + 6.0, 5.0 * size + 6.0),
     );
     let near = ui
         .input(|i| i.pointer.hover_pos())
@@ -3981,6 +4028,7 @@ pub(crate) fn nav_column(
         ("zoom-in", "Zoom in: click a step, or drag up and down"),
         ("zoom-out", "Zoom out: click a step, or drag up and down"),
         ("frame-all", "Fit the drawing"),
+        ("frame-selection", "Frame the selection"),
         ("move", "Drag to pan"),
     ];
     for (i, (icon, tip)) in buttons.iter().enumerate() {
@@ -4010,7 +4058,8 @@ pub(crate) fn nav_column(
             0 if resp.clicked() => out = zoom(1.25),
             1 if resp.clicked() => out = zoom(1.0 / 1.25),
             2 if resp.clicked() => out = Some(fit_to()),
-            3 if resp.dragged() => {
+            3 if resp.clicked() => out = fit_sel,
+            4 if resp.dragged() => {
                 let d = resp.drag_delta() / scale;
                 out = Some((center - DVec2::new(d.x as f64, -d.y as f64), scale));
             }

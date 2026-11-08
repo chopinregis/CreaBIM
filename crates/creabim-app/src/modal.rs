@@ -897,8 +897,28 @@ impl Modal {
         out
     }
 
-    /// One frame of the edit, without drawing.
+    /// One frame of the edit, without drawing. A Duplicate that ends
+    /// where it began (base point and target the same, often both snapped
+    /// to the original) would leave its copy unseen on the original: it
+    /// is taken away instead (MU24).
     pub fn step(&mut self, doc: &mut Document, ev: &Events, map: &PaneMap) -> Outcome {
+        let out = self.step_inner(doc, ev, map);
+        if let Outcome::Done(_) = &out {
+            if self.duplicated
+                && self.mode == Mode::Move
+                && self.placed == 0
+                && self.delta.length() < 1e-6
+            {
+                self.cancel(doc);
+                return Outcome::Cancelled(
+                    "The copy would sit exactly on its original, so it was taken away. Click a base point, then somewhere else.".into(),
+                );
+            }
+        }
+        out
+    }
+
+    fn step_inner(&mut self, doc: &mut Document, ev: &Events, map: &PaneMap) -> Outcome {
         if let Some(p) = ev.pointer {
             self.pointer = p;
         }
@@ -2704,6 +2724,25 @@ mod tests {
         // a second cancel takes nothing else away
         m.cancel(&mut doc);
         assert_eq!(doc.model().len(), n);
+    }
+
+    #[test]
+    fn a_duplicate_placed_where_it_began_takes_its_copy_away() {
+        // MU24: base point and target snapped to the same spot left the
+        // copy on its original, unseen
+        let mut doc = Document::from_model(sample_house());
+        let (id, start) = first_wall(&doc);
+        let n = doc.model().len();
+        let copies = duplicate(&mut doc, &[id]).unwrap();
+        let mut m = tool(&doc, Mode::Move, copies[0]);
+        m.duplicated = true;
+        let out = with_map(&[], |map| {
+            m.step(&mut doc, &click(at(2.0, 2.0)), map);
+            m.step(&mut doc, &click(at(2.0, 2.0)), map)
+        });
+        assert!(matches!(out, Outcome::Cancelled(_)));
+        assert_eq!(doc.model().len(), n, "no copy left on the original");
+        assert_eq!(wall_start(&doc, id), start);
     }
 
     #[test]

@@ -132,6 +132,46 @@ fn footprint(model: &Model, o: &Object, t: &ObjectType) -> (Vec<DVec2>, (f64, f6
     (objects::hull(&pts), (z0 + lo.z, z0 + hi.z))
 }
 
+/// Elements sitting exactly on another of the same kind and shape (a
+/// copy left on its original): every one but the first of each set
+/// (MU24). Levels, views, sheets, types and other project settings are
+/// never counted.
+pub fn stacked_copies(model: &Model) -> Vec<crate::ElementId> {
+    use crate::ElementKind as K;
+    let mut seen: std::collections::HashMap<String, crate::ElementId> = Default::default();
+    let mut out = vec![];
+    for e in model.iter() {
+        let physical = matches!(
+            e.kind,
+            K::Wall(_)
+                | K::Slab(_)
+                | K::Roof(_)
+                | K::Column(_)
+                | K::Beam(_)
+                | K::Footing(_)
+                | K::Opening(_)
+                | K::Object(_)
+                | K::FreeMesh(_)
+                | K::Sketch(_)
+                | K::Stair(_)
+                | K::Railing(_)
+                | K::Shaft(_)
+        );
+        if !physical {
+            continue;
+        }
+        let Ok(key) = serde_json::to_string(&e.kind) else {
+            continue;
+        };
+        if let std::collections::hash_map::Entry::Vacant(v) = seen.entry(key) {
+            v.insert(e.id);
+        } else {
+            out.push(e.id);
+        }
+    }
+    out
+}
+
 /// Every object in the way of a door or window on its level.
 pub fn objects_in_openings(model: &Model) -> Vec<Clash> {
     let mut openings: Vec<(ElementId, ElementId, Zones)> = vec![];

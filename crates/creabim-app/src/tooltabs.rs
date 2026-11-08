@@ -109,7 +109,7 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             act(
                 "marks",
                 "Mark numbering",
-                "tag",
+                "hash",
                 "How doors, windows and other elements are numbered; renumber, and check for marks used twice",
             ),
         ],
@@ -197,6 +197,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "units",
                 "Metric or imperial: how lengths are shown and typed",
             ),
+            act(
+                "cleanup.stacked",
+                "Copies on originals",
+                "copy",
+                "Find and remove elements sitting exactly on a copy of themselves (left by a Duplicate that never moved)",
+            ),
             Sep,
             Entry::Menu {
                 key: "tab:ifc",
@@ -221,6 +227,27 @@ pub fn home_of(tool: Tool) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_two_buttons_on_a_tab_share_an_icon() {
+        // A5-1: two buttons that look the same read as one
+        for (tab, tab_name) in TABS.iter().enumerate() {
+            let mut seen: Vec<(&str, String)> = vec![];
+            for e in entries(tab) {
+                let (icon, name) = match e {
+                    Entry::Tool(t) => (crate::app::shell::tool_icon(t), t.label().to_string()),
+                    Entry::Act { icon, label, .. } | Entry::Menu { icon, label, .. } => {
+                        (icon, label.to_string())
+                    }
+                    Entry::Sep => continue,
+                };
+                if let Some((_, other)) = seen.iter().find(|(i, _)| *i == icon) {
+                    panic!("{tab_name}: {name} and {other} both use the {icon} icon");
+                }
+                seen.push((icon, name));
+            }
+        }
+    }
 
     #[test]
     fn every_tool_is_on_a_tab() {

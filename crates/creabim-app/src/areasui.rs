@@ -556,10 +556,8 @@ impl CreaBimApp {
                    "hint": "Add a crop box to the 3D view: it crops everything outside it"}),
             json!({"kind": "menu", "key": "vis3d", "icon": if self.vis3d.is_empty() { "eye" } else { "eye-off" },
                    "label": "Show", "hint": "What the 3D view shows: grids, annotation, guides, sketches and every category"}),
-            json!({"kind": "button", "id": "frame", "icon": "frame-all", "label": "Frame all", "shortcut": "Home",
-                   "hint": "Frame everything"}),
-            json!({"kind": "button", "id": "nav.fitsel", "icon": "scan", "label": "Frame the selection", "shortcut": ".",
-                   "hint": "Zoom to what is selected", "off": self.selection.is_empty()}),
+            // (Frame all and Frame the selection are in the view's own
+            // column now, with zoom and pan: MU24)
             json!({"kind": "toggle", "id": "xray", "icon": "xray", "label": "X-ray", "on": s.xray, "shortcut": "Alt+Z",
                    "hint": "See through walls, slabs and roofs to what is inside them"}),
             json!({"kind": "menu", "key": "look", "icon": "rotate-3d", "label": "Look from",
