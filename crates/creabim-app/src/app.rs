@@ -1119,6 +1119,34 @@ impl CreaBimApp {
                 None => self.set_xray(!self.shell.settings.xray),
             }
         }
+        // Tab: Object and Edit mode, as Blender (MU27); 1, 2, 3 in Edit mode:
+        // points, edges, faces
+        {
+            let free = self.plan.tool == Tool::Select
+                && self.plan.modal.is_none()
+                && !self.plan.busy()
+                && !ctx.egui_wants_keyboard_input();
+            let layered = self.plan.edit.is_some_and(|id| handles::has_layers(self.doc.model(), id));
+            // Tab still cycles what lies under the pointer when there are
+            // several things there (MU25); otherwise it switches the mode
+            let cycling = self.plan.hover.as_ref().is_some_and(|h| h.under.len() >= 2);
+            if free && !layered && !cycling && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) {
+                self.toggle_edit_mode();
+            }
+            if free && self.plan.edit.is_some() {
+                for (k, key) in [(1u8, egui::Key::Num1), (2, egui::Key::Num2), (3, egui::Key::Num3)] {
+                    if ctx.input(|i| i.modifiers.is_none() && i.key_pressed(key)) {
+                        handles::set_pick(if handles::pick() == k { 0 } else { k });
+                        self.status = match handles::pick() {
+                            1 => "Edit mode: points.".into(),
+                            2 => "Edit mode: edges.".into(),
+                            3 => "Edit mode: faces.".into(),
+                            _ => "Edit mode: everything.".into(),
+                        };
+                    }
+                }
+            }
+        }
         // Enter opens the selected element in Edit mode, and closes it again
         let enter = ctx.input(|i| i.modifiers.is_none() && i.key_pressed(egui::Key::Enter));
         if enter

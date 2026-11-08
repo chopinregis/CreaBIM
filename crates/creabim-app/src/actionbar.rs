@@ -85,7 +85,8 @@ impl CreaBimApp {
             return vec![];
         };
         let mut out = vec![];
-        if alone && editmode::editable(model, id) {
+        // Edit mode moved to the view header's mode menu (MU27): no button here
+        if false && alone && editmode::editable(model, id) {
             out.push(
                 Act {
                     on: self.plan.edit == Some(id),
@@ -527,7 +528,7 @@ mod tests {
         let (own, common) = app.element_actions();
         assert_eq!(
             ids(&own),
-            ["bar.edit", "wall.flip", "wall.attach", "bar.maketype"]
+            ["wall.flip", "wall.attach", "bar.maketype"]
         );
         assert_eq!(common[0].label, "Duplicate");
         assert!(common.iter().any(|a| a.label == "Show only selected"));

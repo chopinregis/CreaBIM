@@ -1556,6 +1556,16 @@ impl CreaBimApp {
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
+            "mode.object" => {
+                if self.plan.edit.is_some() {
+                    self.toggle_edit_mode();
+                }
+            }
+            "mode.edit" => {
+                if self.plan.edit.is_none() {
+                    self.toggle_edit_mode();
+                }
+            }
             "view.zoomscale" => {
                 if let Some(v) = self.active_view {
                     self.plan.zoom_to_scale = Some(v);

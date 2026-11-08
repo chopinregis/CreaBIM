@@ -409,11 +409,37 @@ pub fn handles_in(model: &Model, id: ElementId, face: Option<usize>, edit: bool)
     out.extend(crate::editmode::outline_handles(model, id, edit));
     if edit {
         out.extend(mass_edit_handles(model, id, face));
+        // vertex, edge or face picking (MU27)
+        out.retain(|h| pick_allows(&h.kind));
     }
     out
 }
 
 static LAYERS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// What Edit mode picks (MU27, as Blender): 0 everything, 1 points, 2
+/// edges, 3 faces.
+static PICK: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Edit mode's selection kind: vertices, edges or faces (0 any).
+pub fn set_pick(k: u8) {
+    PICK.store(k.min(3), std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn pick() -> u8 {
+    PICK.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Does grip `k` belong to Edit mode's selection kind?
+pub fn pick_allows(k: &HandleKind) -> bool {
+    use HandleKind as K;
+    match pick() {
+        1 => matches!(k, K::Vertex { .. } | K::MeshVertex(_) | K::WallEnd { .. } | K::GridEnd { .. } | K::Member { .. } | K::MeshMove | K::Rotate),
+        2 => matches!(k, K::Edge { .. } | K::AddVertex { .. } | K::MeshEdge(..) | K::OpeningJamb { .. } | K::OpeningHead | K::OpeningSill | K::MeshMove | K::Rotate),
+        3 => matches!(k, K::Face(_) | K::WallFace | K::WallTop | K::SlabTop | K::SlabUnderside | K::MeshLift | K::ShaftBase | K::ShaftTop | K::MeshMove | K::Rotate),
+        _ => true,
+    }
+}
 
 /// Edit mode's Layers (3.7): Tab in Edit mode on a layered element shows
 /// a grip at each of its layers' ends instead of its own grips.

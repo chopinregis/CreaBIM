@@ -650,9 +650,43 @@ impl CreaBimApp {
                 r.rect,
             ));
         }
+        // the mode after what it shows, as Blender's (MU27): Object or Edit,
+        // then in Edit mode what a click picks; sheets and schedules have
+        // no Edit mode, so no menu
+        let modal_view = match shows {
+            Shows::Model => true,
+            Shows::View(v) => !self.is_sheet(v)
+                && !matches!(self.view(v).map(|v| &v.kind), Some(ViewKind::Schedule { .. })),
+            _ => false,
+        };
+        let mut mode_w = 0.0;
+        if modal_view {
+            child.add_space(4.0);
+            let editing = self.plan.edit.is_some();
+            let r = mode_button(&mut child, editing, &p).on_hover_text(
+                "Object mode works on whole elements; Edit mode on one element's points, edges and faces. Tab switches",
+            );
+            if r.clicked() {
+                asks.push(Ask::Popup("area.mode".into(), r.rect));
+            }
+            mode_w += 96.0;
+            if editing {
+                for (k, icon, tip) in [
+                    (1u8, "pick-vertex", "Points (1): corners, ends, vertices"),
+                    (2, "pick-edge", "Edges (2): sides, edges, jambs"),
+                    (3, "pick-face", "Faces (3): faces, tops, undersides"),
+                ] {
+                    let on = handles::pick() == k;
+                    if icon_btn(&mut child, icon, on, true, &p).on_hover_text(tip).clicked() {
+                        handles::set_pick(if on { 0 } else { k });
+                    }
+                }
+                mode_w += 3.0 * 28.0;
+            }
+        }
         child.add_space(6.0);
         // its controls, as many as fit before More and maximise
-        let used = 34.0 + name_w + 10.0 + 2.0 * 26.0 + 8.0;
+        let used = 34.0 + name_w + 10.0 + 2.0 * 26.0 + 8.0 + mode_w;
         let mut left = room - used;
         let mut over = vec![];
         for c in &controls {
@@ -799,6 +833,19 @@ impl CreaBimApp {
                         Item::new(format!("area.show:{}", id.0), name).checked(id == v)
                     })
                     .collect()
+            }
+            "area.mode" => {
+                let editing = self.plan.edit.is_some();
+                let can = self.selection.len() == 1;
+                vec![
+                    Item::new("mode.object", "Object mode")
+                        .checked(!editing)
+                        .hint("Whole elements: select, move, copy, array"),
+                    Item::new("mode.edit", "Edit mode")
+                        .checked(editing)
+                        .enabled(can || editing)
+                        .hint("One element's points, edges and faces (select one element first). Tab"),
+                ]
             }
             "area.more" => {
                 let mut items = vec![];
@@ -1274,6 +1321,31 @@ fn name_button(ui: &mut egui::Ui, name: &str, w: f32, p: &crate::theme::Palette)
         egui::vec2(8.0, 8.0),
     );
     crate::svgicon::paint(ui.painter(), cr, "chevron-down", p.muted);
+    resp
+}
+
+/// The mode button of a view's header: "Object" or "Edit", in the accent
+/// colour while editing.
+fn mode_button(ui: &mut egui::Ui, editing: bool, p: &crate::theme::Palette) -> egui::Response {
+    let text = if editing { "Edit mode" } else { "Object mode" };
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(92.0, 24.0), egui::Sense::click());
+    let fill = if editing {
+        egui::Color32::from_rgb(253, 235, 223)
+    } else if resp.hovered() {
+        p.accent.gamma_multiply(0.12)
+    } else {
+        p.field
+    };
+    ui.painter().rect_filled(rect, 6.0, fill);
+    let ink = if editing { egui::Color32::from_rgb(166, 64, 10) } else { p.text };
+    ui.painter().text(
+        rect.left_center() + egui::vec2(8.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        text,
+        egui::FontId::proportional(12.0),
+        ink,
+    );
+    crate::props::combo_icon(ui, egui::Rect::from_center_size(rect.right_center() - egui::vec2(10.0, 0.0), egui::vec2(10.0, 10.0)), &ui.visuals().widgets.inactive.clone(), false);
     resp
 }
 
