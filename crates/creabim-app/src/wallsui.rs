@@ -237,14 +237,15 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
     };
     match o.kind {
         OpeningKind::Door => {
-            ui.label(format!(
-                "Hung {}",
-                creabim_geom::opening::door_hand(o, &host).to_lowercase()
-            ))
-            .on_hover_text("The hinge side seen from the side it opens to, and whether it opens into the building or out of it.");
-            ui.horizontal(|ui| {
+            // a label-column row, then two equal buttons, as Blender (MU29)
+            crate::props::row(ui, "Hung", |ui| {
+                ui.label(creabim_geom::opening::door_hand(o, &host).to_lowercase())
+                    .on_hover_text("The hinge side seen from the side it opens to, and whether it opens into the building or out of it.")
+            });
+            crate::props::row(ui, "Flip", |ui| ui.horizontal(|ui| {
+                let w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
                 if ui
-                    .button("Flip hand")
+                    .add_sized([w, 22.0], egui::Button::new("Hand"))
                     .on_hover_text("Hinge it on the other jamb (Shift+Space).")
                     .clicked()
                 {
@@ -252,31 +253,33 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
                     label = "Flip door hand"
                 }
                 if ui
-                    .button("Flip swing")
+                    .add_sized([w, 22.0], egui::Button::new("Swing"))
                     .on_hover_text("Open it to the other side of the wall (Space).")
                     .clicked()
                 {
                     walls::flip_facing(o);
                     label = "Flip door swing"
                 }
-            });
+            }));
         }
         OpeningKind::Window => {
             // the exterior is on the wall's left when it is flipped
             let out = o.faces_left(&host) == host.flip;
-            ui.label(if out {
-                "Its outside faces the wall's exterior"
-            } else {
-                "Turned round: its outside faces the wall's interior"
+            // the same rows as a door's (MU29)
+            crate::props::row(ui, "Outside", |ui| {
+                ui.label(if out { "faces the exterior" } else { "turned to the interior" })
             });
-            if ui
-                .button("Flip inside/outside")
-                .on_hover_text("Turn it round in its wall: its sill board and frame move to the other face (Space).")
-                .clicked()
-            {
-                walls::flip_facing(o);
-                label = "Flip window"
-            }
+            crate::props::row(ui, "Flip", |ui| {
+                let w = ui.available_width();
+                if ui
+                    .add_sized([w, 22.0], egui::Button::new("Inside / outside"))
+                    .on_hover_text("Turn it round in its wall: its sill board and frame move to the other face (Space).")
+                    .clicked()
+                {
+                    walls::flip_facing(o);
+                    label = "Flip window"
+                }
+            });
         }
         OpeningKind::Hole => {
             ui.label("A bare opening: a hole through the wall with no door or window in it");

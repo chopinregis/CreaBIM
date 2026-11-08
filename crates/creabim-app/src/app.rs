@@ -251,6 +251,8 @@ pub struct CreaBimApp {
     project_open: bool,
     /// A note open in its own big editor window (MU26).
     note_editor: Option<ElementId>,
+    /// A schedule export asked from its header ("csv" or "xlsx").
+    schedule_export: Option<String>,
     /// The model revision last checked for overlapping walls.
     overlap_seen: u64,
     /// Guides to copy from a sheet to every other one, next frame.
@@ -372,6 +374,7 @@ impl CreaBimApp {
             note_editor: None,
             copy_guides: None,
             overlap_seen: 0,
+            schedule_export: None,
             project_draft: None,
             ifc_dialog: false,
             new_project_classic: false,
@@ -4621,6 +4624,11 @@ impl CreaBimApp {
                 &self.path,
                 &format!("{}.csv", category.label().to_lowercase()),
             );
+            // on dark paper too, as sheets are (MU29)
+            let dark = self.dark_paper(ui.ctx()) && !self.print_preview;
+            let layer = ui.layer_id();
+            let from = ui.ctx().graphics(|g| g.get(layer).map(|l| l.next_idx()));
+            let export = self.schedule_export.take();
             let msg = crate::schedulepane::show(
                 ui,
                 rect,
@@ -4629,7 +4637,11 @@ impl CreaBimApp {
                 (category, by_type),
                 &mut self.selection,
                 (&csv, &with_extension(&self.path, "xlsx")),
+                export.as_deref(),
             );
+            if dark {
+                darken_shapes(ui.ctx(), layer, from);
+            }
             if let Some(m) = msg {
                 self.status = m;
             }
@@ -4746,7 +4758,12 @@ impl CreaBimApp {
             egui::Align2::LEFT_TOP,
             label,
             egui::FontId::proportional(13.0),
-            Color32::from_gray(80),
+            // light on dark paper, so it reads in every theme (MU29)
+            if self.dark_paper(ui.ctx()) && !self.print_preview {
+                Color32::from_gray(190)
+            } else {
+                Color32::from_gray(80)
+            },
         );
     }
 

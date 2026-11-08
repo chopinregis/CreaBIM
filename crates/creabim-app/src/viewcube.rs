@@ -685,7 +685,7 @@ impl ViewCube {
             // exists (MU24: the two columns looked different)
             let svg = match what {
                 Pick::Zoom => Some("zoom-in"),
-                Pick::Pan => Some("move"),
+                Pick::Pan => Some("hand"),
                 Pick::FitAll => Some("frame-all"),
                 Pick::FitSel => Some("frame-selection"),
                 Pick::Home => Some("house"),

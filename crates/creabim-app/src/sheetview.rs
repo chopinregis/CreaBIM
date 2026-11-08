@@ -1239,31 +1239,7 @@ pub fn show(
         }
     }
 
-    // notes written on the sheet itself
-    if state.active.is_none() {
-        let pxf = planview::Xf {
-            rect,
-            center,
-            scale: zoom,
-        };
-        let took = crate::annotate::sheet_input(
-            doc,
-            sheet_id,
-            &painter,
-            &response,
-            plan.tool,
-            &mut plan.anno,
-            selection,
-            &pxf,
-            &mut plan.status,
-            &mut error,
-        );
-        if took {
-            return error;
-        }
-    }
-
-    // a note double-clicked: its editor, not the view under it (MU27)
+    // a note double-clicked: its editor, not the view under it (MU27); checked before the notes take the click (MU29)
     if response.double_clicked() && state.active.is_none() {
         if let Some(p) = pointer.map(|q| xf.to_paper(q)) {
             let note = note_items.iter().rev().find_map(|it| match it {
@@ -1277,7 +1253,7 @@ pub fn show(
             }
         }
     }
-    // a view's title dragged on its own (MU27)
+    // a view's title dragged on its own (MU27); checked before the notes take the click (MU29)
     if state.active.is_none() && plan.tool == planview::Tool::Select {
         if response.drag_started_by(egui::PointerButton::Primary) {
             if let Some(p) = ui.input(|i| i.pointer.press_origin()).or(pointer).map(|q| xf.to_paper(q)) {
@@ -1312,6 +1288,30 @@ pub fn show(
             }
         }
     }
+    // notes written on the sheet itself
+    if state.active.is_none() {
+        let pxf = planview::Xf {
+            rect,
+            center,
+            scale: zoom,
+        };
+        let took = crate::annotate::sheet_input(
+            doc,
+            sheet_id,
+            &painter,
+            &response,
+            plan.tool,
+            &mut plan.anno,
+            selection,
+            &pxf,
+            &mut plan.status,
+            &mut error,
+        );
+        if took {
+            return error;
+        }
+    }
+
     // picking, moving and activating viewports
     let hit = pointer.and_then(|p| {
         let p = xf.to_paper(p);

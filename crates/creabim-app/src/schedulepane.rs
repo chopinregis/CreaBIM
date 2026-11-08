@@ -42,6 +42,7 @@ type Edit = (ElementId, Box<dyn FnOnce(&mut creabim_core::Element)>);
 /// Show the schedule `view` of `category` (grouped by type with
 /// `by_type`) in `rect`. Returns a status
 /// message when an edit fails or the schedule is exported.
+#[allow(clippy::too_many_arguments)]
 pub fn show(
     ui: &mut egui::Ui,
     rect: Rect,
@@ -50,6 +51,7 @@ pub fn show(
     (category, by_type): (ScheduleCategory, bool),
     selection: &mut Selection,
     (csv_path, xlsx_path): (&str, &str),
+    export: Option<&str>,
 ) -> Option<String> {
     let table = schedule::schedule_by(doc.model(), category, by_type);
     let listed = table.listed;
@@ -109,40 +111,32 @@ pub fn show(
             .strong()
             .color(INK),
         );
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui
-                .button("Export Excel")
-                .on_hover_text(format!(
-                    "Save every schedule as {xlsx_path}: a summary, then a sheet for each"
-                ))
-                .clicked()
-            {
-                let project = std::path::Path::new(xlsx_path)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Project")
-                    .to_string();
-                let r = creabim_geom::xlsx::schedules_xlsx(doc.model(), &project)
-                    .and_then(|b| std::fs::write(xlsx_path, b).map_err(|e| e.to_string()));
-                message = Some(match r {
-                    Ok(()) => format!("Exported {xlsx_path}"),
-                    Err(e) => format!("Couldn't export {xlsx_path}: {e}"),
-                });
-            }
-            if ui
-                .button("Export CSV")
-                .on_hover_text(format!("Save the table as {csv_path}"))
-                .clicked()
-            {
-                let r = std::fs::write(csv_path, schedule::to_csv(&table));
-                message = Some(match r {
-                    Ok(()) => format!("Exported {csv_path}"),
-                    Err(e) => format!("Couldn't export {csv_path}: {e}"),
-                });
-            }
-        });
     });
     ui.label(egui::RichText::new(count).color(MUTED));
+    // Export CSV / Excel sit in the view's header now (MU29)
+    match export {
+        Some("xlsx") => {
+            let project = std::path::Path::new(xlsx_path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Project")
+                .to_string();
+            let r = creabim_geom::xlsx::schedules_xlsx(doc.model(), &project)
+                .and_then(|b| std::fs::write(xlsx_path, b).map_err(|e| e.to_string()));
+            message = Some(match r {
+                Ok(()) => format!("Exported {xlsx_path}"),
+                Err(e) => format!("Couldn't export {xlsx_path}: {e}"),
+            });
+        }
+        Some("csv") => {
+            let r = std::fs::write(csv_path, schedule::to_csv(&table));
+            message = Some(match r {
+                Ok(()) => format!("Exported {csv_path}"),
+                Err(e) => format!("Couldn't export {csv_path}: {e}"),
+            });
+        }
+        _ => {}
+    }
     ui.add_space(12.0);
 
     // each column as wide as its widest cell, editors a little wider

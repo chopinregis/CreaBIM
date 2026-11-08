@@ -1572,6 +1572,8 @@ impl CreaBimApp {
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
+            "sched.csv" => self.schedule_export = Some("csv".into()),
+            "sched.xlsx" => self.schedule_export = Some("xlsx".into()),
             "railpick" => {
                 if let Some(e) = self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
                     let (id, opens) = (e.id, matches!(e.kind, ElementKind::View(_) | ElementKind::Sheet(_)));
@@ -2789,6 +2791,20 @@ impl CreaBimApp {
                 .into_iter()
                 .filter(|o| o["key"] != "gridgroups" && o["kind"] != "sep"),
         );
+        if self
+            .active_view
+            .and_then(|id| self.view(id))
+            .is_some_and(|v| matches!(v.kind, ViewKind::Schedule { .. }))
+        {
+            options.push(json!({
+                "kind": "button", "id": "sched.csv", "label": "Export CSV", "icon": "table-2",
+                "hint": "Save this table as a CSV file beside the project",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sched.xlsx", "label": "Export Excel", "icon": "sheet",
+                "hint": "Save every schedule as one Excel workbook beside the project: a summary, then a sheet for each",
+            }));
+        }
         if self.active_view.is_some_and(|id| self.is_sheet(id)) {
             // compose
             options.push(json!({

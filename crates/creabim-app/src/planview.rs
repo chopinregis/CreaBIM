@@ -4136,7 +4136,7 @@ pub(crate) fn nav_input(
         ("zoom-out", "Zoom out: click a step, or drag up and down"),
         ("frame-all", "Fit the drawing"),
         ("frame-selection", "Frame the selection"),
-        ("move", "Drag to pan"),
+        ("hand", "Drag to pan"),
     ];
     for (i, (icon, tip)) in buttons.iter().enumerate() {
         let r = Rect::from_min_size(egui::pos2(x, y0 + i as f32 * size), egui::vec2(size, size));

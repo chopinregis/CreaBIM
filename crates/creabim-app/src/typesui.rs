@@ -762,12 +762,15 @@ impl CreaBimApp {
                 }
                 r
             };
+            // as Blender's rows (MU29): the count, then real buttons the
+            // width of the field column, side by side
+            let _ = &link;
             crate::props::row(ui, "Instances", |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
                     ui.label(n.to_string()).on_hover_text(summary.clone());
-                    ui.label(egui::RichText::new("·").weak());
-                    if link(ui, "Select all")
+                    let w = ui.available_width();
+                    if ui
+                        .add_sized([w, 22.0], egui::Button::new("Select all"))
                         .on_hover_text("Select every element of this type")
                         .clicked()
                     {
@@ -777,21 +780,20 @@ impl CreaBimApp {
             });
             crate::props::row(ui, "", |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    if link(ui, "Edit type…").clicked() {
+                    let two = cat != TypeCategory::Object;
+                    let gap = ui.spacing().item_spacing.x;
+                    let w = if two { (ui.available_width() - gap) / 2.0 } else { ui.available_width() };
+                    if ui.add_sized([w, 22.0], egui::Button::new("Edit type\u{2026}")).clicked() {
                         self.types.open = true;
                         self.types.current = Some(t);
                     }
-                    if cat != TypeCategory::Object {
-                        ui.label(egui::RichText::new("·").weak());
-                        if link(ui, "New type")
-                            .on_hover_text(
-                                "A new type with its values, which it becomes an instance of",
-                            )
+                    if two
+                        && ui
+                            .add_sized([w, 22.0], egui::Button::new("New type"))
+                            .on_hover_text("A new type with its values, which it becomes an instance of")
                             .clicked()
-                        {
-                            asks.push(TypeAsk::FromElement(id));
-                        }
+                    {
+                        asks.push(TypeAsk::FromElement(id));
                     }
                 })
             });
