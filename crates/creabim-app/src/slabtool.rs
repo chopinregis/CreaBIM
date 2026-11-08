@@ -160,6 +160,15 @@ pub fn controls(
                             if ui.selectable_label(arc, "Arc (A)").clicked() {
                                 arc = true;
                             }
+                            // A5-3: a sure way to close, whatever the pointer is on
+                            let can = state.outline.as_ref().is_some_and(|o| o.points.len() >= 3);
+                            if ui
+                                .add_enabled(can, egui::Button::new("Close (C)"))
+                                .on_hover_text("Close the outline back to its first point")
+                                .clicked()
+                            {
+                                state.close_outline = true;
+                            }
                         }
                     });
                 });

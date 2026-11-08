@@ -491,6 +491,8 @@ pub struct PlanState {
     /// Calibrate: the reference being scaled and the points picked on
     /// it so far; with two, `calibrated` asks for the distance.
     pub calibrate: Option<(ElementId, Vec<DVec2>)>,
+    /// The tool options' Close button was pressed (A5-3).
+    pub close_outline: bool,
     /// Align (MU23): the reference, and the points picked so far (two on
     /// it, then two on what it lines up with).
     pub align_ref: Option<(ElementId, Vec<DVec2>)>,
@@ -599,6 +601,7 @@ impl Default for PlanState {
             tracker: Default::default(),
             ref_cache: Default::default(),
             calibrate: None,
+            close_outline: false,
             align_ref: None,
             aligned: None,
             dropped: vec![],
@@ -1339,10 +1342,13 @@ pub fn show(
             // keys go to the pane under the pointer, as another pane may
             // show the same outline
             let here = response.hovered();
-            let (enter, escape) = ui.input(|i| {
+            let typing = ui.ctx().egui_wants_keyboard_input();
+            let (enter, escape, backspace) = ui.input(|i| {
                 (
-                    here && i.key_pressed(egui::Key::Enter),
+                    here && (i.key_pressed(egui::Key::Enter)
+                        || !typing && !i.modifiers.any() && i.key_pressed(egui::Key::C)),
                     here && i.key_pressed(egui::Key::Escape),
+                    here && !typing && i.key_pressed(egui::Key::Backspace),
                 )
             });
             let click = match (response.clicked(), hover_world, response.hover_pos()) {
@@ -1350,11 +1356,13 @@ pub fn show(
                 _ => None,
             };
             let right = response.secondary_clicked() && !shift;
+            let double = response.double_clicked();
+            let enter = enter || std::mem::take(&mut state.close_outline);
             let arc = state.slab_arc;
             let next = state
                 .outline
                 .as_mut()?
-                .input(enter, escape, right, click, arc);
+                .input_more(enter, escape, right, click, arc, double, backspace);
             match next {
                 Next::Drawing(hint) => state.status = Some(hint),
                 Next::Cancel(msg) => {

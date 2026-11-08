@@ -149,9 +149,15 @@ impl Outline {
             (Some(_), _) => "click a point the arc passes through",
             (None, 0) => "click its first corner",
             (None, 1 | 2) => "click the next corner",
-            (None, _) => "click the next corner, or the first one (or Enter) to close",
+            (None, _) => "click the next corner, or the first one to close",
         };
-        format!("{what}: {next}. A draws arcs, L lines; Esc or right-click takes back a point.")
+        let n = self.points.len();
+        // the count, and how to close, always said (A5-3)
+        let close = if n >= 3 { " · C or Enter closes, a double-click closes there" } else { "" };
+        format!(
+            "{what} ({n} point{}): {next}{close}. A arcs, L lines; Backspace takes back a point, Esc or right-click too.",
+            if n == 1 { "" } else { "s" }
+        )
     }
 
     /// Whether clicking the first corner now would close the outline.
@@ -191,7 +197,12 @@ impl Outline {
             self.bulges.push(0.0);
             return true;
         }
-        if self.points.last().is_some_and(|q| q.distance(p) < 1e-6) {
+        if self.points.iter().any(|q| q.distance(p) < 0.002) {
+            // on the first corner: close; on another: nothing (A5-3)
+            if self.points[0].distance(p) < 0.002 && self.can_close(false) {
+                self.bulges.push(0.0);
+                return true;
+            }
             return false;
         }
         if arc && !self.points.is_empty() {
@@ -216,14 +227,29 @@ impl Outline {
 
     /// Run a frame's keys and click: `click` is the snapped point and
     /// whether the pointer is on the first corner.
-    pub fn input(
+    /// With A5-3's ways to close too: `double` (a
+    /// double-click: the point, then closed) and `backspace` (take back
+    /// the last point). `enter` is Enter or C.
+    #[allow(clippy::too_many_arguments)]
+    pub fn input_more(
         &mut self,
         enter: bool,
         escape: bool,
         right_click: bool,
         click: Option<(DVec2, bool)>,
         arc: bool,
+        double: bool,
+        backspace: bool,
     ) -> Next {
+        if backspace && !self.wall {
+            if self.back_off() {
+                return Next::Drawing(self.hint());
+            }
+            return Next::Cancel("Outline cancelled.");
+        }
+        if double && !self.wall && self.points.len() >= 3 {
+            return Next::Finish(true);
+        }
         if self.wall {
             if escape {
                 return Next::Cancel("Redraw cancelled.");
@@ -441,7 +467,30 @@ impl Outline {
             painter.circle_stroke(e, 4.0, stroke);
         }
         if let Some(first) = self.points.first().and_then(|p| at(*p)) {
-            painter.circle_stroke(first, 6.0, stroke);
+            let on_first = hover.and_then(at).is_some_and(|h| h.distance(first) < 12.0)
+                && !self.wall
+                && self.can_close(false);
+            if on_first {
+                // closing: the shape fills in, the first point grows, "Close"
+                let poly: Option<Vec<Pos2>> = self.points.iter().map(|p| at(*p)).collect();
+                if let Some(poly) = poly.filter(|p| p.len() >= 3) {
+                    painter.add(egui::Shape::convex_polygon(
+                        poly,
+                        accent.gamma_multiply(0.15),
+                        Stroke::NONE,
+                    ));
+                }
+                painter.circle_stroke(first, 10.0, Stroke::new(2.5, accent));
+                painter.text(
+                    first + egui::vec2(14.0, -14.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    "Close",
+                    egui::FontId::proportional(13.0),
+                    accent,
+                );
+            } else {
+                painter.circle_stroke(first, 6.0, stroke);
+            }
         }
         if let (Some(t), Some(s)) = (text, hover.and_then(at)) {
             painter.text(
@@ -459,7 +508,7 @@ impl Outline {
         self.points
             .first()
             .and_then(|p| project(p.extend(self.z)))
-            .is_some_and(|f| f.distance(s) < 10.0)
+            .is_some_and(|f| f.distance(s) < 12.0)
     }
 }
 
@@ -607,5 +656,36 @@ mod tests {
         assert!(o.back_off());
         assert!(o.bulges.is_empty());
         assert!(!o.back_off());
+    }
+}
+
+#[cfg(test)]
+mod close_tests {
+    use super::*;
+
+    #[test]
+    fn a_shape_closes_on_c_a_double_click_or_its_first_point_and_never_doubles_a_point() {
+        // A5-3
+        let m = Model::default();
+        let mut o = Outline::new_slab(&m, ElementId::new(), DVec2::ZERO);
+        for p in [DVec2::new(4.0, 0.0), DVec2::new(4.0, 3.0)] {
+            assert!(matches!(o.input_more(false, false, false, Some((p, false)), false, false, false), Next::Drawing(_)));
+        }
+        // a point within 2 mm of another is not added
+        o.input_more(false, false, false, Some((DVec2::new(4.001, 3.0), false)), false, false, false);
+        assert_eq!(o.points.len(), 3);
+        // Backspace takes one back, then it goes on
+        o.input_more(false, false, false, None, false, false, true);
+        assert_eq!(o.points.len(), 2);
+        o.input_more(false, false, false, Some((DVec2::new(4.0, 3.0), false)), false, false, false);
+        // C (as Enter) closes
+        assert!(matches!(o.input_more(true, false, false, None, false, false, false), Next::Finish(true)));
+        // so does clicking within 2 mm of the first point, and a double-click
+        let mut o2 = o.clone();
+        assert!(matches!(
+            o2.input_more(false, false, false, Some((DVec2::new(0.001, 0.0), false)), false, false, false),
+            Next::Finish(true)
+        ));
+        assert!(matches!(o.input_more(false, false, false, None, false, true, false), Next::Finish(true)));
     }
 }

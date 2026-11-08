@@ -3513,11 +3513,14 @@ impl CreaBimApp {
             return;
         };
         let here = response.hovered();
-        let (enter, escape, shift) = ui.input(|i| {
+        let typing = ui.ctx().egui_wants_keyboard_input();
+        let (enter, escape, shift, backspace) = ui.input(|i| {
             (
-                here && i.key_pressed(egui::Key::Enter),
+                here && (i.key_pressed(egui::Key::Enter)
+                    || !typing && !i.modifiers.any() && i.key_pressed(egui::Key::C)),
                 here && i.key_pressed(egui::Key::Escape),
                 i.modifiers.shift,
+                here && !typing && i.key_pressed(egui::Key::Backspace),
             )
         });
         let exclude: Vec<ElementId> = outline.target.into_iter().collect();
@@ -3549,10 +3552,11 @@ impl CreaBimApp {
         };
         let right = response.secondary_clicked() && !shift;
         let arc = self.plan.slab_arc;
+        let enter = enter || std::mem::take(&mut self.plan.close_outline);
         let Some(o) = self.plan.outline.as_mut() else {
             return;
         };
-        match o.input(enter, escape, right, click, arc) {
+        match o.input_more(enter, escape, right, click, arc, response.double_clicked(), backspace) {
             crate::outline::Next::Drawing(hint) => self.status = hint,
             crate::outline::Next::Cancel(msg) => {
                 self.plan.outline = None;
