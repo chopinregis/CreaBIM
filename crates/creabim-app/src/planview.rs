@@ -317,6 +317,8 @@ pub struct PlanState {
     /// A view to show at its drawing scale on the next frame: 1 paper mm
     /// on 1 screen mm (A5-7, the view's More menu).
     pub zoom_to_scale: Option<ElementId>,
+    /// Sheets show their rulers and guides, and snap to them (MU27).
+    pub sheet_guides: bool,
     /// A note double-clicked on a sheet, to open in its editor (MU27).
     pub edit_note: Option<ElementId>,
     /// A second area showing the same view pans and zooms on its own
@@ -545,6 +547,7 @@ impl Default for PlanState {
             cameras: HashMap::new(),
             zoom_to_scale: None,
             edit_note: None,
+            sheet_guides: false,
             area: None,
             area_cameras: HashMap::new(),
             linked_areas: Default::default(),

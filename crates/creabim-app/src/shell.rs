@@ -1590,7 +1590,7 @@ impl CreaBimApp {
             // (these four were handled below but never routed here: MU22)
             | "view.tempdims" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
-            | "sheet.revtable" | "tag.all" | "sheet.keyplan" => {
+            | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
             }
             "cleanup.stacked" => {
@@ -2132,6 +2132,14 @@ impl CreaBimApp {
                 }
             }
             "sheet.pdf" => self.export_sheets_now(true),
+            "sheet.guides" => {
+                self.plan.sheet_guides = !self.plan.sheet_guides;
+                self.status = if self.plan.sheet_guides {
+                    "Guides on: drag one out of a ruler at the sheet's top or left edge.".into()
+                } else {
+                    "Guides hidden; they are kept with the sheet.".into()
+                };
+            }
             "sheet.keyplan" => {
                 if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
                     self.add_key_plan(sheet);
@@ -2722,6 +2730,11 @@ impl CreaBimApp {
             options.push(json!({
                 "kind": "button", "id": "sheet.revtable", "label": "Revisions table", "icon": "table-2",
                 "hint": "The sheet's revisions table: a row for each revision cloud on it",
+            }));
+            options.push(json!({
+                "kind": "toggle", "id": "sheet.guides", "label": "Guides", "icon": "guides",
+                "on": self.plan.sheet_guides,
+                "hint": "Rulers along the sheet's edges to drag guides out of; marks, notes and views snap to the guides. Off, they hide and nothing snaps to them",
             }));
             // output
             options.push(json!({"kind": "sep"}));
@@ -3716,6 +3729,10 @@ pub(super) fn visuals(theme: Theme) -> egui::Visuals {
     v.selection.bg_fill = p.accent.gamma_multiply(if p.dark { 0.45 } else { 0.4 });
     v.selection.stroke = Stroke::new(1.0, p.accent);
     v.hyperlink_color = p.accent;
+    // a steady caret in the accent colour (MU27: the app repaints only on
+    // input, so a blinking one was often caught off and seemed missing)
+    v.text_cursor.stroke = Stroke::new(2.0, p.accent);
+    v.text_cursor.blink = false;
     v.weak_text_color = Some(p.muted);
     v.override_text_color = None;
     let w = &mut v.widgets;

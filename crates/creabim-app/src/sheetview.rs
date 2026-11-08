@@ -31,6 +31,9 @@ pub struct SheetState {
     cloud_grip: Option<(creabim_core::Element, CloudGrip)>,
     /// A selection box being dragged on empty paper: where it began.
     band: Option<Pos2>,
+    /// A view's title being dragged (MU27): the view, its offset then,
+    /// and the grab point.
+    title_drag: Option<(ElementId, DVec2, DVec2)>,
     /// Several things on the sheet dragged together (MU27): them as they
     /// were, and the grab point.
     group: Option<(Vec<creabim_core::Element>, DVec2)>,
@@ -692,11 +695,14 @@ pub fn show(
 
     // guides (MU26): ruler strips along the top and left edges to drag
     // them out of; dragged back onto a ruler, a guide goes
-    let guides = s.guides.clone();
+    // only while the header's Guides is on (MU27): the sheet stays clean
+    let on = plan.sheet_guides;
+    let guides = if on { s.guides.clone() } else { vec![] };
     let top = Rect::from_min_max(rect.left_top() + Vec2::new(RULER, 0.0), egui::pos2(rect.right(), rect.top() + RULER));
     let left = Rect::from_min_max(rect.left_top() + Vec2::new(0.0, RULER), egui::pos2(rect.left() + RULER, rect.bottom()));
+    let (top, left) = if on { (top, left) } else { (Rect::NOTHING, Rect::NOTHING) };
     let guide_ink = Color32::from_rgb(40, 170, 220);
-    {
+    if on {
         let p = crate::theme::Palette::of(ui.ctx());
         for r in [top, left] {
             painter.rect_filled(r, 0.0, p.panel.gamma_multiply(0.85));
@@ -737,7 +743,7 @@ pub fn show(
         }
         painter.line_segment(line_of(*vertical, *at), egui::Stroke::new(1.0, guide_ink.gamma_multiply(0.8)));
     }
-    if state.active.is_none() && plan.tool == planview::Tool::Select {
+    if on && state.active.is_none() && plan.tool == planview::Tool::Select {
         let near_guide = |q: Pos2| {
             guides.iter().position(|(vertical, at)| {
                 let [a, _] = line_of(*vertical, *at);
@@ -1084,7 +1090,7 @@ pub fn show(
                     if let ElementKind::PaperMark(m0) = &was.kind {
                         let to = xf.to_paper(p);
                         let to = DVec2::new((to.x * 2.0).round() / 2.0, (to.y * 2.0).round() / 2.0);
-                        let to = snap_guides(to, &[DVec2::ZERO], &s.guides, 6.0 / zoom as f64);
+                        let to = snap_guides(to, &[DVec2::ZERO], &guides, 6.0 / zoom as f64);
                         let m1 = drag_cloud(m0, g, to);
                         let r = doc.edit_merged(was.id, "Shape revision cloud", |e| {
                             e.kind = ElementKind::PaperMark(m1.clone())
@@ -1150,7 +1156,7 @@ pub fn show(
                     }
                     None => vec![DVec2::ZERO],
                 };
-                let to = snap_guides(to, &offs, &s.guides, 6.0 / zoom as f64);
+                let to = snap_guides(to, &offs, &guides, 6.0 / zoom as f64);
                 let r = doc.edit_merged(id, "Move paper mark", |e| {
                     if let ElementKind::PaperMark(m) = &mut e.kind {
                         m.at = to;
@@ -1206,6 +1212,41 @@ pub fn show(
                 selection.only(id);
                 plan.edit_note = Some(id);
                 return error;
+            }
+        }
+    }
+    // a view's title dragged on its own (MU27)
+    if state.active.is_none() && plan.tool == planview::Tool::Select {
+        if response.drag_started_by(egui::PointerButton::Primary) {
+            if let Some(p) = ui.input(|i| i.pointer.press_origin()).or(pointer).map(|q| xf.to_paper(q)) {
+                let on = views.iter().rev().find(|v| {
+                    v.title_box().is_some_and(|(lo, hi)| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y)
+                });
+                if let Some(v) = on {
+                    state.title_drag = Some((v.view, v.title_look.offset, p));
+                    selection.only(v.viewport);
+                }
+            }
+        }
+        if let Some((view, off0, grab)) = state.title_drag {
+            if let (true, Some(q)) = (response.dragged_by(egui::PointerButton::Primary), pointer) {
+                let to = (off0 + xf.to_paper(q) - grab).round();
+                let r = doc.edit_merged(view, "Move view title", |e| {
+                    if let ElementKind::View(v) = &mut e.kind {
+                        v.sheet_title.offset = to;
+                    }
+                });
+                error = r.err().map(|e| e.to_string());
+            }
+            if response.drag_stopped() || !response.dragged() {
+                state.title_drag = None;
+            }
+            return error;
+        }
+        // the title under the pointer: outlined, so it reads as its own thing
+        if let Some(p) = response.hover_pos().map(|q| xf.to_paper(q)) {
+            if let Some((lo, hi)) = views.iter().filter_map(|v| v.title_box()).find(|(lo, hi)| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y) {
+                painter.rect_stroke(xf.rect_of(lo, hi), 2.0, egui::Stroke::new(1.0, hoverpick::HOVER.gamma_multiply(0.7)), egui::StrokeKind::Outside);
             }
         }
     }
@@ -1387,7 +1428,7 @@ pub fn show(
                     _ => moved,
                 };
                 let offs = [DVec2::ZERO, v.bounds.0 - now, v.bounds.1 - now];
-                moved = snap_guides(moved, &offs, &s.guides, tol);
+                moved = snap_guides(moved, &offs, &guides, tol);
             }
             let r = doc.edit_merged(id, "Move view on sheet", |e| {
                 if let ElementKind::Viewport(vp) = &mut e.kind {

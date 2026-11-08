@@ -246,6 +246,8 @@ pub struct CreaBimApp {
     project_open: bool,
     /// A note open in its own big editor window (MU26).
     note_editor: Option<ElementId>,
+    /// Guides to copy from a sheet to every other one, next frame.
+    copy_guides: Option<(ElementId, Vec<(bool, f64)>)>,
     /// The project information being edited, until Apply.
     project_draft: Option<creabim_core::ProjectInfo>,
     /// Export > IFC: the window asking how walls and slabs go out (MU20).
@@ -359,6 +361,7 @@ impl CreaBimApp {
             settings_open: false,
             project_open: false,
             note_editor: None,
+            copy_guides: None,
             project_draft: None,
             ifc_dialog: false,
             new_project_classic: false,
@@ -3542,83 +3545,235 @@ fn rest_points(
 }
 
 impl CreaBimApp {
-    /// The project's notepad (MU26): its to-dos as ticks, its notes as
-    /// text, a line to add a to-do, and the whole as markdown to edit.
+    /// The project's notepad (MU27): to-dos and notes in sections of their
+    /// own, each item one line (its title, fading) that opens to edit its
+    /// text and link; ticks, links, edit and delete on the row; the whole
+    /// as markdown to copy or save.
     fn notes_pad(&mut self, ui: &mut egui::Ui) {
+        use creabim_core::project::PadItem;
         let mut info = self.doc.model().project_info().map(|(_, p)| p.clone()).unwrap_or_default();
-        let before = info.notes.clone();
-        crate::props::section(ui, "Notes and to-dos");
-        let lines: Vec<String> = info.notes.lines().map(str::to_string).collect();
-        let (mut done, mut open) = (0, 0);
-        let mut out: Vec<String> = Vec::with_capacity(lines.len());
-        for l in &lines {
-            let t = l.trim_start();
-            let todo = t.strip_prefix("- [ ] ").map(|r| (false, r)).or_else(|| {
-                t.strip_prefix("- [x] ").or(t.strip_prefix("- [X] ")).map(|r| (true, r))
+        // the MU26 notepad, read into items once
+        if info.pad.is_empty() && !info.notes.trim().is_empty() {
+            info.pad = creabim_core::project::pad_from_markdown(&info.notes);
+            info.notes.clear();
+        }
+        let before = info.clone();
+        let open_key = egui::Id::new("pad.open");
+        let mut open: Option<usize> = ui.ctx().data(|d| d.get_temp(open_key)).flatten();
+        let mut remove = None;
+        let mut follow: Option<ElementId> = None;
+        let accent = crate::theme::Palette::of(ui.ctx()).accent;
+        let model_names: std::collections::HashMap<ElementId, String> = info
+            .pad
+            .iter()
+            .filter_map(|i| i.link)
+            .filter_map(|l| self.doc.model().get(l).map(|e| (l, e.name.clone())))
+            .collect();
+        for todo in [true, false] {
+            let idx: Vec<usize> = (0..info.pad.len()).filter(|k| info.pad[*k].todo == todo).collect();
+            let done = idx.iter().filter(|k| info.pad[**k].done).count();
+            let title = if todo {
+                format!("To-dos  {done} of {}", idx.len())
+            } else {
+                format!("Notes  {}", idx.len())
+            };
+            if !self.prop_header(ui, if todo { "pad.todos" } else { "pad.notes" }, &title, true, None) {
+                continue;
+            }
+            if idx.is_empty() {
+                ui.label(egui::RichText::new(if todo { "No to-dos yet." } else { "No notes yet." }).weak());
+            }
+            for k in idx {
+                let item = &mut info.pad[k];
+                ui.horizontal(|ui| {
+                    if todo {
+                        ui.checkbox(&mut item.done, "");
+                    }
+                    // the row's tools at its right end; the title fills the rest
+                    let tools = 3.0 * 22.0 + if item.link.is_some() { 22.0 } else { 0.0 };
+                    let w = (ui.available_width() - tools).max(40.0);
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(w, 20.0), egui::Sense::click());
+                    let text = if item.title().is_empty() { "(empty)" } else { item.title() };
+                    let mut color = ui.visuals().text_color();
+                    if item.done {
+                        color = ui.visuals().weak_text_color();
+                    }
+                    let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(12.0), color);
+                    let painter = ui.painter().with_clip_rect(r);
+                    let at = egui::pos2(r.left(), r.center().y - galley.size().y / 2.0);
+                    let too_long = galley.size().x > r.width();
+                    painter.galley(at, galley, color);
+                    if item.done {
+                        painter.line_segment([egui::pos2(r.left(), r.center().y), egui::pos2(r.right(), r.center().y)], egui::Stroke::new(1.0, color.gamma_multiply(0.6)));
+                    }
+                    if too_long {
+                        // a gentle fade at the end, not a cut (MU27)
+                        let bg = ui.visuals().panel_fill;
+                        for s in 0..12 {
+                            let x = r.right() - 12.0 + s as f32;
+                            painter.line_segment([egui::pos2(x, r.top()), egui::pos2(x, r.bottom())], egui::Stroke::new(1.0, bg.gamma_multiply(s as f32 / 12.0)));
+                        }
+                    }
+                    if resp.on_hover_text(item.text.as_str()).clicked() {
+                        open = if open == Some(k) { None } else { Some(k) };
+                    }
+                    if let Some(l) = item.link {
+                        let name = model_names.get(&l).cloned().unwrap_or_else(|| "gone".into());
+                        if crate::props::icon_button(ui, "link", &format!("Go to {name}")).clicked() {
+                            follow = Some(l);
+                        }
+                    }
+                    if crate::props::icon_button(ui, "pencil", "Edit").clicked() {
+                        open = if open == Some(k) { None } else { Some(k) };
+                    }
+                    if crate::props::icon_button(ui, "trash-2", "Delete").clicked() {
+                        remove = Some(k);
+                    }
+                });
+                if open == Some(k) {
+                    egui::Frame::new()
+                        .inner_margin(egui::Margin::symmetric(6, 4))
+                        .stroke(egui::Stroke::new(1.0, accent.gamma_multiply(0.5)))
+                        .corner_radius(4.0)
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut item.text)
+                                    .desired_rows(3)
+                                    .desired_width(f32::INFINITY)
+                                    .hint_text("First line is its title; more lines below"),
+                            );
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut item.todo, "To-do");
+                                match item.link {
+                                    Some(_) => {
+                                        if ui.small_button("Unlink").clicked() {
+                                            item.link = None;
+                                        }
+                                    }
+                                    None => {
+                                        let target = self.selection.active.or(self.active_view);
+                                        if ui
+                                            .add_enabled(target.is_some(), egui::Button::new("Link to the selection").small())
+                                            .on_hover_text("Ties it to the element selected, or else the view in front: its link button then selects or opens it")
+                                            .clicked()
+                                        {
+                                            item.link = target;
+                                        }
+                                    }
+                                }
+                                if ui.small_button("Done").clicked() {
+                                    open = None;
+                                }
+                            });
+                        });
+                }
+            }
+        }
+        // a new item
+        let key = egui::Id::new("notes.new");
+        let kind_key = egui::Id::new("notes.new.todo");
+        let mut new: String = ui.ctx().data(|d| d.get_temp(key)).unwrap_or_default();
+        let mut as_todo: bool = ui.ctx().data(|d| d.get_temp(kind_key)).unwrap_or(true);
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut as_todo, true, "To-do");
+            ui.selectable_value(&mut as_todo, false, "Note");
+            let r = ui.add(
+                egui::TextEdit::singleline(&mut new)
+                    .vertical_align(egui::Align::Center)
+                    .hint_text(if as_todo { "Add a to-do, Enter" } else { "Add a note, Enter" })
+                    .desired_width(f32::INFINITY),
+            );
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !new.trim().is_empty() {
+                info.pad.push(PadItem { text: new.trim().to_string(), todo: as_todo, ..Default::default() });
+                new.clear();
+                r.request_focus();
+            }
+        });
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(key, new);
+            d.insert_temp(kind_key, as_todo);
+        });
+        if let Some(k) = remove {
+            info.pad.remove(k);
+            open = None;
+        }
+        ui.ctx().data_mut(|d| d.insert_temp(open_key, open));
+        // the whole as markdown: copy it, or save it
+        if self.prop_header(ui, "pad.markdown", "Markdown", false, None) {
+            let scope_key = egui::Id::new("pad.scope");
+            let mut scope: usize = ui.ctx().data(|d| d.get_temp(scope_key)).unwrap_or(0);
+            let scopes = ["Everything", "To-dos", "Open to-dos", "Notes"];
+            crate::props::row(ui, "Take", |ui| {
+                egui::ComboBox::from_id_salt("pad.scope")
+                    .icon(crate::props::combo_icon)
+                    .selected_text(scopes[scope])
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for (k, s) in scopes.iter().enumerate() {
+                            ui.selectable_value(&mut scope, k, *s);
+                        }
+                    })
             });
-            match todo {
-                Some((mut on, rest)) => {
-                    if on { done += 1 } else { open += 1 }
-                    let text = if on {
-                        egui::RichText::new(rest).strikethrough().weak()
-                    } else {
-                        egui::RichText::new(rest)
-                    };
-                    if ui.checkbox(&mut on, text).changed() {
-                        out.push(format!("- [{}] {rest}", if on { "x" } else { " " }));
-                        continue;
+            ui.ctx().data_mut(|d| d.insert_temp(scope_key, scope));
+            let chosen: Vec<&PadItem> = info
+                .pad
+                .iter()
+                .filter(|i| match scope {
+                    1 => i.todo,
+                    2 => i.todo && !i.done,
+                    3 => !i.todo,
+                    _ => true,
+                })
+                .collect();
+            let model = self.doc.model();
+            let md = creabim_core::project::pad_to_markdown(&chosen, &|id| model.get(id).map(|e| e.name.clone()));
+            let mut shown = md.clone();
+            egui::ScrollArea::vertical().id_salt("pad.md").max_height(160.0).show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut shown)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(f32::INFINITY)
+                        .interactive(true),
+                );
+            });
+            ui.horizontal(|ui| {
+                if ui.button("Copy").on_hover_text("Copy it as markdown").clicked() {
+                    ui.ctx().copy_text(md.clone());
+                    self.status = "Notes copied as markdown.".into();
+                }
+                for (ext, label) in [("md", "Save .md"), ("txt", "Save .txt")] {
+                    if ui.button(label).clicked() {
+                        let stem = std::path::Path::new(&self.path)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("project")
+                            .to_string();
+                        if let Some(path) = self.export_to(format!("{stem} notes.{ext}")) {
+                            self.status = match std::fs::write(&path, &md) {
+                                Ok(()) => format!("Saved the notes to {path}."),
+                                Err(e) => format!("Couldn't save: {e}"),
+                            };
+                        }
                     }
                 }
-                None if t.starts_with('#') => {
-                    ui.label(egui::RichText::new(t.trim_start_matches('#').trim()).strong());
-                }
-                None if t.is_empty() => {
-                    ui.add_space(4.0);
-                }
-                None => {
-                    ui.label(t);
-                }
-            }
-            out.push(l.clone());
+            });
+            ui.label(egui::RichText::new("Kept with the project, never printed.").weak());
         }
-        if lines.is_empty() {
-            ui.label(egui::RichText::new("Nothing yet. Add a to-do below, or write notes as text.").weak());
-        } else if done + open > 0 {
-            ui.label(egui::RichText::new(format!("{done} of {} done", done + open)).weak());
-        }
-        info.notes = out.join("\n");
-        // a new to-do
-        let key = egui::Id::new("notes.new");
-        let mut new: String = ui.ctx().data(|d| d.get_temp(key)).unwrap_or_default();
-        let r = ui.add(
-            egui::TextEdit::singleline(&mut new)
-                .vertical_align(egui::Align::Center)
-                .hint_text("Add a to-do, Enter")
-                .desired_width(f32::INFINITY),
-        );
-        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !new.trim().is_empty() {
-            if !info.notes.is_empty() {
-                info.notes.push('\n');
-            }
-            info.notes.push_str(&format!("- [ ] {}", new.trim()));
-            new.clear();
-            r.request_focus();
-        }
-        ui.ctx().data_mut(|d| d.insert_temp(key, new));
-        if crate::props::subsection(ui, "notes.text", "Edit as text (markdown)", false) {
-            ui.add(
-                egui::TextEdit::multiline(&mut info.notes)
-                    .desired_rows(10)
-                    .desired_width(f32::INFINITY)
-                    .font(egui::TextStyle::Monospace),
-            );
-            ui.label(egui::RichText::new("- [ ] a to-do, - [x] done, # a heading. Kept with the project, never printed.").weak());
-        }
-        if info.notes != before {
+        if info != before {
             let tx = creabim_core::set_project(self.doc.model(), info);
-            let r = self.doc.commit_merged(tx);
-            if let Err(e) = r {
+            if let Err(e) = self.doc.commit_merged(tx) {
                 self.status = format!("Couldn't do that: {e}");
+            }
+        }
+        if let Some(l) = follow {
+            match self.doc.model().get(l).map(|e| &e.kind) {
+                Some(ElementKind::View(_)) => self.active_view = Some(l),
+                Some(_) => {
+                    self.selection.only(l);
+                    self.prop_tab = PropTab::Element;
+                }
+                None => self.status = "What it was linked to is gone.".into(),
             }
         }
     }
@@ -3626,6 +3781,27 @@ impl CreaBimApp {
     /// A note's text in a window of its own, large, for long text and
     /// markdown (MU26). Changes go in as typed, one undo step a pause.
     fn note_editor_window(&mut self, ctx: &egui::Context) {
+        if let Some((from, g)) = self.copy_guides.take() {
+            let others: Vec<ElementId> = self
+                .doc
+                .model()
+                .iter()
+                .filter(|e| e.id != from && matches!(e.kind, ElementKind::Sheet(_)))
+                .map(|e| e.id)
+                .collect();
+            let mut tx = creabim_core::Transaction::new("Copy guides to all sheets");
+            for sid in &others {
+                if let Some(e) = self.doc.model().get(*sid).cloned() {
+                    let mut after = e.clone();
+                    if let ElementKind::Sheet(sh) = &mut after.kind {
+                        sh.guides = g.clone();
+                    }
+                    tx = tx.replace(e, after);
+                }
+            }
+            let r = self.doc.commit(tx);
+            self.report(r, format!("Guides copied to {} other sheets.", others.len()));
+        }
         if let Some(id) = self.plan.edit_note.take() {
             self.note_editor = Some(id);
         }
@@ -6528,6 +6704,23 @@ impl CreaBimApp {
                     if let Some(l) = self.sheet_template_ui(ui, sh) {
                         label = l;
                     }
+                    // its guides, to reuse on other sheets (MU27)
+                    crate::props::row(ui, "Guides", |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("{}", sh.guides.len())).weak());
+                            if ui
+                                .add_enabled(!sh.guides.is_empty(), egui::Button::new("Copy to all sheets").small())
+                                .on_hover_text("Every other sheet gets these guides in place of its own: one layout across the set")
+                                .clicked()
+                            {
+                                self.copy_guides = Some((id, sh.guides.clone()));
+                            }
+                            if ui.add_enabled(!sh.guides.is_empty(), egui::Button::new("Clear").small()).clicked() {
+                                sh.guides.clear();
+                                label = "Clear guides";
+                            }
+                        });
+                    });
                     if self.active_view != Some(id) && ui.button("Open this sheet").clicked() {
                         self.active_view = Some(id);
                     }
@@ -6589,6 +6782,50 @@ impl CreaBimApp {
                 );
                     if ui.button("Open the view itself").clicked() {
                         self.active_view = Some(vp.view);
+                    }
+                    // its title on the sheet (MU27): its view's, so every
+                    // sheet it is on agrees
+                    if let Some(ElementKind::View(view)) = self.doc.model().get(vp.view).map(|e| e.kind.clone()) {
+                        let mut t = view.sheet_title.clone();
+                        let before = t.clone();
+                        if crate::props::subsection(ui, "viewport.title", "Title", true) {
+                            let mut shown = !t.hidden;
+                            if crate::props::switch(ui, &mut shown, "Show the title").changed() {
+                                t.hidden = !shown;
+                            }
+                            if !t.hidden {
+                                crate::props::switch(ui, &mut t.show_number, "Number in a circle");
+                                crate::props::switch(ui, &mut t.show_scale, "Scale under it");
+                                crate::props::row(ui, "Words", |ui| {
+                                    crate::props::fill(
+                                        ui,
+                                        egui::TextEdit::singleline(&mut t.text)
+                                            .vertical_align(egui::Align::Center)
+                                            .hint_text("The view's name"),
+                                    )
+                                });
+                                crate::props::row(ui, "Size", |ui| {
+                                    crate::props::fill(ui, egui::DragValue::new(&mut t.size).speed(0.1).range(1.5..=10.0).suffix(" mm"))
+                                });
+                                for (name, v) in [("Moved X", &mut t.offset.x), ("Moved Y", &mut t.offset.y)] {
+                                    crate::props::row(ui, name, |ui| {
+                                        crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).suffix(" mm"))
+                                    });
+                                }
+                                ui.label(egui::RichText::new("Or drag the title itself on the sheet.").weak());
+                            }
+                        }
+                        if t != before {
+                            let id = vp.view;
+                            let r = self.doc.edit_merged(id, "View title", |e| {
+                                if let ElementKind::View(v) = &mut e.kind {
+                                    v.sheet_title = t.clone();
+                                }
+                            });
+                            if let Err(e) = r {
+                                self.status = format!("Couldn't do that: {e}");
+                            }
+                        }
                     }
                 }
                 ElementKind::Assembly(_) => {

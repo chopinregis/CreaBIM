@@ -1624,6 +1624,9 @@ pub struct View {
     /// views, where a tag at 1:10 is a scribble (A5-7).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room_tags: Option<bool>,
+    /// How its title reads where it is placed on a sheet (MU27).
+    #[serde(default, skip_serializing_if = "SheetTitle::is_default")]
+    pub sheet_title: SheetTitle,
     /// How a section or elevation shows each level's head: turned off, or
     /// dragged away from where it would sit. Levels not listed show their
     /// heads where the automatic layout puts them.
@@ -1864,6 +1867,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             room_tags: None,
+            sheet_title: SheetTitle::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1889,6 +1893,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             room_tags: None,
+            sheet_title: SheetTitle::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1911,6 +1916,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             room_tags: None,
+            sheet_title: SheetTitle::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1934,6 +1940,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             room_tags: None,
+            sheet_title: SheetTitle::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1962,6 +1969,7 @@ impl View {
             graphics: parent.graphics.clone(),
             callout: Some(Callout::new(parent_id, a, b)),
             room_tags: None,
+            sheet_title: SheetTitle::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -2048,6 +2056,34 @@ pub struct Viewport {
     /// coordinates, lower-left and upper-right) is shown.
     #[serde(default)]
     pub crop: Option<[DVec2; 2]>,
+}
+
+/// A view's title on a sheet: shown or not, its scale shown or not, moved
+/// from where it sits under the drawing, its size.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SheetTitle {
+    pub hidden: bool,
+    pub show_scale: bool,
+    pub show_number: bool,
+    /// From its place under the drawing's lower left, paper mm.
+    pub offset: DVec2,
+    /// The title's letter height, paper mm.
+    pub size: f64,
+    /// Its own words; empty, the view's name.
+    pub text: String,
+}
+
+impl Default for SheetTitle {
+    fn default() -> Self {
+        Self { hidden: false, show_scale: true, show_number: true, offset: DVec2::ZERO, size: 3.5, text: String::new() }
+    }
+}
+
+impl SheetTitle {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// IFC classes a free mesh may be classified as.

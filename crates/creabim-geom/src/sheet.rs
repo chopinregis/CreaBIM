@@ -32,12 +32,25 @@ pub struct PlacedView {
     pub looks: std::sync::Arc<crate::looks::Looks>,
     /// The drawing's extent on paper, mm.
     pub bounds: (DVec2, DVec2),
+    /// How its title reads (MU27).
+    pub title_look: creabim_core::SheetTitle,
 }
 
 impl PlacedView {
     /// Where the view title sits, below the drawing.
     pub fn title_at(&self) -> DVec2 {
-        DVec2::new(self.bounds.0.x, self.bounds.0.y - 7.0)
+        DVec2::new(self.bounds.0.x, self.bounds.0.y - 7.0) + self.title_look.offset
+    }
+
+    /// The title's extent on paper, to pick and drag it.
+    pub fn title_box(&self) -> Option<(DVec2, DVec2)> {
+        if self.title_look.hidden || self.map.scale == 1000.0 {
+            return None;
+        }
+        let at = self.title_at();
+        let s = self.title_look.size;
+        let w = 9.0 + paper::text_width(&self.title, s).max(30.0);
+        Some((at - DVec2::new(0.5, s * 1.4), at + DVec2::new(w, s * 1.2)))
     }
 }
 
@@ -141,10 +154,12 @@ pub fn placed_views_with(
             viewport: e.id,
             view: vp.view,
             number: out.len() + 1,
-            title: model
-                .get(vp.view)
-                .map(|v| v.name.clone())
+            title: Some(view.sheet_title.text.trim())
+                .filter(|t| !t.is_empty())
+                .map(str::to_string)
+                .or_else(|| model.get(vp.view).map(|v| v.name.clone()))
                 .unwrap_or_default(),
+            title_look: view.sheet_title.clone(),
             map,
             drawing: d,
             weights: looks.weights,
@@ -513,30 +528,29 @@ pub fn draw_view_title(c: &mut dyn Canvas, v: &PlacedView) {
     if v.map.scale == 1000.0 {
         return;
     }
+    let t = &v.title_look;
+    if t.hidden {
+        return;
+    }
     let at = v.title_at();
+    let k = t.size / 3.5;
     let thin = Stroke::solid(0.18, 0.0);
-    c.circle(at + DVec2::new(3.5, 0.0), 3.5, thin);
-    c.text(
-        at + DVec2::new(3.5, 0.0),
-        3.0,
-        &v.number.to_string(),
-        Anchor::Middle,
-    );
-    c.text(at + DVec2::new(9.0, 1.2), 3.5, &v.title, Anchor::Start);
-    let width = paper::text_width(&v.title, 3.5).max(30.0);
+    let x0 = if t.show_number {
+        c.circle(at + DVec2::new(3.5 * k, 0.0), 3.5 * k, thin);
+        c.text(at + DVec2::new(3.5 * k, 0.0), 3.0 * k, &v.number.to_string(), Anchor::Middle);
+        9.0 * k
+    } else {
+        0.0
+    };
+    c.text(at + DVec2::new(x0, 1.2 * k), t.size, &v.title, Anchor::Start);
+    let width = paper::text_width(&v.title, t.size).max(30.0 * k);
     c.line(
-        &[
-            at + DVec2::new(9.0, -1.0),
-            at + DVec2::new(9.0 + width, -1.0),
-        ],
+        &[at + DVec2::new(x0, -k), at + DVec2::new(x0 + width, -k)],
         Stroke::solid(0.35, 0.0),
     );
-    c.text(
-        at + DVec2::new(9.0, -3.5),
-        2.5,
-        &format!("1:{:.0}", v.map.scale),
-        Anchor::Start,
-    );
+    if t.show_scale {
+        c.text(at + DVec2::new(x0, -3.5 * k), 2.5 * k, &format!("1:{:.0}", v.map.scale), Anchor::Start);
+    }
 }
 
 /// Draw a whole sheet: frame, every view and its title.

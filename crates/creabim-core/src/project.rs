@@ -34,9 +34,102 @@ pub struct ProjectInfo {
     /// "Dwelling", "Office", "School".
     pub building_use: String,
     /// The project's notepad (MU26): notes and to-dos, markdown, kept with
-    /// the project and never printed.
+    /// the project and never printed. Read into [`ProjectInfo::pad`] once.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub notes: String,
+    /// The notepad's items (MU27): to-dos and notes, each with its text
+    /// (the first line its title) and, if wanted, a link to an element or
+    /// a view.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pad: Vec<PadItem>,
+}
+
+/// One item of the project's notepad.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PadItem {
+    pub text: String,
+    /// A to-do (ticked or not); else a note.
+    pub todo: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub done: bool,
+    /// What it is about: an element or a view, selected or opened from it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<crate::ElementId>,
+}
+
+impl PadItem {
+    /// Its first line.
+    pub fn title(&self) -> &str {
+        self.text.lines().next().unwrap_or("").trim()
+    }
+}
+
+/// The old markdown notepad as items: `- [ ]` and `- [x]` lines are
+/// to-dos, other lines join into notes, a blank line or heading ending one.
+pub fn pad_from_markdown(md: &str) -> Vec<PadItem> {
+    let mut out: Vec<PadItem> = vec![];
+    let mut note: Option<PadItem> = None;
+    let flush = |note: &mut Option<PadItem>, out: &mut Vec<PadItem>| {
+        if let Some(n) = note.take().filter(|n| !n.text.trim().is_empty()) {
+            out.push(n);
+        }
+    };
+    for line in md.lines() {
+        let t = line.trim();
+        let todo = t
+            .strip_prefix("- [ ] ")
+            .map(|r| (false, r))
+            .or_else(|| t.strip_prefix("- [x] ").or(t.strip_prefix("- [X] ")).map(|r| (true, r)));
+        if let Some((done, r)) = todo {
+            flush(&mut note, &mut out);
+            out.push(PadItem { text: r.into(), todo: true, done, link: None });
+        } else if t.is_empty() {
+            flush(&mut note, &mut out);
+        } else {
+            let t = t.trim_start_matches('#').trim();
+            match &mut note {
+                Some(n) => {
+                    n.text.push('\n');
+                    n.text.push_str(t);
+                }
+                None => note = Some(PadItem { text: t.into(), ..Default::default() }),
+            }
+        }
+    }
+    flush(&mut note, &mut out);
+    out
+}
+
+/// Items as markdown: to-dos as `- [ ]`/`- [x]` lines, notes as
+/// paragraphs, each link named after what it points at.
+pub fn pad_to_markdown(items: &[&PadItem], name_of: &dyn Fn(crate::ElementId) -> Option<String>) -> String {
+    let mut todos = String::new();
+    let mut notes = String::new();
+    for i in items {
+        let link = i.link.and_then(name_of).map(|n| format!(" (\u{2192} {n})")).unwrap_or_default();
+        if i.todo {
+            let mut lines = i.text.lines();
+            let first = lines.next().unwrap_or("");
+            todos.push_str(&format!("- [{}] {first}{link}\n", if i.done { "x" } else { " " }));
+            for l in lines {
+                todos.push_str(&format!("  {l}\n"));
+            }
+        } else {
+            notes.push_str(&format!("{}{link}\n\n", i.text.trim_end()));
+        }
+    }
+    let mut out = String::new();
+    if !todos.is_empty() {
+        out.push_str("## To-dos\n\n");
+        out.push_str(&todos);
+        out.push('\n');
+    }
+    if !notes.is_empty() {
+        out.push_str("## Notes\n\n");
+        out.push_str(&notes);
+    }
+    out.trim_end().to_string() + "\n"
 }
 
 impl ProjectInfo {
@@ -101,6 +194,20 @@ mod tests {
         assert!(f.contains(&("project", "Maple Lane House".to_string())));
         assert!(!f.iter().any(|(k, _)| *k == "client"));
         assert!(ProjectInfo::default().is_empty());
+    }
+
+    #[test]
+    fn the_old_notepad_reads_as_items_and_writes_back_as_markdown() {
+        let md = "- [x] Start a new project\n- [ ] testing a new note\n\nA note\nits second line";
+        let items = pad_from_markdown(md);
+        assert_eq!(items.len(), 3);
+        assert!(items[0].todo && items[0].done);
+        assert_eq!(items[2].title(), "A note");
+        let refs: Vec<&PadItem> = items.iter().collect();
+        let back = pad_to_markdown(&refs, &|_| None);
+        assert!(back.contains("- [x] Start a new project"));
+        assert!(back.contains("## Notes"));
+        assert_eq!(pad_from_markdown(&back).iter().filter(|i| i.todo).count(), 2);
     }
 
     #[test]
