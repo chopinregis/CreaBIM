@@ -1590,7 +1590,7 @@ impl CreaBimApp {
             // (these four were handled below but never routed here: MU22)
             | "view.tempdims" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
-            | "sheet.revtable" | "tag.all" => {
+            | "sheet.revtable" | "tag.all" | "sheet.keyplan" => {
                 self.view_action(head)
             }
             "cleanup.stacked" => {
@@ -1704,6 +1704,57 @@ impl CreaBimApp {
             "schedule" if measures || t == Tool::Note => Some("a schedule takes no annotation"),
             _ => None,
         }
+    }
+
+    /// A key plan on `sheet` (Annotate step 5): the lowest floor plan
+    /// again as a view of its own at 1:500, its annotation hidden, placed
+    /// over the title block, all one undo step.
+    pub(super) fn add_key_plan(&mut self, sheet: ElementId) {
+        use creabim_core::visibility::Category;
+        let model = self.doc.model();
+        let plan = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. }) && v.callout.is_none() => {
+                    let lvl = match v.kind {
+                        creabim_core::ViewKind::Plan { level, .. } => creabim_core::members::elevation(model, level),
+                        _ => 0.0,
+                    };
+                    Some((lvl, e.clone(), v.clone()))
+                }
+                _ => None,
+            })
+            .filter(|(z, ..)| *z >= -0.5)
+            .min_by(|a, b| a.0.total_cmp(&b.0));
+        let Some((_, from, mut v)) = plan else {
+            self.status = "A key plan needs a floor plan to draw from.".into();
+            return;
+        };
+        v.scale = 500.0;
+        v.browser_order = None;
+        for c in [Category::Dimensions, Category::Tags, Category::Notes, Category::Grids, Category::SectionMarks, Category::Objects, Category::Guides, Category::Sketches] {
+            if !v.hidden.categories.contains(&c) {
+                v.hidden.categories.push(c);
+            }
+        }
+        let view = Element::new(format!("Key plan ({})", from.name), ElementKind::View(v));
+        let view_id = view.id;
+        let Some(s) = creabim_geom::sheet::sheet_of(model, sheet) else { return };
+        let m = creabim_geom::sheet::MARGIN;
+        let top = creabim_geom::sheet::title_block_box(model, sheet).map_or(m + 45.0, |(_, hi)| hi.y);
+        let at = glam::DVec2::new(s.width - m - 40.0, top + 30.0);
+        // the view first, then its viewport, made against the model with
+        // the view in it; one undo step
+        if let Err(e) = self.doc.commit(Transaction::new("Add key plan").insert(view)) {
+            self.status = format!("Couldn't do that: {e}");
+            return;
+        }
+        let vp = creabim_geom::sheet::new_viewport(self.doc.model(), sheet, view_id, at);
+        let e = Element::new("Key plan", ElementKind::Viewport(vp));
+        let id = e.id;
+        let r = self.doc.commit_merged(Transaction::new("Add key plan").insert(e));
+        self.selection.only(id);
+        self.report(r, "Key plan placed over the title block: the whole floor at 1:500. Drag it where it goes; it is a view of its own in the browser.");
     }
 
     pub(super) fn place_view(&mut self, sheet: ElementId, view: ElementId) {
@@ -2081,6 +2132,11 @@ impl CreaBimApp {
                 }
             }
             "sheet.pdf" => self.export_sheets_now(true),
+            "sheet.keyplan" => {
+                if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
+                    self.add_key_plan(sheet);
+                }
+            }
             "sheet.cloud" | "sheet.revtable" => {
                 if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
                     self.add_revision_mark(sheet, what == "sheet.revtable");
@@ -2658,6 +2714,10 @@ impl CreaBimApp {
             options.push(json!({
                 "kind": "button", "id": "sheet.cloud", "label": "Revision cloud", "icon": "revision-cloud",
                 "hint": "A revision cloud round a change, with the next revision letter",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.keyplan", "label": "Key plan", "icon": "map",
+                "hint": "A small plan of the whole building by the title block, at 1:500, without dimensions, tags or notes",
             }));
             options.push(json!({
                 "kind": "button", "id": "sheet.revtable", "label": "Revisions table", "icon": "table-2",
