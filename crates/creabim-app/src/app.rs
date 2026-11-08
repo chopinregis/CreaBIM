@@ -6557,38 +6557,45 @@ impl CreaBimApp {
                     if self.material_combo(ui, &mut m.material) {
                         label = "Mesh material"
                     }
-                    if num(ui, "X", &mut m.origin.x, -1e4, 1e4)
-                        | num(ui, "Y", &mut m.origin.y, -1e4, 1e4)
-                        | num(ui, "Z", &mut m.origin.z, -1e3, 1e3)
-                    {
-                        label = "Move mesh"
-                    }
-                    ui.horizontal(|ui| {
-                        ui.label("Rotation");
-                        if ui
-                            .add(egui::DragValue::new(&mut m.rotation).speed(1.0).suffix("°"))
-                            .changed()
+                    // Transform, as Blender's (MU24): location, rotation
+                    // about each axis (XYZ Euler), scale
+                    if crate::props::subsection(ui, "mesh.location", "Location", true) {
+                        if num(ui, "X", &mut m.origin.x, -1e4, 1e4)
+                            | num(ui, "Y", &mut m.origin.y, -1e4, 1e4)
+                            | num(ui, "Z", &mut m.origin.z, -1e3, 1e3)
                         {
+                            label = "Move mesh"
+                        }
+                    }
+                    if crate::props::subsection(ui, "mesh.rotation", "Rotation (XYZ Euler)", true) {
+                        let deg = |ui: &mut egui::Ui, name: &str, v: &mut f64| {
+                            crate::props::row(ui, name, |ui| {
+                                crate::props::fill(ui, egui::DragValue::new(v).speed(1.0).suffix("°"))
+                                    .on_hover_text("Turns about this axis through its origin. R in a view turns it with the pointer; X, Y or Z then keeps to an axis.")
+                                    .changed()
+                            })
+                        };
+                        let (mut x, mut y, mut z) = (m.rot_x, m.rot_y, m.rotation);
+                        if deg(ui, "X", &mut x) | deg(ui, "Y", &mut y) | deg(ui, "Z", &mut z) {
+                            m.rot_x = x.rem_euclid(360.0);
+                            m.rot_y = y.rem_euclid(360.0);
+                            m.rotation = z.rem_euclid(360.0);
                             label = "Rotate mesh"
                         }
-                        ui.label("Scale");
-                        if ui
-                            .add(
-                                egui::DragValue::new(&mut m.scale)
-                                    .speed(0.01)
-                                    .range(0.01..=100.0),
-                            )
-                            .changed()
+                    }
+                    crate::props::row(ui, "Scale", |ui| {
+                        if crate::props::fill(
+                            ui,
+                            egui::DragValue::new(&mut m.scale)
+                                .speed(0.01)
+                                .range(0.01..=100.0),
+                        )
+                        .on_hover_text("M moves by a base point. With the pointer over a view: G moves, R rotates, S scales, Shift+D duplicates.")
+                        .changed()
                         {
                             label = "Scale mesh"
                         }
                     });
-                    ui.label(
-                    egui::RichText::new(
-                        "M moves by a base point. With the pointer over a view: G moves, R rotates, S scales, Shift+D duplicates.",
-                    )
-                    .weak(),
-                );
 
                     ui.separator();
                     ui.label(egui::RichText::new("Modifiers").strong());

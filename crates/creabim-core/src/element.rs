@@ -1432,6 +1432,12 @@ pub struct FreeMesh {
     /// Turn about the vertical axis through `origin`, in degrees.
     #[serde(default)]
     pub rotation: f64,
+    /// Turns about the x and y axes through `origin`, in degrees, applied
+    /// before `rotation`: XYZ Euler, as Blender's (MU24).
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub rot_x: f64,
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub rot_y: f64,
     /// Uniform size factor about `origin`.
     #[serde(default = "one")]
     pub scale: f64,
@@ -1439,6 +1445,10 @@ pub struct FreeMesh {
 
 fn one() -> f64 {
     1.0
+}
+
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
 }
 
 impl FreeMesh {
@@ -1452,28 +1462,37 @@ impl FreeMesh {
             material: None,
             modifiers: vec![],
             rotation: 0.0,
+            rot_x: 0.0,
+            rot_y: 0.0,
             scale: 1.0,
         }
     }
 
+    /// Its turn as a rotation: about x, then y, then z (XYZ Euler).
+    pub fn turn(&self) -> glam::DQuat {
+        glam::DQuat::from_euler(
+            glam::EulerRot::ZYX,
+            self.rotation.to_radians(),
+            self.rot_y.to_radians(),
+            self.rot_x.to_radians(),
+        )
+    }
+
     /// From the mesh's own axes to the model's, about `origin`.
     pub fn to_model(&self, v: DVec3) -> DVec3 {
-        let (s, c) = self.rotation.to_radians().sin_cos();
-        let v = v * self.scale;
-        DVec3::new(v.x * c - v.y * s, v.x * s + v.y * c, v.z)
+        self.turn() * (v * self.scale)
     }
 
     /// A model-axes offset in the mesh's own axes (for moving vertices).
     pub fn to_local(&self, d: DVec3) -> DVec3 {
-        let (s, c) = (-self.rotation).to_radians().sin_cos();
-        DVec3::new(d.x * c - d.y * s, d.x * s + d.y * c, d.z) / self.scale
+        (self.turn().inverse() * d) / self.scale
     }
 
     /// The shape as shown: modifiers applied, turned and scaled, relative to
     /// `origin`. `source` gives each face's face in `mesh`, for editing.
     pub fn evaluated(&self) -> Evaluated {
         let mut e = crate::modifiers::evaluate(&self.mesh, &self.modifiers);
-        if self.rotation != 0.0 || self.scale != 1.0 {
+        if self.rotation != 0.0 || self.rot_x != 0.0 || self.rot_y != 0.0 || self.scale != 1.0 {
             for v in &mut e.mesh.vertices {
                 *v = self.to_model(*v);
             }
@@ -2142,5 +2161,25 @@ mod tests {
         let r: crate::joins::JoinRule = serde_json::from_str(&text).unwrap();
         assert_eq!(r, crate::joins::JoinRule::new(a, b));
         assert!(r.cleanup && r.is_default());
+    }
+}
+
+#[cfg(test)]
+mod mesh_turn_tests {
+    use super::*;
+
+    #[test]
+    fn a_mesh_turns_about_x_then_y_then_z_and_back() {
+        // MU24: Blender's XYZ Euler, so a shape drawn on a wall can turn
+        // about the wall's own axes
+        let mut m = FreeMesh::new(None, DVec3::ZERO, crate::editmesh::EditMesh::default());
+        m.rot_x = 90.0;
+        let up = m.to_model(DVec3::Z);
+        assert!(up.distance(DVec3::new(0.0, -1.0, 0.0)) < 1e-9, "{up}");
+        m.rot_y = 30.0;
+        m.rotation = 45.0;
+        m.scale = 2.0;
+        let v = DVec3::new(0.3, -1.2, 0.7);
+        assert!(m.to_local(m.to_model(v)).distance(v) < 1e-9);
     }
 }
