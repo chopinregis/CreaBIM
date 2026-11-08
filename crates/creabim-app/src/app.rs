@@ -6559,13 +6559,12 @@ impl CreaBimApp {
                     }
                     // Transform, as Blender's (MU24): location, rotation
                     // about each axis (XYZ Euler), scale
-                    if crate::props::subsection(ui, "mesh.location", "Location", true) {
-                        if num(ui, "X", &mut m.origin.x, -1e4, 1e4)
+                    if crate::props::subsection(ui, "mesh.location", "Location", true)
+                        && (num(ui, "X", &mut m.origin.x, -1e4, 1e4)
                             | num(ui, "Y", &mut m.origin.y, -1e4, 1e4)
-                            | num(ui, "Z", &mut m.origin.z, -1e3, 1e3)
-                        {
-                            label = "Move mesh"
-                        }
+                            | num(ui, "Z", &mut m.origin.z, -1e3, 1e3))
+                    {
+                        label = "Move mesh"
                     }
                     if crate::props::subsection(ui, "mesh.rotation", "Rotation (XYZ Euler)", true) {
                         let deg = |ui: &mut egui::Ui, name: &str, v: &mut f64| {
