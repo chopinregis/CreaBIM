@@ -125,10 +125,12 @@ impl CreaBimApp {
             let name = model
                 .get(other)
                 .map_or("(missing)".into(), |e| e.name.clone());
-            ui.horizontal(|ui| {
-                ui.label(format!("{which}, with {name}"));
+            // the end in the label column, the wall it meets on hover, the
+            // choice filling the field column (MU29: it ran off the panel)
+            crate::props::row(ui, which, |ui| {
                 egui::ComboBox::from_id_salt(("corner", id, at_end)).icon(crate::props::combo_icon)
                     .selected_text(now.label())
+                    .width(ui.available_width())
                     .show_ui(ui, |ui| {
                         for p in creabim_core::CornerPreset::ALL {
                             if ui.selectable_label(p == now, p.label()).clicked() && p != now {
@@ -137,7 +139,7 @@ impl CreaBimApp {
                         }
                     })
                     .response
-                    .on_hover_text("How the two walls' layers meet at this corner. Auto mitres every layer; Cores lap runs the stronger wall's core on past the other's; a wall running through has every layer of the other stop at it; Not joined leaves both ends square.");
+                    .on_hover_text(format!("With {name}. How the two walls' layers meet at this corner. Auto mitres every layer; Cores lap runs the stronger wall's core on past the other's; a wall running through has every layer of the other stop at it; Not joined leaves both ends square."))
             });
         }
         if let Some((other, p)) = pick {

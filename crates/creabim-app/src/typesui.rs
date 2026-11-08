@@ -783,13 +783,13 @@ impl CreaBimApp {
                     let two = cat != TypeCategory::Object;
                     let gap = ui.spacing().item_spacing.x;
                     let w = if two { (ui.available_width() - gap) / 2.0 } else { ui.available_width() };
-                    if ui.add_sized([w, 22.0], egui::Button::new("Edit type\u{2026}")).clicked() {
+                    if ui.add_sized([w, 22.0], egui::Button::new("Edit\u{2026}")).on_hover_text("Edit the type: every instance follows").clicked() {
                         self.types.open = true;
                         self.types.current = Some(t);
                     }
                     if two
                         && ui
-                            .add_sized([w, 22.0], egui::Button::new("New type"))
+                            .add_sized([w, 22.0], egui::Button::new("New"))
                             .on_hover_text("A new type with its values, which it becomes an instance of")
                             .clicked()
                     {

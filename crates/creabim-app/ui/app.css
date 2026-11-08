@@ -1022,3 +1022,6 @@ kbd {
 
 /* MU29: a quiet line under the tool line, as between the rows above it */
 .bar3 { border-bottom: 1px solid var(--border); }
+/* a group's title keeps its words; its note gives way first (MU29) */
+.group > span:not(.n):not(.gnote) { flex: 0 1 auto; }
+.group > .gnote { min-width: 0; overflow: hidden; white-space: nowrap; }
