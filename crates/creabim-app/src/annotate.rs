@@ -298,6 +298,8 @@ pub struct Draft {
     pub dim_style: Option<ElementId>,
     pub note_style: Option<ElementId>,
     pub tag_style: Option<ElementId>,
+    /// New tags read their host's material build-up (Annotate step 5).
+    pub tag_material: bool,
 }
 
 impl Default for Draft {
@@ -312,6 +314,7 @@ impl Default for Draft {
             dim_style: None,
             note_style: None,
             tag_style: None,
+            tag_material: false,
         }
     }
 }

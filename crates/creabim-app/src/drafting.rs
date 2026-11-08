@@ -84,6 +84,22 @@ impl CreaBimApp {
                 "hint": "The step between rows of dimensions, millimetres on paper. Typing one turns Even spacing on",
             }));
         }
+        if tool == Tool::Tag {
+            out.push(seg(vec![
+                opt(
+                    "tag.reads:0".into(),
+                    "Mark",
+                    !self.plan.anno.tag_material,
+                    "The tag reads the element's mark, or its size",
+                ),
+                opt(
+                    "tag.reads:1".into(),
+                    "Material",
+                    self.plan.anno.tag_material,
+                    "A material tag: the element's material, or its layers one line each, outside to inside. It follows the model",
+                ),
+            ]));
+        }
         let style_menu = match tool {
             Tool::Dimension
             | Tool::Angle
@@ -200,6 +216,7 @@ impl CreaBimApp {
                     _ => None,
                 };
             }
+            "tag.reads" => self.plan.anno.tag_material = index == Some(1),
             "dim.chain" => {
                 self.plan.dim_chain = !self.plan.dim_chain;
                 self.plan.chain_line = None;

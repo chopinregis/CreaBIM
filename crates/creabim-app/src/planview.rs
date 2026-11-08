@@ -5253,9 +5253,11 @@ fn tag_tool(
             ) else {
                 return Ok(());
             };
+            let mut t = Tag::new(view, host, raw - proj.project(c));
+            t.material = state.anno.tag_material;
             let e = state.anno.styled(Element::new(
-                "Tag",
-                ElementKind::Tag(Tag::new(view, host, raw - proj.project(c))),
+                if t.material { "Material tag" } else { "Tag" },
+                ElementKind::Tag(t),
             ));
             selection.only(e.id);
             doc.commit(Transaction::new("Add tag").insert(e))

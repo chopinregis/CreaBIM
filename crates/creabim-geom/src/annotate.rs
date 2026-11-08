@@ -245,6 +245,32 @@ pub fn centre(model: &Model, id: ElementId) -> Option<DVec3> {
     })
 }
 
+/// What a material tag on `id` reads: its layers, one line each with
+/// their thickness, outside to inside, or its one material's name.
+pub fn material_text(model: &Model, id: ElementId) -> String {
+    let Some(e) = model.get(id) else {
+        return String::new();
+    };
+    let units = model.units();
+    if let Some((_, a)) = creabim_core::assembly_of(model, e) {
+        if !a.layers.is_empty() {
+            return a
+                .layers
+                .iter()
+                .map(|l| {
+                    let name = l
+                        .material
+                        .and_then(|m| model.get(m))
+                        .map_or("(no material)".to_string(), |m| m.name.clone());
+                    format!("{} {name}", units.dimension(l.thickness))
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+        }
+    }
+    creabim_core::material_of(model, e).map_or("(no material)".into(), |(m, _)| m.name.clone())
+}
+
 /// What a tag on `id` reads, and whether it sits in a circle (doors) or a box.
 pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
     let Some(e) = model.get(id) else {
@@ -874,7 +900,12 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     ));
                     continue;
                 }
-                let (text, round) = tag_text(model, t.host);
+                // a material tag reads the build-up (Annotate step 5)
+                let (text, round) = if t.material {
+                    (material_text(model, t.host), false)
+                } else {
+                    tag_text(model, t.host)
+                };
                 let mut look = look_of(model, t.style, t.color);
                 look.leader_end = t.leader_end.or(look.leader_end);
                 out.push(PlanItem::Tag {
@@ -1243,6 +1274,22 @@ mod tests {
 
     fn named(m: &Model, name: &str) -> ElementId {
         m.iter().find(|e| e.name == name).unwrap().id
+    }
+
+    #[test]
+    fn a_material_tag_reads_the_layers_outside_to_inside() {
+        // Annotate step 5: a layered wall reads one line a layer
+        let m = creabim_core::starter::starter_house();
+        let wall = m
+            .iter()
+            .find(|e| {
+                matches!(e.kind, ElementKind::Wall(_))
+                    && creabim_core::assembly_of(&m, e).is_some_and(|(_, a)| a.layers.len() > 1)
+            })
+            .expect("a layered wall");
+        let (_, a) = creabim_core::assembly_of(&m, wall).unwrap();
+        let text = material_text(&m, wall.id);
+        assert_eq!(text.lines().count(), a.layers.len(), "{text}");
     }
 
     #[test]

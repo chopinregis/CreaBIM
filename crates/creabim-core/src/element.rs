@@ -833,6 +833,11 @@ pub struct Tag {
     /// or a plain line when the style sets none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader_end: Option<Terminator>,
+    /// A material tag (Annotate step 5): it reads its host's material, or
+    /// its layers' build-up one line each, outside to inside, instead of
+    /// its mark.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub material: bool
 }
 
 impl Tag {
@@ -847,6 +852,7 @@ impl Tag {
             elbow: None,
             end: None,
             leader_end: None,
+            material: false,
         }
     }
 }

@@ -6691,6 +6691,12 @@ impl CreaBimApp {
                         .map(|e| e.name.clone())
                         .unwrap_or_default();
                     ui.label(format!("Tags {host}"));
+                    if crate::props::switch(ui, &mut t.material, "Reads the material")
+                        .on_hover_text("A material tag: its material, or its layers one line each, outside to inside")
+                        .changed()
+                    {
+                        label = "Tag reads";
+                    }
                     if num(ui, "Offset X", &mut t.offset.x, -100.0, 100.0)
                         | num(ui, "Offset Y", &mut t.offset.y, -100.0, 100.0)
                     {
