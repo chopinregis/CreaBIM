@@ -1545,14 +1545,30 @@ pub fn note_ui(
     n: &mut Note,
     focus: &mut bool,
     unit: f64,
+    pop_out: &mut bool,
 ) -> Option<&'static str> {
     let mut label = None;
-    ui.label("Text");
-    let r = ui.add(
-        egui::TextEdit::multiline(&mut n.text)
-            .desired_rows(3)
-            .desired_width(f32::INFINITY),
-    );
+    // the field keeps its size and scrolls inside; the small button at its
+    // corner opens the large editor (MU27)
+    ui.horizontal(|ui| {
+        ui.label("Text");
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if crate::props::icon_button(ui, "maximise", "Edit in a larger window (or double-click the note)").clicked() {
+                *pop_out = true;
+            }
+        });
+    });
+    let r = egui::ScrollArea::vertical()
+        .id_salt("note.text")
+        .max_height(110.0)
+        .show(ui, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut n.text)
+                    .desired_rows(4)
+                    .desired_width(f32::INFINITY),
+            )
+        })
+        .inner;
     if std::mem::take(focus) {
         r.request_focus();
         // select it all, so typing replaces the placeholder

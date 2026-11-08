@@ -236,6 +236,10 @@ pub struct CreaBimApp {
     crop_pick: Option<ElementId>,
     /// The element outside a crop box the status bar last spoke of.
     outside_said: Option<ElementId>,
+    /// The 3D extents the crop ghosts were measured from: the model's
+    /// revision, the elements asked for, and their boxes.
+    #[allow(clippy::type_complexity)]
+    outside_bounds: Option<(u64, Vec<ElementId>, std::collections::HashMap<ElementId, (DVec3, DVec3)>)>,
     /// The Settings window is open.
     settings_open: bool,
     /// The Project information window (A7-5).
@@ -372,6 +376,7 @@ impl CreaBimApp {
             last_export_dir: None,
             crop_pick: None,
             outside_said: None,
+            outside_bounds: None,
             status: "Loaded the sample house. Orbit with the middle button (or Alt + left drag), pan with right drag, zoom with the wheel; a left drag selects with a box.".into(),
         }
     }
@@ -3621,6 +3626,9 @@ impl CreaBimApp {
     /// A note's text in a window of its own, large, for long text and
     /// markdown (MU26). Changes go in as typed, one undo step a pause.
     fn note_editor_window(&mut self, ctx: &egui::Context) {
+        if let Some(id) = self.plan.edit_note.take() {
+            self.note_editor = Some(id);
+        }
         let Some(id) = self.note_editor else { return };
         let Some(ElementKind::Note(n)) = self.doc.model().get(id).map(|e| e.kind.clone()) else {
             self.note_editor = None;
@@ -3885,6 +3893,30 @@ impl CreaBimApp {
         if let Some(hint) = crate::sketch::shape_controls(ui, response.rect, None, draft) {
             self.status = hint;
         }
+        // a slab, roof or other outline tool drawn on a face: its own bar's
+        // Line / Arc choice, not the Sketch tool's (MU27: Arc did nothing)
+        if self.plan.tool != Tool::Sketch {
+            if response.hovered() && !ui.ctx().egui_wants_keyboard_input() {
+                let (a, l) = ui.input(|i| {
+                    let plain = !i.modifiers.command && !i.modifiers.alt;
+                    (plain && i.key_pressed(egui::Key::A), plain && i.key_pressed(egui::Key::L))
+                });
+                if a || l {
+                    self.plan.slab_arc = a;
+                }
+            }
+            let want = if self.plan.slab_arc {
+                crate::sketch::Shape::Arc
+            } else {
+                crate::sketch::Shape::Line
+            };
+            if let Some(d) = self.plan.sketch.as_mut() {
+                if d.shape != want {
+                    d.arc_end = None;
+                    d.shape = want;
+                }
+            }
+        }
         let (enter, escape, shift, alt) = ui.input(|i| {
             (
                 i.key_pressed(egui::Key::Enter),
@@ -4086,11 +4118,32 @@ impl CreaBimApp {
                 Err(e) => app.status = format!("Couldn't do that: {e}"),
             }
         };
-        if !mine && !response.clicked() {
+        if !mine && !response.clicked() && !response.secondary_clicked() {
             return;
         }
         if escape {
             self.plan.sketch = None;
+            return;
+        }
+        // a right-click on a shape just started cancels it, as everywhere
+        // (MU27: a slab on a face kept going); the Sketch tool's open
+        // lines still end on it once they have two points
+        if response.secondary_clicked() && self.plan.sketch.is_some() && !on_face_now(&self.plan) {
+            let n = self.plan.sketch.as_ref().map_or(0, |d| d.points.len());
+            if self.plan.tool == Tool::Sketch && n >= 2 {
+                finish(self, false);
+            } else if n > 1 {
+                // as in plans: takes back the last point
+                if let Some(d) = self.plan.sketch.as_mut() {
+                    d.points.pop();
+                    d.kinds.truncate(d.points.len().saturating_sub(1));
+                    d.arc_end = None;
+                }
+                self.status = format!("Took back a point ({} left). Right-click again for more; with none left it cancels.", n - 1);
+            } else {
+                self.plan.sketch = None;
+                self.status = "Cancelled. Right-click again to leave the tool.".into();
+            }
             return;
         }
         // an extrusion's or a void's outline on a face (MU23): a
@@ -5289,7 +5342,11 @@ impl CreaBimApp {
     fn trace_panel(&mut self, ui: &mut egui::Ui, v: ElementId) {
         use creabim_core::RefSource;
         ui.add_space(6.0);
-        crate::props::section(ui, "Trace and reference");
+        // the tab's own title says what it is; this section lists them,
+        // and its ? says what a reference is (MU27)
+        if !self.prop_header(ui, "trace.list", "References here", true, Some("trace-reference")) {
+            return;
+        }
         let model = self.doc.model();
         let here: Vec<(ElementId, String, bool)> = creabim_core::reference::in_view(model, v)
             .into_iter()
@@ -5308,10 +5365,7 @@ impl CreaBimApp {
             })
             .collect();
         if here.is_empty() {
-            ui.label(
-                egui::RichText::new("Another view, a picture or a DXF drawing, shown faintly under this view to draw over or compare. It is saved with the project and can show in several views.")
-                    .weak(),
-            );
+            ui.label(egui::RichText::new("None yet: add one below.").weak());
         }
         let mut select = None;
         let mut flip = None;
@@ -5357,13 +5411,16 @@ impl CreaBimApp {
                 );
             }
         }
-        ui.add_space(6.0);
+        ui.add_space(4.0);
         let mut add = None;
-        crate::props::row(ui, "Add", |ui| {
+        // one row of three equal buttons, as Blender's Add row (MU27)
+        ui.horizontal(|ui| {
+            let w = ((ui.available_width() - 2.0 * ui.spacing().item_spacing.x) / 3.0).max(40.0);
+            ui.spacing_mut().interact_size.x = w;
             egui::ComboBox::from_id_salt(("trace.add", v))
                 .icon(crate::props::combo_icon)
-                .selected_text("Another view…")
-                .width(ui.available_width())
+                .selected_text("+ View")
+                .width(w)
                 .show_ui(ui, |ui| {
                     for (id, name) in &others {
                         if ui.selectable_label(false, name).clicked() {
@@ -5371,10 +5428,10 @@ impl CreaBimApp {
                         }
                     }
                 })
-        });
-        ui.horizontal(|ui| {
+                .response
+                .on_hover_text("Another plan or section of this project, under this one");
             if ui
-                .button("Picture…")
+                .add_sized([w, 22.0], egui::Button::new("+ Picture"))
                 .on_hover_text("A picture to trace over: a scanned plan, a photo of a sketch (PNG or JPEG). Calibrate it to size in its properties.")
                 .clicked()
             {
@@ -5390,7 +5447,7 @@ impl CreaBimApp {
                 }
             }
             if ui
-                .button("DXF drawing…")
+                .add_sized([w, 22.0], egui::Button::new("+ DXF"))
                 .on_hover_text("A CAD drawing's lines (DXF). A DWG opens here once saved as DXF: any CAD program, or the free ODA File Converter, does it offline.")
                 .clicked()
             {
@@ -6747,10 +6804,14 @@ impl CreaBimApp {
                         Some(v) => v.scale / 100.0,
                         None => 10.0,
                     };
+                    let mut pop = false;
                     if let Some(l) =
-                        crate::annotate::note_ui(ui, n, &mut self.plan.anno.focus_text, unit)
+                        crate::annotate::note_ui(ui, n, &mut self.plan.anno.focus_text, unit, &mut pop)
                     {
                         label = l;
+                    }
+                    if pop {
+                        self.note_editor = Some(id);
                     }
                     if n.leader.is_some() {
                         if let Some(l) = crate::annotate::leader_ui(
@@ -6767,13 +6828,6 @@ impl CreaBimApp {
                         crate::annotate::LookEdit::Changed(l) => label = l,
                         crate::annotate::LookEdit::NewStyle => new_style = true,
                         crate::annotate::LookEdit::None => {}
-                    }
-                    if ui
-                        .button("Edit in a window\u{2026}")
-                        .on_hover_text("A bigger editor for long text, beside the drawing")
-                        .clicked()
-                    {
-                        self.note_editor = Some(id);
                     }
                     // where it sits, typed (MU26): mm on a sheet, lengths
                     // in a view
@@ -7604,7 +7658,10 @@ impl CreaBimApp {
         const W: f32 = 30.0;
         const CELL: f32 = 26.0;
         let top = ui.cursor().min;
-        let strip = egui::Rect::from_min_size(top, egui::vec2(W, height));
+        // the column runs from the panel's very top, so its edge meets the
+        // window's line cleanly (MU27: a stub of panel showed above it)
+        let from = ui.clip_rect().top().min(top.y);
+        let strip = egui::Rect::from_min_max(egui::pos2(top.x, from), egui::pos2(top.x + W, top.y + height));
         ui.painter().rect_filled(strip, 0.0, column);
         ui.allocate_ui_with_layout(
             egui::vec2(W, height),
@@ -7930,7 +7987,7 @@ impl PropTab {
             PropTab::Data => "table-2",
             PropTab::View => "eye",
             PropTab::Trace => "underlay",
-            PropTab::Model3d => "cuboid",
+            PropTab::Model3d => "view-3d",
             PropTab::Project => "house",
             PropTab::Notes => "sticky-note",
         }
@@ -9183,4 +9240,9 @@ mod prop_tab_tests {
         app.prop_tab = PropTab::Trace;
         draw(&mut app);
     }
+}
+
+/// Is the tool drawing an outline on a face (an extrusion or a void)?
+fn on_face_now(plan: &crate::planview::PlanState) -> bool {
+    crate::partstool::on_face(plan).is_some()
 }

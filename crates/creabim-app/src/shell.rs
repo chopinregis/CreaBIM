@@ -223,7 +223,7 @@ pub(super) fn icon_name(i: Icon) -> &'static str {
         Icon::Plan => "map",
         Icon::Section => "scissors-line-dashed",
         Icon::Elevation => "elevation",
-        Icon::View3d => "axis-3d",
+        Icon::View3d => "view-3d",
         Icon::Schedule => "table-2",
         Icon::Sheet => "file-text",
         Icon::Viewport => "frame",
@@ -2774,7 +2774,7 @@ impl CreaBimApp {
                 let manual = crate::browser::is_manual(model, g);
                 let icon = match g {
                     crate::browser::ViewGroup::Plans => "map",
-                    crate::browser::ViewGroup::Views3d => "axis-3d",
+                    crate::browser::ViewGroup::Views3d => "view-3d",
                     crate::browser::ViewGroup::Sections => "scissors-line-dashed",
                     crate::browser::ViewGroup::Elevations => "elevation",
                     crate::browser::ViewGroup::Details => "callout",
@@ -3299,7 +3299,16 @@ impl CreaBimApp {
         if let Some((text, r)) = self.shell.web_tip.clone().filter(|_| self.shell.popup.is_none()) {
             let screen = ctx.content_rect();
             let below = r.bottom() + 6.0;
-            let x = r.left().min(screen.right() - 380.0).max(screen.left() + 4.0);
+            // web panels paint over the app's own drawing, so the tip
+            // keeps to the right of the browser panel (MU27: it was cut)
+            let left_edge = self
+                .shell
+                .web
+                .as_ref()
+                .map(|w| w.rects[crate::webui::Pane::Left as usize])
+                .filter(|l| l.width() > 1.0 && l.top() < below + 40.0 && l.bottom() > below)
+                .map_or(screen.left(), |l| l.right());
+            let x = r.left().min(screen.right() - 380.0).max(left_edge + 4.0);
             egui::Area::new(egui::Id::new("web-tip"))
                 .order(egui::Order::Tooltip)
                 .fixed_pos(egui::pos2(x, below))

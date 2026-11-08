@@ -31,6 +31,9 @@ pub struct SheetState {
     cloud_grip: Option<(creabim_core::Element, CloudGrip)>,
     /// A selection box being dragged on empty paper: where it began.
     band: Option<Pos2>,
+    /// Several things on the sheet dragged together (MU27): them as they
+    /// were, and the grab point.
+    group: Option<(Vec<creabim_core::Element>, DVec2)>,
     /// A guide being dragged (MU26): its index (None: a new one off a
     /// ruler) and whether it runs up and down.
     guide_drag: Option<(Option<usize>, bool)>,
@@ -194,6 +197,8 @@ fn sheet_move(
     }
     let (items, base) = state.moving.clone()?;
     ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+    let ids: Vec<ElementId> = items.iter().map(|e| e.id).collect();
+    outline_items(painter, xf, doc.model(), sheet, &ids);
     let cancel = response.secondary_clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
     let mut error = None;
     let put = |doc: &mut Document, by: DVec2| -> Option<String> {
@@ -246,6 +251,57 @@ fn sheet_move(
     }
     ui.ctx().request_repaint();
     Some(error)
+}
+
+/// Put `items` back as they were, moved by `by` paper mm: one undo step
+/// while dragging.
+fn move_items(doc: &mut Document, items: &[creabim_core::Element], by: DVec2, label: &str) -> Option<String> {
+    for e in items {
+        let orig = e.kind.clone();
+        let r = doc.edit_merged(e.id, label, |el| {
+            el.kind = orig.clone();
+            match &mut el.kind {
+                ElementKind::Note(n) => {
+                    n.at += by;
+                    if let Some(el) = &mut n.elbow {
+                        *el += by;
+                    }
+                }
+                ElementKind::PaperMark(m) => m.at += by,
+                _ => {}
+            }
+        });
+        if let Err(e) = r {
+            return Some(e.to_string());
+        }
+    }
+    None
+}
+
+/// Outline what is being moved, so it reads as the selection (MU27).
+fn outline_items(painter: &egui::Painter, xf: &PaperXf, model: &creabim_core::Model, sheet: ElementId, ids: &[ElementId]) {
+    let stroke = egui::Stroke::new(1.5, ACCENT);
+    for e in model.iter().filter(|e| ids.contains(&e.id)) {
+        let b = match &e.kind {
+            ElementKind::PaperMark(m) if m.sheet == sheet => Some(m.bounds()),
+            ElementKind::Note(n) if n.view == sheet => {
+                let items = creabim_geom::annotate::sheet_notes(model, sheet);
+                items.iter().find_map(|it| match it {
+                    creabim_geom::PlanItem::Annotation { id, item } if *id == e.id => {
+                        let pts = item.extent();
+                        let lo = pts.iter().copied().reduce(DVec2::min)?;
+                        let hi = pts.iter().copied().reduce(DVec2::max)?;
+                        Some((lo, hi))
+                    }
+                    _ => None,
+                })
+            }
+            _ => None,
+        };
+        if let Some((lo, hi)) = b {
+            painter.rect_stroke(xf.rect_of(lo, hi).expand(3.0), 2.0, stroke, egui::StrokeKind::Outside);
+        }
+    }
 }
 
 /// Sheet millimetres (y up) to screen points.
@@ -930,6 +986,38 @@ pub fn show(
         }
     }
 
+    // several selected, dragged by one of them: all of them move (MU27)
+    if state.active.is_none() && plan.tool == planview::Tool::Select {
+        if response.drag_started_by(egui::PointerButton::Primary) && state.group.is_none() {
+            let items = on_sheet(doc, sheet_id, selection);
+            let press = ui.input(|i| i.pointer.press_origin()).or(pointer).map(|q| xf.to_paper(q));
+            if let (true, Some(p)) = (items.len() > 1, press) {
+                let on_one = mark_boxes.iter().any(|(id, (lo, hi))| {
+                    selection.contains(*id) && p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y
+                }) || note_items.iter().any(|it| {
+                    matches!(it, creabim_geom::PlanItem::Annotation { id, item }
+                        if selection.contains(*id) && item.hit(p, 6.0 / zoom as f64, 1.0))
+                });
+                if on_one {
+                    state.group = Some((items, p));
+                }
+            }
+        }
+        if let Some((items, grab)) = state.group.clone() {
+            if let (true, Some(q)) = (response.dragged_by(egui::PointerButton::Primary), pointer) {
+                let by = (xf.to_paper(q) - grab).round();
+                error = move_items(doc, &items, by, "Move on the sheet");
+            }
+            let ids: Vec<ElementId> = items.iter().map(|e| e.id).collect();
+            outline_items(&painter, &xf, doc.model(), sheet_id, &ids);
+            if response.drag_stopped() || !response.dragged() {
+                state.group = None;
+                plan.status = Some(format!("Moved {} together. Ctrl+Z puts them back.", ids.len()));
+            }
+            return error;
+        }
+    }
+
     // north arrows and scale bars on the sheet (MU22): a click picks one,
     // a drag moves it, millimetre by millimetre
     if state.active.is_none() && plan.tool == planview::Tool::Select {
@@ -1107,6 +1195,20 @@ pub fn show(
         }
     }
 
+    // a note double-clicked: its editor, not the view under it (MU27)
+    if response.double_clicked() && state.active.is_none() {
+        if let Some(p) = pointer.map(|q| xf.to_paper(q)) {
+            let note = note_items.iter().rev().find_map(|it| match it {
+                creabim_geom::PlanItem::Annotation { id, item } if item.hit(p, 6.0 / zoom as f64, 1.0) => Some(*id),
+                _ => None,
+            });
+            if let Some(id) = note {
+                selection.only(id);
+                plan.edit_note = Some(id);
+                return error;
+            }
+        }
+    }
     // picking, moving and activating viewports
     let hit = pointer.and_then(|p| {
         let p = xf.to_paper(p);

@@ -603,7 +603,7 @@ impl CreaBimApp {
 
     /// Selected elements an active crop box takes away whole (A5-4): each
     /// one's bounds, and the first box that misses it.
-    pub(super) fn outside_crop(&self) -> Vec<(ElementId, (DVec3, DVec3), ElementId)> {
+    pub(super) fn outside_crop(&mut self) -> Vec<(ElementId, (DVec3, DVec3), ElementId)> {
         let model = self.doc.model();
         let boxes = cropbox::crop_boxes(model, self.crop_owner());
         if boxes.iter().all(|(_, c)| !c.enabled) {
@@ -620,13 +620,37 @@ impl CreaBimApp {
         } else {
             self.selection.all()
         };
+        // every element's real extent, from its 3D body (MU27: windows,
+        // doors, masses, furniture, columns and beams had none), kept
+        // while the model and the list stay the same
+        let rev = model.revision();
+        let fresh = self.outside_bounds.as_ref().is_some_and(|(r, l, _)| *r == rev && *l == ids);
+        if !fresh {
+            let only: std::collections::HashSet<ElementId> = ids.iter().copied().collect();
+            let mut b: std::collections::HashMap<ElementId, (DVec3, DVec3)> = Default::default();
+            for item in creabim_geom::scene::build_scene_of(model, Some(&only)) {
+                if let Some((lo, hi)) = item.mesh.bounds() {
+                    let (lo, hi) = (lo.as_dvec3(), hi.as_dvec3());
+                    b.entry(item.id)
+                        .and_modify(|e| *e = (e.0.min(lo), e.1.max(hi)))
+                        .or_insert((lo, hi));
+                }
+            }
+            self.outside_bounds = Some((rev, ids.clone(), b));
+        }
+        let bounds = self.outside_bounds.as_ref().map(|c| c.2.clone()).unwrap_or_default();
+        let model = self.doc.model();
         for id in ids {
             let selected = self.selection.contains(id);
             let Some(e) = model.get(id) else { continue };
             if matches!(e.kind, ElementKind::CropBox(_) | ElementKind::View(_)) {
                 continue;
             }
-            let Some((lo, hi)) = creabim_core::parts::element_bounds(model, e) else {
+            let Some((lo, hi)) = bounds
+                .get(&id)
+                .copied()
+                .or_else(|| creabim_core::parts::element_bounds(model, e))
+            else {
                 continue;
             };
             let host = match &e.kind {

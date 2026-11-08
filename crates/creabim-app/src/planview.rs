@@ -317,6 +317,8 @@ pub struct PlanState {
     /// A view to show at its drawing scale on the next frame: 1 paper mm
     /// on 1 screen mm (A5-7, the view's More menu).
     pub zoom_to_scale: Option<ElementId>,
+    /// A note double-clicked on a sheet, to open in its editor (MU27).
+    pub edit_note: Option<ElementId>,
     /// A second area showing the same view pans and zooms on its own
     /// (A4-4): the area being drawn when it does, and those cameras.
     pub area: Option<usize>,
@@ -542,6 +544,7 @@ impl Default for PlanState {
         Self {
             cameras: HashMap::new(),
             zoom_to_scale: None,
+            edit_note: None,
             area: None,
             area_cameras: HashMap::new(),
             linked_areas: Default::default(),
@@ -930,6 +933,8 @@ pub fn show(
     let ghost = state.spotlight_ghost && !state.spotlight.is_empty();
     let mut faint = painter.clone();
     faint.set_opacity(0.22);
+    // the view's graphic overrides, as on its sheets (MU27)
+    let overrides = view_overrides(doc.model(), view);
     for item in &plan.items {
         let lit = state.spotlight.contains(&item.id());
         let selected = selection.contains(item.id()) || lit;
@@ -937,6 +942,12 @@ pub fn show(
             draw_item(&faint, &xf, item, false, mm);
         } else if xray {
             draw_item_xray(&painter, &xf, item, selected, mm, doc.model());
+        } else if let Some(o) = overrides.get(&item.id()) {
+            let mut p = painter.clone();
+            if o.fade > 0.0 && !selected {
+                p.set_opacity(1.0 - o.fade);
+            }
+            draw_item_with(&p, &xf, item, selected, mm, o);
         } else {
             draw_item(&painter, &xf, item, selected, mm);
         }
@@ -4304,9 +4315,97 @@ fn draw_metric_grid(painter: &egui::Painter, xf: &Xf) {
 
 /// Draw one drawing item. `mm` is drawing units per paper millimetre, which
 /// sizes hatching and annotations.
+/// A view's graphic overrides for one element, as the working view draws
+/// them (MU27: they only showed on sheets and in PDF).
+#[derive(Clone, Copy, Debug)]
+pub struct Ovr {
+    /// 0 drawn fully, 1 gone: halftone and transparency.
+    pub fade: f32,
+    pub colour: Option<Color32>,
+    pub hatch_off: bool,
+    /// Projection and cut pens, as factors of the view's own.
+    pub proj: f32,
+    pub cut: f32,
+    pub dashed: bool,
+}
+
+impl Default for Ovr {
+    fn default() -> Self {
+        Self { fade: 0.0, colour: None, hatch_off: false, proj: 1.0, cut: 1.0, dashed: false }
+    }
+}
+
+/// The overrides view `view` sets, element by element: its categories'
+/// first, then its own elements'. Empty when it sets none.
+pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<ElementId, Ovr> {
+    use creabim_core::styles::Target;
+    let mut out = HashMap::new();
+    let Some(ElementKind::View(v)) = model.get(view).map(|e| &e.kind) else {
+        return out;
+    };
+    if v.look.overrides.is_empty() {
+        return out;
+    }
+    let w = creabim_core::styles::view_weights(model, v);
+    let cutters = creabim_core::visibility::cutters(model);
+    for e in model.iter() {
+        let Some(cat) = creabim_core::visibility::Category::of(e, &cutters) else {
+            continue;
+        };
+        let mut list: Vec<&creabim_core::styles::Override> = v
+            .look
+            .overrides
+            .iter()
+            .filter(|o| match o.target {
+                Target::Category(c) => c == cat,
+                Target::Element(id) => id == e.id,
+            })
+            .collect();
+        if list.is_empty() {
+            continue;
+        }
+        list.sort_by_key(|o| matches!(o.target, Target::Element(_)));
+        let mut r = Ovr::default();
+        for o in list {
+            if let Some(x) = o.weight {
+                r.proj = (x.mm(&w) / w.projection.max(1e-6)) as f32;
+            }
+            if let Some(x) = o.cut_weight {
+                r.cut = (x.mm(&w) / w.cut.max(1e-6)) as f32;
+            }
+            if let Some(c) = o.colour {
+                let [a, b, d] = c.0;
+                r.colour = Some(Color32::from_rgb((a * 255.0) as u8, (b * 255.0) as u8, (d * 255.0) as u8));
+            }
+            if let Some(pat) = &o.pattern {
+                r.dashed = !matches!(pat, creabim_core::styles::LinePattern::Solid);
+            }
+            if o.halftone {
+                r.fade = 1.0 - (1.0 - r.fade) * 0.5;
+            }
+            if let Some(t) = o.transparency {
+                r.fade = 1.0 - (1.0 - r.fade) * (1.0 - t);
+            }
+            if let Some(h) = o.hatch {
+                r.hatch_off = !h;
+            }
+        }
+        r.proj = r.proj.clamp(0.2, 6.0);
+        r.cut = r.cut.clamp(0.2, 6.0);
+        out.insert(e.id, r);
+    }
+    out
+}
+
 pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bool, mm: f64) {
+    draw_item_with(painter, xf, item, selected, mm, &Ovr::default());
+}
+
+/// [`draw_item`] with a view's overrides for the element.
+pub fn draw_item_with(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bool, mm: f64, o: &Ovr) {
     let highlight = Color32::from_rgb(230, 120, 30);
-    let ink = if selected { highlight } else { Color32::BLACK };
+    let ink = if selected { highlight } else { o.colour.unwrap_or(Color32::BLACK) };
+    let grey = |g: u8| o.colour.unwrap_or(Color32::from_gray(g));
     let hatch = paper::HATCH_SPACING * mm;
     // annotation text is a fixed size on paper, so it scales with zoom
     let text_px = |size: f64| (size * mm * xf.scale as f64) as f32;
@@ -4323,9 +4422,10 @@ pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bo
                 Color32::from_gray(gray)
             };
             fill_polygon(painter, xf, points, fill);
-            // skip hatching once it would be too dense to read
-            if hatch * xf.scale as f64 > 3.0 {
-                let stroke = Stroke::new(0.6, Color32::from_gray(70));
+            // skip hatching once it would be too dense to read, or when
+            // the view turns it off
+            if hatch * xf.scale as f64 > 3.0 && !o.hatch_off {
+                let stroke = Stroke::new(0.6, grey(70));
                 for (a, b) in creabim_geom::plan::hatch_lines(*pattern, points, hatch) {
                     painter.line_segment([xf.to_screen(a), xf.to_screen(b)], stroke);
                 }
@@ -4343,14 +4443,14 @@ pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bo
                     painter.add(egui::Shape::convex_polygon(
                         pts,
                         fill,
-                        Stroke::new(1.6, ink),
+                        Stroke::new(1.6 * o.cut, ink),
                     ));
                 }
                 _ => {
                     let (w, c) = if selected {
                         (2.0, highlight)
                     } else {
-                        (1.0, Color32::from_gray(120))
+                        (1.0 * o.proj, grey(120))
                     };
                     painter.add(egui::Shape::closed_line(pts, Stroke::new(w, c)));
                 }
@@ -4394,12 +4494,20 @@ pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bo
                     let (w, c) = if selected {
                         (2.0, highlight)
                     } else {
-                        (1.0, Color32::from_gray(120))
+                        (1.0 * o.proj, grey(120))
                     };
-                    painter.line_segment([a, b], Stroke::new(w, c));
+                    if o.dashed {
+                        painter.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(w, c), 6.0, 4.0));
+                    } else {
+                        painter.line_segment([a, b], Stroke::new(w, c));
+                    }
                 }
                 Pen::Cut => {
-                    painter.line_segment([a, b], Stroke::new(1.8, ink));
+                    if o.dashed {
+                        painter.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(1.8 * o.cut, ink), 6.0, 4.0));
+                    } else {
+                        painter.line_segment([a, b], Stroke::new(1.8 * o.cut, ink));
+                    }
                 }
                 Pen::Hidden => {
                     let (w, c) = if selected {

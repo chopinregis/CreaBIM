@@ -997,3 +997,18 @@ kbd {
 /* a tool that can't be used in the view in front: greyed, why on hover (MU24) */
 .tool.off, .tool:disabled { opacity: .32; cursor: default; }
 .tool.off:hover { background: transparent; }
+
+/* MU27: a narrow browser fades its words out instead of wrapping them or
+   cutting them with dots, so it reads clean and stretching shows more */
+.browser-head .title { white-space: nowrap; overflow: hidden; min-width: 0; }
+.browser-head .title .count { white-space: nowrap; overflow: hidden; min-width: 0; flex: 0 1 auto; }
+.row span, .group > span:not(.n):not(.gnote) {
+  text-overflow: clip;
+  white-space: nowrap;
+  /* the span fills the row, so the fade falls on empty space unless the
+     words run that far */
+  flex: 1 1 auto;
+  min-width: 0;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+}
