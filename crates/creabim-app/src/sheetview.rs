@@ -26,6 +26,118 @@ pub struct SheetState {
     crop_drag: Option<(ElementId, usize, [DVec2; 2])>,
     /// A paper mark being moved: it, where it was, and the grab point.
     mark_drag: Option<(ElementId, DVec2, DVec2)>,
+    /// Move or G on the sheet's own notes and marks (MU23): them as they
+    /// were, and the base point once picked.
+    moving: Option<(Vec<creabim_core::Element>, Option<DVec2>)>,
+}
+
+/// What `sheet` itself holds of the selection: its notes and paper marks.
+fn on_sheet(doc: &Document, sheet: ElementId, selection: &Selection) -> Vec<creabim_core::Element> {
+    selection
+        .all()
+        .iter()
+        .filter_map(|id| doc.model().get(*id))
+        .filter(|e| match &e.kind {
+            ElementKind::Note(n) => n.view == sheet,
+            ElementKind::PaperMark(m) => m.sheet == sheet,
+            _ => false,
+        })
+        .cloned()
+        .collect()
+}
+
+/// Move what is written on the sheet: Move (toolbar, M) picks a base point
+/// then where it goes; G follows the pointer at once. A click places it;
+/// Esc or a right-click puts it back. `Some` when it took the frame (with
+/// an error, if any).
+#[allow(clippy::too_many_arguments)]
+fn sheet_move(
+    ui: &egui::Ui,
+    doc: &mut Document,
+    sheet: ElementId,
+    response: &egui::Response,
+    xf: &PaperXf,
+    state: &mut SheetState,
+    plan: &mut PlanState,
+    selection: &Selection,
+    painter: &egui::Painter,
+) -> Option<Option<String>> {
+    use crate::modal::Mode;
+    let here = response.hover_pos().map(|p| xf.to_paper(p));
+    if state.moving.is_none() {
+        let armed = matches!(plan.armed, Some((Mode::Move, false)));
+        let g = response.hovered()
+            && matches!(planview::start_keys(ui.ctx()), Some((Mode::Move, false)));
+        if !(armed && response.hovered() || g) {
+            return None;
+        }
+        let items = on_sheet(doc, sheet, selection);
+        if items.is_empty() {
+            return None;
+        }
+        plan.armed = None;
+        let base = if g { here } else { None };
+        plan.status = Some(if base.is_some() {
+            "Move: move the pointer and click where it goes. Esc or right-click puts it back.".into()
+        } else {
+            "Move: click the base point, then where it goes.".into()
+        });
+        state.moving = Some((items, base));
+    }
+    let (items, base) = state.moving.clone()?;
+    ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+    let cancel = response.secondary_clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+    let mut error = None;
+    let put = |doc: &mut Document, by: DVec2| -> Option<String> {
+        for e in &items {
+            let id = e.id;
+            let orig = e.kind.clone();
+            let r = doc.edit_merged(id, "Move on the sheet", |el| {
+                el.kind = orig.clone();
+                match &mut el.kind {
+                    ElementKind::Note(n) => {
+                        n.at += by;
+                        if let Some(el) = &mut n.elbow {
+                            *el += by;
+                        }
+                    }
+                    ElementKind::PaperMark(m) => m.at += by,
+                    _ => {}
+                }
+            });
+            if let Err(e) = r {
+                return Some(e.to_string());
+            }
+        }
+        None
+    };
+    if cancel {
+        error = put(doc, DVec2::ZERO);
+        state.moving = None;
+        plan.status = Some("Move cancelled.".into());
+        return Some(error);
+    }
+    match (base, here) {
+        (None, Some(p)) => {
+            painter.circle_stroke(xf.to_screen(p), 5.0, egui::Stroke::new(1.5, ACCENT));
+            if response.clicked() {
+                state.moving = Some((items, Some(p)));
+                plan.status = Some("Move: click where it goes. Esc or right-click puts it back.".into());
+            }
+        }
+        (Some(b), Some(p)) => {
+            let by = (p - b).round();
+            painter.line_segment([xf.to_screen(b), xf.to_screen(b + by)], egui::Stroke::new(1.0, ACCENT));
+            error = put(doc, by);
+            if response.clicked() {
+                state.moving = None;
+                plan.status = Some(format!("Moved {:.0}, {:.0} mm on the sheet.", by.x, by.y));
+            }
+        }
+        _ => {}
+    }
+    ui.ctx().request_repaint();
+    Some(error)
 }
 
 /// Sheet millimetres (y up) to screen points.
@@ -480,6 +592,27 @@ pub fn show(
     }
     if response.drag_stopped() {
         state.crop_drag = None;
+    }
+
+    // as everywhere (MU23): a right-click or Esc cancels what a tool has
+    // started, and again leaves the tool for Select
+    if state.active.is_none()
+        && state.moving.is_none()
+        && plan.tool != planview::Tool::Select
+        && response.hovered()
+        && (response.secondary_clicked()
+            || ui.input(|i| i.key_pressed(egui::Key::Escape)) && !ui.ctx().egui_wants_keyboard_input())
+    {
+        plan.step_back();
+        return error;
+    }
+
+    // Move (the toolbar's or M) and G on what is written on the sheet
+    // itself: notes and paper marks (MU23)
+    if state.active.is_none() {
+        if let Some(r) = sheet_move(ui, doc, sheet_id, &response, &xf, state, plan, selection, &painter) {
+            return r.or(error);
+        }
     }
 
     // north arrows and scale bars on the sheet (MU22): a click picks one,

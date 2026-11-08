@@ -148,6 +148,24 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             g.end = t.point2(g.end);
         }
         // a reference moves, turns and scales about its centre with them
+        // a note moves across its view by the move as its view draws it;
+        // on a sheet, by the move itself (sheet millimetres)
+        ElementKind::Note(n) => match t {
+            Xform::Move(d) => {
+                let by = match crate::DrawingFrame::of(model, n.view) {
+                    Some(f) => {
+                        let p = f.to_model(n.at);
+                        f.to_drawing(p + *d) - f.to_drawing(p)
+                    }
+                    None => d.truncate(),
+                };
+                n.at += by;
+                if let Some(e) = &mut n.elbow {
+                    *e += by;
+                }
+            }
+            _ => return None,
+        },
         // a paper mark only moves across its sheet
         ElementKind::PaperMark(m) => match t {
             Xform::Move(d) => m.at += d.truncate(),
@@ -426,7 +444,6 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
         | ElementKind::Assembly(_)
         | ElementKind::Dimension(_)
         | ElementKind::Tag(_)
-        | ElementKind::Note(_)
         | ElementKind::TextStyle(_)
         | ElementKind::SheetTemplate(_)
         | ElementKind::Units(_)
@@ -543,6 +560,14 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
         },
         ElementKind::Guide(g) => (g.a + g.b) / 2.0 + DVec3::Z * elevation(g.level),
         ElementKind::CropBox(c) => c.center(),
+        // (MU23) a reference turns and scales about its middle; a paper
+        // mark and a note are where they are written
+        ElementKind::Reference(r) => r.at.extend(0.0),
+        ElementKind::PaperMark(m) => m.at.extend(0.0),
+        ElementKind::Note(n) => match crate::DrawingFrame::of(model, n.view) {
+            Some(f) => f.to_model(n.at),
+            None => n.at.extend(0.0),
+        },
         ElementKind::Shaft(s) => mean(&s.boundary).extend(s.span(model).0),
         ElementKind::Object(o) => o.position.extend(
             crate::objects::base_z(model, e).unwrap_or(elevation(Some(o.level)) + o.offset),

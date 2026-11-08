@@ -138,6 +138,21 @@ impl Reference {
         Ok(())
     }
 
+    /// Turned and moved so the line `a1`–`a2` picked on it (where the
+    /// views show it) lies along `b1`–`b2`, `a1` on `b1`; its size stays
+    /// (Align, MU23).
+    pub fn align(&mut self, a1: DVec2, a2: DVec2, b1: DVec2, b2: DVec2) -> Result<(), String> {
+        let (da, db) = (a2 - a1, b2 - b1);
+        if da.length() < 1e-9 || db.length() < 1e-9 {
+            return Err("Pick two different points on each line.".into());
+        }
+        let own = self.unplace(a1);
+        let turn = db.y.atan2(db.x) - da.y.atan2(da.x);
+        self.rotation = (self.rotation + turn.to_degrees()).rem_euclid(360.0);
+        self.at += b1 - self.place(own);
+        Ok(())
+    }
+
     pub fn shows_in(&self, view: ElementId) -> bool {
         !self.hidden && self.shown_in.contains(&view)
     }
@@ -194,5 +209,13 @@ mod tests {
         assert!(r.place(DVec2::new(1.0, 1.0)).distance(a) < 1e-9);
         assert!((r.place(DVec2::new(5.0, 1.0)).distance(a) - 12.0).abs() < 1e-9);
         assert_eq!(r.outline().unwrap().len(), 4);
+        // a line on it laid along another: its first point lands on the
+        // other's, and it turns to follow it
+        let (a1, a2) = (r.place(DVec2::new(1.0, 1.0)), r.place(DVec2::new(3.0, 1.0)));
+        let (b1, b2) = (DVec2::new(20.0, 5.0), DVec2::new(20.0, 9.0));
+        r.align(a1, a2, b1, b2).unwrap();
+        assert!(r.place(DVec2::new(1.0, 1.0)).distance(b1) < 1e-9);
+        let d = r.place(DVec2::new(3.0, 1.0)) - b1;
+        assert!(d.x.abs() < 1e-9 && d.y > 0.0, "{d}");
     }
 }

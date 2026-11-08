@@ -135,6 +135,8 @@ pub struct CreaBimApp {
     /// The Export sheets dialog (MU22), and its choices this session.
     sheets_export_open: bool,
     sheets_export: SheetsExport,
+    /// A reference to take away, asked from its Properties (MU23).
+    remove_ref: Option<ElementId>,
     scene: Vec<SceneItem>,
     plan: PlanState,
     placement: PlanPlacement,
@@ -303,6 +305,7 @@ impl CreaBimApp {
             print_preview: false,
             sheets_export_open: false,
             sheets_export: SheetsExport::default(),
+            remove_ref: None,
             scene: vec![],
             plan: PlanState::default(),
             placement: PlanPlacement::Docked,
@@ -639,7 +642,7 @@ impl CreaBimApp {
         }
         let cache = &self.drawings;
         let model = self.doc.model();
-        let rev = model.revision();
+        let rev = model.drawing_revision();
         let looks = &mut self.looks;
         sheets::placed_views_with(
             model,
@@ -680,7 +683,7 @@ impl CreaBimApp {
 
     /// The drawing of a view, regenerated only when the model has changed.
     fn drawing(&mut self, id: ElementId) -> Option<Drawing> {
-        let revision = self.doc.model().revision();
+        let revision = self.doc.model().drawing_revision();
         let xray = self.plan.xray.contains(&id);
         let cache = if xray {
             &mut self.xray_drawings
@@ -719,7 +722,7 @@ impl CreaBimApp {
                 _ => {}
             }
         }
-        let revision = self.doc.model().revision();
+        let revision = self.doc.model().drawing_revision();
         let xray = self.plan.xray.contains(&id);
         let key = (id, xray);
         let held = if xray {
@@ -4842,8 +4845,17 @@ impl CreaBimApp {
                 {
                     flip = Some(*id);
                 }
+                // one line, cut with … and whole on hover (MU23)
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                 let on = self.selection.contains(*id);
-                if ui.selectable_label(on, name).clicked() {
+                if ui
+                    .add_sized(
+                        [ui.available_width(), 22.0],
+                        egui::Button::selectable(on, name.as_str()).truncate(),
+                    )
+                    .on_hover_text(name.as_str())
+                    .clicked()
+                {
                     select = Some(*id);
                 }
             });
@@ -4934,7 +4946,83 @@ impl CreaBimApp {
             RefSource::Dxf { .. } => "DXF drawing",
         };
         let name = crate::trace::label(model, &r.source);
-        crate::props::row(ui, what, |ui| ui.label(name));
+        let path = match &r.source {
+            RefSource::Image { path, .. } | RefSource::Dxf { path } => Some(path.clone()),
+            RefSource::View(_) => None,
+        };
+        // as Blender's image rows (MU23): its name, cut with … and whole
+        // on hover; copy it, pick another file, or take the reference away
+        let mut replace = false;
+        let mut remove = false;
+        crate::props::row(ui, what, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                let icons = if path.is_some() { 3.0 } else { 2.0 };
+                let w = (ui.available_width() - icons * 22.0).max(30.0);
+                ui.add_sized(
+                    [w, 22.0],
+                    egui::Label::new(egui::RichText::new(name.clone()).strong()).truncate(),
+                )
+                .on_hover_text(path.clone().unwrap_or_else(|| name.clone()));
+                if crate::props::icon_button(ui, "copy", "Copy the name").clicked() {
+                    ui.ctx().copy_text(name.clone());
+                }
+                if path.is_some()
+                    && crate::props::icon_button(ui, "folder-open", "Another file in its place").clicked()
+                {
+                    replace = true;
+                }
+                if crate::props::icon_button(ui, "x", "Take this reference away").clicked() {
+                    remove = true;
+                }
+            })
+        });
+        if let Some(p) = &path {
+            crate::props::row(ui, "File", |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    let w = (ui.available_width() - 24.0).max(30.0);
+                    ui.add_sized(
+                        [w, 22.0],
+                        egui::Label::new(egui::RichText::new(p.clone()).weak()).truncate(),
+                    )
+                    .on_hover_text(p.clone());
+                    if crate::props::icon_button(ui, "refresh-cw", "Read the file again, after it changed").clicked() {
+                        self.plan.ref_cache.forget(id);
+                    }
+                })
+            });
+        }
+        if replace {
+            let filter: (&str, &[&str]) = match &r.source {
+                RefSource::Dxf { .. } => ("DXF", &["dxf"]),
+                _ => ("Pictures", &["png", "jpg", "jpeg"]),
+            };
+            if let Some(p) = rfd::FileDialog::new()
+                .set_title("Another file for this reference")
+                .add_filter(filter.0, filter.1)
+                .pick_file()
+            {
+                let p = p.display().to_string();
+                match &mut r.source {
+                    RefSource::Image { path, .. } | RefSource::Dxf { path } => *path = p,
+                    RefSource::View(_) => {}
+                }
+                // it keeps its place, turn and scale; its size is read again
+                let shown = crate::trace::read(self.doc.model(), &r.source);
+                if let Some(b) = crate::trace::bounds_of(&r.source, &shown) {
+                    let at = r.at;
+                    r.bounds = Some(b);
+                    r.at = at;
+                }
+                self.plan.ref_cache.forget(id);
+                label = Some("Reference file");
+            }
+        }
+        if remove {
+            self.remove_ref = Some(id);
+        }
+        let model = self.doc.model();
         if let crate::trace::Shown::Missing(why) = self.plan.ref_cache.get(model, id, r) {
             ui.colored_label(ui.visuals().warn_fg_color, why);
         }
@@ -5050,8 +5138,10 @@ impl CreaBimApp {
                 label = Some("Hide reference");
             }
         });
-        ui.add_space(4.0);
-        crate::props::section(ui, "Place and size");
+        // its own box, folding (MU23)
+        if !self.prop_header(ui, "refplace", "Place and size", true, Some("trace-reference")) {
+            return label;
+        }
         let mut at = r.at;
         let mut changed = false;
         crate::props::row(ui, "X", |ui| {
@@ -5108,7 +5198,17 @@ impl CreaBimApp {
                 .clicked()
             {
                 self.plan.calibrate = Some((id, vec![]));
-                self.status = "Calibrate: click a first point on the reference.".into();
+                self.plan.align_ref = None;
+                self.status = "Calibrate: click a first point on the reference (Alt: no snapping; Shift: square to it).".into();
+            }
+            if ui
+                .button("Align…")
+                .on_hover_text("Click two points on it (a wall line on a scan), then two on the model, a guide or an edge: it turns and moves so the first line lies on the second. Its size stays.")
+                .clicked()
+            {
+                self.plan.align_ref = Some((id, vec![]));
+                self.plan.calibrate = None;
+                self.status = "Align: click a first point on the reference.".into();
             }
             if ui
                 .button("Back in place")
@@ -5130,6 +5230,85 @@ impl CreaBimApp {
             }
         });
         label
+    }
+
+    /// Align's points picked: turn and move the reference (MU23); files
+    /// dropped on a view become references there. While Calibrate or
+    /// Align picks points, the reference stays selected, so its Properties
+    /// stay in front.
+    fn reference_steps(&mut self) {
+        let picking = self
+            .plan
+            .calibrate
+            .as_ref()
+            .map(|c| c.0)
+            .or(self.plan.align_ref.as_ref().map(|a| a.0))
+            .or(self.plan.calibrated.map(|c| c.0));
+        if let Some(id) = picking {
+            if self.selection.active != Some(id) {
+                self.selection.only(id);
+                self.prop_tab = PropTab::Element;
+            }
+        }
+        if let Some(id) = self.remove_ref.take() {
+            let tx = creabim_core::Transaction::new("Remove reference")
+                .remove_cascade(self.doc.model(), id);
+            if self.doc.commit(tx).is_ok() {
+                self.selection.clear();
+                self.plan.ref_cache.forget(id);
+                self.status = "Reference taken away (Ctrl+Z brings it back).".into();
+            }
+        }
+        if let Some((id, [a1, a2, b1, b2])) = self.plan.aligned.take() {
+            if let Some(e) = self.doc.model().get(id).cloned() {
+                let mut after = e.clone();
+                if let ElementKind::Reference(r) = &mut after.kind {
+                    match r.align(a1, a2, b1, b2) {
+                        Ok(()) => {
+                            let turn = r.rotation;
+                            if self
+                                .doc
+                                .commit(creabim_core::Transaction::new("Align reference").replace(e, after))
+                                .is_ok()
+                            {
+                                self.status = format!("Aligned: turned to {turn:.2}°.");
+                            }
+                        }
+                        Err(why) => self.status = why,
+                    }
+                }
+            }
+        }
+        for (view, at, path) in std::mem::take(&mut self.plan.dropped) {
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let p = path.display().to_string();
+            let source = match ext.as_str() {
+                "png" | "jpg" | "jpeg" => creabim_core::RefSource::Image { path: p, width: 10.0 },
+                "dxf" => creabim_core::RefSource::Dxf { path: p },
+                _ => {
+                    self.status = format!(
+                        "{} can't be a reference: drop a PNG, JPEG or DXF file.",
+                        path.file_name().and_then(|n| n.to_str()).unwrap_or("That file")
+                    );
+                    continue;
+                }
+            };
+            let picture = matches!(source, creabim_core::RefSource::Image { .. });
+            self.add_reference(view, source);
+            // a picture lands where it was dropped; a drawing keeps its
+            // own coordinates
+            if let (true, Some(id)) = (picture, self.selection.active) {
+                let _ = self.doc.edit_merged(id, "Place reference", |e| {
+                    if let ElementKind::Reference(r) = &mut e.kind {
+                        r.at = at;
+                    }
+                });
+            }
+        }
     }
 
     /// Calibrate's last step: the distance between the two points picked.
@@ -5379,7 +5558,16 @@ impl CreaBimApp {
         let section = if creabim_core::types::TypeCategory::of(&e.kind).is_some() {
             "Geometry and build"
         } else {
-            "Settings"
+            // named for what it is, as Blender's panels (MU23)
+            match &e.kind {
+                ElementKind::Reference(_) => "Reference",
+                ElementKind::Note(_) => "Note",
+                ElementKind::PaperMark(m) => match m.kind {
+                    creabim_core::PaperMarkKind::NorthArrow { .. } => "North arrow",
+                    creabim_core::PaperMarkKind::ScaleBar { .. } => "Scale bar",
+                },
+                _ => "Settings",
+            }
         };
         if self.prop_header(ui, "element", section, true, None) {
             match &mut edited.kind {
@@ -7443,6 +7631,7 @@ impl eframe::App for CreaBimApp {
         }
         self.project_window(&ctx);
         self.ifc_export_window(&ctx);
+        self.reference_steps();
         self.calibrate_window(&ctx);
         self.sheets_export_window(&ctx);
         self.new_project_window(&ctx);
@@ -7491,10 +7680,14 @@ const GROUND_SPACING_RANGE: (f64, f64) = (0.05, 100.0);
 /// pictures stay as they are.
 fn darken_shapes(ctx: &egui::Context, layer: egui::LayerId, from: Option<egui::layers::ShapeIdx>) {
     let start = from.map_or(0, |i| i.0);
+    let keep = crate::planview::kept_colours(ctx, layer);
     ctx.graphics_mut(|g| {
         let list = g.entry(layer);
         let end = list.next_idx().0;
         for i in start..end {
+            if keep.iter().any(|(a, b)| i >= *a && i <= *b) {
+                continue;
+            }
             list.mutate_shape(egui::layers::ShapeIdx(i), |cs| {
                 if let egui::Shape::Mesh(m) = &cs.shape {
                     if m.texture_id != egui::TextureId::default() {

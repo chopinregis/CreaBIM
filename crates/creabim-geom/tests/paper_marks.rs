@@ -17,12 +17,17 @@ fn a_sheet_draws_its_north_arrow_and_scale_bar() {
     let bar = PaperMark::scale_bar(sheet, DVec2::new(s.width - m - tb.x + 6.0, m + tb.y + 10.0), 100.0);
     let info = creabim_geom::sheet::SheetInfo::default();
     let before = creabim_geom::sheet::sheet_svg(doc.model(), sheet, &info).unwrap();
+    let (rev, drawn) = (doc.model().revision(), doc.model().drawing_revision());
     doc.commit(
         Transaction::new("marks")
             .insert(Element::new("North arrow", ElementKind::PaperMark(north)))
             .insert(Element::new("Scale bar", ElementKind::PaperMark(bar))),
     )
     .unwrap();
+    // the model changed, but nothing a view draws (MU23): sheets keep
+    // their views' drawings instead of redrawing them
+    assert_ne!(doc.model().revision(), rev);
+    assert_eq!(doc.model().drawing_revision(), drawn);
     let after = creabim_geom::sheet::sheet_svg(doc.model(), sheet, &info).unwrap();
     assert!(after.len() > before.len());
     assert!(after.contains(">N<"), "the north arrow's N");

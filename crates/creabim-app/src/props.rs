@@ -34,6 +34,18 @@ fn box_id(ui: &Ui) -> egui::Id {
     egui::Id::new(("props.box", ui.layer_id()))
 }
 
+/// A small icon button, 20 px, the icon in the text colour, a tint when
+/// hovered: for row tools (copy, browse, remove, reload), as Blender's.
+pub fn icon_button(ui: &mut Ui, icon: &str, tip: &str) -> Response {
+    let (r, resp) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(r, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+    }
+    let ink = ui.visuals().text_color();
+    crate::svgicon::paint(ui.painter(), r.shrink(3.0), icon, ink);
+    resp.on_hover_text(tip)
+}
+
 /// A sub-section inside a section's box, folding as Blender's
 /// (MU22): true while open. `key` keeps it folded or open.
 pub fn subsection(ui: &mut Ui, key: &str, title: &str, default_open: bool) -> bool {

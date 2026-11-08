@@ -121,7 +121,7 @@ impl Builds {
         if self.running.contains_key(&key) {
             return;
         }
-        let revision = model.revision();
+        let revision = model.drawing_revision();
         let snapshot = self.snapshot(model);
         let tx = self.tx.clone();
         self.running.insert(key, revision);
@@ -250,7 +250,7 @@ mod tests {
         }
         // a frame's asking costs the model snapshot at most
         assert!(worst < 16.0, "a frame waited {worst:.1} ms");
-        let last = doc.model().revision();
+        let last = doc.model().drawing_revision();
         let deadline = Instant::now() + std::time::Duration::from_secs(60);
         let mut newest: HashMap<Key, u64> = HashMap::new();
         while Instant::now() < deadline {

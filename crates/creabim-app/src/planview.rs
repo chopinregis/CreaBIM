@@ -491,6 +491,13 @@ pub struct PlanState {
     /// Calibrate: the reference being scaled and the points picked on
     /// it so far; with two, `calibrated` asks for the distance.
     pub calibrate: Option<(ElementId, Vec<DVec2>)>,
+    /// Align (MU23): the reference, and the points picked so far (two on
+    /// it, then two on what it lines up with).
+    pub align_ref: Option<(ElementId, Vec<DVec2>)>,
+    /// Align's four points, picked, for the app to apply.
+    pub aligned: Option<(ElementId, [DVec2; 4])>,
+    /// Picture or DXF files dropped on a view, and where (MU23).
+    pub dropped: Vec<(ElementId, DVec2, std::path::PathBuf)>,
     pub calibrated: Option<(ElementId, DVec2, DVec2)>,
     /// Temporary dimensions muted (MU21): none shown, none clicked.
     pub temp_dims_off: bool,
@@ -592,6 +599,9 @@ impl Default for PlanState {
             tracker: Default::default(),
             ref_cache: Default::default(),
             calibrate: None,
+            align_ref: None,
+            aligned: None,
+            dropped: vec![],
             calibrated: None,
             temp_dims_off: false,
             host_pick: None,
@@ -2180,8 +2190,85 @@ pub fn show(
             error = Some(e.to_string());
         }
     }
-    // Calibrate: two clicks on the reference, then its distance (MU19)
+    // Calibrate: two clicks on the reference, then its distance (MU19);
+    // right-click or Esc stops it (MU23)
+    if state.calibrate.is_some()
+        && (response.secondary_clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)))
+    {
+        state.calibrate = None;
+        state.status = Some("Calibrate cancelled.".into());
+        return None;
+    }
+    // files dropped on the view: pictures and DXF drawings become
+    // references here, at the pointer (MU23)
+    let drops: Vec<std::path::PathBuf> = ui.input(|i| {
+        i.raw
+            .dropped_files
+            .iter()
+            .map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty())
+            .collect()
+    });
+    if !drops.is_empty() && response.contains_pointer() {
+        let at = hover_world.unwrap_or(xf.center);
+        for p in drops {
+            state.dropped.push((view, at, p));
+        }
+    }
+    // Align: two clicks on the reference, two on the model (MU23)
+    if state.align_ref.is_some()
+        && (response.secondary_clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)))
+    {
+        state.align_ref = None;
+        state.status = Some("Align cancelled.".into());
+        return None;
+    }
+    if let Some((rid, pts)) = state.align_ref.as_mut() {
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        }
+        let ink = |i: usize| if i < 2 { ACCENT_SELECTED } else { GUIDE_COLOR };
+        for (i, q) in pts.iter().enumerate() {
+            painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, ink(i)));
+        }
+        if pts.len() == 2 {
+            painter.line_segment([xf.to_screen(pts[0]), xf.to_screen(pts[1])], Stroke::new(1.5, ACCENT_SELECTED));
+        }
+        if let Some(h) = hover_world {
+            painter.circle_stroke(xf.to_screen(h), 4.0, Stroke::new(1.0, ink(pts.len())));
+            if pts.len() % 2 == 1 {
+                let a = pts[pts.len() - 1];
+                painter.line_segment([xf.to_screen(a), xf.to_screen(h)], Stroke::new(1.0, ink(pts.len())));
+            }
+        }
+        if response.clicked() {
+            if let Some(q) = hover_world {
+                pts.push(q);
+            }
+            state.status = Some(
+                match pts.len() {
+                    1 => "Align: a second point on the reference, along the line to lay down.",
+                    2 => "Align: now the first point of the line it lies along (the model, a guide).",
+                    3 => "Align: the second point of that line.",
+                    _ => "",
+                }
+                .into(),
+            );
+            if pts.len() >= 4 {
+                let (id, p) = (*rid, pts.clone());
+                state.align_ref = None;
+                state.aligned = Some((id, [p[0], p[1], p[2], p[3]]));
+            }
+        }
+        return None;
+    }
     if let Some((rid, pts)) = state.calibrate.as_mut() {
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        }
+        // where the next click goes, before the first too (MU23)
+        if let (Some(h), true) = (hover_world, pts.is_empty()) {
+            painter.circle_stroke(xf.to_screen(h), 4.0, Stroke::new(1.0, ACCENT_SELECTED));
+        }
         for q in pts.iter() {
             painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, ACCENT_SELECTED));
         }
@@ -3877,15 +3964,11 @@ pub(crate) fn nav_column(
         .input(|i| i.pointer.hover_pos())
         .is_some_and(|h| column.expand(40.0).contains(h));
     let fade = if near { 1.0 } else { 0.45 };
-    // above the drawing, on a layer of its own: dark paper turns the
-    // drawing over, never the controls (MU20)
-    let painter = ui
-        .ctx()
-        .layer_painter(egui::LayerId::new(
-            egui::Order::Foreground,
-            ui.id().with(("nav2d-layer", view)),
-        ))
-        .with_clip_rect(rect);
+    // on the pane's own layer, so windows and pop-ups cover it (MU23);
+    // dark paper is told to leave it alone, as it turns the drawing over
+    // but never the controls (MU20)
+    let painter = ui.painter().clone().with_clip_rect(rect);
+    let first = painter.add(egui::Shape::Noop);
     painter.rect(
         column,
         8.0,
@@ -3934,7 +4017,37 @@ pub(crate) fn nav_column(
             _ => {}
         }
     }
+    let last = painter.add(egui::Shape::Noop);
+    keep_colours(ui.ctx(), painter.layer_id(), first, last);
     out
+}
+
+/// Shapes `first..=last` on `layer` keep their colours when dark paper
+/// turns the drawing over (the zoom column's), this frame.
+pub(crate) fn keep_colours(
+    ctx: &egui::Context,
+    layer: egui::LayerId,
+    first: egui::layers::ShapeIdx,
+    last: egui::layers::ShapeIdx,
+) {
+    let id = egui::Id::new("paper.keep");
+    let pass = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| {
+        let list = d.get_temp_mut_or_default::<(u64, Vec<(egui::LayerId, usize, usize)>)>(id);
+        if list.0 != pass {
+            *list = (pass, vec![]);
+        }
+        list.1.push((layer, first.0, last.0));
+    });
+}
+
+/// The shapes on `layer` dark paper leaves alone this frame.
+pub(crate) fn kept_colours(ctx: &egui::Context, layer: egui::LayerId) -> Vec<(usize, usize)> {
+    let pass = ctx.cumulative_pass_nr();
+    ctx.data(|d| d.get_temp::<(u64, Vec<(egui::LayerId, usize, usize)>)>(egui::Id::new("paper.keep")))
+        .filter(|l| l.0 == pass)
+        .map(|l| l.1.into_iter().filter(|r| r.0 == layer).map(|r| (r.1, r.2)).collect())
+        .unwrap_or_default()
 }
 
 /// Each 3D crop box as a rectangle on `view`'s drawing: its footprint

@@ -12,6 +12,11 @@ pub struct Model {
     /// revision alone; 0 is a model never changed through these methods.
     #[serde(skip)]
     revision: u64,
+    /// The revision of the last change a view's drawing could show: a
+    /// note, a north arrow or a scale bar on a sheet, or a view moved on
+    /// one, leaves it (MU23), so sheets don't redraw their views for them.
+    #[serde(skip)]
+    drawn: u64,
 }
 
 /// The next revision handed out, to any model.
@@ -36,6 +41,30 @@ impl Model {
 
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    /// As [`Model::revision`], but unchanged by what is only on a sheet's
+    /// paper: what views' drawings are cached by.
+    pub fn drawing_revision(&self) -> u64 {
+        self.drawn
+    }
+
+    /// Written on a sheet's paper only: no view draws it.
+    fn paper_only(&self, e: &Element) -> bool {
+        match &e.kind {
+            ElementKind::PaperMark(_) | ElementKind::Viewport(_) => true,
+            ElementKind::Note(n) => {
+                matches!(self.get(n.view).map(|v| &v.kind), Some(ElementKind::Sheet(_)))
+            }
+            _ => false,
+        }
+    }
+
+    fn bump(&mut self, drawn: bool) {
+        self.revision = next_revision();
+        if drawn {
+            self.drawn = self.revision;
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -92,7 +121,7 @@ impl Model {
     /// out ([`crate::visibility::without`]). Never commit edits from one.
     pub fn retain(&mut self, mut keep: impl FnMut(&Element) -> bool) {
         self.elements.retain(|_, e| keep(e));
-        self.revision = next_revision();
+        self.bump(true);
     }
 
     /// Elements that directly reference `id`.
@@ -132,8 +161,9 @@ impl Model {
             return Err(ModelError::Duplicate(e.id));
         }
         self.check_refs(&e)?;
+        let drawn = !self.paper_only(&e);
         self.elements.insert(e.id, e);
-        self.revision = next_revision();
+        self.bump(drawn);
         Ok(())
     }
 
@@ -144,11 +174,12 @@ impl Model {
                 by: *by,
             });
         }
+        let drawn = self.get(id).is_none_or(|e| !self.paper_only(e));
         let e = self
             .elements
             .shift_remove(&id)
             .ok_or(ModelError::NotFound(id))?;
-        self.revision = next_revision();
+        self.bump(drawn);
         Ok(e)
     }
 
@@ -157,8 +188,9 @@ impl Model {
             return Err(ModelError::NotFound(e.id));
         }
         self.check_refs(&e)?;
+        let drawn = !self.paper_only(&e) || self.get(e.id).is_some_and(|o| !self.paper_only(o));
         let old = self.elements.insert(e.id, e).expect("checked above");
-        self.revision = next_revision();
+        self.bump(drawn);
         Ok(old)
     }
 
@@ -177,7 +209,7 @@ impl Model {
         for e in m.elements.values() {
             m.check_refs(e)?;
         }
-        m.revision = next_revision();
+        m.bump(true);
         Ok(m)
     }
 
@@ -206,6 +238,7 @@ impl Model {
             }
             pending = rest;
         }
+        m.drawn = m.revision;
         Ok(m)
     }
 }

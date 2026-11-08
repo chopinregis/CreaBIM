@@ -40,7 +40,10 @@ pub fn ink(look: &TextLook, selected: bool, highlight: Color32) -> Color32 {
 /// Text height on screen, in pixels, for a look in a pane at `mm` drawing
 /// units per paper mm.
 pub fn text_px(look: &TextLook, mm: f64, xf: &Xf) -> f32 {
-    ((look.size * mm * xf.scale as f64) as f32).max(7.0)
+    // its true size at this zoom: zoomed out, text shrinks with the
+    // drawing and is left out once too small to read (MU23), instead of
+    // staying large and spilling past what it labels
+    ((look.size * mm * xf.scale as f64) as f32).max(1.0)
 }
 
 /// Text on screen in a look's family, weight and slant, turned `angle`
@@ -56,6 +59,9 @@ pub fn text(
     anchor: Anchor,
     look: &TextLook,
 ) {
+    if px < 3.0 {
+        return;
+    }
     let family = match look.font {
         Font::Mono => egui::FontFamily::Monospace,
         Font::Sans | Font::Serif => egui::FontFamily::Proportional,
