@@ -846,12 +846,6 @@ impl CreaBimApp {
                     Shows::View(v) => self.group_title(v),
                     _ => "",
                 };
-                items.push(
-                    Item::new("area.show:notes", "Notes")
-                        .icon("sticky-note")
-                        .checked(here == Shows::Notes)
-                        .hint("The project's notepad, or the selected note's text, large: as Blender's text editor"),
-                );
                 for (g, ids) in crate::browser::view_groups(self.doc.model()) {
                     if let Some(first) = ids.first() {
                         items.push(
@@ -868,6 +862,12 @@ impl CreaBimApp {
                             .icon("file-text"),
                     );
                 }
+                items.push(
+                    Item::new("area.show:notes", "Notes")
+                        .icon("sticky-note")
+                        .checked(here == Shows::Notes)
+                        .hint("The project's notepad, or the selected note's text, large: as Blender's text editor"),
+                );
                 items
             }
             "area.views" => {

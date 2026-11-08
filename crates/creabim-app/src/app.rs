@@ -2204,6 +2204,8 @@ impl CreaBimApp {
             && self.plan.modal.is_none()
             && !ui.ctx().egui_wants_keyboard_input()
             && self.selection.is_some()
+            && !(planview::start_keys(ui.ctx()).is_none()
+                && planview::only_paper(&self.doc, &self.selection.all()))
             && (self.plan.armed.is_some() || planview::start_keys(ui.ctx()).is_some());
         if modal_here || starting {
             let moving = self
@@ -8791,7 +8793,16 @@ fn paper_dark(c: Color32) -> Color32 {
     let [r, g, b, a] = c.to_srgba_unmultiplied();
     let (hi, lo) = (r.max(g).max(b), r.min(g).min(b));
     if hi.saturating_sub(lo) > 28 {
-        return c;
+        // a colour keeps its hue; a dark one (a blue annotation) is lifted
+        // toward white until it reads on dark paper as it did on white (MU30)
+        let lum = (0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32) / 255.0;
+        const WANT: f32 = 0.5;
+        if lum >= WANT {
+            return c;
+        }
+        let t = (WANT - lum) / (1.0 - lum);
+        let up = |v: u8| (v as f32 + (255.0 - v as f32) * t).round() as u8;
+        return Color32::from_rgba_unmultiplied(up(r), up(g), up(b), a);
     }
     let v = (r as f32 + g as f32 + b as f32) / 3.0;
     let w = (34.0 + (255.0 - v) * 0.82).round() as u8;

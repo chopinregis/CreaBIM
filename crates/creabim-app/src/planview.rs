@@ -3616,6 +3616,9 @@ fn keyboard_edits(
         Flow::Tool
     };
     let mode = keys.or(state.armed)?;
+    if keys.is_none() && only_paper(doc, &selection.all()) {
+        return None;
+    }
     let grab = response.hover_pos()?;
     state.armed = None;
     let extras = (state.armed_grip.take(), std::mem::take(&mut state.in_place));
@@ -3647,6 +3650,20 @@ fn keyboard_edits(
         Err(e) => state.status = Some(e),
     }
     Some(None)
+}
+
+/// Is everything selected written on a sheet (notes, marks)? Then only a
+/// sheet runs its Move: a plan or the 3D view the pointer crosses on the
+/// way must not take it (MU30).
+pub fn only_paper(doc: &Document, ids: &[ElementId]) -> bool {
+    let model = doc.model();
+    let sheet = |v: ElementId| matches!(model.get(v).map(|e| &e.kind), Some(ElementKind::Sheet(_)));
+    !ids.is_empty()
+        && ids.iter().all(|id| match model.get(*id).map(|e| &e.kind) {
+            Some(ElementKind::PaperMark(_)) => true,
+            Some(ElementKind::Note(n)) => sheet(n.view),
+            _ => false,
+        })
 }
 
 /// What the edge palette asked of an armed edit: the grip [`Mode::Grip`]

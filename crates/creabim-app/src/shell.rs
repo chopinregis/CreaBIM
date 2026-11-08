@@ -593,7 +593,7 @@ impl CreaBimApp {
                 ];
                 if let Some((_, z)) = self.work_level() {
                     items.push(
-                        Item::new("wp.offset", "Level plane you can offset").hint(format!(
+                        Item::new("wp.offset", "Level plane you can offset").icon("level-offset").hint(format!(
                             "A plane at {} to slide up and down",
                             crate::units::elevation(z)
                         )),

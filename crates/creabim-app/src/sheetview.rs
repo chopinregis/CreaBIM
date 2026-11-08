@@ -223,6 +223,27 @@ fn sheet_move(
     guides: &[(bool, f64)],
 ) -> Option<Option<String>> {
     use crate::modal::Mode;
+    // armed, a right-click or Esc lets it go, as everywhere (MU30)
+    if state.moving.is_none()
+        && plan.armed.is_some()
+        && response.hovered()
+        && (response.secondary_clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)))
+    {
+        plan.armed = None;
+        plan.status = Some("Move cancelled.".into());
+        return Some(None);
+    }
+    // a move another view took while still waiting for its base point
+    // (the pointer crossed it on the way here) comes back to the sheet
+    let base_waiting = plan.modal.as_ref().is_some_and(|m| {
+        m.flow == crate::modal::Flow::Tool && m.stage() == crate::modal::Stage::Base && m.mode == Mode::Move
+    });
+    if base_waiting && response.hovered() && !on_sheet(doc, sheet, selection).is_empty() {
+        if let Some(mut old) = plan.modal.take() {
+            old.discard(doc);
+            plan.armed = Some((Mode::Move, false));
+        }
+    }
     // snapped to what is on the sheet and to its guides (MU29)
     let skip: Vec<ElementId> = state
         .moving
@@ -773,6 +794,8 @@ pub fn show(
     let guide_ink = Color32::from_rgb(40, 170, 220);
     if on {
         let p = crate::theme::Palette::of(ui.ctx());
+        // the theme's own colours: dark paper leaves the rulers alone (MU30)
+        let first = painter.add(egui::Shape::Noop);
         for r in [top, left] {
             painter.rect_filled(r, 0.0, p.panel.gamma_multiply(0.85));
         }
@@ -795,6 +818,8 @@ pub fn show(
                 y += step;
             }
         }
+        let last = painter.add(egui::Shape::Noop);
+        planview::keep_colours(ui.ctx(), painter.layer_id(), first, last);
     }
     let line_of = |vertical: bool, at: f64| -> [Pos2; 2] {
         if vertical {
