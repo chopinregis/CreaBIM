@@ -13,7 +13,7 @@ use crate::sketch::{Click, SketchDraft};
 use crate::snaps::{self, SnapKind, Snapper};
 use creabim_core::{
     element::FREE_MESH_CLASSES, sample::sample_house, Axis, BoolOp, Cut, Document, Element,
-    ElementId, ElementKind, Hatch, Material, Model, Modifier, ModifierKind, ScheduleCategory,
+    ElementId, ElementKind, Hatch, Material, Model, ScheduleCategory,
     Sheet, Transaction, Underlay, View, ViewKind, ViewStyle, Workplane,
 };
 use creabim_geom::sheet::{self as sheets, PlacedView, SheetInfo};
@@ -3576,6 +3576,149 @@ fn rest_points(
 }
 
 impl CreaBimApp {
+    /// The Modifiers tab (MU27): each modifier a card, as Blender's: a
+    /// header line (fold, its name, shown or not, its menu, ×) and, open,
+    /// its settings; Add modifier above them.
+    fn modifiers_tab(&mut self, ui: &mut egui::Ui, id: ElementId) {
+        use creabim_core::{Modifier, ModifierKind};
+        let Some(ElementKind::FreeMesh(before)) = self.doc.model().get(id).map(|e| e.kind.clone()) else {
+            ui.label(egui::RichText::new("This element takes no modifiers yet.").weak());
+            return;
+        };
+        let mut m = before.clone();
+        let mut label: &'static str = "";
+        egui::ComboBox::from_id_salt(("add_modifier", id))
+            .icon(crate::props::combo_icon)
+            .selected_text("+ Add modifier")
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for k in ModifierKind::presets() {
+                    if ui.selectable_label(false, k.label()).clicked() {
+                        m.modifiers.push(Modifier::new(k));
+                        label = "Add modifier";
+                    }
+                }
+            });
+        if m.modifiers.is_empty() {
+            ui.label(egui::RichText::new("None yet. A modifier changes the shape without touching the mesh: array, mirror, solidify, subdivide.").weak());
+        }
+        let count = m.modifiers.len();
+        let mut action: Option<(usize, i32)> = None;
+        let p = crate::theme::Palette::of(ui.ctx());
+        for (i, md) in m.modifiers.iter_mut().enumerate() {
+            let key = egui::Id::new(("mod.open", id, i));
+            let open = ui.ctx().data(|d| d.get_temp::<bool>(key)).unwrap_or(true);
+            egui::Frame::new()
+                .fill(crate::props::box_fill(ui.visuals()))
+                .stroke(egui::Stroke::new(1.0, p.border))
+                .corner_radius(6.0)
+                .inner_margin(egui::Margin::symmetric(6, 4))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let chev = if open { "chevron-down" } else { "chevron-right" };
+                        if crate::props::icon_button(ui, chev, if open { "Fold" } else { "Open" }).clicked() {
+                            ui.ctx().data_mut(|d| d.insert_temp(key, !open));
+                        }
+                        ui.label(egui::RichText::new(md.kind.label()).strong());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if crate::props::icon_button(ui, "x", "Remove").clicked() {
+                                action = Some((i, 0));
+                            }
+                            ui.menu_button("\u{22ef}", |ui| {
+                                if i == 0 && ui.button("Apply").on_hover_text("Make it part of the mesh, so you can edit the result").clicked() {
+                                    action = Some((i, 2));
+                                    ui.close();
+                                }
+                                if i > 0 && ui.button("Move up").clicked() {
+                                    action = Some((i, -1));
+                                    ui.close();
+                                }
+                                if i + 1 < count && ui.button("Move down").clicked() {
+                                    action = Some((i, 1));
+                                    ui.close();
+                                }
+                            });
+                            let eye = if md.enabled { "eye" } else { "eye-off" };
+                            if crate::props::icon_button(ui, eye, "Show it in the views (off: the mesh without it)").clicked() {
+                                md.enabled = !md.enabled;
+                                label = "Switch modifier";
+                            }
+                        });
+                    });
+                    if !open {
+                        return;
+                    }
+                    let num = |ui: &mut egui::Ui, name: &str, v: &mut f64| {
+                        crate::props::row(ui, name, |ui| crate::props::fill(ui, crate::units::drag(v)).changed())
+                    };
+                    match &mut md.kind {
+                        ModifierKind::Array { count, offset } => {
+                            crate::props::row(ui, "Count", |ui| {
+                                if crate::props::fill(ui, egui::DragValue::new(count).speed(0.1).range(1..=200)).changed() {
+                                    label = "Array count";
+                                }
+                            });
+                            if num(ui, "Offset X", &mut offset.x) | num(ui, "Offset Y", &mut offset.y) | num(ui, "Offset Z", &mut offset.z) {
+                                label = "Array offset";
+                            }
+                        }
+                        ModifierKind::Mirror { axis, plane } => {
+                            crate::props::row(ui, "Across", |ui| {
+                                ui.horizontal(|ui| {
+                                    for a in Axis::ALL {
+                                        if ui.selectable_value(axis, a, a.label()).changed() {
+                                            label = "Mirror axis";
+                                        }
+                                    }
+                                })
+                            });
+                            if num(ui, "Plane at", plane) {
+                                label = "Mirror plane";
+                            }
+                        }
+                        ModifierKind::Solidify { thickness } => {
+                            if num(ui, "Thickness", thickness) {
+                                label = "Solidify thickness";
+                            }
+                        }
+                        ModifierKind::Subdivision { levels } => {
+                            crate::props::row(ui, "Levels", |ui| {
+                                if crate::props::fill(ui, egui::DragValue::new(levels).speed(0.05).range(0..=4)).changed() {
+                                    label = "Subdivision levels";
+                                }
+                            });
+                        }
+                    }
+                });
+            ui.add_space(3.0);
+        }
+        match action {
+            Some((i, 0)) => {
+                m.modifiers.remove(i);
+                label = "Remove modifier";
+            }
+            Some((i, 1)) => {
+                m.modifiers.swap(i, i + 1);
+                label = "Reorder modifiers";
+            }
+            Some((i, -1)) => {
+                m.modifiers.swap(i, i - 1);
+                label = "Reorder modifiers";
+            }
+            Some((_, _)) => {
+                let first = m.modifiers.remove(0);
+                m.mesh = creabim_core::modifiers::evaluate(&m.mesh, &[first]).mesh;
+                self.face = None;
+                label = "Apply modifier";
+            }
+            None => {}
+        }
+        if m != before && !label.is_empty() {
+            let r = self.doc.edit_merged(id, label, |e| e.kind = ElementKind::FreeMesh(m.clone()));
+            self.report(r, format!("{label}."));
+        }
+    }
+
     /// The project's notepad (MU28): to-dos and notes, each one row (a tick
     /// or a dot, its first line, its link, then edit and delete tucked at
     /// the right), edited in place and closed by clicking away. Copying and
@@ -6255,6 +6398,10 @@ impl CreaBimApp {
             self.notes_pad(ui);
             return;
         }
+        if tab == PropTab::Modifiers {
+            self.modifiers_tab(ui, id);
+            return;
+        }
         if tab == PropTab::Data {
             self.assign_panel(ui, id);
             return;
@@ -7354,140 +7501,11 @@ impl CreaBimApp {
                         }
                     });
 
-                    ui.separator();
-                    ui.label(egui::RichText::new("Modifiers").strong());
-                    if m.modifiers.is_empty() {
-                        ui.label(
-                            egui::RichText::new(
-                                "None yet. They change the shape without touching the mesh.",
-                            )
-                            .weak(),
-                        );
-                    }
-                    let count = m.modifiers.len();
-                    let mut action: Option<(usize, i32)> = None; // (index, -1 up, 1 down, 0 remove, 2 apply)
-                    for (i, md) in m.modifiers.iter_mut().enumerate() {
-                        ui.push_id(("modifier", i), |ui| {
-                            egui::Frame::group(ui.style()).show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    if ui
-                                        .checkbox(&mut md.enabled, md.kind.label())
-                                        .on_hover_text("Switch it off to see the mesh without it")
-                                        .changed()
-                                    {
-                                        label = "Switch modifier"
-                                    }
-                                    if ui.small_button("Remove").clicked() {
-                                        action = Some((i, 0));
-                                    }
-                                    if i + 1 < count && ui.small_button("Down").clicked() {
-                                        action = Some((i, 1));
-                                    }
-                                    if i > 0 && ui.small_button("Up").clicked() {
-                                        action = Some((i, -1));
-                                    }
-                                    if i == 0
-                                    && ui
-                                        .small_button("Apply")
-                                        .on_hover_text(
-                                            "Make it part of the mesh, so you can edit the result",
-                                        )
-                                        .clicked()
-                                {
-                                    action = Some((i, 2));
-                                }
-                                });
-                                match &mut md.kind {
-                                    ModifierKind::Array { count, offset } => {
-                                        ui.horizontal(|ui| {
-                                            ui.label("Count");
-                                            if ui
-                                                .add(
-                                                    egui::DragValue::new(count)
-                                                        .speed(0.1)
-                                                        .range(1..=200),
-                                                )
-                                                .changed()
-                                            {
-                                                label = "Array count"
-                                            }
-                                        });
-                                        if num(ui, "Offset X", &mut offset.x, -1e3, 1e3)
-                                            | num(ui, "Offset Y", &mut offset.y, -1e3, 1e3)
-                                            | num(ui, "Offset Z", &mut offset.z, -1e3, 1e3)
-                                        {
-                                            label = "Array offset"
-                                        }
-                                    }
-                                    ModifierKind::Mirror { axis, plane } => {
-                                        ui.horizontal(|ui| {
-                                            ui.label("Across");
-                                            for a in Axis::ALL {
-                                                if ui.radio_value(axis, a, a.label()).changed() {
-                                                    label = "Mirror axis"
-                                                }
-                                            }
-                                        });
-                                        if num(ui, "Mirror plane at", plane, -1e3, 1e3) {
-                                            label = "Mirror plane"
-                                        }
-                                    }
-                                    ModifierKind::Solidify { thickness } => {
-                                        if num(ui, "Thickness", thickness, -10.0, 10.0) {
-                                            label = "Solidify thickness"
-                                        }
-                                    }
-                                    ModifierKind::Subdivision { levels } => {
-                                        ui.horizontal(|ui| {
-                                            ui.label("Levels");
-                                            if ui
-                                                .add(
-                                                    egui::DragValue::new(levels)
-                                                        .speed(0.05)
-                                                        .range(0..=4),
-                                                )
-                                                .changed()
-                                            {
-                                                label = "Subdivision levels"
-                                            }
-                                        });
-                                    }
-                                }
-                            });
-                        });
-                    }
-                    match action {
-                        Some((i, 0)) => {
-                            m.modifiers.remove(i);
-                            label = "Remove modifier";
-                        }
-                        Some((i, 1)) => {
-                            m.modifiers.swap(i, i + 1);
-                            label = "Reorder modifiers";
-                        }
-                        Some((i, -1)) => {
-                            m.modifiers.swap(i, i - 1);
-                            label = "Reorder modifiers";
-                        }
-                        Some((_, _)) => {
-                            let first = m.modifiers.remove(0);
-                            m.mesh = creabim_core::modifiers::evaluate(&m.mesh, &[first]).mesh;
-                            self.face = None;
-                            label = "Apply modifier";
-                        }
-                        None => {}
-                    }
-                    egui::ComboBox::from_id_salt("add_modifier")
-                        .icon(crate::props::combo_icon)
-                        .selected_text("Add modifier…")
-                        .show_ui(ui, |ui| {
-                            for k in ModifierKind::presets() {
-                                if ui.selectable_label(false, k.label()).clicked() {
-                                    m.modifiers.push(Modifier::new(k));
-                                    label = "Add modifier";
-                                }
-                            }
-                        });
+                    ui.label(egui::RichText::new(format!(
+                        "Modifiers: {} (the wrench tab)",
+                        m.modifiers.len()
+                    ))
+                    .weak());
                     ui.label(format!(
                         "{} vertices, {} faces",
                         m.mesh.vertices.len(),
@@ -7920,6 +7938,11 @@ impl CreaBimApp {
         if self.selection.active.is_none() {
             out.push(PropTab::Model3d);
         }
+        if let Some(ElementKind::FreeMesh(_)) = self.selection.active.and_then(|id| self.doc.model().get(id)).map(|e| &e.kind) {
+            if let Some(at) = out.iter().position(|t| *t == PropTab::Element) {
+                out.insert(at + 1, PropTab::Modifiers);
+            }
+        }
         out.push(PropTab::Project);
         out.push(PropTab::Notes);
         out
@@ -8261,6 +8284,8 @@ pub(crate) enum PropTab {
     Project,
     /// The project's notepad: notes and to-dos (MU26).
     Notes,
+    /// The element's modifiers (MU27): array, mirror, solidify, subdivide.
+    Modifiers,
 }
 
 impl PropTab {
@@ -8275,6 +8300,7 @@ impl PropTab {
             | PropTab::Data => 0,
             PropTab::View | PropTab::Trace | PropTab::Model3d => 1,
             PropTab::Project | PropTab::Notes => 2,
+            PropTab::Modifiers => 0,
         }
     }
 
@@ -8290,6 +8316,7 @@ impl PropTab {
             PropTab::Model3d => "3D view",
             PropTab::Project => "Project",
             PropTab::Notes => "Notes and to-dos",
+            PropTab::Modifiers => "Modifiers",
         }
     }
 
@@ -8305,6 +8332,7 @@ impl PropTab {
             PropTab::Model3d => "view-3d",
             PropTab::Project => "house",
             PropTab::Notes => "sticky-note",
+            PropTab::Modifiers => "wrench",
         }
     }
 }

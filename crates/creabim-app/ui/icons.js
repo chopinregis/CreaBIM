@@ -26,6 +26,7 @@ window.ICONS = {
 "pick-vertex": "<path d=\"M5 19L19 5\" stroke-opacity=\"0.35\"></path><circle cx=\"19\" cy=\"5\" r=\"3\" fill=\"currentColor\"></circle><circle cx=\"5\" cy=\"19\" r=\"3\" fill=\"currentColor\"></circle>",
 "pick-edge": "<path d=\"M5 19L19 5\" stroke-width=\"3\"></path><circle cx=\"19\" cy=\"5\" r=\"1.5\"></circle><circle cx=\"5\" cy=\"19\" r=\"1.5\"></circle>",
 "pick-face": "<path d=\"M4 19L12 4l8 15z\" fill=\"currentColor\" fill-opacity=\"0.35\"></path>",
+"wrench": "<path d=\"M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z\"></path>",
 "ruler": "<path d=\"M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z\" /> <path d=\"m14.5 12.5 2-2\" /> <path d=\"m11.5 9.5 2-2\" /> <path d=\"m8.5 6.5 2-2\" /> <path d=\"m17.5 15.5 2-2\" />",
 "tag": "<path d=\"M3 12V4h8l10 10-8 8z\"></path><path d=\"M7.5 7.5h.01\"></path>",
 "pen-tool": "<path d=\"M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z\"></path> <path d=\"m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18\"></path> <path d=\"m2.3 2.3 7.286 7.286\"></path> <circle cx=\"11\" cy=\"11\" r=\"2\"></circle>",
