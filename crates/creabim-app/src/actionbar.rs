@@ -264,7 +264,10 @@ impl CreaBimApp {
         let room = ui.available_width();
         // More and Delete, and the gaps between the groups
         let fixed = 2.0 * BUTTON + 3.0 * GAP + 2.0 * SPLIT;
-        let fit = (((room - fixed) / (BUTTON + GAP)).floor().max(0.0)) as usize;
+        // one button's room kept spare, so Delete and More always show at
+        // the right however the panel is sized (MU23: an extrusion's
+        // actions pushed Delete out of sight)
+        let fit = (((room - fixed) / (BUTTON + GAP)).floor().max(1.0) - 1.0) as usize;
         let mut shown_own = own.clone();
         let mut shown_common = common.clone();
         let mut more: Vec<Act> = vec![];

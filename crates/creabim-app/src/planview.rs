@@ -3585,8 +3585,8 @@ pub fn with_extras(
 pub fn start_hint(m: &Modal) -> String {
     if m.duplicated && m.mode == Mode::Move {
         return match m.stage() {
-            Stage::Base => "Copy made: click a base point, then where it goes. Typed distances work; Esc leaves it in place.".into(),
-            _ => "Copy made: move the pointer and click where it goes. Esc leaves it in place.".into(),
+            Stage::Base => "Copy made: click a base point, then where it goes. Typed distances work; Esc or a right-click takes the copy away.".into(),
+            _ => "Copy made: move the pointer and click where it goes. Esc or a right-click takes the copy away.".into(),
         };
     }
     match (m.stage(), m.mode) {
@@ -3614,7 +3614,7 @@ pub fn restart_modal(
         return String::new();
     };
     let mut old = old;
-    old.cancel(doc);
+    old.undo_edit(doc);
     if ids.is_empty() {
         return "Nothing selected: click what to move.".into();
     }

@@ -1584,10 +1584,9 @@ impl Modal {
         self.axis = if self.axis == Some(a) { None } else { Some(a) };
     }
 
-    /// Undo whatever this edit has done. A duplicate's copy stays where
-    /// it was made: Esc leaves it in place (and selected), as it is meant
-    /// to be moved off its original by hand then.
-    pub fn cancel(&mut self, doc: &mut Document) {
+    /// Undo whatever this edit has done, keeping a duplicate's copy: for
+    /// the tool started again on a changed selection.
+    pub fn undo_edit(&mut self, doc: &mut Document) {
         self.edit.cancel(doc);
         if let Some(c) = &mut self.copies {
             c.cancel(doc);
@@ -1597,13 +1596,20 @@ impl Modal {
         }
     }
 
-    /// Undo everything, a duplicate's copy too: for an edit abandoned
-    /// before it began (another one replaces it).
-    pub fn discard(&mut self, doc: &mut Document) {
-        self.cancel(doc);
+    /// Undo everything, a duplicate's copy too (MU23): a copy cancelled
+    /// before it was placed would sit unseen on its original, and the
+    /// next Duplicate stacks another one on it.
+    pub fn cancel(&mut self, doc: &mut Document) {
+        self.undo_edit(doc);
         if self.duplicated && doc.undo_label().is_some_and(|l| l.starts_with("Duplicate")) {
             doc.discard_last();
+            self.duplicated = false;
         }
+    }
+
+    /// As [`Modal::cancel`]: an edit abandoned before it began.
+    pub fn discard(&mut self, doc: &mut Document) {
+        self.cancel(doc);
     }
 
     /// The turn axis for a rotate: about the pane's view in plans and
@@ -2680,20 +2686,24 @@ mod tests {
     }
 
     #[test]
-    fn esc_leaves_a_duplicate_in_place_and_discard_removes_it() {
+    fn cancelling_a_duplicate_takes_its_copy_away_and_keeps_the_rest() {
+        // MU23: a copy left on its original was invisible, and every
+        // Duplicate after stacked another wall on the same spot
         let mut doc = Document::from_model(sample_house());
         let (id, start) = first_wall(&doc);
         let n = doc.model().len();
+        let steps = doc.undo_steps().len();
         let copies = duplicate(&mut doc, &[id]).unwrap();
-        let made = doc.model().len();
-        assert!(made > n);
+        assert!(doc.model().len() > n);
         let mut m = tool(&doc, Mode::Move, copies[0]);
         m.duplicated = true;
         m.cancel(&mut doc);
-        assert_eq!(doc.model().len(), made, "the copy stays");
-        assert_eq!(wall_start(&doc, copies[0]), start);
-        m.discard(&mut doc);
-        assert_eq!(doc.model().len(), n, "discarded with the edit");
+        assert_eq!(doc.model().len(), n, "the copy is gone");
+        assert_eq!(doc.undo_steps().len(), steps, "and its undo step");
+        assert_eq!(wall_start(&doc, id), start, "the original is untouched");
+        // a second cancel takes nothing else away
+        m.cancel(&mut doc);
+        assert_eq!(doc.model().len(), n);
     }
 
     #[test]

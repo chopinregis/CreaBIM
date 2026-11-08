@@ -991,7 +991,7 @@ impl CreaBimApp {
                 "Offset: point at a view and move the pointer to the side to offset to, or type a distance; click to place a copy. Ctrl moves the original instead.".into()
             }
             _ if c == Command::Duplicate => {
-                "Duplicate: point at a view and click a base point; the copy follows to where you click next. Esc leaves it in place.".into()
+                "Duplicate: point at a view and click a base point; the copy follows to where you click next. Esc takes the copy away.".into()
             }
             _ => format!(
                 "{}: point at a view and move the pointer, then click to finish. Right-click cancels.",
@@ -3794,6 +3794,28 @@ impl CreaBimApp {
             self.plan.sketch = None;
             return;
         }
+        // an extrusion's or a void's outline on a face (MU23): a
+        // right-click with under three corners cancels it, with three or
+        // more closes and makes it; again with nothing drawn, it leaves
+        // the tool, as everywhere
+        let on_face = crate::partstool::on_face(&self.plan).is_some();
+        if response.secondary_clicked() && self.plan.sketch.is_none() && self.plan.tool != Tool::Select {
+            self.plan.step_back();
+            if let Some(s) = self.plan.status.take() {
+                self.status = s;
+            }
+            return;
+        }
+        if on_face && response.secondary_clicked() {
+            let corners = self.plan.sketch.as_ref().map_or(0, |d| d.points.len());
+            if corners < 3 {
+                self.plan.sketch = None;
+                self.status = "Cancelled. Right-click again to leave the tool.".into();
+            } else {
+                finish(self, true);
+            }
+            return;
+        }
         if enter || (response.secondary_clicked() && self.plan.sketch.is_some()) {
             finish(self, false);
             return;
@@ -3801,6 +3823,8 @@ impl CreaBimApp {
         if !response.clicked() {
             return;
         }
+        let rect_on_face = crate::partstool::on_face(&self.plan).is_some()
+            && self.plan.slab_mode == crate::slabtool::SlabMode::Rectangle;
         match &mut self.plan.sketch {
             None => {
                 if let Some(mut plane) = hover.and_then(candidate) {
@@ -3818,6 +3842,17 @@ impl CreaBimApp {
                 }
             }
             Some(d) => {
+                // Rectangle (2) of an extrusion or a void: the second click
+                // is the opposite corner (MU23)
+                if let (Some(p), true, 1) = (on_plane, rect_on_face, d.points.len()) {
+                    let a = d.points[0];
+                    if (p.x - a.x).abs() > 1e-6 && (p.y - a.y).abs() > 1e-6 {
+                        d.points = vec![a, DVec2::new(p.x, a.y), p, DVec2::new(a.x, p.y)];
+                        d.kinds = vec![creabim_core::sketch::SegmentKind::Line; 4];
+                        finish(self, true);
+                    }
+                    return;
+                }
                 if let Some(p) = on_plane {
                     match d.click(p) {
                         Some(Click::Closed) => finish(self, true),

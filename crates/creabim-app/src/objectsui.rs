@@ -372,8 +372,9 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         crate::units::len(s.y),
         crate::units::len(s.z)
     ));
-    ui.horizontal(|ui| {
-        ui.label("Category");
+    // one setting a row, as the rest of Properties (MU23)
+    crate::props::row(ui, "Category", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         egui::ComboBox::from_id_salt("object_category")
             .icon(crate::props::combo_icon)
             .selected_text(o.category.label())
@@ -385,8 +386,8 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
                 }
             });
     });
-    ui.horizontal(|ui| {
-        ui.label("Placed");
+    crate::props::row(ui, "Placed", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         egui::ComboBox::from_id_salt("object_mount")
             .icon(crate::props::combo_icon)
             .selected_text(mount_label(o.mount))
@@ -406,14 +407,13 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
                  From the ceiling: it hangs below the ceiling over it, centred where clicked",
             );
     });
-    ui.horizontal(|ui| {
-        ui.label(if o.mount == Mount::Ceiling {
-            "New ones below the ceiling"
-        } else {
-            "New ones above the floor"
-        });
-        if ui
-            .add(crate::units::drag(&mut o.offset).range(-10.0..=100.0))
+    let new_at = if o.mount == Mount::Ceiling {
+        "New ones below the ceiling"
+    } else {
+        "New ones above the floor"
+    };
+    crate::props::row(ui, new_at, |ui| {
+        if crate::props::fill(ui, crate::units::drag(&mut o.offset).range(-10.0..=100.0))
             .on_hover_text(
                 "The height the Object tool places new ones at: to their underside, \
                  or from the ceiling down to their top",
@@ -423,8 +423,8 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
             label = "Object mounting height";
         }
     });
-    ui.horizontal(|ui| {
-        ui.label("IFC");
+    crate::props::row(ui, "IFC class", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         let mut class = o.ifc.class.clone();
         egui::ComboBox::from_id_salt("object_class")
             .icon(crate::props::combo_icon)
@@ -438,6 +438,9 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
             o.ifc = IfcKind::new(&class, "NOTDEFINED").normalized();
             label = "Object IFC class";
         }
+    });
+    crate::props::row(ui, "IFC type", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         let mut pre = o.ifc.predefined.clone();
         egui::ComboBox::from_id_salt("object_predefined")
             .icon(crate::props::combo_icon)
@@ -455,24 +458,23 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
     if let Some(k) = &o.catalogue {
         ui.label(egui::RichText::new(format!("From the catalogue: {k}")).weak());
     }
-    ui.add_space(4.0);
-    ui.label(egui::RichText::new("Parts").strong());
-    egui::Grid::new("object_parts")
-        .num_columns(2)
-        .striped(true)
-        .show(ui, |ui| {
+    if !o.parts.is_empty() {
+        crate::props::subsection(ui, "object.parts", "Parts", true).then(|| {
             for (i, p) in o.parts.iter_mut().enumerate() {
-                ui.label(if p.name.is_empty() {
+                let name = if p.name.is_empty() {
                     format!("Part {}", i + 1)
                 } else {
                     p.name.clone()
+                };
+                crate::props::row(ui, &name, |ui| {
+                    ui.spacing_mut().combo_width = ui.available_width();
+                    if part_material(ui, model, i, &mut p.material) {
+                        label = "Part material";
+                    }
                 });
-                if part_material(ui, model, i, &mut p.material) {
-                    label = "Part material";
-                }
-                ui.end_row();
             }
         });
+    }
     label
 }
 
@@ -484,21 +486,15 @@ pub(super) fn object_fields(
     hung: bool,
 ) -> &'static str {
     let mut label = "";
-    ui.horizontal(|ui| {
-        ui.label(if hung {
-            "Below the ceiling"
-        } else {
-            "Above its level"
-        });
-        if ui
-            .add(crate::units::drag(&mut o.offset).range(-10.0..=100.0))
+    let height = if hung { "Below the ceiling" } else { "Above its level" };
+    crate::props::row(ui, height, |ui| {
+        if crate::props::fill(ui, crate::units::drag(&mut o.offset).range(-10.0..=100.0))
             .changed()
         {
             label = "Object height";
         }
     });
-    ui.horizontal(|ui| {
-        ui.label("Rotation");
+    crate::props::row(ui, "Rotation", |ui| {
         if ui
             .add(
                 egui::DragValue::new(&mut o.rotation)

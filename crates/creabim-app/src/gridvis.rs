@@ -407,7 +407,8 @@ impl CreaBimApp {
                     "Elements hidden inside others",
                 )
                 .checked(self.shows_hidden_elements(id))
-                .icon("xray")
+                // the header's own icon for it, not X-ray's (MU23)
+                .icon("hidden-elements")
                 .keep_open()
                 .hint(
                     "Draw what is inside another element, like a beam in a wall, with dashed lines",
