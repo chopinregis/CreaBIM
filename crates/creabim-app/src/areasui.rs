@@ -206,6 +206,53 @@ impl CreaBimApp {
     }
 
     /// The window body: its areas, each with its header, and the dividers.
+    /// An area showing notes (MU28): the selected note's text, large, when
+    /// a note is selected, else the project's notepad, as Blender's text
+    /// editor in an area of its own.
+    fn notes_area(&mut self, ui: &mut egui::Ui, body: Rect) {
+        let p = self.shell.theme.palette();
+        ui.painter().rect_filled(body, 0.0, p.panel);
+        let inner = body.shrink2(egui::vec2(18.0, 12.0));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
+        child.set_clip_rect(body);
+        let note = self.selection.active.filter(|id| {
+            matches!(self.doc.model().get(*id).map(|e| &e.kind), Some(ElementKind::Note(_)))
+        });
+        egui::ScrollArea::vertical().id_salt("notes.area").show(&mut child, |ui| {
+            ui.set_max_width(inner.width().min(760.0));
+            match note {
+                Some(id) => {
+                    let Some(ElementKind::Note(n)) = self.doc.model().get(id).map(|e| e.kind.clone()) else {
+                        return;
+                    };
+                    let mut n = n;
+                    let name = self.doc.model().get(id).map_or(String::new(), |e| e.name.clone());
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("{name}: its text")).strong());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.checkbox(&mut n.markdown, "Lists and headings")
+                                .on_hover_text("- bullets, 1. numbers, # headings drawn as such on paper");
+                        });
+                    });
+                    let h = (inner.height() - 60.0).max(160.0);
+                    let r = ui.add_sized(
+                        [ui.available_width(), h],
+                        egui::TextEdit::multiline(&mut n.text).font(egui::TextStyle::Monospace),
+                    );
+                    let changed = r.changed() || self.doc.model().get(id).is_some_and(|e| e.kind != ElementKind::Note(n.clone()));
+                    if changed {
+                        let r = self.doc.edit_merged(id, "Note text", |e| e.kind = ElementKind::Note(n.clone()));
+                        if let Err(e) = r {
+                            self.status = format!("Couldn't do that: {e}");
+                        }
+                    }
+                    ui.label(egui::RichText::new("Select something else to see the project's notepad here.").weak());
+                }
+                None => self.notes_pad(ui),
+            }
+        });
+    }
+
     pub(super) fn show_areas(
         &mut self,
         ui: &mut egui::Ui,
@@ -299,6 +346,9 @@ impl CreaBimApp {
                     if i == self.areas.focus {
                         focus_rect = Some(body);
                     }
+                }
+                Shows::Notes => {
+                    ui.push_id(("area", i), |ui| self.notes_area(ui, body));
                 }
                 _ => {
                     let p = self.shell.theme.palette();
@@ -613,6 +663,7 @@ impl CreaBimApp {
                 let group = self.group_title(v);
                 (icon, group, e.map_or(String::new(), |e| e.name.clone()))
             }
+            Shows::Notes => ("sticky-note", "Notes", "Notepad".to_string()),
             _ => ("box", "3D view", "Model".to_string()),
         };
         let mut asks: Vec<Ask> = vec![];
@@ -642,7 +693,7 @@ impl CreaBimApp {
         ));
         if r.clicked() {
             asks.push(Ask::Popup(
-                if shows == Shows::Model {
+                if shows == Shows::Model || shows == Shows::Notes {
                     "area.kind".into()
                 } else {
                     "area.views".into()
@@ -794,6 +845,12 @@ impl CreaBimApp {
                     Shows::View(v) => self.group_title(v),
                     _ => "",
                 };
+                items.push(
+                    Item::new("area.show:notes", "Notes")
+                        .icon("sticky-note")
+                        .checked(here == Shows::Notes)
+                        .hint("The project's notepad, or the selected note's text, large: as Blender's text editor"),
+                );
                 for (g, ids) in crate::browser::view_groups(self.doc.model()) {
                     if let Some(first) = ids.first() {
                         items.push(
@@ -1007,6 +1064,8 @@ impl CreaBimApp {
                 let i = self.areas.focus;
                 let new = if arg == "model" {
                     Shows::Model
+                } else if arg == "notes" {
+                    Shows::Notes
                 } else {
                     match self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
                         Some(e) => Shows::View(e.id),
