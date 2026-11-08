@@ -715,13 +715,15 @@ impl CreaBimApp {
         if modal_view {
             child.add_space(4.0);
             let editing = self.plan.edit.is_some();
-            let r = mode_button(&mut child, editing, &p).on_hover_text(
+            // narrow, it shrinks to its icon, as Blender's (MU30)
+            let compact = room < 600.0;
+            let r = mode_button(&mut child, editing, compact, &p).on_hover_text(
                 "Object mode works on whole elements; Edit mode on one element's points, edges and faces. Tab switches",
             );
             if r.clicked() {
                 asks.push(Ask::Popup("area.mode".into(), r.rect));
             }
-            mode_w += 110.0;
+            mode_w += if compact { 44.0 } else { 110.0 };
             if editing {
                 for (k, icon, tip) in [
                     (1u8, "pick-vertex", "Points (1): corners, ends, vertices"),
@@ -1389,11 +1391,11 @@ fn name_button(ui: &mut egui::Ui, name: &str, w: f32, p: &crate::theme::Palette)
 
 /// The mode button of a view's header: "Object" or "Edit", in the accent
 /// colour while editing.
-fn mode_button(ui: &mut egui::Ui, editing: bool, p: &crate::theme::Palette) -> egui::Response {
+fn mode_button(ui: &mut egui::Ui, editing: bool, compact: bool, p: &crate::theme::Palette) -> egui::Response {
     let text = if editing { "Edit mode" } else { "Object mode" };
     // the theme's colours, the accent while editing (MU29: a fixed orange
     // clashed with the themes)
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(106.0, 26.0), egui::Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(if compact { 40.0 } else { 106.0 }, 26.0), egui::Sense::click());
     let fill = if editing {
         p.accent.gamma_multiply(if resp.hovered() { 0.3 } else { 0.2 })
     } else if resp.hovered() {
@@ -1403,6 +1405,12 @@ fn mode_button(ui: &mut egui::Ui, editing: bool, p: &crate::theme::Palette) -> e
     };
     ui.painter().rect_filled(rect, 6.0, fill);
     let ink = if editing { p.accent } else { p.text };
+    if compact {
+        let ir = Rect::from_min_size(rect.min + egui::vec2(5.0, 4.0), egui::vec2(18.0, 18.0));
+        crate::svgicon::paint(ui.painter(), ir, if editing { "pick-vertex" } else { "box" }, ink);
+        crate::props::combo_icon(ui, egui::Rect::from_center_size(rect.right_center() - egui::vec2(8.0, 0.0), egui::vec2(8.0, 8.0)), &ui.visuals().widgets.inactive.clone(), false);
+        return resp.on_hover_text(text);
+    }
     ui.painter().text(
         rect.left_center() + egui::vec2(8.0, 0.0),
         egui::Align2::LEFT_CENTER,

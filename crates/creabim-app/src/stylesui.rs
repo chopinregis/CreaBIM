@@ -399,14 +399,17 @@ pub(super) fn look_ui(
         }
     });
     // the pack the template comes from, and where it is edited (MU22)
+    // as Blender's data rows (MU30): the pack's name in a field, its edit
+    // button beside it, together filling the field column
     crate::props::row(ui, "Style pack", |ui| {
-        ui.add(
-            egui::Label::new(pack.name.clone())
-                .truncate(),
+        let w = ui.available_width();
+        let gap = ui.spacing().item_spacing.x;
+        ui.add_sized(
+            [(w - 28.0 - gap).max(40.0), 22.0],
+            egui::Button::new(egui::RichText::new(pack.name.clone())).frame(true).sense(egui::Sense::hover()),
         )
         .on_hover_text("A named bundle of scale, style, hidden categories, pens, overrides and cues from the project's style pack. Change the template and every view using it changes.");
-        if ui
-            .small_button("Edit…")
+        if crate::props::icon_button(ui, "pencil", "Edit the style pack")
             .on_hover_text(
                 "Graphic styles: the pack's pens, object styles, hatches and view templates",
             )

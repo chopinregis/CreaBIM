@@ -1022,6 +1022,16 @@ kbd {
 
 /* MU29: a quiet line under the tool line, as between the rows above it */
 .bar3 { border-bottom: 1px solid var(--border); }
-/* a group's title keeps its words; its note gives way first (MU29) */
-.group > span:not(.n):not(.gnote) { flex: 0 1 auto; }
-.group > .gnote { min-width: 0; overflow: hidden; white-space: nowrap; }
+
+/* MU30: the guide's previous/next links as two equal cards */
+.pn { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pn-card { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; min-width: 0; }
+.pn-card:hover { background: var(--raise); }
+.pn-card.next { text-align: right; }
+.pn-card small { color: var(--muted); font-size: 11px; }
+.pn-card span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* MU30: a group's title fills its row, so the fade falls only where its
+   words run out of room (as before MU29); its note stays its own size */
+.group > span:not(.n):not(.gnote) { flex: 1 1 auto; min-width: 0; }
+.group > .gnote { flex: none; white-space: nowrap; }

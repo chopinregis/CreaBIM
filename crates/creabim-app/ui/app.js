@@ -781,8 +781,9 @@
       const i = pages.indexOf(page);
       const prev = pages[i - 1], next = pages[i + 1];
       body = `<div class="crumb"><a data-act="help:contents">Contents</a> › ${esc(page.section)}</div><article class="hdoc">${markdown(page.md)}</article>` +
-        `<div class="pn">${prev ? `<a data-act="help:${esc(prev.id)}">← ${esc(prev.title)}</a>` : "<span></span>"}` +
-        `${next ? `<a data-act="help:${esc(next.id)}">${esc(next.title)} →</a>` : ""}</div>`;
+        // two equal cards, a small label over the page's title (MU30)
+        `<div class="pn">${prev ? `<a class="pn-card" data-act="help:${esc(prev.id)}"><small>← Previous</small><span>${esc(prev.title)}</span></a>` : "<span></span>"}` +
+        `${next ? `<a class="pn-card next" data-act="help:${esc(next.id)}"><small>Next →</small><span>${esc(next.title)}</span></a>` : "<span></span>"}</div>`;
     }
     const where = (q.trim() ? "?" : "") + S.page + "#" + (S.anchor || "");
     const scroller = root.querySelector(".help-body");

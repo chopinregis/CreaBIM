@@ -287,6 +287,12 @@ fn sheet_move(
             "Move: click the base point, then where it goes.".into()
         });
         state.moving = Some((items, base));
+        // the click that set the base point is not also the target (MU30:
+        // it finished every move at once, 0 mm)
+        if base_click {
+            ui.ctx().request_repaint();
+            return Some(None);
+        }
     }
     let (items, base) = state.moving.clone()?;
     ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
