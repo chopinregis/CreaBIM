@@ -5132,15 +5132,18 @@ mod tests {
             if lo >= hi {
                 continue;
             }
-            for h in handles(&m, e.id, None) {
+            for h in handles_in(&m, e.id, None, false) {
                 let Constraint::Line { dir, .. } = h.constraint else {
                     continue;
                 };
-                // a member's other grips are its real ends (a stair's run)
+                // a member's other grips are its real ends (a stair's run);
+                // a slab's or roof's edge bars too (MU25)
                 let side = matches!(
                     h.kind,
                     HandleKind::WallFace | HandleKind::BeamWidth | HandleKind::ColumnSize { .. }
-                ) || (matches!(h.kind, HandleKind::Member { .. })
+                ) || (matches!(h.kind, HandleKind::Edge { .. })
+                    && matches!(e.kind, ElementKind::Slab(_) | ElementKind::Roof(_)))
+                    || (matches!(h.kind, HandleKind::Member { .. })
                     && matches!(e.kind, ElementKind::Footing(_)));
                 if !side || dir.z.abs() > 0.1 {
                     continue;

@@ -2164,6 +2164,10 @@ impl CreaBimApp {
             }
             "view.number" => self.set_view_number(v),
             "detail.width" => self.plan.details.width = v.clamp(0.0, 5.0),
+            "dim.spacing" => {
+                self.plan.dim_step_size = v.clamp(0.5, 100.0);
+                self.plan.dim_step_mm = self.plan.dim_step_size;
+            }
             _ => {}
         }
     }

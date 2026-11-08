@@ -29,6 +29,8 @@ pub struct SheetState {
     /// A revision cloud's grip being dragged (MU25): the cloud as it was
     /// and which grip.
     cloud_grip: Option<(creabim_core::Element, CloudGrip)>,
+    /// A selection box being dragged on empty paper: where it began.
+    band: Option<Pos2>,
     /// Move or G on the sheet's own notes and marks (MU23): them as they
     /// were, and the base point once picked.
     moving: Option<(Vec<creabim_core::Element>, Option<DVec2>)>,
@@ -535,7 +537,10 @@ pub fn show(
             ((lo + hi) / 2.0, (z as f32).clamp(0.2, 60.0))
         })
     };
-    if let Some((c, z)) = crate::planview::nav_column(ui, rect, sheet_id, fit, picked, center, zoom) {
+    // read now, drawn once the paper is down so it never hides under it
+    // (MU25)
+    let (asked, nav_look) = crate::planview::nav_input(ui, rect, sheet_id, fit, picked, center, zoom);
+    if let Some((c, z)) = asked {
         center = c;
         zoom = z;
     }
@@ -596,6 +601,10 @@ pub fn show(
             }
         }
         painter.rect_stroke(inner, 3.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Outside);
+    }
+
+    if let Some(look) = &nav_look {
+        crate::planview::nav_draw(ui, look);
     }
 
     // pre-selection: what is under the pointer, topmost first, and the
@@ -936,6 +945,77 @@ pub fn show(
         let p = xf.to_paper(p);
         views.iter().rev().find(|v| contains(v, p))
     });
+
+    // a box dragged on empty paper picks several at once: left to right
+    // what is wholly inside, right to left what it touches; Shift adds
+    // (MU25)
+    if state.active.is_none() && plan.tool == planview::Tool::Select && plan.modal.is_none() {
+        if response.drag_started_by(egui::PointerButton::Primary) {
+            let press = ui.input(|i| i.pointer.press_origin()).or(pointer);
+            if let Some(q) = press {
+                let p = xf.to_paper(q);
+                let on_mark = mark_boxes
+                    .iter()
+                    .any(|(_, (lo, hi))| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y);
+                let on_note = note_items.iter().any(|it| {
+                    matches!(it, creabim_geom::PlanItem::Annotation { item, .. } if item.hit(p, 6.0 / zoom as f64, 1.0))
+                });
+                if !on_mark && !on_note && !views.iter().any(|v| contains(v, p)) {
+                    state.band = Some(q);
+                }
+            }
+        }
+        if let Some(a) = state.band {
+            if let Some(b) = pointer {
+                let r = Rect::from_two_pos(a, b);
+                let touching = b.x < a.x;
+                let stroke = egui::Stroke::new(1.0, ACCENT);
+                painter.rect_filled(r, 0.0, ACCENT.gamma_multiply(0.08));
+                if touching {
+                    let c = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+                    painter.add(egui::Shape::dashed_line(&c, stroke, 5.0, 3.0));
+                } else {
+                    painter.rect_stroke(r, 0.0, stroke, egui::StrokeKind::Middle);
+                }
+                if response.drag_stopped() {
+                    let (pa, pb) = (xf.to_paper(a), xf.to_paper(b));
+                    let (lo, hi) = (pa.min(pb), pa.max(pb));
+                    let take = |(l, h): (DVec2, DVec2)| {
+                        if touching {
+                            l.x <= hi.x && h.x >= lo.x && l.y <= hi.y && h.y >= lo.y
+                        } else {
+                            l.x >= lo.x && h.x <= hi.x && l.y >= lo.y && h.y <= hi.y
+                        }
+                    };
+                    let mut ids: Vec<ElementId> =
+                        mark_boxes.iter().filter(|(_, bx)| take(*bx)).map(|(id, _)| *id).collect();
+                    let model = doc.model();
+                    ids.extend(note_items.iter().filter_map(|it| match it {
+                        creabim_geom::PlanItem::Annotation { id, .. } => match model.get(*id).map(|e| &e.kind) {
+                            Some(ElementKind::Note(n)) => {
+                                take((n.at - DVec2::splat(2.0), n.at + DVec2::splat(2.0))).then_some(*id)
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    }));
+                    ids.extend(views.iter().filter(|v| take(v.bounds)).map(|v| v.viewport));
+                    let add = ui.input(|i| i.modifiers.shift);
+                    selection.extend(ids.iter().copied(), add);
+                    plan.status = Some(match ids.len() {
+                        0 => "Nothing in the box.".into(),
+                        1 => "1 selected.".into(),
+                        n => format!("{n} selected. M moves them together; Delete removes them."),
+                    });
+                    state.band = None;
+                }
+            }
+            if !response.dragged() && !response.drag_stopped() {
+                state.band = None;
+            }
+            return error;
+        }
+    }
     if response.double_clicked() {
         state.active = hit.map(|v| v.viewport);
         if state.active.is_some() {

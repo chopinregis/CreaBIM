@@ -70,21 +70,19 @@ impl CreaBimApp {
                 self.plan.dim_chain,
                 "After the first dimension, each click adds the next on the same line; Esc or right-click ends it",
             )]));
-            let now = self.plan.dim_step_mm;
-            out.push(seg(
-                [(0.0, "Free"), (5.0, "5 mm"), (7.0, "7 mm"), (10.0, "10 mm")]
-                    .iter()
-                    .enumerate()
-                    .map(|(i, (v, l))| {
-                        opt(
-                            format!("dim.step:{i}"),
-                            l,
-                            (now - v).abs() < 1e-9,
-                            "Spacing: dimension lines land on steps of this much on paper from what they measure, so rows stay even. They also snap onto other dimensions' lines",
-                        )
-                    })
-                    .collect(),
-            ));
+            // spacing the user types, not presets (MU25): off, lines go
+            // where clicked
+            out.push(seg(vec![opt(
+                "dim.step".into(),
+                "Even spacing",
+                self.plan.dim_step_mm > 0.0,
+                "Dimension lines land on steps of the spacing (on paper) from what they measure, so rows stay even. Off: where you click. They snap onto other dimensions' lines either way",
+            )]));
+            out.push(serde_json::json!({
+                "kind": "number", "key": "dim.spacing", "label": "Spacing",
+                "value": self.plan.dim_step_size, "unit": "mm", "step": 0.5, "min": 0.5, "max": 100.0,
+                "hint": "The step between rows of dimensions, millimetres on paper. Typing one turns Even spacing on",
+            }));
         }
         let style_menu = match tool {
             Tool::Dimension
@@ -207,7 +205,11 @@ impl CreaBimApp {
                 self.plan.chain_line = None;
             }
             "dim.step" => {
-                self.plan.dim_step_mm = [0.0, 5.0, 7.0, 10.0][index.unwrap_or(0).min(3)];
+                self.plan.dim_step_mm = if self.plan.dim_step_mm > 0.0 {
+                    0.0
+                } else {
+                    self.plan.dim_step_size
+                };
             }
             "align.mode" => {
                 if let Some(m) = index.and_then(|i| crate::aligntool::AlignMode::ALL.get(i)) {

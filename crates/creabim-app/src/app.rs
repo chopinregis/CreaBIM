@@ -7656,12 +7656,20 @@ fn paper_mark_fields(
             });
         }
     }
-    crate::props::row(ui, "On the sheet", |ui| {
-        ui.label(
-            egui::RichText::new(format!("{:.0}, {:.0} mm", m.at.x, m.at.y)).weak(),
-        )
-        .on_hover_text("Drag it on the sheet to move it")
-    });
+    // typed, to the millimetre, so marks line up sheet to sheet (MU25)
+    for (name, v, tip) in [
+        ("X", &mut m.at.x, "Millimetres from the sheet's left edge"),
+        ("Y", &mut m.at.y, "Millimetres from the sheet's bottom edge"),
+    ] {
+        crate::props::row(ui, name, |ui| {
+            if crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).range(-2000.0..=2000.0).suffix(" mm"))
+                .on_hover_text(tip)
+                .changed()
+            {
+                label = Some("Place paper mark");
+            }
+        });
+    }
     label
 }
 

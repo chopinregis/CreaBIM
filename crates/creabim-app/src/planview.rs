@@ -462,6 +462,8 @@ pub struct PlanState {
     /// Rows of dimensions land on steps of this many paper mm from what
     /// they measure (0: free).
     pub dim_step_mm: f64,
+    /// The spacing typed for that, kept while it is off.
+    pub dim_step_size: f64,
     /// The axis a dimension is held to while Shift is down.
     dim_lock: Option<creabim_core::DimAxis>,
     /// The Align tool's picks so far.
@@ -601,6 +603,7 @@ impl Default for PlanState {
             dim_chain: false,
             chain_line: None,
             dim_step_mm: 0.0,
+            dim_step_size: 7.0,
             dim_lock: None,
             align: Default::default(),
             hover: None,
@@ -4071,13 +4074,39 @@ pub(crate) fn nav_column(
     center: DVec2,
     scale: f32,
 ) -> Option<(DVec2, f32)> {
+    let (out, look) = nav_input(ui, rect, view, fit_to, fit_sel, center, scale);
+    if let Some(look) = look {
+        nav_draw(ui, &look);
+    }
+    out
+}
+
+/// How the zoom column looks this frame, to draw it once what lies
+/// under it is drawn (a sheet's paper, MU25).
+pub(crate) struct NavLook {
+    rect: Rect,
+    column: Rect,
+    fade: f32,
+    buttons: Vec<(Rect, &'static str, bool)>,
+}
+
+/// The zoom column's clicks and drags: the camera asked for, and how to
+/// draw it with [`nav_draw`].
+pub(crate) fn nav_input(
+    ui: &egui::Ui,
+    rect: Rect,
+    view: ElementId,
+    fit_to: impl Fn() -> (DVec2, f32),
+    fit_sel: Option<(DVec2, f32)>,
+    center: DVec2,
+    scale: f32,
+) -> (Option<(DVec2, f32)>, Option<NavLook>) {
     let size = 28.0;
     let x = rect.right() - size - 10.0;
     let y0 = rect.top() + 10.0;
     if rect.width() < 200.0 || rect.height() < 5.0 * size + 30.0 {
-        return None;
+        return (None, None);
     }
-    let p = crate::theme::Palette::of(ui.ctx());
     let column = Rect::from_min_size(
         egui::pos2(x - 3.0, y0 - 3.0),
         egui::vec2(size + 6.0, 5.0 * size + 6.0),
@@ -4086,19 +4115,8 @@ pub(crate) fn nav_column(
         .input(|i| i.pointer.hover_pos())
         .is_some_and(|h| column.expand(40.0).contains(h));
     let fade = if near { 1.0 } else { 0.45 };
-    // on the pane's own layer, so windows and pop-ups cover it (MU23);
-    // dark paper is told to leave it alone, as it turns the drawing over
-    // but never the controls (MU20)
-    let painter = ui.painter().clone().with_clip_rect(rect);
-    let first = painter.add(egui::Shape::Noop);
-    painter.rect(
-        column,
-        8.0,
-        p.panel.gamma_multiply(fade),
-        egui::Stroke::new(1.0, p.border.gamma_multiply(fade)),
-        egui::StrokeKind::Inside,
-    );
     let mut out = None;
+    let mut look = NavLook { rect, column, fade, buttons: vec![] };
     let buttons = [
         ("zoom-in", "Zoom in: click a step, or drag up and down"),
         ("zoom-out", "Zoom out: click a step, or drag up and down"),
@@ -4115,10 +4133,7 @@ pub(crate) fn nav_column(
                 egui::Sense::click_and_drag(),
             )
             .on_hover_text(*tip);
-        if resp.hovered() {
-            painter.rect_filled(r.shrink(2.0), 6.0, p.accent.gamma_multiply(0.15));
-        }
-        crate::svgicon::paint(&painter, r.shrink(6.0), icon, p.text.gamma_multiply(fade));
+        look.buttons.push((r, icon, resp.hovered()));
         let zoom = |by: f32| {
             // plans count points per metre, sheets per millimetre (MU25)
             let k = (scale * by).clamp(0.05, 5000.0);
@@ -4142,9 +4157,33 @@ pub(crate) fn nav_column(
             _ => {}
         }
     }
+    (out, Some(look))
+}
+
+/// Draw the zoom column [`nav_input`] read.
+pub(crate) fn nav_draw(ui: &egui::Ui, look: &NavLook) {
+    let p = crate::theme::Palette::of(ui.ctx());
+    let fade = look.fade;
+    // on the pane's own layer, so windows and pop-ups cover it (MU23);
+    // dark paper is told to leave it alone, as it turns the drawing over
+    // but never the controls (MU20)
+    let painter = ui.painter().clone().with_clip_rect(look.rect);
+    let first = painter.add(egui::Shape::Noop);
+    painter.rect(
+        look.column,
+        8.0,
+        p.panel.gamma_multiply(fade),
+        egui::Stroke::new(1.0, p.border.gamma_multiply(fade)),
+        egui::StrokeKind::Inside,
+    );
+    for (r, icon, hovered) in &look.buttons {
+        if *hovered {
+            painter.rect_filled(r.shrink(2.0), 6.0, p.accent.gamma_multiply(0.15));
+        }
+        crate::svgicon::paint(&painter, r.shrink(6.0), icon, p.text.gamma_multiply(fade));
+    }
     let last = painter.add(egui::Shape::Noop);
     keep_colours(ui.ctx(), painter.layer_id(), first, last);
-    out
 }
 
 /// Shapes `first..=last` on `layer` keep their colours when dark paper
