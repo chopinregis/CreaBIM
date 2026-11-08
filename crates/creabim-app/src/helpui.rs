@@ -271,7 +271,7 @@ impl CreaBimApp {
         let page = self.shell.help.page.clone();
         let (id, _) = page.split_once('#').unwrap_or((&page, ""));
         let shortcuts = (id == "shortcuts").then(|| help::shortcuts_page(&self.help_menus()));
-        egui::Window::new("Help")
+        crate::app::shell::window("Help")
             .open(&mut open)
             .default_size([640.0, 520.0])
             .show(ctx, |ui| {

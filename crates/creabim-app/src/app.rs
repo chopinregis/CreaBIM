@@ -3548,145 +3548,175 @@ fn rest_points(
 }
 
 impl CreaBimApp {
-    /// The project's notepad (MU27): to-dos and notes in sections of their
-    /// own, each item one line (its title, fading) that opens to edit its
-    /// text and link; ticks, links, edit and delete on the row; the whole
-    /// as markdown to copy or save.
+    /// The project's notepad (MU28): to-dos and notes, each one row (a tick
+    /// or a dot, its first line, its link, then edit and delete tucked at
+    /// the right), edited in place and closed by clicking away. Copying and
+    /// saving sit in the ⋯ menu; markdown is only how it is written out.
     fn notes_pad(&mut self, ui: &mut egui::Ui) {
         use creabim_core::project::PadItem;
         let mut info = self.doc.model().project_info().map(|(_, p)| p.clone()).unwrap_or_default();
-        // the MU26 notepad, read into items once
         if info.pad.is_empty() && !info.notes.trim().is_empty() {
             info.pad = creabim_core::project::pad_from_markdown(&info.notes);
             info.notes.clear();
         }
         let before = info.clone();
-        let open_key = egui::Id::new("pad.open");
-        let mut open: Option<usize> = ui.ctx().data(|d| d.get_temp(open_key)).flatten();
+        let edit_key = egui::Id::new("pad.edit");
+        let mut editing: Option<usize> = ui.ctx().data(|d| d.get_temp(edit_key)).flatten();
         let mut remove = None;
         let mut follow: Option<ElementId> = None;
-        let accent = crate::theme::Palette::of(ui.ctx()).accent;
-        let model_names: std::collections::HashMap<ElementId, String> = info
+        let mut export: Option<&'static str> = None;
+        let names: std::collections::HashMap<ElementId, String> = info
             .pad
             .iter()
             .filter_map(|i| i.link)
             .filter_map(|l| self.doc.model().get(l).map(|e| (l, e.name.clone())))
             .collect();
+        let target = self.selection.active.or(self.active_view);
+        // the ⋯ menu: copy and save, and tidying
+        ui.horizontal(|ui| {
+            let open = info.pad.iter().filter(|i| i.todo && !i.done).count();
+            ui.label(egui::RichText::new(format!("{} items · {open} open", info.pad.len())).weak());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.menu_button("\u{22ef}", |ui| {
+                    if ui.button("Copy all").clicked() {
+                        export = Some("copy");
+                        ui.close();
+                    }
+                    if ui.button("Save as text (.txt)\u{2026}").clicked() {
+                        export = Some("txt");
+                        ui.close();
+                    }
+                    if ui.button("Save as Markdown (.md)\u{2026}").clicked() {
+                        export = Some("md");
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Remove the done to-dos").clicked() {
+                        export = Some("clean");
+                        ui.close();
+                    }
+                });
+            });
+        });
         for todo in [true, false] {
             let idx: Vec<usize> = (0..info.pad.len()).filter(|k| info.pad[*k].todo == todo).collect();
             let done = idx.iter().filter(|k| info.pad[**k].done).count();
-            let title = if todo {
-                format!("To-dos  {done} of {}", idx.len())
-            } else {
-                format!("Notes  {}", idx.len())
-            };
+            let title = if todo { format!("To-dos  {done}/{}", idx.len()) } else { format!("Notes  {}", idx.len()) };
             if !self.prop_header(ui, if todo { "pad.todos" } else { "pad.notes" }, &title, true, None) {
                 continue;
             }
             if idx.is_empty() {
-                ui.label(egui::RichText::new(if todo { "No to-dos yet." } else { "No notes yet." }).weak());
+                ui.label(egui::RichText::new("None yet.").weak());
             }
             for k in idx {
                 let item = &mut info.pad[k];
-                ui.horizontal(|ui| {
+                if editing == Some(k) {
+                    // edited in place: its whole text, then two small
+                    // switches; clicking away closes it
+                    let r = ui.add(
+                        egui::TextEdit::multiline(&mut item.text)
+                            .id(egui::Id::new(("pad.text", k)))
+                            .desired_rows(2)
+                            .desired_width(f32::INFINITY),
+                    );
+                    // focused as it opens, so typing goes straight in
+                    let fk = egui::Id::new("pad.focus");
+                    if ui.ctx().data(|d| d.get_temp::<usize>(fk)) == Some(k) {
+                        r.request_focus();
+                        ui.ctx().data_mut(|d| d.remove::<usize>(fk));
+                    }
+                    if !r.has_focus() && !r.gained_focus() && ui.input(|i| i.pointer.any_pressed()) && !r.hovered() {
+                        editing = None;
+                    }
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut item.todo, "To-do");
+                        match item.link {
+                            Some(_) => {
+                                if ui.small_button("Unlink").clicked() {
+                                    item.link = None;
+                                }
+                            }
+                            None => {
+                                if ui
+                                    .add_enabled(target.is_some(), egui::Button::new("Link to the selection").small())
+                                    .on_hover_text("Ties it to the element selected, or else the view in front")
+                                    .clicked()
+                                {
+                                    item.link = target;
+                                }
+                            }
+                        }
+                    });
+                    continue;
+                }
+                let row = ui.horizontal(|ui| {
                     if todo {
                         ui.checkbox(&mut item.done, "");
+                    } else {
+                        ui.label(egui::RichText::new("\u{2022}").weak());
                     }
-                    // the row's tools at its right end; the title fills the rest
-                    let tools = 3.0 * 22.0 + if item.link.is_some() { 22.0 } else { 0.0 };
-                    let w = (ui.available_width() - tools).max(40.0);
-                    let (r, resp) = ui.allocate_exact_size(egui::vec2(w, 20.0), egui::Sense::click());
-                    let text = if item.title().is_empty() { "(empty)" } else { item.title() };
-                    let mut color = ui.visuals().text_color();
-                    if item.done {
-                        color = ui.visuals().weak_text_color();
-                    }
-                    let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(12.0), color);
-                    let painter = ui.painter().with_clip_rect(r);
-                    let at = egui::pos2(r.left(), r.center().y - galley.size().y / 2.0);
-                    let too_long = galley.size().x > r.width();
-                    painter.galley(at, galley, color);
-                    if item.done {
-                        painter.line_segment([egui::pos2(r.left(), r.center().y), egui::pos2(r.right(), r.center().y)], egui::Stroke::new(1.0, color.gamma_multiply(0.6)));
-                    }
-                    if too_long {
-                        // a gentle fade at the end, not a cut (MU27)
-                        let bg = ui.visuals().panel_fill;
-                        for s in 0..12 {
-                            let x = r.right() - 12.0 + s as f32;
-                            painter.line_segment([egui::pos2(x, r.top()), egui::pos2(x, r.bottom())], egui::Stroke::new(1.0, bg.gamma_multiply(s as f32 / 12.0)));
+                    // tools first, from the right, so they keep their place
+                    let mut title_rect = ui.available_rect_before_wrap();
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if crate::props::icon_button(ui, "trash-2", "Delete").clicked() {
+                            remove = Some(k);
                         }
-                    }
-                    if resp.on_hover_text(item.text.as_str()).clicked() {
-                        open = if open == Some(k) { None } else { Some(k) };
-                    }
-                    if let Some(l) = item.link {
-                        let name = model_names.get(&l).cloned().unwrap_or_else(|| "gone".into());
-                        if crate::props::icon_button(ui, "link", &format!("Go to {name}")).clicked() {
-                            follow = Some(l);
+                        if crate::props::icon_button(ui, "pencil", "Edit").clicked() {
+                            editing = Some(k);
+                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("pad.focus"), k));
                         }
-                    }
-                    if crate::props::icon_button(ui, "pencil", "Edit").clicked() {
-                        open = if open == Some(k) { None } else { Some(k) };
-                    }
-                    if crate::props::icon_button(ui, "trash-2", "Delete").clicked() {
-                        remove = Some(k);
-                    }
+                        if let Some(l) = item.link {
+                            let name = names.get(&l).cloned().unwrap_or_else(|| "something deleted".into());
+                            if crate::props::icon_button(ui, "link", &format!("Go to {name}")).clicked() {
+                                follow = Some(l);
+                            }
+                        }
+                        title_rect.max.x = ui.min_rect().left() - 4.0;
+                    });
+                    title_rect
                 });
-                if open == Some(k) {
-                    egui::Frame::new()
-                        .inner_margin(egui::Margin::symmetric(6, 4))
-                        .stroke(egui::Stroke::new(1.0, accent.gamma_multiply(0.5)))
-                        .corner_radius(4.0)
-                        .show(ui, |ui| {
-                            ui.add(
-                                egui::TextEdit::multiline(&mut item.text)
-                                    .desired_rows(3)
-                                    .desired_width(f32::INFINITY)
-                                    .hint_text("First line is its title; more lines below"),
-                            );
-                            ui.horizontal(|ui| {
-                                ui.checkbox(&mut item.todo, "To-do");
-                                match item.link {
-                                    Some(_) => {
-                                        if ui.small_button("Unlink").clicked() {
-                                            item.link = None;
-                                        }
-                                    }
-                                    None => {
-                                        let target = self.selection.active.or(self.active_view);
-                                        if ui
-                                            .add_enabled(target.is_some(), egui::Button::new("Link to the selection").small())
-                                            .on_hover_text("Ties it to the element selected, or else the view in front: its link button then selects or opens it")
-                                            .clicked()
-                                        {
-                                            item.link = target;
-                                        }
-                                    }
-                                }
-                                if ui.small_button("Done").clicked() {
-                                    open = None;
-                                }
-                            });
-                        });
+                let r = row.inner;
+                let r = egui::Rect::from_min_max(egui::pos2(r.left(), row.response.rect.top()), egui::pos2(r.right().max(r.left() + 20.0), row.response.rect.bottom()));
+                let resp = ui.interact(r, egui::Id::new(("pad.row", k)), egui::Sense::click());
+                let text = if item.title().is_empty() { "(empty)" } else { item.title() };
+                let color = if item.done { ui.visuals().weak_text_color() } else { ui.visuals().text_color() };
+                let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(12.0), color);
+                let painter = ui.painter().with_clip_rect(r);
+                let wide = galley.size().x > r.width();
+                let y = r.center().y - galley.size().y / 2.0;
+                painter.galley(egui::pos2(r.left(), y), galley, color);
+                if item.done {
+                    painter.line_segment([egui::pos2(r.left(), r.center().y), egui::pos2(r.right(), r.center().y)], egui::Stroke::new(1.0, color.gamma_multiply(0.6)));
+                }
+                if wide {
+                    let bg = ui.visuals().panel_fill;
+                    for s in 0..14 {
+                        let x = r.right() - 14.0 + s as f32;
+                        painter.line_segment([egui::pos2(x, r.top()), egui::pos2(x, r.bottom())], egui::Stroke::new(1.0, bg.gamma_multiply(s as f32 / 14.0)));
+                    }
+                }
+                if resp.on_hover_text(item.text.as_str()).double_clicked() {
+                    editing = Some(k);
+                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("pad.focus"), k));
                 }
             }
         }
-        // a new item
+        // a new item, as a to-do or a note
         let key = egui::Id::new("notes.new");
         let kind_key = egui::Id::new("notes.new.todo");
         let mut new: String = ui.ctx().data(|d| d.get_temp(key)).unwrap_or_default();
         let mut as_todo: bool = ui.ctx().data(|d| d.get_temp(kind_key)).unwrap_or(true);
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut as_todo, true, "To-do");
-            ui.selectable_value(&mut as_todo, false, "Note");
             let r = ui.add(
                 egui::TextEdit::singleline(&mut new)
                     .vertical_align(egui::Align::Center)
-                    .hint_text(if as_todo { "Add a to-do, Enter" } else { "Add a note, Enter" })
-                    .desired_width(f32::INFINITY),
+                    .hint_text(if as_todo { "New to-do, Enter" } else { "New note, Enter" })
+                    .desired_width((ui.available_width() - 64.0).max(60.0)),
             );
+            if ui.selectable_label(as_todo, "To-do").on_hover_text("Add it as a to-do (else a note)").clicked() {
+                as_todo = !as_todo;
+            }
             if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !new.trim().is_empty() {
                 info.pad.push(PadItem { text: new.trim().to_string(), todo: as_todo, ..Default::default() });
                 new.clear();
@@ -3699,69 +3729,33 @@ impl CreaBimApp {
         });
         if let Some(k) = remove {
             info.pad.remove(k);
-            open = None;
+            editing = None;
         }
-        ui.ctx().data_mut(|d| d.insert_temp(open_key, open));
-        // the whole as markdown: copy it, or save it
-        if self.prop_header(ui, "pad.markdown", "Markdown", false, None) {
-            let scope_key = egui::Id::new("pad.scope");
-            let mut scope: usize = ui.ctx().data(|d| d.get_temp(scope_key)).unwrap_or(0);
-            let scopes = ["Everything", "To-dos", "Open to-dos", "Notes"];
-            crate::props::row(ui, "Take", |ui| {
-                egui::ComboBox::from_id_salt("pad.scope")
-                    .icon(crate::props::combo_icon)
-                    .selected_text(scopes[scope])
-                    .width(ui.available_width())
-                    .show_ui(ui, |ui| {
-                        for (k, s) in scopes.iter().enumerate() {
-                            ui.selectable_value(&mut scope, k, *s);
-                        }
-                    })
-            });
-            ui.ctx().data_mut(|d| d.insert_temp(scope_key, scope));
-            let chosen: Vec<&PadItem> = info
-                .pad
-                .iter()
-                .filter(|i| match scope {
-                    1 => i.todo,
-                    2 => i.todo && !i.done,
-                    3 => !i.todo,
-                    _ => true,
-                })
-                .collect();
+        ui.ctx().data_mut(|d| d.insert_temp(edit_key, editing));
+        if let Some(what) = export {
             let model = self.doc.model();
-            let md = creabim_core::project::pad_to_markdown(&chosen, &|id| model.get(id).map(|e| e.name.clone()));
-            let mut shown = md.clone();
-            egui::ScrollArea::vertical().id_salt("pad.md").max_height(160.0).show(ui, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut shown)
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(f32::INFINITY)
-                        .interactive(true),
-                );
-            });
-            ui.horizontal(|ui| {
-                if ui.button("Copy").on_hover_text("Copy it as markdown").clicked() {
-                    ui.ctx().copy_text(md.clone());
-                    self.status = "Notes copied as markdown.".into();
+            let all: Vec<&PadItem> = info.pad.iter().collect();
+            let md = creabim_core::project::pad_to_markdown(&all, &|id| model.get(id).map(|e| e.name.clone()));
+            match what {
+                "copy" => {
+                    ui.ctx().copy_text(md);
+                    self.status = "Notes copied.".into();
                 }
-                for (ext, label) in [("md", "Save .md"), ("txt", "Save .txt")] {
-                    if ui.button(label).clicked() {
-                        let stem = std::path::Path::new(&self.path)
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("project")
-                            .to_string();
-                        if let Some(path) = self.export_to(format!("{stem} notes.{ext}")) {
-                            self.status = match std::fs::write(&path, &md) {
-                                Ok(()) => format!("Saved the notes to {path}."),
-                                Err(e) => format!("Couldn't save: {e}"),
-                            };
-                        }
+                "clean" => info.pad.retain(|i| !(i.todo && i.done)),
+                ext => {
+                    let stem = std::path::Path::new(&self.path)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("project")
+                        .to_string();
+                    if let Some(path) = self.export_to(format!("{stem} notes.{ext}")) {
+                        self.status = match std::fs::write(&path, &md) {
+                            Ok(()) => format!("Saved the notes to {path}."),
+                            Err(e) => format!("Couldn't save: {e}"),
+                        };
                     }
                 }
-            });
-            ui.label(egui::RichText::new("Kept with the project, never printed.").weak());
+            }
         }
         if info != before {
             let tx = creabim_core::set_project(self.doc.model(), info);
@@ -3781,8 +3775,6 @@ impl CreaBimApp {
         }
     }
 
-    /// A note's text in a window of its own, large, for long text and
-    /// markdown (MU26). Changes go in as typed, one undo step a pause.
     /// After an edit, say so if a selected wall now overlaps another along
     /// its length (MU27): it looks merged in plan but stays two in 3D.
     fn warn_overlaps(&mut self) {
@@ -3840,7 +3832,7 @@ impl CreaBimApp {
         let mut n = n;
         let mut open = true;
         let mut changed = false;
-        egui::Window::new("Note text")
+        crate::app::shell::window("Note text")
             .id(egui::Id::new(("note-editor", id)))
             .open(&mut open)
             .default_size([520.0, 420.0])
@@ -5419,7 +5411,7 @@ impl CreaBimApp {
         let mut go = false;
         let mut cancel = false;
         let x = &mut self.sheets_export;
-        egui::Window::new("Export sheets")
+        crate::app::shell::window("Export sheets")
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -5570,51 +5562,6 @@ impl CreaBimApp {
         if here.is_empty() {
             ui.label(egui::RichText::new("None yet: add one below.").weak());
         }
-        let mut select = None;
-        let mut flip = None;
-        for (id, name, hidden) in &here {
-            ui.horizontal(|ui| {
-                let eye = if *hidden { "eye-off" } else { "eye" };
-                let (rr, resp) =
-                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                crate::svgicon::paint(ui.painter(), rr.shrink(2.0), eye, ui.visuals().text_color());
-                if resp
-                    .on_hover_text(if *hidden { "Show it" } else { "Hide it" })
-                    .clicked()
-                {
-                    flip = Some(*id);
-                }
-                // one line, cut with … and whole on hover (MU23)
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-                let on = self.selection.contains(*id);
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 22.0],
-                        egui::Button::selectable(on, name.as_str()).truncate(),
-                    )
-                    .on_hover_text(name.as_str())
-                    .clicked()
-                {
-                    select = Some(*id);
-                }
-            });
-        }
-        if let Some(id) = select {
-            self.selection.only(id);
-            self.prop_tab = PropTab::Element;
-        }
-        if let Some(id) = flip {
-            if let Some(e) = self.doc.model().get(id).cloned() {
-                let mut after = e.clone();
-                if let ElementKind::Reference(r) = &mut after.kind {
-                    r.hidden = !r.hidden;
-                }
-                let _ = self.doc.commit(
-                    creabim_core::Transaction::new("Show or hide a reference").replace(e, after),
-                );
-            }
-        }
-        ui.add_space(4.0);
         let mut add = None;
         // one row of three equal buttons, as Blender's Add row (MU27)
         ui.horizontal(|ui| {
@@ -5667,6 +5614,54 @@ impl CreaBimApp {
         });
         if let Some(src) = add {
             self.add_reference(v, src);
+        }
+        ui.add_space(4.0);
+        let mut select = None;
+        let mut flip = None;
+        // a long list scrolls in its own box; Add stays in reach (MU28)
+        egui::ScrollArea::vertical().id_salt(("trace.list", v)).max_height(240.0).show(ui, |ui| {
+        for (id, name, hidden) in &here {
+            ui.horizontal(|ui| {
+                let eye = if *hidden { "eye-off" } else { "eye" };
+                let (rr, resp) =
+                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                crate::svgicon::paint(ui.painter(), rr.shrink(2.0), eye, ui.visuals().text_color());
+                if resp
+                    .on_hover_text(if *hidden { "Show it" } else { "Hide it" })
+                    .clicked()
+                {
+                    flip = Some(*id);
+                }
+                // one line, cut with … and whole on hover (MU23)
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                let on = self.selection.contains(*id);
+                if ui
+                    .add_sized(
+                        [ui.available_width(), 22.0],
+                        egui::Button::selectable(on, name.as_str()).truncate(),
+                    )
+                    .on_hover_text(name.as_str())
+                    .clicked()
+                {
+                    select = Some(*id);
+                }
+            });
+        }
+        });
+        if let Some(id) = select {
+            self.selection.only(id);
+            self.prop_tab = PropTab::Element;
+        }
+        if let Some(id) = flip {
+            if let Some(e) = self.doc.model().get(id).cloned() {
+                let mut after = e.clone();
+                if let ElementKind::Reference(r) = &mut after.kind {
+                    r.hidden = !r.hidden;
+                }
+                let _ = self.doc.commit(
+                    creabim_core::Transaction::new("Show or hide a reference").replace(e, after),
+                );
+            }
         }
     }
 
@@ -6064,7 +6059,7 @@ impl CreaBimApp {
         let mut go = false;
         let id_d = egui::Id::new("calibrate.distance");
         let mut d: f64 = ctx.data(|m| m.get_temp(id_d)).unwrap_or(a.distance(b));
-        egui::Window::new("Calibrate")
+        crate::app::shell::window("Calibrate")
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -6833,6 +6828,34 @@ impl CreaBimApp {
                                 });
                                 crate::props::row(ui, "Size", |ui| {
                                     crate::props::fill(ui, egui::DragValue::new(&mut t.size).speed(0.1).range(1.5..=10.0).suffix(" mm"))
+                                });
+                                // its font, weight and colour: a text style
+                                let styles: Vec<(ElementId, String)> = self
+                                    .doc
+                                    .model()
+                                    .iter()
+                                    .filter(|e| matches!(e.kind, ElementKind::TextStyle(_)))
+                                    .map(|e| (e.id, e.name.clone()))
+                                    .collect();
+                                let now = t
+                                    .style
+                                    .and_then(|s| styles.iter().find(|(i, _)| *i == s))
+                                    .map_or("Plain".to_string(), |(_, n)| n.clone());
+                                crate::props::row(ui, "Text style", |ui| {
+                                    egui::ComboBox::from_id_salt(("title.style", vp.view))
+                                        .icon(crate::props::combo_icon)
+                                        .selected_text(now)
+                                        .width(ui.available_width())
+                                        .show_ui(ui, |ui| {
+                                            if ui.selectable_label(t.style.is_none(), "Plain").clicked() {
+                                                t.style = None;
+                                            }
+                                            for (i, n) in &styles {
+                                                if ui.selectable_label(t.style == Some(*i), n).clicked() {
+                                                    t.style = Some(*i);
+                                                }
+                                            }
+                                        })
                                 });
                                 for (name, v) in [("Moved X", &mut t.offset.x), ("Moved Y", &mut t.offset.y)] {
                                     crate::props::row(ui, name, |ui| {
@@ -9166,7 +9189,7 @@ impl CreaBimApp {
         };
         let mut open = true;
         let mut done = false;
-        egui::Window::new("Step")
+        crate::app::shell::window("Step")
             .collapsible(false)
             .resizable(false)
             .open(&mut open)

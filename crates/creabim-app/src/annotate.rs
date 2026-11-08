@@ -46,9 +46,10 @@ pub fn text_px(look: &TextLook, mm: f64, xf: &Xf) -> f32 {
         // sheet and left out once too small, never spilling off (MU23)
         px.max(1.0)
     } else {
-        // in a view while working: never under 9 px, readable at any
-        // scale; sheets and PDFs keep the paper size (A5-7)
-        px.max(9.0)
+        // in a view while working: up to 9 px so a detail's tags read
+        // (A5-7), but never more than twice their true size, so a view
+        // zoomed far out does not fill with oversized words (MU28)
+        px.max(9.0_f32.min(px * 2.0))
     }
 }
 

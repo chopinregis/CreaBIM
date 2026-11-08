@@ -359,7 +359,7 @@ impl CreaBimApp {
         let mut asks = vec![];
         let mut turn = egui::Vec2::ZERO;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new(format!("Type: {name}"))
+        crate::app::shell::window(format!("Type: {name}"))
             .id(egui::Id::new("type_preview"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(60.0, 40.0))

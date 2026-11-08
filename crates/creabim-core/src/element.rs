@@ -1625,8 +1625,8 @@ pub struct View {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room_tags: Option<bool>,
     /// How its title reads where it is placed on a sheet (MU27).
-    #[serde(default, skip_serializing_if = "SheetTitle::is_default")]
-    pub sheet_title: SheetTitle,
+    #[serde(default, skip_serializing_if = "boxed_title_is_default")]
+    pub sheet_title: Box<SheetTitle>,
     /// How a section or elevation shows each level's head: turned off, or
     /// dragged away from where it would sit. Levels not listed show their
     /// heads where the automatic layout puts them.
@@ -1867,7 +1867,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             room_tags: None,
-            sheet_title: SheetTitle::default(),
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1893,7 +1893,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             room_tags: None,
-            sheet_title: SheetTitle::default(),
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1916,7 +1916,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             room_tags: None,
-            sheet_title: SheetTitle::default(),
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1940,7 +1940,7 @@ impl View {
             graphics: Default::default(),
             callout: None,
             room_tags: None,
-            sheet_title: SheetTitle::default(),
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1969,7 +1969,7 @@ impl View {
             graphics: parent.graphics.clone(),
             callout: Some(Callout::new(parent_id, a, b)),
             room_tags: None,
-            sheet_title: SheetTitle::default(),
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -2072,11 +2072,15 @@ pub struct SheetTitle {
     pub size: f64,
     /// Its own words; empty, the view's name.
     pub text: String,
+    /// The text style its words take (font, weight, colour); none, plain
+    /// sans (MU28). Its size stays `size`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub style: Option<crate::ElementId>,
 }
 
 impl Default for SheetTitle {
     fn default() -> Self {
-        Self { hidden: false, show_scale: true, show_number: true, offset: DVec2::ZERO, size: 3.5, text: String::new() }
+        Self { hidden: false, show_scale: true, show_number: true, offset: DVec2::ZERO, size: 3.5, text: String::new(), style: None }
     }
 }
 
@@ -2084,6 +2088,12 @@ impl SheetTitle {
     pub fn is_default(&self) -> bool {
         *self == Self::default()
     }
+}
+
+/// For serde: a view's title settings are left out while they are the default.
+#[allow(clippy::borrowed_box)]
+fn boxed_title_is_default(t: &Box<SheetTitle>) -> bool {
+    t.is_default()
 }
 
 /// IFC classes a free mesh may be classified as.

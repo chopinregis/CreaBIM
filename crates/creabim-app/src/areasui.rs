@@ -1000,7 +1000,7 @@ impl CreaBimApp {
             return;
         };
         let (mut open, mut done) = (true, false);
-        egui::Window::new("Save current layout")
+        crate::app::shell::window("Save current layout")
             .collapsible(false)
             .resizable(false)
             .open(&mut open)

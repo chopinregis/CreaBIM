@@ -232,7 +232,7 @@ impl CreaBimApp {
         let mut navigation = self.shell.settings.navigation.clone();
         let mut grip_hover = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Settings")
+        crate::app::shell::window("Settings")
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(180.0, 140.0))
             .constrain_to(area)
@@ -392,7 +392,7 @@ impl CreaBimApp {
         }
         let mut open = true;
         let mut pick = None;
-        egui::Window::new("New project")
+        crate::app::shell::window("New project")
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -443,7 +443,7 @@ impl CreaBimApp {
         let mut go = false;
         let mut cancel = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Export IFC")
+        crate::app::shell::window("Export IFC")
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(230.0, 160.0))
             .constrain_to(area)
@@ -522,7 +522,7 @@ impl CreaBimApp {
         let mut apply = false;
         let mut close = false;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Project information")
+        crate::app::shell::window("Project information")
             .open(&mut open)
             .default_pos(area.center() - Vec2::new(200.0, 220.0))
             .constrain_to(area)

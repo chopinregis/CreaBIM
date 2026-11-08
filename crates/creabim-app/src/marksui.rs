@@ -138,7 +138,7 @@ impl CreaBimApp {
         let mut rules = before.clone();
         let mut action: Option<&'static str> = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Mark numbering")
+        crate::app::shell::window("Mark numbering")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
             .constrain_to(area)

@@ -3354,6 +3354,25 @@ impl CreaBimApp {
         for m in msgs {
             self.handle_web(&ctx, m);
         }
+        // what the app draws itself: below the bars, right of the browser,
+        // above the status bar
+        if let Some(web) = &self.shell.web {
+            use crate::webui::Pane;
+            let mut r = ctx.content_rect();
+            let top = web.rects[Pane::Top as usize];
+            let left = web.rects[Pane::Left as usize];
+            let status = web.rects[Pane::Status as usize];
+            if top.height() > 1.0 {
+                r.min.y = r.min.y.max(top.bottom());
+            }
+            if left.width() > 1.0 {
+                r.min.x = r.min.x.max(left.right());
+            }
+            if status.height() > 1.0 {
+                r.max.y = r.max.y.min(status.top());
+            }
+            NATIVE.with(|n| n.set(Some(r)));
+        }
         // a web row's hint, as the app's own tooltips look (MU26)
         if let Some((text, r)) = self.shell.web_tip.clone().filter(|_| self.shell.popup.is_none()) {
             let screen = ctx.content_rect();
@@ -3896,5 +3915,22 @@ mod tests {
             .find(|r| r["id"] == door.id.0.to_string())
             .unwrap();
         assert_eq!(row["mark"], mark.as_str());
+    }
+}
+
+thread_local! {
+    /// The part of the window the app draws itself, clear of the web panels
+    /// (the browser, the bars), set each frame.
+    static NATIVE: std::cell::Cell<Option<egui::Rect>> = const { std::cell::Cell::new(None) };
+}
+
+/// A window kept inside the part of the screen the app draws itself: web
+/// panels paint over anything under them (MU28: the note editor slid
+/// behind the browser).
+pub(crate) fn window(title: impl Into<egui::WidgetText>) -> egui::Window<'static> {
+    let w = egui::Window::new(title);
+    match NATIVE.with(|n| n.get()) {
+        Some(r) if r.width() > 200.0 && r.height() > 150.0 => w.constrain_to(r),
+        _ => w,
     }
 }

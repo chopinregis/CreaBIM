@@ -634,7 +634,7 @@ impl CreaBimApp {
                 (w, egui::pos2(area.max.x - w - 16.0, area.min.y + 64.0))
             }
         };
-        egui::Window::new("Catalogue")
+        crate::app::shell::window("Catalogue")
             .resizable(true)
             .open(&mut open)
             .default_pos(pos)

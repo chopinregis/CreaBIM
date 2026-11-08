@@ -221,7 +221,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Levels")
+        crate::app::shell::window("Levels")
             .open(&mut open)
             // below the 3D view's navigation buttons, which draw on top
             .default_pos(area.min + Vec2::new(16.0, 56.0))
@@ -597,7 +597,7 @@ impl CreaBimApp {
         let mut units = self.doc.model().units();
         let before = units;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Project units")
+        crate::app::shell::window("Project units")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
             .constrain_to(area)

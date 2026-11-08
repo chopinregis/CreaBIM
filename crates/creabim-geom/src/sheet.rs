@@ -34,6 +34,8 @@ pub struct PlacedView {
     pub bounds: (DVec2, DVec2),
     /// How its title reads (MU27).
     pub title_look: creabim_core::SheetTitle,
+    /// Its title's text style, resolved (MU28).
+    pub title_text: crate::annotation::TextLook,
 }
 
 impl PlacedView {
@@ -159,7 +161,12 @@ pub fn placed_views_with(
                 .map(str::to_string)
                 .or_else(|| model.get(vp.view).map(|v| v.name.clone()))
                 .unwrap_or_default(),
-            title_look: view.sheet_title.clone(),
+            title_look: (*view.sheet_title).clone(),
+            title_text: {
+                let mut l = crate::annotate::look_of(model, view.sheet_title.style, None);
+                l.size = view.sheet_title.size;
+                l
+            },
             map,
             drawing: d,
             weights: looks.weights,
@@ -542,7 +549,7 @@ pub fn draw_view_title(c: &mut dyn Canvas, v: &PlacedView) {
     } else {
         0.0
     };
-    c.text(at + DVec2::new(x0, 1.2 * k), t.size, &v.title, Anchor::Start);
+    c.styled_text(at + DVec2::new(x0, 1.2 * k), &v.title, Anchor::Start, 0.0, &v.title_text);
     let width = paper::text_width(&v.title, t.size).max(30.0 * k);
     c.line(
         &[at + DVec2::new(x0, -k), at + DVec2::new(x0 + width, -k)],
