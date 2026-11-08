@@ -1833,6 +1833,9 @@ impl Modal {
                 out
             }
         };
+        // a duplicate's copy is joined to nothing yet: moving it drags
+        // nothing, the original least of all (it shares both its ends, MU25)
+        self.edit.free |= self.duplicated;
         self.edit.update(doc, changed).map_err(|e| e.to_string())
     }
 
@@ -1848,6 +1851,9 @@ impl Modal {
         for o in &originals {
             changed.push(f(doc.model(), o).ok_or_else(|| format!("{} can't take that", o.name))?);
         }
+        // a duplicate's copy is joined to nothing yet: moving it drags
+        // nothing, the original least of all (it shares both its ends, MU25)
+        self.edit.free |= self.duplicated;
         self.edit.update(doc, changed).map_err(|e| e.to_string())
     }
 
@@ -2724,6 +2730,93 @@ mod tests {
         // a second cancel takes nothing else away
         m.cancel(&mut doc);
         assert_eq!(doc.model().len(), n);
+    }
+
+    #[test]
+    fn a_duplicate_moved_away_leaves_one_wall_on_the_original() {
+        // MU25: after Duplicate, base point, target, a second wall still
+        // sat on the original (Tab cycled two)
+        let mut doc = Document::from_model(sample_house());
+        let (id, start) = first_wall(&doc);
+        let (end, level) = match &doc.model().get(id).unwrap().kind {
+            ElementKind::Wall(w) => (w.end, w.level),
+            _ => unreachable!(),
+        };
+        let walls = |doc: &Document| {
+            doc.model()
+                .iter()
+                .filter(|e| {
+                    matches!(&e.kind, ElementKind::Wall(w)
+                        if w.level == level && w.start.distance(start) < 1e-6 && w.end.distance(end) < 1e-6)
+                })
+                .count()
+        };
+        assert_eq!(walls(&doc), 1);
+        let n = doc.model().len();
+        let (mut m, copies) = crate::planview::start_modal(
+            &mut doc,
+            (Mode::Move, true),
+            &[id],
+            None,
+            Space::Plan,
+            None,
+            at(1.0, 1.0),
+            Pivot::Median,
+            None,
+            Flow::Tool,
+            Target::Object,
+            None,
+        )
+        .unwrap();
+        let n = n + copies.len();
+        let out = with_map(&[], |map| {
+            for p in [at(1.0, 1.0), at(1.5, 1.2), at(2.0, 2.0)] {
+                m.step(&mut doc, &pointer(p), map);
+            }
+            m.step(&mut doc, &click(at(2.0, 2.0)), map);
+            for p in [at(2.5, 2.0), at(3.0, 2.0), at(3.5, 2.0)] {
+                m.step(&mut doc, &pointer(p), map);
+            }
+            m.step(&mut doc, &click(at(3.5, 2.0)), map)
+        });
+        assert!(matches!(out, Outcome::Done(_)), "placed");
+        assert_eq!(doc.model().len(), n, "one copy made");
+        assert_eq!(walls(&doc), 1, "only the original on its spot");
+        let moved = wall_start(&doc, copies[0]);
+        assert!((moved - start - DVec2::new(1.5, 0.0)).length() < 1e-6, "{moved} {start}");
+        assert_eq!(wall_start(&doc, id), start);
+    }
+
+    #[test]
+    fn a_move_leaving_a_copy_behind_does_not_drag_the_copy_along() {
+        // MU25: Ctrl while moving leaves a copy; nothing may end up lying
+        // on the original, nor the original dragged off by its copy
+        let mut doc = Document::from_model(sample_house());
+        let (id, start) = first_wall(&doc);
+        let (end, level) = match &doc.model().get(id).unwrap().kind {
+            ElementKind::Wall(w) => (w.end, w.level),
+            _ => unreachable!(),
+        };
+        let on_spot = |doc: &Document| {
+            doc.model()
+                .iter()
+                .filter(|e| {
+                    matches!(&e.kind, ElementKind::Wall(w)
+                        if w.level == level && w.start.distance(start) < 1e-6 && w.end.distance(end) < 1e-6)
+                })
+                .count()
+        };
+        let n = doc.model().len();
+        let mut m = tool(&doc, Mode::Move, id);
+        m.set_copy(&mut doc, true);
+        with_map(&[], |map| {
+            m.step(&mut doc, &click(at(2.0, 2.0)), map);
+            m.step(&mut doc, &pointer(at(3.0, 2.0)), map);
+            m.step(&mut doc, &click(at(3.5, 2.0)), map);
+            m.step(&mut doc, &Events { escape: true, ..Default::default() }, map);
+        });
+        assert!(doc.model().len() > n, "a copy was placed");
+        assert_eq!(on_spot(&doc), 1, "one wall on the original spot");
     }
 
     #[test]
