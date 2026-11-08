@@ -222,7 +222,7 @@ html[data-pane="top"] body {
 }
 
 .bar1 {
-  height: 40px;
+  height: 36px;
   display: flex;
   align-items: center;
   padding: 0 10px 0 12px;
@@ -318,7 +318,7 @@ html[data-theme="light"] .logo, html[data-theme="paper"] .logo, html[data-theme=
 .doc .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex: none; }
 
 .bar2 {
-  height: 40px;
+  height: 38px;
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -393,7 +393,7 @@ html[data-theme="light"] .logo, html[data-theme="paper"] .logo, html[data-theme=
 /* The tool options strip, under the tools: never over a view. */
 .bar2 { border-bottom: 1px solid var(--border-2); }
 .bar3 {
-  height: 32px;
+  height: 30px;
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -1012,3 +1012,9 @@ kbd {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
 }
+
+/* MU27: the browser folded to a rail of its groups */
+.rail { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 6px; height: 100%; background: var(--panel); }
+.rail-btn { width: 32px; height: 30px; border: 0; background: transparent; border-radius: 6px; display: grid; place-items: center; color: var(--muted); cursor: pointer; }
+.rail-btn:hover { background: var(--raise); color: var(--text); }
+.rail-btn svg.i { width: 18px; height: 18px; }

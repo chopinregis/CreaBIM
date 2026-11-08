@@ -1119,6 +1119,16 @@ impl CreaBimApp {
                 None => self.set_xray(!self.shell.settings.xray),
             }
         }
+        // Ctrl+[ folds the browser, Ctrl+] Properties (MU27: T and N, as
+        // Blender's, are Tag and Note here)
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::OpenBracket)) {
+            self.shell.settings.left_folded = !self.shell.settings.left_folded;
+            self.shell.settings.store();
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::CloseBracket)) {
+            self.shell.settings.right_folded = !self.shell.settings.right_folded;
+            self.shell.settings.store();
+        }
         // Tab: Object and Edit mode, as Blender (MU27); 1, 2, 3 in Edit mode:
         // points, edges, faces
         {
@@ -8056,7 +8066,28 @@ impl CreaBimApp {
                     crate::svgicon::paint(ui.painter(), icon, t.icon(), ink);
                     if resp.on_hover_text(t.label()).clicked() {
                         self.prop_tab = *t;
+                        // folded, a tab opens it again on that tab (MU27)
+                        if self.shell.settings.right_folded {
+                            self.shell.settings.right_folded = false;
+                            self.shell.settings.store();
+                        }
                     }
+                }
+                // fold Properties to this column, or open it again (MU27)
+                ui.add_space(8.0);
+                let folded = self.shell.settings.right_folded;
+                let (r, resp) = ui.allocate_exact_size(egui::vec2(W, CELL), egui::Sense::click());
+                if resp.hovered() {
+                    ui.painter().rect_filled(r.shrink(1.0), 4.0, p.accent.gamma_multiply(0.12));
+                }
+                let icon = egui::Rect::from_center_size(r.center(), egui::vec2(16.0, 16.0));
+                crate::svgicon::paint(ui.painter(), icon, if folded { "panel-right-open" } else { "panel-right-close" }, p.muted);
+                if resp
+                    .on_hover_text(if folded { "Open Properties (Ctrl+])" } else { "Fold Properties to its tabs (Ctrl+])" })
+                    .clicked()
+                {
+                    self.shell.settings.right_folded = !folded;
+                    self.shell.settings.store();
                 }
             },
         );
@@ -8473,9 +8504,10 @@ impl eframe::App for CreaBimApp {
                 .default_size(220.0)
                 .show(ui, |ui| self.outliner(ui));
         }
-        let right = egui::Panel::right("properties")
-            .default_size(self.shell.settings.right_width)
-            .size_range(220.0..=640.0)
+        let right_folded = self.shell.settings.right_folded;
+        let right = egui::Panel::right(if right_folded { "properties_rail" } else { "properties" })
+            .default_size(if right_folded { 40.0 } else { self.shell.settings.right_width })
+            .size_range(if right_folded { 40.0..=40.0 } else { 220.0..=640.0 })
             .frame(
                 // flush at the left, where the tab column is (MU22)
                 egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin {
@@ -8545,6 +8577,9 @@ impl eframe::App for CreaBimApp {
                 inner.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     self.prop_strip(ui, &tabs, rect.height());
+                    if self.shell.settings.right_folded {
+                        return;
+                    }
                     ui.add_space(12.0);
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing = egui::vec2(4.0, 3.0);

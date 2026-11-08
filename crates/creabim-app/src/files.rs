@@ -157,6 +157,12 @@ pub struct Settings {
     /// Width of the project browser and of the properties panel, in points.
     pub left_width: f32,
     pub right_width: f32,
+    /// The browser folded to a rail of its groups (MU27).
+    #[serde(default)]
+    pub left_folded: bool,
+    /// Properties folded to its tab column (MU27).
+    #[serde(default)]
+    pub right_folded: bool,
     /// One view at a time instead of the 3D view and a drawing side by
     /// side, and which of the two it shows.
     pub single_view: bool,
@@ -218,6 +224,8 @@ impl Default for Settings {
             theme: "sage".into(),
             left_width: 264.0,
             right_width: 290.0,
+            left_folded: false,
+            right_folded: false,
             single_view: false,
             single_shows_3d: true,
             ground_grid: true,

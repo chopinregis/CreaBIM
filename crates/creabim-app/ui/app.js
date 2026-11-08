@@ -223,8 +223,17 @@
   function drawLeft() {
     const f = local.filter.trim().toLowerCase();
     const anyOpen = S.groups.some((g) => (local.open[g.key] !== undefined ? local.open[g.key] : g.open));
+    // folded to a rail (MU27): one icon a group; a click opens the browser
+    // on that group
+    if (S.folded) {
+      let rail = `<div class="rail"><button class="rail-btn" data-act="browser.fold" title="Open the project browser (Ctrl+[)">${icon("panel-left-open")}</button>`;
+      for (const g of S.groups) rail += `<button class="rail-btn" data-act="browser.fold" data-railgroup="${esc(g.key)}" title="${esc(g.title)} (${g.rows.length})">${icon(g.icon)}</button>`;
+      root.innerHTML = rail + `</div>`;
+      return;
+    }
     let html = `<div class="browser"><div class="browser-head"><div class="title">${icon("layout-dashboard")}Project<span class="count">${esc(S.count)}</span>` +
-      `<button class="gact fold" data-fold="${anyOpen ? 0 : 1}" title="${anyOpen ? "Collapse every group" : "Expand every group"}">${icon(anyOpen ? "chevrons-down-up" : "chevrons-up-down")}</button></div>` +
+      `<button class="gact fold" data-fold="${anyOpen ? 0 : 1}" title="${anyOpen ? "Collapse every group" : "Expand every group"}">${icon(anyOpen ? "chevrons-down-up" : "chevrons-up-down")}</button>` +
+      `<button class="gact" data-act="browser.fold" title="Fold the browser to a rail (Ctrl+[)">${icon("panel-left-close")}</button></div>` +
       `<label class="search">${icon("search")}<input data-key="filter" data-live="1" placeholder="Find views and elements" value="${esc(local.filter)}"></label></div><div class="tree">`;
     let any = false;
     for (const g of S.groups) {
@@ -854,6 +863,8 @@
     if (local.dragged) return;
     const fig = e.target.closest("figure.zoomable");
     if (fig) { fig.classList.toggle("big"); return; }
+    const rg = e.target.closest("[data-railgroup]");
+    if (rg) local.open[rg.dataset.railgroup] = true;
     const fold = e.target.closest("[data-fold]");
     if (fold && S && S.groups) {
       for (const g of S.groups) local.open[g.key] = fold.dataset.fold === "1";

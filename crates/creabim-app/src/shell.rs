@@ -10,8 +10,8 @@ use serde_json::{json, Value};
 
 /// Height of the top bar (menus, tools and the tool options strip) and the
 /// status bar, in points.
-pub(super) const TOP_H: f32 = 113.0;
-pub(super) const STATUS_H: f32 = 30.0;
+pub(super) const TOP_H: f32 = 105.0;
+pub(super) const STATUS_H: f32 = 26.0;
 /// Size of the 3D view's navigation buttons.
 const NAV_W: f32 = 420.0;
 const NAV_H: f32 = 34.0;
@@ -1556,6 +1556,14 @@ impl CreaBimApp {
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
+            "browser.fold" => {
+                self.shell.settings.left_folded = !self.shell.settings.left_folded;
+                self.shell.settings.store();
+            }
+            "props.fold" => {
+                self.shell.settings.right_folded = !self.shell.settings.right_folded;
+                self.shell.settings.store();
+            }
             "mode.object" => {
                 if self.plan.edit.is_some() {
                     self.toggle_edit_mode();
@@ -2943,6 +2951,7 @@ impl CreaBimApp {
         json!({
             "theme": self.theme(),
             "count": format!("{} elements", self.element_count()),
+            "folded": self.shell.settings.left_folded,
             "groups": groups,
         })
     }
@@ -3446,10 +3455,11 @@ impl CreaBimApp {
             .response
             .rect;
         // drag the browser's right edge to widen it
-        let left = egui::Panel::left("web_left")
-            .default_size(self.shell.settings.left_width)
-            .size_range(180.0..=520.0)
-            .resizable(true)
+        let folded = self.shell.settings.left_folded;
+        let left = egui::Panel::left(if folded { "web_left_rail" } else { "web_left" })
+            .default_size(if folded { 44.0 } else { self.shell.settings.left_width })
+            .size_range(if folded { 44.0..=44.0 } else { 180.0..=520.0 })
+            .resizable(!folded)
             .show_separator_line(true)
             .frame(egui::Frame::NONE.fill(ui.visuals().panel_fill))
             .show(ui, |ui| ui.allocate_space(ui.available_size()))
@@ -3458,7 +3468,8 @@ impl CreaBimApp {
         // the page sits just inside the edge so the edge stays grabbable
         let left = left.with_max_x(left.max.x - 3.0);
         let width = (left.width() + 3.0).round();
-        if (width - self.shell.settings.left_width).abs() >= 1.0
+        if !folded
+            && (width - self.shell.settings.left_width).abs() >= 1.0
             && !ctx.input(|i| i.pointer.any_down())
         {
             self.shell.settings.left_width = width;
