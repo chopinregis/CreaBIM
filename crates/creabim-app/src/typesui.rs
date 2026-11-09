@@ -80,7 +80,7 @@ fn len_field(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bo
 
 fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(text);
         let spacing = matches!(r, GridRule::Spacing(_));
         egui::ComboBox::from_id_salt(("curtain_rule", salt))
@@ -131,7 +131,7 @@ pub(super) fn curtain_fields(ui: &mut egui::Ui, c: &mut CurtainGrid) -> &'static
     if len_field(ui, "Mullion depth", &mut c.mullion_depth, 0.02, 1.0) {
         label = "Mullion size";
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Panels");
         for k in PanelKind::ALL {
             if ui.selectable_value(&mut c.panel, k, k.label()).changed() {
@@ -143,7 +143,7 @@ pub(super) fn curtain_fields(ui: &mut egui::Ui, c: &mut CurtainGrid) -> &'static
         label = "Panel thickness";
     }
     if !c.swapped.is_empty() {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(format!("{} panels swapped", c.swapped.len()));
             if ui.small_button("Reset").clicked() {
                 c.swapped.clear();
@@ -170,7 +170,7 @@ fn material_pick(
         .map_or("By type", |m| m.1.as_str())
         .to_string();
     let mut changed = false;
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Material");
         egui::ComboBox::from_id_salt(("type_material", salt))
             .icon(crate::props::combo_icon)
@@ -201,7 +201,7 @@ fn assembly_pick(
         .and_then(|c| choices.iter().find(|x| x.0 == c))
         .map_or("None (single material)".to_string(), |x| x.1.clone());
     let mut changed = false;
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Assembly");
         egui::ComboBox::from_id_salt("type_assembly")
             .icon(crate::props::combo_icon)
@@ -266,7 +266,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                         }
                     }
                 }
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Location line");
                     egui::ComboBox::from_id_salt("type_location")
                         .icon(crate::props::combo_icon)
@@ -280,7 +280,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                         });
                 });
             }
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 let mut own = w.height.is_some();
                 if crate::props::switch(ui, &mut own, "Default height")
                     .on_hover_text("New walls of this type are drawn this high; otherwise as high as their level")
@@ -441,7 +441,7 @@ pub(super) fn holes_fields(
     for (i, h) in holes.iter().enumerate() {
         let area = creabim_core::polygon::signed_area2(h).abs() / 2.0;
         crate::props::row(ui, &format!("Hole {}", i + 1), |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(format!("{} corners, {}", h.len(), crate::units::area(area)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if crate::props::icon_button(ui, "x", "Remove this hole").clicked() {
@@ -699,7 +699,7 @@ impl CreaBimApp {
             .map_or("No type".to_string(), |x| x.1.clone());
         let mut asks = vec![];
         let mut chosen = current;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             crate::app::helpui::combo(ui, "Type")
                 .selected_text(shown)
                 .width(ui.available_width().min(180.0))
@@ -762,7 +762,7 @@ impl CreaBimApp {
             // width of the field column, side by side
             let _ = &link;
             crate::props::row(ui, "Instances", |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(n.to_string()).on_hover_text(summary.clone());
                     let w = ui.available_width();
                     if ui
@@ -775,7 +775,7 @@ impl CreaBimApp {
                 })
             });
             crate::props::row(ui, "", |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let two = cat != TypeCategory::Object;
                     let gap = ui.spacing().item_spacing.x;
                     let w = if two { (ui.available_width() - gap) / 2.0 } else { ui.available_width() };
@@ -796,7 +796,7 @@ impl CreaBimApp {
             if !overrides.is_empty() {
                 let list: Vec<&str> = overrides.iter().map(|p| p.label()).collect();
                 crate::props::row(ui, "Overrides", |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.add(
                             egui::Label::new(
@@ -811,7 +811,7 @@ impl CreaBimApp {
                     })
                 });
                 crate::props::row(ui, "", |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         if link(ui, "Reset to type")
                             .on_hover_text("Drop its overrides: take every value from its type")
@@ -859,7 +859,7 @@ impl CreaBimApp {
         let label = type_fields(ui, model, &mut t);
         let n = types::instances(model, id).len();
         let mut asks = vec![];
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(match n {
                 0 => "No instances yet.".to_string(),
                 n => format!("{}.", plural(n, "instance")),
@@ -869,7 +869,7 @@ impl CreaBimApp {
             }
         });
         self.show_in_model_ui(ui, id);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Open preview")
                 .on_hover_text("The type on its own, in 3D, plan and section, beside its values (or double-click it in the project browser)")
@@ -968,7 +968,7 @@ impl CreaBimApp {
                             ui.add_space(6.0);
                         }
                     });
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui
                         .button("Add starters")
                         .on_hover_text("Walls, curtain walls, doors, windows, slabs, roofs, columns and beams, with the starter assemblies they are built of")
@@ -1048,7 +1048,7 @@ impl CreaBimApp {
                 }
                 ui.add_space(8.0);
                 let users = types::instances(model, id);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(match users.len() {
                         0 => "No instances yet.".to_string(),
                         n => format!("{}. Changing the type changes them all, but for what each overrides.", plural(n, "instance")),

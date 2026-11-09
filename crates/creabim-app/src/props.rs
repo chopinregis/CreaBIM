@@ -258,14 +258,18 @@ pub fn choice<T: PartialEq + Copy>(ui: &mut Ui, label: &str, value: &mut T, opti
                 ne: if last { 4 } else { 0 },
                 se: if last { 4 } else { 0 },
             };
-            let mut b = egui::Button::selectable(on, *text).corner_radius(r);
+            // a label too long for its button is cut with …, its whole name
+            // and what it does on hover, as Blender's (MU34)
+            let mut b = egui::Button::selectable(on, *text).corner_radius(r).truncate();
             if !on {
                 b = b.fill(box_fill(ui.visuals()));
             }
-            let mut resp = ui.add_sized([w, h], b);
-            if !tip.is_empty() {
-                resp = resp.on_hover_text(*tip);
-            }
+            let resp = ui.add_sized([w, h], b);
+            let resp = if tip.is_empty() {
+                resp.on_hover_text(*text)
+            } else {
+                resp.on_hover_text(format!("{text}: {tip}"))
+            };
             if resp.clicked() && !on {
                 *value = *v;
                 changed = true;

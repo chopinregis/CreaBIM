@@ -185,7 +185,7 @@ impl CreaBimApp {
             let name = model
                 .get(other)
                 .map_or("(missing)".into(), |e| e.name.clone());
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(format!("With {name}"));
                 let now = crate::detailtool::winner_label(model, &r, r.winner);
                 let shown = if r.cleanup {

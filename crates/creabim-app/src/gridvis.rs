@@ -313,6 +313,28 @@ impl CreaBimApp {
                     }
                 });
             }
+            // only the selection, and what it stands on, stays in this
+            // view (MU34: a 3D view on a sheet showed the whole model)
+            "others" => {
+                let mut keep: std::collections::HashSet<ElementId> = ids.iter().copied().collect();
+                for id in &ids {
+                    if let Some(e) = model.get(*id) {
+                        keep.extend(e.references());
+                    }
+                    keep.extend(model.dependents(*id));
+                }
+                let others: Vec<ElementId> = model
+                    .iter()
+                    .filter(|e| !keep.contains(&e.id) && crate::app::gridvis::shows_in_3d(&e.kind))
+                    .map(|e| e.id)
+                    .collect();
+                let label = format!("Show only {} in this view", ids.len());
+                self.set_view_hidden(t, &label, |h| {
+                    for id in others {
+                        h.set_element(id, true);
+                    }
+                });
+            }
             "element" => {
                 let label = match ids.len() {
                     1 => "Hide element".to_string(),
@@ -495,6 +517,9 @@ impl CreaBimApp {
             Item::new(format!("{p}.hide:category"), format!("Hide category in {where_}"))
                 .enabled(enabled)
                 .hint("Leave out every element of the selection's kind (walls, windows…) in this view"),
+            Item::new(format!("{p}.hide:others"), format!("Show only the selection in {where_}"))
+                .enabled(enabled)
+                .hint("Keep only what is selected in this view, saved with it and on its sheets; its Visibility settings bring the rest back"),
         ];
         let model = self.doc.model();
         let grouped = self.selection.all().iter().any(|id| {
@@ -876,7 +901,7 @@ impl CreaBimApp {
                     )
                     .weak(),
                 );
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Every");
                     let r = ui.add(egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center).desired_width(110.0));
                     if !r.has_focus() && !r.lost_focus() && ui.memory(|m| m.focused().is_none()) {
@@ -1055,7 +1080,7 @@ impl CreaBimApp {
                 if !groups.is_empty() {
                     if crate::props::subsection(ui, "vis.grids", "Grid systems", true) { ui.add_enabled_ui(!h.hides_category(Category::Grids), |ui| {
                         for (id, name, color) in groups {
-                            ui.horizontal(|ui| {
+                            ui.horizontal_wrapped(|ui| {
                                 swatch(ui, color);
                                 let mut shown = !h.grid_groups.contains(&id);
                                 let w = ui.available_width();
@@ -1083,7 +1108,7 @@ impl CreaBimApp {
                 if !hidden.is_empty() {
                     crate::props::subsection(ui, "vis.hidden", "Hidden elements", true);
                     for (id, name) in hidden {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             ui.label(name);
                             if ui.small_button("Unhide").clicked() {
                                 change = Some((
@@ -1153,7 +1178,7 @@ impl CreaBimApp {
         let mut pick = None;
         let mut edit = None;
         for (id, name, color, n) in rows {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui
                     .radio(active == id, "")
                     .on_hover_text("New grid lines go here")
@@ -1196,7 +1221,7 @@ impl CreaBimApp {
             )
             .weak(),
         );
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Prefix");
             if ui
                 .add(egui::TextEdit::singleline(&mut g.prefix).vertical_align(egui::Align::Center).desired_width(60.0))
@@ -1221,7 +1246,7 @@ impl CreaBimApp {
         {
             label = "Grid label style";
         }
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Colour");
             // the picker works in 8-bit sRGB, as the colour is stored
             let mut c = g.color.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
@@ -1549,6 +1574,24 @@ fn swatch(ui: &mut egui::Ui, c: [f32; 3]) {
     ui.painter().rect_filled(r, 2.0, color32(c));
 }
 
+/// Elements that have a body to hide (not views, styles, levels...).
+pub(super) fn shows_in_3d(kind: &ElementKind) -> bool {
+    !matches!(
+        kind,
+        ElementKind::View(_)
+            | ElementKind::Sheet(_)
+            | ElementKind::Viewport(_)
+            | ElementKind::Level(_)
+            | ElementKind::Material(_)
+            | ElementKind::Assembly(_)
+            | ElementKind::TextStyle(_)
+            | ElementKind::StylePack(_)
+            | ElementKind::Units(_)
+            | ElementKind::Project(_)
+            | ElementKind::ElementType(_)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1845,3 +1888,4 @@ mod tests {
         assert_eq!(app.first_hit_3d(o, d).map(|h| h.id), Some(beam));
     }
 }
+

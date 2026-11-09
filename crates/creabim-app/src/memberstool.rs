@@ -757,7 +757,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             if matches!(r.shape, RoofShape::Shed | RoofShape::Gable) && n > 0 {
                 let what = if r.shape == RoofShape::Shed { "Low edge" } else { "Eave edge" };
                 crate::props::row(ui, what, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
                         let h = ui.spacing().interact_size.y;
                         let w = ((ui.available_width() - 2.0) / 3.0).max(24.0);
@@ -873,7 +873,7 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 label = "Railing posts"
             }
             if let Some(side) = &mut r.stair {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Side");
                     let a = ui.selectable_value(&mut side.left, true, "Left");
                     let b = ui.selectable_value(&mut side.left, false, "Right");
@@ -1033,7 +1033,7 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
                         f.end = f.start;
                         label = "Move footing";
                     }
-                    let r = ui.horizontal(|ui| {
+                    let r = ui.horizontal_wrapped(|ui| {
                         ui.label("Rotation");
                         ui.add(
                             egui::DragValue::new(&mut f.rotation)

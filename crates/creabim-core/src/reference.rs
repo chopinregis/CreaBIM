@@ -54,6 +54,15 @@ pub struct Reference {
     /// Off: shown in its views but not in 3D (MU33).
     #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
     pub in_3d: bool,
+    /// Its strength in 3D, apart from its views'; none: the same (MU34).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity_3d: Option<f32>,
+    /// Shown in a perspective 3D view.
+    #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
+    pub in_perspective: bool,
+    /// Shown in an orthographic 3D view.
+    #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
+    pub in_orthographic: bool,
     /// What it shows spans, in its own coordinates (lower left, upper
     /// right), once known: its middle is what it turns and scales about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -94,6 +103,9 @@ impl Reference {
             locked: false,
             hidden: false,
             in_3d: true,
+            opacity_3d: None,
+            in_perspective: true,
+            in_orthographic: true,
             bounds: None,
         }
     }
