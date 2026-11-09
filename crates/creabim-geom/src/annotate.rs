@@ -251,7 +251,7 @@ pub fn material_text(model: &Model, id: ElementId) -> String {
     let Some(e) = model.get(id) else {
         return String::new();
     };
-    let units = model.units();
+    let tag = |m: f64| creabim_core::write_number(model, creabim_core::NumberKind::Tags, None, m);
     if let Some((_, a)) = creabim_core::assembly_of(model, e) {
         if !a.layers.is_empty() {
             return a
@@ -262,7 +262,7 @@ pub fn material_text(model: &Model, id: ElementId) -> String {
                         .material
                         .and_then(|m| model.get(m))
                         .map_or("(no material)".to_string(), |m| m.name.clone());
-                    format!("{} {name}", units.dimension(l.thickness))
+                    format!("{} {name}", tag(l.thickness))
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -277,10 +277,11 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         return (String::new(), false);
     };
     let material = creabim_core::material_of(model, e).map(|(m, _)| m.name.clone());
-    let units = model.units();
+    let units = creabim_core::units::number_format(model, creabim_core::NumberKind::Tags, None).units(&model.units());
+    let tag = |m: f64| creabim_core::write_number(model, creabim_core::NumberKind::Tags, None, m);
     let with_material = |t: f64| match &material {
-        Some(m) => format!("{m} {}", units.dimension(t)),
-        None => units.dimension(t),
+        Some(m) => format!("{m} {}", tag(t)),
+        None => tag(t),
     };
     // a mark, typed or numbered by the project's rules, is what it reads
     if !matches!(e.kind, ElementKind::Object(_)) {
@@ -297,8 +298,8 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         ElementKind::Beam(b) => (
             format!(
                 "{} × {}",
-                units.dimension(b.width),
-                units.dimension(b.depth)
+                tag(b.width),
+                tag(b.depth)
             ),
             false,
         ),
@@ -315,21 +316,21 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
             match f.kind {
                 creabim_core::FootingKind::Strip => format!(
                     "{} × {}",
-                    units.dimension(f.width),
-                    units.dimension(f.thickness)
+                    tag(f.width),
+                    tag(f.thickness)
                 ),
                 creabim_core::FootingKind::Pad => format!(
                     "{} × {} × {}",
-                    units.dimension(f.width),
-                    units.dimension(f.length),
-                    units.dimension(f.thickness)
+                    tag(f.width),
+                    tag(f.length),
+                    tag(f.thickness)
                 ),
             },
             false,
         ),
         ElementKind::Room(_) => (room_tag_text(model, id, &[]), false),
         // a ceiling: its height above the floor, as reflected ceiling plans write it
-        ElementKind::Ceiling(c) => (format!("CLG +{}", units.dimension(c.height)), false),
+        ElementKind::Ceiling(c) => (format!("CLG +{}", tag(c.height)), false),
         _ => (e.name.clone(), false),
     }
 }
@@ -708,7 +709,13 @@ fn measured(
         id,
         item: Box::new(Annotation {
             shape,
-            text: measure(&model.units(), d.kind, c, a, b),
+            text: measure(
+                &creabim_core::units::number_format(model, creabim_core::NumberKind::Dimensions, d.format).units(&model.units()),
+                d.kind,
+                c,
+                a,
+                b,
+            ),
             look: look_of(model, d.style, d.color),
             mm: view.scale / 1000.0,
         }),
@@ -869,7 +876,7 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     a,
                     b: b2,
                     offset: d.offset,
-                    text: dimension_text(&model.units(), a, b2),
+                    text: creabim_core::write_number(model, creabim_core::NumberKind::Dimensions, d.format, a.distance(b2)),
                     look: look_of(model, d.style, d.color),
                     witness,
                     breaks: vec![],

@@ -96,7 +96,7 @@ pub use slab::{room_outline, slab_from_sketch, Shaft};
 pub use titleblock::SheetTemplate;
 pub use transform::Xform;
 pub use types::{ElementType, TypeCategory, TypeParams, TypeRef};
-pub use units::{LengthUnit, Units};
+pub use units::{write_number, LengthUnit, NumberFormat, NumberFormats, NumberKind, Units};
 pub use visibility::{Category, ViewHidden};
 
 /// Errors raised when an edit would leave the model inconsistent.

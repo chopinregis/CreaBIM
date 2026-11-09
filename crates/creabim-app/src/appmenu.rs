@@ -154,11 +154,20 @@ impl CreaBimApp {
                     .hint("Applies at once to typing, readouts and dimensions, and is saved with the project"),
             );
         }
+        // what each kind of annotation writes in (A5-2)
+        items.push(Item::Header("Number formats".into()));
+        let units = self.doc.model().units();
+        let pack = creabim_core::styles::active_pack(self.doc.model());
+        for (i, k) in creabim_core::NumberKind::ALL.into_iter().enumerate() {
+            let f = pack.number_formats.get(k);
+            let said = if f.is_default() { "project".to_string() } else { f.write(&units, k, if k.is_level() { 3.0 } else { 1.0668 }) };
+            items.push(Item::new(format!("units.kind:{i}"), format!("{}  ·  {said}", k.label())).hint("Opens its number format"));
+        }
         items.push(Item::Separator);
         items.push(
-            Item::new("units", "Rounding and more…")
+            Item::new("units", "Number formats…")
                 .icon("units")
-                .hint("Saved with this project. You can still type any unit: 3 m, 10'6\", 450 mm."),
+                .hint("Project units, and how dimensions, level heads, spot levels, tags and schedules write numbers. Saved with the style pack."),
         );
         items
     }
@@ -205,6 +214,12 @@ impl CreaBimApp {
             }
             "app.settings" => self.settings_open = true,
             "app.exit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            "units.kind" => {
+                if let Some(k) = arg.parse::<usize>().ok().and_then(|i| creabim_core::NumberKind::ALL.get(i)) {
+                    self.levels.units_kind = Some(*k);
+                    self.levels.units_open = true;
+                }
+            }
             "units.set" => {
                 if let Some(u) = arg.parse::<usize>().ok().and_then(|i| UNIT_ORDER.get(i)) {
                     self.set_unit(*u);

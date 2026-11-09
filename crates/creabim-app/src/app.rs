@@ -7274,6 +7274,31 @@ impl CreaBimApp {
                         crate::annotate::LookEdit::NewStyle => new_style = true,
                         crate::annotate::LookEdit::None => {}
                     }
+                    // its own number format over the style pack's (A5-2)
+                    if d.kind != creabim_core::DimensionKind::Spot
+                        && crate::props::subsection(ui, "dim.format", "Number format", false)
+                    {
+                        let mut own = d.format.is_some();
+                        if crate::props::switch(ui, &mut own, "Own format")
+                            .on_hover_text("This dimension writes its number its own way; off, it follows Dimensions in the style pack")
+                            .changed()
+                        {
+                            d.format = own.then(Default::default);
+                            label = "Dimension number format";
+                        }
+                        if let Some(f) = &mut d.format {
+                            let was = *f;
+                            let units = self.doc.model().units();
+                            levelsui::kind_format(ui, f, &units, creabim_core::NumberKind::Dimensions);
+                            if *f != was {
+                                label = "Dimension number format";
+                            }
+                        }
+                        if crate::props::action(ui, "", "Number formats…", "The style pack's formats for every kind", true).clicked() {
+                            self.levels.units_kind = Some(creabim_core::NumberKind::Dimensions);
+                            self.levels.units_open = true;
+                        }
+                    }
                 }
                 ElementKind::Tag(t) => {
                     let host = self

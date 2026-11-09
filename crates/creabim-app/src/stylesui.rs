@@ -581,7 +581,7 @@ pub(super) fn override_fields(ui: &mut egui::Ui, o: &mut Override) -> bool {
 impl CreaBimApp {
     /// The pack being edited: the project's default, else the Standard
     /// pack it draws with until it has one.
-    fn edited_pack(&self) -> (Option<ElementId>, StylePack) {
+    pub(super) fn edited_pack(&self) -> (Option<ElementId>, StylePack) {
         let model = self.doc.model();
         let all = styles::packs(model);
         let found = all.iter().find(|p| p.1.default).or(all.first());
@@ -592,7 +592,7 @@ impl CreaBimApp {
     }
 
     /// Commit an edited pack: in place, or as the project's first pack.
-    fn commit_pack(&mut self, id: Option<ElementId>, pack: StylePack, label: &str) {
+    pub(super) fn commit_pack(&mut self, id: Option<ElementId>, pack: StylePack, label: &str) {
         let r = match id {
             Some(id) => self.doc.edit_merged(id, label, |e| {
                 e.name = pack.name.clone();

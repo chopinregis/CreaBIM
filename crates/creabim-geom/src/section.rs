@@ -239,7 +239,6 @@ pub fn section_view_in(
 /// metre past each side, each with its head (name and elevation in the
 /// project's units) at the right-hand end. `scale` sizes the heads.
 pub fn level_datums(model: &Model, span: (f64, f64), scale: f64) -> Vec<PlanItem> {
-    let units = model.units();
     let look = crate::annotate::look_of(model, None, None);
     let mut items = Vec::new();
     for (e, l) in model.levels() {
@@ -255,7 +254,7 @@ pub fn level_datums(model: &Model, span: (f64, f64), scale: f64) -> Vec<PlanItem
             item: Box::new(crate::annotation::Annotation {
                 shape: crate::annotation::Shape::Level {
                     at: DVec2::new(x1, l.elevation),
-                    elevation: units.elevation(l.elevation),
+                    elevation: creabim_core::write_number(model, creabim_core::NumberKind::LevelHeads, None, l.elevation),
                     line_end: None,
                 },
                 text: e.name.clone(),

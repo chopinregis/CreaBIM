@@ -408,6 +408,262 @@ fn mixed(s: &str) -> Option<f64> {
     }
 }
 
+// ---- number formats (A5-2) -------------------------------------------------
+
+/// How one written length looks once its unit and precision are chosen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Written {
+    /// A level's sign: `+3.000`, `±0.000`, `-0.450`.
+    pub sign: bool,
+    /// The unit after the number: `3000 mm`. None is the unit's own habit:
+    /// metric bare, decimal feet with `'`. Feet and inches always keep
+    /// their marks.
+    pub symbol: Option<bool>,
+    /// `0.450` rather than `.450`.
+    pub leading_zero: bool,
+    /// `3.000` rather than `3`.
+    pub trailing_zeros: bool,
+}
+
+impl Default for Written {
+    fn default() -> Self {
+        Self {
+            sign: false,
+            symbol: None,
+            leading_zero: true,
+            trailing_zeros: true,
+        }
+    }
+}
+
+impl Units {
+    /// A length written as `w` asks, in these units.
+    pub fn written(&self, metres: f64, w: Written) -> String {
+        if !metres.is_finite() {
+            return "?".into();
+        }
+        let body = |m: f64| -> String {
+            if self.length.is_fractional() {
+                return self.dimension(m);
+            }
+            let mut n = self.decimal(m);
+            if !w.trailing_zeros && n.contains('.') {
+                n = n.trim_end_matches('0').trim_end_matches('.').to_string();
+            }
+            if !w.leading_zero {
+                if let Some(rest) = n.strip_prefix("0.") {
+                    n = format!(".{rest}");
+                } else if let Some(rest) = n.strip_prefix("-0.") {
+                    n = format!("-.{rest}");
+                }
+            }
+            match (self.length, w.symbol) {
+                (LengthUnit::Feet, None | Some(true)) => format!("{n}'"),
+                (LengthUnit::Feet, Some(false)) => n,
+                (u, Some(true)) => format!("{n} {}", u.symbol()),
+                _ => n,
+            }
+        };
+        if !w.sign {
+            return body(metres);
+        }
+        let text = body(metres.abs());
+        if text == body(0.0) {
+            format!("±{text}")
+        } else if metres < 0.0 {
+            format!("-{text}")
+        } else {
+            format!("+{text}")
+        }
+    }
+}
+
+/// What a number format is for: each kind of annotation has its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NumberKind {
+    Dimensions,
+    LevelHeads,
+    SpotLevels,
+    Tags,
+    Schedules,
+}
+
+impl NumberKind {
+    pub const ALL: [NumberKind; 5] = [
+        NumberKind::Dimensions,
+        NumberKind::LevelHeads,
+        NumberKind::SpotLevels,
+        NumberKind::Tags,
+        NumberKind::Schedules,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            NumberKind::Dimensions => "Dimensions",
+            NumberKind::LevelHeads => "Level heads",
+            NumberKind::SpotLevels => "Spot levels",
+            NumberKind::Tags => "Tags",
+            NumberKind::Schedules => "Schedules",
+        }
+    }
+
+    /// Whether its values are heights, written with a sign by default.
+    pub fn is_level(self) -> bool {
+        matches!(self, NumberKind::LevelHeads | NumberKind::SpotLevels)
+    }
+}
+
+/// How numbers read for one kind of annotation. Every field left `None`
+/// uses the project's (or, on one dimension, its kind's).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NumberFormat {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<LengthUnit>,
+    /// Decimal places, or for feet and inches the smallest fraction as a
+    /// power of two, as [`Units::precision`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub precision: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leading_zero: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trailing_zeros: Option<bool>,
+    /// Levels only: `+3.000` / `±0.000`, or the bare number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sign: Option<bool>,
+}
+
+impl NumberFormat {
+    pub fn is_default(&self) -> bool {
+        *self == NumberFormat::default()
+    }
+
+    /// This format with what it leaves open taken from `under`.
+    pub fn over(self, under: NumberFormat) -> NumberFormat {
+        NumberFormat {
+            unit: self.unit.or(under.unit),
+            precision: self.precision.or(under.precision),
+            symbol: self.symbol.or(under.symbol),
+            leading_zero: self.leading_zero.or(under.leading_zero),
+            trailing_zeros: self.trailing_zeros.or(under.trailing_zeros),
+            sign: self.sign.or(under.sign),
+        }
+    }
+
+    /// The unit and precision it writes in, on top of the project's. A unit
+    /// chosen without a precision takes that unit's usual one.
+    pub fn units(&self, project: &Units) -> Units {
+        match self.unit {
+            Some(u) if u != project.length => Units {
+                length: u,
+                precision: self.precision.unwrap_or(u.default_precision()),
+            },
+            _ => Units {
+                length: project.length,
+                precision: self.precision.unwrap_or(project.precision),
+            },
+        }
+    }
+
+    /// A length of `kind` written in this format over the project's units.
+    pub fn write(&self, project: &Units, kind: NumberKind, metres: f64) -> String {
+        let w = Written {
+            sign: self.sign.unwrap_or(kind.is_level()),
+            symbol: self.symbol,
+            leading_zero: self.leading_zero.unwrap_or(true),
+            trailing_zeros: self.trailing_zeros.unwrap_or(true),
+        };
+        self.units(project).written(metres, w)
+    }
+}
+
+/// The style pack's number formats, one per kind.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NumberFormats {
+    #[serde(default, skip_serializing_if = "NumberFormat::is_default")]
+    pub dimensions: NumberFormat,
+    #[serde(default, skip_serializing_if = "NumberFormat::is_default")]
+    pub level_heads: NumberFormat,
+    #[serde(default, skip_serializing_if = "NumberFormat::is_default")]
+    pub spot_levels: NumberFormat,
+    #[serde(default, skip_serializing_if = "NumberFormat::is_default")]
+    pub tags: NumberFormat,
+    #[serde(default, skip_serializing_if = "NumberFormat::is_default")]
+    pub schedules: NumberFormat,
+}
+
+impl NumberFormats {
+    pub fn is_default(&self) -> bool {
+        *self == NumberFormats::default()
+    }
+
+    pub fn get(&self, kind: NumberKind) -> NumberFormat {
+        match kind {
+            NumberKind::Dimensions => self.dimensions,
+            NumberKind::LevelHeads => self.level_heads,
+            NumberKind::SpotLevels => self.spot_levels,
+            NumberKind::Tags => self.tags,
+            NumberKind::Schedules => self.schedules,
+        }
+    }
+
+    pub fn get_mut(&mut self, kind: NumberKind) -> &mut NumberFormat {
+        match kind {
+            NumberKind::Dimensions => &mut self.dimensions,
+            NumberKind::LevelHeads => &mut self.level_heads,
+            NumberKind::SpotLevels => &mut self.spot_levels,
+            NumberKind::Tags => &mut self.tags,
+            NumberKind::Schedules => &mut self.schedules,
+        }
+    }
+}
+
+/// The format a `kind` of annotation writes with in `model`: its own
+/// (`own`, one dimension's) over the style pack's for the kind.
+pub fn number_format(model: &crate::Model, kind: NumberKind, own: Option<NumberFormat>) -> NumberFormat {
+    let pack = crate::styles::active_pack(model).number_formats.get(kind);
+    own.map_or(pack, |o| o.over(pack))
+}
+
+/// A length of `kind` as `model` writes it.
+pub fn write_number(model: &crate::Model, kind: NumberKind, own: Option<NumberFormat>, metres: f64) -> String {
+    number_format(model, kind, own).write(&model.units(), kind, metres)
+}
+
+#[cfg(test)]
+mod format_tests {
+    use super::*;
+
+    #[test]
+    fn number_formats_write_metric_and_imperial() {
+        let mm = Units::metric();
+        let level = NumberFormat {
+            unit: Some(LengthUnit::Metres),
+            symbol: Some(false),
+            ..Default::default()
+        };
+        assert_eq!(level.write(&mm, NumberKind::LevelHeads, 3.0), "+3.000");
+        assert_eq!(level.write(&mm, NumberKind::LevelHeads, 0.0), "±0.000");
+        assert_eq!(level.write(&mm, NumberKind::LevelHeads, -0.45), "-0.450");
+        let bare = NumberFormat { leading_zero: Some(false), trailing_zeros: Some(false), ..level };
+        assert_eq!(bare.write(&mm, NumberKind::LevelHeads, -0.45), "-.45");
+        assert_eq!(bare.write(&mm, NumberKind::LevelHeads, 3.0), "+3");
+        // the project's: as dimensions always were
+        assert_eq!(NumberFormat::default().write(&mm, NumberKind::Dimensions, 3.0), "3000");
+        let with = NumberFormat { symbol: Some(true), precision: Some(1), ..Default::default() };
+        assert_eq!(with.write(&mm, NumberKind::Dimensions, 3.0), "3000.0 mm");
+        // imperial: fractions keep their marks, decimal feet can drop theirs
+        let ft = Units::imperial();
+        assert_eq!(NumberFormat::default().write(&ft, NumberKind::Dimensions, 1.0668), "3'-6\"");
+        assert_eq!(NumberFormat::default().write(&ft, NumberKind::LevelHeads, 0.0), "±0'-0\"");
+        let dec = NumberFormat { unit: Some(LengthUnit::Feet), symbol: Some(false), ..Default::default() };
+        assert_eq!(dec.write(&ft, NumberKind::Dimensions, 1.0668), "3.50");
+        let eighth = NumberFormat { precision: Some(3), ..Default::default() };
+        assert_eq!(eighth.write(&ft, NumberKind::Dimensions, 1.0668 + 0.0127), "3'-6 1/2\"");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

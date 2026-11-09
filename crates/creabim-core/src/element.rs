@@ -762,6 +762,9 @@ pub struct Dimension {
     /// two hosts. Moving one moves the other (see [`crate::holds`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<f64>,
+    /// Its own number format over its kind's in the style pack (A5-2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<crate::units::NumberFormat>,
 }
 
 impl Dimension {
@@ -779,6 +782,7 @@ impl Dimension {
             axis: DimAxis::Aligned,
             pattern: None,
             held: None,
+            format: None,
         }
     }
 

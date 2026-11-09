@@ -428,7 +428,7 @@ pub fn spot_text(model: &Model, pattern: &str, z: f64) -> String {
         .map(|(e, _)| e.name.clone())
         .unwrap_or_default();
     pattern
-        .replace("{elevation}", &model.units().elevation(z))
+        .replace("{elevation}", &crate::write_number(model, crate::NumberKind::SpotLevels, None, z))
         .replace("{m3}", &signed(z, 3))
         .replace("{m}", &signed(z, 2))
         .replace("{mm}", &signed(z * 1000.0, 0))
