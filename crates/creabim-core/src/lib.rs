@@ -13,6 +13,7 @@ pub mod cropbox;
 pub mod csg;
 pub mod curtain;
 pub mod detail;
+pub mod divide;
 pub mod document;
 pub mod editmesh;
 pub mod element;

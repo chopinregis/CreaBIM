@@ -121,6 +121,77 @@ impl CreaBimApp {
         );
     }
 
+    /// A plan's or section's cut as a section box in the 3D window (MU34
+    /// A2): a plan keeps what is under its cut, down to its view depth
+    /// (`up`: what is above it, looking at the ceilings); a section keeps
+    /// what it looks at, from its line to its depth. One box per view,
+    /// replaced when asked again.
+    pub(super) fn cut_box(&mut self, view: ElementId, up: bool) {
+        let model = self.doc.model();
+        let Some(e) = model.get(view) else { return };
+        let ElementKind::View(v) = &e.kind else { return };
+        let name = format!("{} cut", e.name);
+        let (mut lo, mut hi) = self
+            .shown_bounds(None)
+            .unwrap_or((DVec3::new(-5.0, -5.0, 0.0), DVec3::new(5.0, 5.0, 3.0)));
+        lo -= DVec3::splat(MARGIN);
+        hi += DVec3::splat(MARGIN);
+        match v.kind {
+            ViewKind::Plan { level, cut_height } => {
+                let z = model.level(level).map_or(0.0, |l| l.elevation);
+                let below = model
+                    .levels()
+                    .map(|(_, x)| x.elevation)
+                    .filter(|x| *x < z - 1e-6)
+                    .fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.max(x))));
+                if up {
+                    lo.z = z + cut_height;
+                } else {
+                    hi.z = z + cut_height;
+                    lo.z = z - v.graphics.depth(z, below);
+                }
+            }
+            ViewKind::Section { start, end, depth, .. } => {
+                let look = (end - start).normalize_or_zero().perp();
+                let (a, b) = (start, start + look * depth);
+                if look.x.abs() > 0.999 {
+                    lo.x = a.x.min(b.x);
+                    hi.x = a.x.max(b.x);
+                } else if look.y.abs() > 0.999 {
+                    lo.y = a.y.min(b.y);
+                    hi.y = a.y.max(b.y);
+                } else {
+                    self.status = "A section box stays square to the grid: this section runs at an angle, so it can't be one.".into();
+                    return;
+                }
+            }
+            _ => {
+                self.status = "Only a plan's or a section's cut makes a section box.".into();
+                return;
+            }
+        }
+        let existing = model.iter().find(|x| x.name == name && matches!(x.kind, ElementKind::CropBox(_))).map(|x| x.id);
+        let c = CropBox::new(None, lo, hi);
+        let r = match existing {
+            Some(id) => self.doc.edit(id, &format!("Update {name}"), |x| {
+                if let ElementKind::CropBox(old) = &mut x.kind {
+                    old.min = c.min;
+                    old.max = c.max;
+                    old.enabled = true;
+                }
+            }),
+            None => self.doc.commit(Transaction::new(format!("Add {name}")).insert(Element::new(name.clone(), ElementKind::CropBox(c)))),
+        };
+        self.report(
+            r,
+            format!(
+                "3D is cut as {} sees it{}: drag the box's faces to change it, or switch it off in the browser.",
+                e_name(&name),
+                if up { ", looking up at the ceilings" } else { "" }
+            ),
+        );
+    }
+
     fn crop_box(&self, id: ElementId) -> Option<(&Element, &CropBox)> {
         let e = self.doc.model().get(id)?;
         match &e.kind {
@@ -850,6 +921,10 @@ fn hull(p: &[egui::Pos2]) -> Vec<egui::Pos2> {
     h
 }
 
+fn e_name(cut_name: &str) -> &str {
+    cut_name.trim_end_matches(" cut")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -916,3 +991,4 @@ mod tests {
         assert_eq!(app.crop_box(mine).unwrap().0.name, "Crop box 1");
     }
 }
+

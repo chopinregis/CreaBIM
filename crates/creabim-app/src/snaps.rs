@@ -55,6 +55,20 @@ pub enum SnapKind {
     /// No object snap: the point under the pointer, rounded to the
     /// increment when that is on.
     Grid,
+    /// An even division of an edge: its thirds, quarters… (MU34 B1).
+    Division,
+}
+
+static DIVISIONS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// The parts every edge snaps at, as ArchiCAD's special snaps: 0 off, else
+/// 3, 4, 5… (halves are the midpoint snap's).
+pub fn divisions() -> u8 {
+    DIVISIONS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn set_divisions(n: u8) {
+    DIVISIONS.store(n, std::sync::atomic::Ordering::Relaxed);
 }
 
 impl SnapKind {
@@ -79,6 +93,7 @@ impl SnapKind {
             SnapKind::UnderlayFace => "Underlay face",
             SnapKind::UnderlayCentre => "Underlay centreline",
             SnapKind::Grid => "",
+            SnapKind::Division => "Division",
         }
     }
 
@@ -89,6 +104,7 @@ impl SnapKind {
             self,
             SnapKind::Endpoint
                 | SnapKind::Midpoint
+                | SnapKind::Division
                 | SnapKind::Center
                 | SnapKind::Quadrant
                 | SnapKind::Intersection
@@ -228,6 +244,7 @@ impl SnapSettings {
             && match kind {
                 SnapKind::Endpoint => self.endpoint,
                 SnapKind::Midpoint => self.midpoint,
+                SnapKind::Division => divisions() > 2,
                 SnapKind::Center => self.center,
                 SnapKind::Quadrant => self.quadrant,
                 SnapKind::Intersection => self.intersection,
@@ -543,6 +560,12 @@ impl Snapper {
             self.point(a, SnapKind::Endpoint, src, host);
             self.point(b, SnapKind::Endpoint, src, host);
             self.point((a + b) / 2.0, SnapKind::Midpoint, src, host);
+            let n = divisions();
+            if n > 2 {
+                for k in 1..n {
+                    self.point(a + (b - a) * (k as f64 / n as f64), SnapKind::Division, src, host);
+                }
+            }
         }
     }
 
@@ -917,6 +940,7 @@ impl Snapper {
             SnapKind::Endpoint => 0.0,
             SnapKind::Intersection => 0.5,
             SnapKind::Midpoint | SnapKind::Center | SnapKind::Quadrant => 1.0,
+            SnapKind::Division => 1.2,
             _ => 2.0,
         };
         let best_point = self
@@ -1504,7 +1528,7 @@ pub fn draw(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) {
 fn marker(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) -> Option<Color32> {
     let c = match snap.kind {
         SnapKind::Endpoint | SnapKind::Intersection => Color32::from_rgb(20, 150, 60),
-        SnapKind::Midpoint => Color32::from_rgb(20, 120, 200),
+        SnapKind::Midpoint | SnapKind::Division => Color32::from_rgb(20, 120, 200),
         SnapKind::Center | SnapKind::Quadrant => Color32::from_rgb(200, 120, 20),
         SnapKind::Perpendicular => Color32::from_rgb(160, 60, 180),
         SnapKind::OnEdge | SnapKind::Guide | SnapKind::OnGridLine => Color32::from_rgb(200, 40, 40),
@@ -1526,6 +1550,10 @@ fn marker(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) -> Option
                 s,
                 egui::StrokeKind::Middle,
             );
+        }
+        SnapKind::Division => {
+            painter.line_segment([at + egui::vec2(0.0, -r), at + egui::vec2(0.0, r)], s);
+            painter.circle_stroke(at, r * 0.55, s);
         }
         SnapKind::Midpoint => {
             painter.add(egui::Shape::closed_line(

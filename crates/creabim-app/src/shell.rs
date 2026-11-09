@@ -643,6 +643,16 @@ impl CreaBimApp {
                     format!("Grid snap: {}", self.plan.snap.step_label()),
                     self.step_items(),
                 ));
+                // every edge at its even parts (MU34 B1)
+                let now = crate::snaps::divisions();
+                let mut div = vec![Item::new("snap.div:0", "Off").checked(now == 0)];
+                for n in [3u8, 4, 5, 6, 8, 10] {
+                    div.push(Item::new(format!("snap.div:{n}"), format!("{n} parts")).checked(now == n));
+                }
+                items.push(Item::sub(
+                    if now == 0 { "Divisions: off".to_string() } else { format!("Divisions: {now}") },
+                    div,
+                ));
                 items
             }
             key => self
@@ -1379,6 +1389,17 @@ impl CreaBimApp {
                     self.shell.settings.store();
                 }
             }
+            "snap.div" => {
+                let n = index.unwrap_or(0).min(20) as u8;
+                crate::snaps::set_divisions(n);
+                self.plan.forget_snaps();
+                self.snaps_3d = None;
+                self.status = if n == 0 {
+                    "Divisions off.".into()
+                } else {
+                    format!("Divisions: every edge snaps at its {n} even parts while you place or draw anything.")
+                };
+            }
             "snap.all" | "snap.none" => {
                 let on = head == "snap.all";
                 self.plan
@@ -1646,7 +1667,7 @@ impl CreaBimApp {
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
             | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
             // (these four were handled below but never routed here: MU22)
-            | "view.tempdims" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "view.tempdims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
             | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
             | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
@@ -2274,6 +2295,14 @@ impl CreaBimApp {
                     "Back to the working paper.".into()
                 };
             }
+            "view.ranges" => {
+                self.plan.plan_ranges = !self.plan.plan_ranges;
+                self.status = if self.plan.plan_ranges {
+                    "Plan ranges: each floor plan's cut (solid) and view depth (dashed). Drag a grip at the right to change it.".into()
+                } else {
+                    "Plan ranges hidden.".into()
+                };
+            }
             "view.tempdims" => {
                 self.plan.temp_dims_off = !self.plan.temp_dims_off;
                 self.shell.settings.temp_dims_off = self.plan.temp_dims_off;
@@ -2721,6 +2750,13 @@ impl CreaBimApp {
                     v.kind,
                     ViewKind::Section { .. } | ViewKind::Axonometric { .. }
                 ) {
+                    if matches!(v.kind, ViewKind::Section { .. }) {
+                        options.push(json!({
+                            "kind": "toggle", "id": "view.ranges", "label": "Plan ranges",
+                            "icon": "view-range", "on": self.plan.plan_ranges,
+                            "hint": "Each floor plan's cut and view depth as a band: drag their grips to change them (MU34)",
+                        }));
+                    }
                     options.push(json!({
                         "kind": "menu", "key": "viewstyle", "label": "Style",
                         "value": v.style.label(), "icon": view_style_icon(v.style),

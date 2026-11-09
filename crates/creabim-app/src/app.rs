@@ -31,6 +31,8 @@ pub(crate) mod appmenu;
 mod areasui;
 #[path = "assemblies.rs"]
 mod assemblies;
+#[path = "divideui.rs"]
+mod divideui;
 #[path = "cropui.rs"]
 mod cropui;
 #[path = "drafting.rs"]
@@ -123,6 +125,8 @@ pub struct CreaBimApp {
     xray_drawings: HashMap<ElementId, (u64, Drawing)>,
     /// The theme the 3D view's wires were last drawn for (MU31).
     dark_3d: bool,
+    /// The Divide window (MU34 B2).
+    divide: divideui::DivideUi,
     camera: OrbitCamera,
     cube: crate::viewcube::ViewCube,
     /// Aspect ratio of the 3D view as last drawn, for framing.
@@ -323,6 +327,7 @@ impl CreaBimApp {
             looks: HashMap::new(),
             xray_drawings: HashMap::new(),
             dark_3d: true,
+            divide: Default::default(),
             camera: OrbitCamera::default(),
             cube: Default::default(),
             aspect: 0.65,
@@ -6597,6 +6602,12 @@ impl CreaBimApp {
         if creabim_core::types::TypeCategory::of(&e.kind).is_some() {
             self.type_picker(ui, id);
         }
+        // even parts of its length (MU34 B2)
+        if creabim_core::divide::span(self.doc.model(), id).is_some()
+            && crate::props::action(ui, "Divide", "Into even parts…", "Cut it into parts, put guides at the divisions, or copy something into each part", true).clicked()
+        {
+            self.divide.open = true;
+        }
         // the type picker may have changed it
         let Some(e) = self.doc.model().get(id).cloned() else {
             return;
@@ -8864,6 +8875,7 @@ impl eframe::App for CreaBimApp {
         self.styles_window(&ctx);
         self.templates_window(&ctx);
         self.units_window(&ctx);
+        self.divide_window(&ctx);
         self.settings_window(&ctx);
         // the paper follows the setting and the theme; a change redraws
         // the 3D view's grid and background

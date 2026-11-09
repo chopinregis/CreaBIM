@@ -524,6 +524,12 @@ pub struct PlanState {
     pub calibrated: Option<(ElementId, DVec2, DVec2)>,
     /// Temporary dimensions muted (MU21): none shown, none clicked.
     pub temp_dims_off: bool,
+    /// Sections show the floor plans' ranges: each plan's cut and view
+    /// depth as a band, dragged by their grips (MU34 A1).
+    pub plan_ranges: bool,
+    /// A plan's range line being dragged in a section: the plan, its cut
+    /// (else its view depth), its level's height.
+    range_drag: Option<(ElementId, bool, f64)>,
     pub host_pick: Option<ElementId>,
     pub host_cycle: usize,
     /// A footing was just placed on a host: the status bar offers the
@@ -636,6 +642,8 @@ impl Default for PlanState {
             dropped: vec![],
             calibrated: None,
             temp_dims_off: false,
+            plan_ranges: false,
+            range_drag: None,
             host_pick: None,
             host_cycle: 0,
             footing_placed: false,
@@ -645,6 +653,12 @@ impl Default for PlanState {
 }
 
 impl PlanState {
+    /// Rebuild every view's snaps on their next draw (a snap setting
+    /// that changes what is snapped to).
+    pub fn forget_snaps(&mut self) {
+        self.snaps.clear();
+    }
+
     /// Drop any half-finished tool input.
     pub fn cancel(&mut self) {
         self.pending = None;
@@ -1665,6 +1679,12 @@ pub fn show(
     // a level line or head in a section drags the level up and down; after
     // the selection's grips, so a wall's top grip lying on a level line
     // moves the wall's top, not the level
+    // the floor plans' ranges, drawn and dragged by their grips (MU34 A1)
+    if let (PaneKind::Section { .. }, true) = (kind, state.plan_ranges) {
+        if let Some(r) = plan_ranges(doc, &painter, &xf, &response, state, selection, tool == Tool::Select) {
+            return r;
+        }
+    }
     if let (PaneKind::Section { .. }, Tool::Select) = (kind, tool) {
         let snapped = tool_snap.filter(|s| !shift && s.kind != SnapKind::Grid);
         if let Some(r) = drag_level(doc, plan, &xf, &response, state, selection, mm, snapped) {
@@ -3999,6 +4019,98 @@ fn add_reference_snaps(s: &mut Snapper, state: &mut PlanState, model: &creabim_c
             }
         }
     }
+}
+
+/// The floor plans' ranges in a section (MU34 A1): for each level with a
+/// plan, a band from its view depth up to its cut, the cut a solid line,
+/// the depth a dashed one, each with a grip at the right that drags it.
+/// The selected plan's band is stronger. Returns `Some` while dragging.
+fn plan_ranges(
+    doc: &mut Document,
+    painter: &egui::Painter,
+    xf: &Xf,
+    response: &egui::Response,
+    state: &mut PlanState,
+    selection: &Selection,
+    grips: bool,
+) -> Option<Option<String>> {
+    let model = doc.model();
+    let mut seen = std::collections::HashSet::new();
+    let mut ranges: Vec<(ElementId, f64, f64, f64, String)> = vec![];
+    for e in model.iter() {
+        let ElementKind::View(v) = &e.kind else { continue };
+        let ViewKind::Plan { level, cut_height } = v.kind else { continue };
+        if v.ceiling_plan || !seen.insert(level) {
+            continue;
+        }
+        let Some(l) = model.level(level) else { continue };
+        let below = model
+            .levels()
+            .map(|(_, x)| x.elevation)
+            .filter(|z| *z < l.elevation - 1e-6)
+            .fold(None, |m: Option<f64>, z| Some(m.map_or(z, |m| m.max(z))));
+        let depth = v.graphics.depth(l.elevation, below);
+        ranges.push((e.id, l.elevation, l.elevation + cut_height, l.elevation - depth, e.name.clone()));
+    }
+    let accent = Color32::from_rgb(230, 120, 30);
+    let r = painter.clip_rect();
+    let (x0, x1) = (r.left() + 8.0, r.right() - 46.0);
+    let pointer = response.hover_pos();
+    let mut over = None;
+    for (id, z, cut, deep, name) in &ranges {
+        let lit = selection.contains(*id);
+        let (yc, yd) = (xf.to_screen(DVec2::new(0.0, *cut)).y, xf.to_screen(DVec2::new(0.0, *deep)).y);
+        let band = Rect::from_min_max(egui::pos2(x0, yc.min(yd)), egui::pos2(x1, yc.max(yd)));
+        painter.rect_filled(band, 0.0, accent.gamma_multiply(if lit { 0.16 } else { 0.07 }));
+        let w = if lit { 1.6 } else { 1.0 };
+        painter.line_segment([egui::pos2(x0, yc), egui::pos2(x1, yc)], Stroke::new(w, accent));
+        painter.add(egui::Shape::dashed_line(&[egui::pos2(x0, yd), egui::pos2(x1, yd)], Stroke::new(w * 0.8, accent), 5.0, 3.0));
+        painter.text(egui::pos2(x0 + 4.0, yc - 3.0), egui::Align2::LEFT_BOTTOM, format!("{name} · cut {}", crate::units::len(cut - z)), egui::FontId::proportional(10.5), accent);
+        if grips {
+            for (y, is_cut) in [(yc, true), (yd, false)] {
+                let g = egui::pos2(x1, y);
+                let hot = pointer.is_some_and(|p| p.distance(g) < 7.0);
+                painter.circle(g, if hot { 5.5 } else { 4.5 }, Color32::WHITE, Stroke::new(1.5, accent));
+                if hot {
+                    over = Some((*id, is_cut, *z));
+                }
+            }
+        }
+    }
+    if over.is_some() {
+        painter.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    if response.drag_started_by(egui::PointerButton::Primary) && over.is_some() {
+        state.range_drag = over;
+        state.drag_owner = Some(response.id);
+    }
+    let (id, is_cut, z) = state.range_drag?;
+    if state.drag_owner != Some(response.id) {
+        return None;
+    }
+    if response.drag_stopped() || !response.dragged() {
+        state.range_drag = None;
+        return Some(None);
+    }
+    let y = xf.to_world(response.interact_pointer_pos()?).y;
+    let y = (y * 100.0).round() / 100.0;
+    let r = doc.edit_merged(id, if is_cut { "Plan cut height" } else { "Plan view depth" }, |e| {
+        if let ElementKind::View(v) = &mut e.kind {
+            if is_cut {
+                if let ViewKind::Plan { cut_height, .. } = &mut v.kind {
+                    *cut_height = (y - z).max(0.1);
+                }
+            } else {
+                v.graphics.range.view_depth = Some((z - y).max(0.0));
+            }
+        }
+    });
+    state.status = Some(if is_cut {
+        format!("Cut height {}", crate::units::len((y - z).max(0.1)))
+    } else {
+        format!("View depth {}", crate::units::len((z - y).max(0.0)))
+    });
+    Some(r.err().map(|e| e.to_string()))
 }
 
 /// Handles on a selected section or elevation line. Returns `Some` while a

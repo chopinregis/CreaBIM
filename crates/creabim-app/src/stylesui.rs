@@ -611,6 +611,14 @@ impl CreaBimApp {
 
     /// Properties of a view: its range (plans) and its graphics.
     pub(super) fn view_graphics_sections(&mut self, ui: &mut egui::Ui, id: ElementId) {
+        let mut cut_box: Option<bool> = None;
+        self.view_graphics_inner(ui, id, &mut cut_box);
+        if let Some(up) = cut_box {
+            self.cut_box(id, up);
+        }
+    }
+
+    fn view_graphics_inner(&mut self, ui: &mut egui::Ui, id: ElementId, cut_box: &mut Option<bool>) {
         let Some(ElementKind::View(v)) = self.doc.model().get(id).map(|e| &e.kind) else {
             return;
         };
@@ -639,6 +647,22 @@ impl CreaBimApp {
             if let Some(l) = range_ui(ui, &levels, &mut v.graphics.range) {
                 label = Some(l);
             }
+            // the cut as a section box in 3D (MU34 A2)
+            let (down, up) = crate::props::actions2(
+                ui,
+                "Section box",
+                ("Below the cut", "Cut the 3D view as this plan sees it", true),
+                ("Above (ceilings)", "Keep what is above the cut, to look up at the ceilings", true),
+            );
+            if down || up {
+                *cut_box = Some(up);
+            }
+        }
+        // a section's cut as a section box in 3D too (MU34 A2)
+        if matches!(v.kind, ViewKind::Section { .. })
+            && crate::props::action(ui, "Section box", "In 3D", "Cut the 3D view as this section sees it: from its line to its depth", true).clicked()
+        {
+            *cut_box = Some(false);
         }
         if self.prop_header(
             ui,
