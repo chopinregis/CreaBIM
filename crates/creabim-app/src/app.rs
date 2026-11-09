@@ -9996,6 +9996,7 @@ fn window_title(path: &str, unsaved: bool) -> String {
     let version = env!("CARGO_PKG_VERSION");
     let app = match version.split('.').collect::<Vec<_>>().as_slice() {
         ["0", minor, ..] => format!("CreaBIM 0.{minor} beta"),
+        [major, minor, ..] => format!("CreaBIM {major}.{minor}"),
         _ => "CreaBIM".to_string(),
     };
     format!("{}{name} — {app}", if unsaved { "• " } else { "" })
