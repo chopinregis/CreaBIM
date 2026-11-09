@@ -2072,6 +2072,42 @@ pub fn draw_references(
     }
 }
 
+/// A dashed line through `pts`, cut to what the painter shows (MU37: a
+/// guide drawn ±10 km at a close zoom made millions of dashes a frame, the
+/// Profile view lagged, then ran out of memory).
+pub fn dashed_clipped(painter: &Painter, pts: &[Pos2], stroke: Stroke, dash: f32, gap: f32) {
+    let r = painter.clip_rect().expand(8.0);
+    for w in pts.windows(2) {
+        if let Some((a, b)) = clip_segment(w[0], w[1], r) {
+            painter.add(egui::Shape::dashed_line(&[a, b], stroke, dash, gap));
+        }
+    }
+}
+
+/// The part of `a`–`b` inside `r` (Liang–Barsky), if any.
+pub fn clip_segment(a: Pos2, b: Pos2, r: egui::Rect) -> Option<(Pos2, Pos2)> {
+    if !(a.x.is_finite() && a.y.is_finite() && b.x.is_finite() && b.y.is_finite()) {
+        return None;
+    }
+    let d = b - a;
+    let (mut t0, mut t1) = (0.0f32, 1.0f32);
+    for (p, q) in [(-d.x, a.x - r.left()), (d.x, r.right() - a.x), (-d.y, a.y - r.top()), (d.y, r.bottom() - a.y)] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return None;
+            }
+        } else {
+            let t = q / p;
+            if p < 0.0 {
+                t0 = t0.max(t);
+            } else {
+                t1 = t1.min(t);
+            }
+        }
+    }
+    (t0 <= t1).then(|| (a + d * t0, a + d * t1))
+}
+
 /// Draw temporary guides dashed across the pane: faint, or stronger with
 /// their names for those in `active` (the ones the snap follows).
 pub fn draw_guides(
@@ -2099,7 +2135,7 @@ pub fn draw_guides(
                     .filter(|s| s.x.is_finite() && s.y.is_finite())
                     .collect();
                 if pts.len() >= 2 {
-                    painter.add(egui::Shape::dashed_line(&pts, stroke, 6.0, 5.0));
+                    dashed_clipped(painter, &pts, stroke, 6.0, 5.0);
                 }
             }
             GuideShape::Line { p, d } => {

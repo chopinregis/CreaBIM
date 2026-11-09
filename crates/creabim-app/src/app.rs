@@ -8709,6 +8709,28 @@ impl PropTab {
     }
 }
 
+/// With CREABIM_PERF set, how long a frame (or a part of one) took, on
+/// stderr, when it took more than 8 ms (MU37: the Profile view felt late).
+pub(crate) struct Perf(std::time::Instant, &'static str);
+
+impl Perf {
+    pub(crate) fn new(what: &'static str) -> Self {
+        Perf(std::time::Instant::now(), what)
+    }
+}
+
+impl Drop for Perf {
+    fn drop(&mut self) {
+        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *ON.get_or_init(|| std::env::var_os("CREABIM_PERF").is_some()) {
+            let ms = self.0.elapsed().as_secs_f64() * 1000.0;
+            if ms > 8.0 {
+                eprintln!("{}: {ms:.1} ms", self.1);
+            }
+        }
+    }
+}
+
 impl eframe::App for CreaBimApp {
     /// Keys typed while a web pane had the keyboard reach the views.
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
@@ -8759,6 +8781,7 @@ impl eframe::App for CreaBimApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let _perf = Perf::new("frame");
         let ctx = ui.ctx().clone();
         // the activity log: what the status bar said (it names every edit
         // and undo) and the tool, when they change

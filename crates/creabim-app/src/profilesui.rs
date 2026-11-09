@@ -92,6 +92,9 @@ pub struct ProfilesUi {
     boxsel: Option<egui::Pos2>,
     /// The profile the Name field was filled for.
     name_for: String,
+    /// Move or Rotate leaves the original and drops a copy (Shift+D, or
+    /// Shift held at the last click; MU37).
+    copy: bool,
     /// The clicks of Move (base) and Rotate (centre, from).
     op: Vec<DVec2>,
     /// Align's line to align to.
@@ -766,6 +769,7 @@ impl CreaBimApp {
 
     /// The Profile view in an area (MU37).
     pub(super) fn profiles_area(&mut self, ui: &mut egui::Ui, body: Rect) {
+        let _perf = crate::app::Perf::new("profile view");
         let pal = self.shell.theme.palette();
         let model = self.doc.model();
         let response = ui.interact(body, ui.id().with("profile.view"), egui::Sense::click_and_drag());
@@ -875,7 +879,7 @@ impl CreaBimApp {
         // the insertion point's axes and the guides
         let violet = egui::Color32::from_rgb(170, 120, 230);
         let dash = |a: egui::Pos2, b: egui::Pos2, c: egui::Color32| {
-            painter.add(egui::Shape::dashed_line(&[a, b], egui::Stroke::new(1.0, c), 6.0, 4.0));
+            crate::snaps::dashed_clipped(&painter, &[a, b], egui::Stroke::new(1.0, c), 6.0, 4.0);
         };
         let o = to_s(DVec2::ZERO);
         dash(egui::pos2(body.left(), o.y), egui::pos2(body.right(), o.y), violet);
@@ -1184,7 +1188,7 @@ impl CreaBimApp {
                 let (sa, sb) = (to_s(*a), to_s(*b));
                 let u = (sb - sa).normalized();
                 let reach = if u.x.is_finite() { u * 30.0 } else { egui::Vec2::ZERO };
-                painter.add(egui::Shape::dashed_line(&[sa, sb + reach], egui::Stroke::new(1.1, tg), 5.0, 4.0));
+                crate::snaps::dashed_clipped(&painter, &[sa, sb + reach], egui::Stroke::new(1.1, tg), 5.0, 4.0);
             }
             painter.rect_stroke(Rect::from_center_size(to_s(*h), egui::vec2(10.0, 10.0)), 1.0, egui::Stroke::new(1.5, accent), egui::StrokeKind::Middle);
         }
@@ -1496,9 +1500,13 @@ impl CreaBimApp {
                             if pts.len() == 1 {
                                 painter.circle_stroke(pts[0], 5.0, egui::Stroke::new(1.5, accent));
                             } else {
-                                painter.add(egui::Shape::dashed_line(&pts, egui::Stroke::new(1.6, accent), 6.0, 4.0));
+                                crate::snaps::dashed_clipped(&painter, &pts, egui::Stroke::new(1.6, accent), 6.0, 4.0);
                             }
                         }
+                    }
+                    let copying = self.profiles.copy || ui.input(|i| i.modifiers.shift);
+                    if copying && f.is_some() {
+                        painter.text(to_s(w) + egui::vec2(14.0, -16.0), egui::Align2::LEFT_BOTTOM, "+ copy", egui::FontId::proportional(12.0), accent);
                     }
                     for p in &op {
                         painter.circle_filled(to_s(*p), 3.5, accent);
@@ -1509,13 +1517,23 @@ impl CreaBimApp {
                             self.profiles.op.push(w);
                         } else if let Some(f) = f {
                             self.profiles.op.clear();
+                            let copy = copying;
+                            self.profiles.copy = false;
                             for &sel in &picked {
                                 match sel {
+                                    PSel::Guide(i) if copy => {
+                                        if let Some(g) = self.profiles.guides.get_mut(&key) {
+                                            if let Some(&(a, b)) = g.get(i) {
+                                                g.push((f(a), f(b)));
+                                            }
+                                        }
+                                    }
                                     PSel::Guide(i) => {
                                         if let Some(g) = self.profiles.guides.get_mut(&key).and_then(|g| g.get_mut(i)) {
                                             *g = (f(g.0), f(g.1));
                                         }
                                     }
+                                    PSel::Trace(_) if copy => {}
                                     PSel::Trace(id) => {
                                         if let Some((_, r)) = traces.iter().find(|t| t.0 == id) {
                                             let at = f(r.at);
@@ -1527,7 +1545,28 @@ impl CreaBimApp {
                                 }
                             }
                             if editable && picked.iter().any(|p| !matches!(p, PSel::Guide(_) | PSel::Trace(_))) {
-                                write = Some((edit(&mut |x| apply_many(x, &picked, &*f)), if moving { "Move in profile" } else { "Rotate in profile" }, false));
+                                if copy {
+                                    // the shapes picked (or holding what is picked), copied
+                                    let sis: std::collections::BTreeSet<usize> = picked
+                                        .iter()
+                                        .filter_map(|p| match *p {
+                                            PSel::Corner(si, _) | PSel::Edge(si, _) | PSel::Shape(si) => Some(si),
+                                            _ => None,
+                                        })
+                                        .collect();
+                                    let n = sis.len();
+                                    write = Some((edit(&mut |x| {
+                                        let all = x.shapes();
+                                        for &si in &sis {
+                                            if let Some(sh) = all.get(si) {
+                                                x.more.push(ProfileShape { points: sh.points.iter().map(|p| f(*p)).collect(), open: sh.open, thickness: sh.thickness });
+                                            }
+                                        }
+                                    }), if moving { "Copy in profile" } else { "Rotate a copy in profile" }, false));
+                                    self.status = format!("{n} shape{} copied. Shift at the last click (or Shift+D first) copies; without it, it moves.", if n == 1 { "" } else { "s" });
+                                } else {
+                                    write = Some((edit(&mut |x| apply_many(x, &picked, &*f)), if moving { "Move in profile" } else { "Rotate in profile" }, false));
+                                }
                             }
                         }
                     }
@@ -1740,6 +1779,14 @@ impl CreaBimApp {
             if m || r {
                 self.profiles.tool = if m { ProfTool::Move } else { ProfTool::Rotate };
                 self.profiles.op.clear();
+                self.profiles.copy = false;
+            }
+            // Shift+D: a copy to move, as elsewhere
+            if ui.input(|i| i.modifiers.shift && !i.modifiers.command && i.key_pressed(egui::Key::D)) {
+                self.profiles.tool = ProfTool::Move;
+                self.profiles.op.clear();
+                self.profiles.copy = true;
+                self.status = "Duplicate: click a base point, then where the copy goes.".into();
             }
             if del && !picked.is_empty() {
                 self.profiles.sel = None;
