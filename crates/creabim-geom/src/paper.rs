@@ -224,7 +224,12 @@ pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, l
             | PlanItem::Arc {
                 pen: Pen::Underlay, ..
             } => {}
-            PlanItem::Fill { id, points, hatch, rgb } => looks.fill(canvas, *id, points, *hatch, *rgb, map),
+            PlanItem::Fill {
+                id,
+                points,
+                hatch,
+                rgb,
+            } => looks.fill(canvas, *id, points, *hatch, *rgb, map),
             PlanItem::Tint { points, rgb, .. }
             | PlanItem::Room {
                 points,

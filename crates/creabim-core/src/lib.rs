@@ -33,14 +33,14 @@ pub mod modifiers;
 pub mod objects;
 pub mod offset;
 pub mod ops;
+pub mod papermark;
 pub mod parts;
 pub mod polygon;
 pub mod profiles;
 pub mod project;
-pub mod papermark;
+pub mod pushpull;
 pub mod reference;
 pub mod regions;
-pub mod pushpull;
 pub mod room;
 pub mod sample;
 pub mod screen;
@@ -58,7 +58,8 @@ pub mod visibility;
 pub mod walls;
 
 pub use annotation::{
-    text_style, DimAxis, TextAlign, DimensionKind, Font, Note, StyleUse, TagShape, Terminator, TextStyle,
+    text_style, DimAxis, DimensionKind, Font, Note, StyleUse, TagShape, Terminator, TextAlign,
+    TextStyle,
 };
 pub use assembly::{assembly_of, Assembly, AssemblyUse, Layer, LayerFunction};
 pub use constraint::{Constraint, SolveError};
@@ -87,9 +88,9 @@ pub use model::Model;
 pub use modifiers::{Axis, Modifier, ModifierKind};
 pub use objects::{CatalogueObject, Object, ObjectCategory, ObjectType};
 pub use ops::{Op, Transaction};
+pub use papermark::{PaperMark, PaperMarkKind};
 pub use parts::Part;
 pub use project::{set_project, ProjectInfo};
-pub use papermark::{PaperMark, PaperMarkKind};
 pub use reference::{RefSource, Reference};
 pub use room::{Ceiling, Room, RoomField, Separator};
 pub use screen::ScreenPattern;

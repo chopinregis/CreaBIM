@@ -155,7 +155,11 @@ pub fn lay_out_note(text: &str, look: &TextLook, width: Option<f64>, markdown: b
             let t = raw.trim_start();
             let indent = " ".repeat((raw.len() - t.len()).min(8));
             let strip = |s: &str| s.replace("**", "").replace("__", "").replace('`', "");
-            if let Some(h) = t.strip_prefix("### ").or(t.strip_prefix("## ")).or(t.strip_prefix("# ")) {
+            if let Some(h) = t
+                .strip_prefix("### ")
+                .or(t.strip_prefix("## "))
+                .or(t.strip_prefix("# "))
+            {
                 body = strip(h).to_uppercase();
                 under = t.starts_with("# ") || t.starts_with("## ");
             } else if let Some(r) = t.strip_prefix("- [ ] ").or(t.strip_prefix("* [ ] ")) {
@@ -166,9 +170,16 @@ pub fn lay_out_note(text: &str, look: &TextLook, width: Option<f64>, markdown: b
                 .or(t.strip_prefix("* [x] "))
             {
                 (head, body) = (format!("{indent}[x] "), strip(r));
-            } else if let Some(r) = t.strip_prefix("- ").or(t.strip_prefix("* ")).or(t.strip_prefix("+ ")) {
+            } else if let Some(r) = t
+                .strip_prefix("- ")
+                .or(t.strip_prefix("* "))
+                .or(t.strip_prefix("+ "))
+            {
                 (head, body) = (format!("{indent}\u{2022} "), strip(r));
-            } else if let Some((n, r)) = t.split_once(". ").filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())) {
+            } else if let Some((n, r)) = t
+                .split_once(". ")
+                .filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+            {
                 (head, body) = (format!("{indent}{n}. "), strip(r));
             } else {
                 body = strip(t);
@@ -177,7 +188,14 @@ pub fn lay_out_note(text: &str, look: &TextLook, width: Option<f64>, markdown: b
             }
         }
         let Some(w) = width.filter(|w| *w > 1.0) else {
-            out.push(format!("{}{head}{body}", if under { UNDERLINE.to_string() } else { String::new() }));
+            out.push(format!(
+                "{}{head}{body}",
+                if under {
+                    UNDERLINE.to_string()
+                } else {
+                    String::new()
+                }
+            ));
             continue;
         };
         // wrap word by word; later lines set in as far as the list mark
@@ -191,14 +209,35 @@ pub fn lay_out_note(text: &str, look: &TextLook, width: Option<f64>, markdown: b
                 format!("{line} {word}")
             };
             if look.width(&trial) > w && !(line.trim().is_empty() || line == head) {
-                out.push(format!("{}{line}", if under && first { UNDERLINE.to_string() } else { String::new() }));
+                out.push(format!(
+                    "{}{line}",
+                    if under && first {
+                        UNDERLINE.to_string()
+                    } else {
+                        String::new()
+                    }
+                ));
                 first = false;
-                line = format!("{}{word}", if head.is_empty() { String::new() } else { pad.clone() });
+                line = format!(
+                    "{}{word}",
+                    if head.is_empty() {
+                        String::new()
+                    } else {
+                        pad.clone()
+                    }
+                );
             } else {
                 line = trial;
             }
         }
-        out.push(format!("{}{line}", if under && first { UNDERLINE.to_string() } else { String::new() }));
+        out.push(format!(
+            "{}{line}",
+            if under && first {
+                UNDERLINE.to_string()
+            } else {
+                String::new()
+            }
+        ));
     }
     out.join("\n")
 }
@@ -649,7 +688,9 @@ impl Annotation {
                     // centred lines on the block's middle, right-aligned on
                     // its right edge: the block's box stays put
                     let (y, anchor) = match look.align {
-                        creabim_core::TextAlign::Centre => (y + DVec2::X * width / 2.0, Anchor::Middle),
+                        creabim_core::TextAlign::Centre => {
+                            (y + DVec2::X * width / 2.0, Anchor::Middle)
+                        }
                         creabim_core::TextAlign::Right => (y + DVec2::X * width, Anchor::End),
                         _ => (y, Anchor::Start),
                     };
@@ -657,7 +698,8 @@ impl Annotation {
                     let text = match l.strip_prefix(UNDERLINE) {
                         Some(t) => {
                             let under = y - DVec2::Y * look.size * 0.75 * mm;
-                            out.lines.push(vec![under, under + DVec2::X * look.width(t) * mm]);
+                            out.lines
+                                .push(vec![under, under + DVec2::X * look.width(t) * mm]);
                             t
                         }
                         None => l,
@@ -930,7 +972,10 @@ mod tests {
         assert!(lines.len() > 4, "{lines:?}");
         assert!(lines[2].starts_with("  "), "{lines:?}");
         for l in &lines {
-            assert!(look.width(l.trim_start_matches(UNDERLINE)) <= 30.0 + look.width("seven"), "{l}");
+            assert!(
+                look.width(l.trim_start_matches(UNDERLINE)) <= 30.0 + look.width("seven"),
+                "{l}"
+            );
         }
         // plain text, no box: as it was
         assert_eq!(lay_out_note("a\n- b", &look, None, false), "a\n- b");

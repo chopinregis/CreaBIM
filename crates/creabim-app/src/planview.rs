@@ -881,7 +881,8 @@ pub fn show(
                 .collect(),
         };
         let fit_sel = (!picked.items.is_empty()).then(|| fit(&picked, rect));
-        if let Some((c, k)) = nav_column(ui, rect, view, || fit(plan, rect), fit_sel, center, scale) {
+        if let Some((c, k)) = nav_column(ui, rect, view, || fit(plan, rect), fit_sel, center, scale)
+        {
             center = c;
             scale = k;
         }
@@ -1466,7 +1467,9 @@ pub fn show(
     // and type, or click its padlock (2.10 part 3)
     // a level's in a section or elevation (A5-2)
     let level_picked = selection.active.is_some_and(|id| {
-        doc.model().get(id).is_some_and(|e| matches!(e.kind, ElementKind::Level(_)))
+        doc.model()
+            .get(id)
+            .is_some_and(|e| matches!(e.kind, ElementKind::Level(_)))
             || crate::tempdims::dim_levels(doc.model(), id).is_some()
     });
     if response.clicked() {
@@ -1691,7 +1694,17 @@ pub fn show(
     // moves the wall's top, not the level
     // the floor plans' ranges, drawn and dragged by their grips (MU34 A1)
     if let (PaneKind::Section { .. }, true) = (kind, state.plan_ranges) {
-        if let Some(r) = plan_ranges(doc, &painter, &xf, &response, state, selection, tool == Tool::Select, view, plan) {
+        if let Some(r) = plan_ranges(
+            doc,
+            &painter,
+            &xf,
+            &response,
+            state,
+            selection,
+            tool == Tool::Select,
+            view,
+            plan,
+        ) {
             return r;
         }
     }
@@ -2056,20 +2069,46 @@ pub fn show(
                 let n = d.perp();
                 let band = [w[0] + n * lo, w[1] + n * lo, w[1] + n * hi, w[0] + n * hi];
                 let pts: Vec<Pos2> = band.iter().map(|p| xf.to_screen(*p)).collect();
-                painter.add(egui::Shape::convex_polygon(pts, ghost.gamma_multiply(0.15), Stroke::new(1.0, ghost.gamma_multiply(0.7))));
+                painter.add(egui::Shape::convex_polygon(
+                    pts,
+                    ghost.gamma_multiply(0.15),
+                    Stroke::new(1.0, ghost.gamma_multiply(0.7)),
+                ));
             }
             // the section itself, small, by the pointer
-            let span = prof.iter().fold((f64::MAX, f64::MIN, f64::MAX, f64::MIN), |a, p| (a.0.min(p.x), a.1.max(p.x), a.2.min(p.y), a.3.max(p.y)));
+            let span = prof
+                .iter()
+                .fold((f64::MAX, f64::MIN, f64::MAX, f64::MIN), |a, p| {
+                    (a.0.min(p.x), a.1.max(p.x), a.2.min(p.y), a.3.max(p.y))
+                });
             let size = (span.1 - span.0).max(span.3 - span.2).max(1e-6);
             let k = 42.0 / size;
             let at = xf.to_screen(b) + Vec2::new(26.0, 26.0);
             let box_r = Rect::from_min_size(at, Vec2::splat(50.0));
             let pal = crate::theme::Palette::of(ui.ctx());
-            painter.rect(box_r, 6.0, pal.panel, Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
+            painter.rect(
+                box_r,
+                6.0,
+                pal.panel,
+                Stroke::new(1.0, pal.border),
+                egui::StrokeKind::Inside,
+            );
             let mid = DVec2::new((span.0 + span.1) / 2.0, (span.2 + span.3) / 2.0);
-            let sec: Vec<Pos2> = prof.iter().map(|p| box_r.center() + Vec2::new(((p.x - mid.x) * k) as f32, (-(p.y - mid.y) * k) as f32)).collect();
+            let sec: Vec<Pos2> = prof
+                .iter()
+                .map(|p| {
+                    box_r.center()
+                        + Vec2::new(((p.x - mid.x) * k) as f32, (-(p.y - mid.y) * k) as f32)
+                })
+                .collect();
             painter.add(egui::Shape::closed_line(sec, Stroke::new(1.2, pal.text)));
-            painter.text(box_r.center_bottom() + Vec2::new(0.0, 3.0), egui::Align2::CENTER_TOP, name, egui::FontId::proportional(10.5), pal.muted);
+            painter.text(
+                box_r.center_bottom() + Vec2::new(0.0, 3.0),
+                egui::Align2::CENTER_TOP,
+                name,
+                egui::FontId::proportional(10.5),
+                pal.muted,
+            );
         }
     }
     // preview of the tool in progress
@@ -2348,7 +2387,8 @@ pub fn show(
         i.raw
             .dropped_files
             .iter()
-            .map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty())
+            .map(|f| f.path().to_path_buf())
+            .filter(|p| !p.as_os_str().is_empty())
             .collect()
     });
     if !drops.is_empty() && response.contains_pointer() {
@@ -2374,13 +2414,19 @@ pub fn show(
             painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, ink(i)));
         }
         if pts.len() == 2 {
-            painter.line_segment([xf.to_screen(pts[0]), xf.to_screen(pts[1])], Stroke::new(1.5, ACCENT_SELECTED));
+            painter.line_segment(
+                [xf.to_screen(pts[0]), xf.to_screen(pts[1])],
+                Stroke::new(1.5, ACCENT_SELECTED),
+            );
         }
         if let Some(h) = hover_world {
             painter.circle_stroke(xf.to_screen(h), 4.0, Stroke::new(1.0, ink(pts.len())));
             if pts.len() % 2 == 1 {
                 let a = pts[pts.len() - 1];
-                painter.line_segment([xf.to_screen(a), xf.to_screen(h)], Stroke::new(1.0, ink(pts.len())));
+                painter.line_segment(
+                    [xf.to_screen(a), xf.to_screen(h)],
+                    Stroke::new(1.0, ink(pts.len())),
+                );
             }
         }
         if response.clicked() {
@@ -2390,7 +2436,9 @@ pub fn show(
             state.status = Some(
                 match pts.len() {
                     1 => "Align: a second point on the reference, along the line to lay down.",
-                    2 => "Align: now the first point of the line it lies along (the model, a guide).",
+                    2 => {
+                        "Align: now the first point of the line it lies along (the model, a guide)."
+                    }
                     3 => "Align: the second point of that line.",
                     _ => "",
                 }
@@ -2484,18 +2532,16 @@ pub fn show(
             }
             (_, Tool::Dimension) => match (dim_hover, &view_def) {
                 (Some(hp), Some(_)) => {
-                    {
-                        let lines: Vec<(DVec2, DVec2, f64)> = plan
-                            .items
-                            .iter()
-                            .filter_map(|it| match it {
-                                PlanItem::Dimension { a, b, offset, .. } => Some((*a, *b, *offset)),
-                                _ => None,
-                            })
-                            .collect();
-                        let tol = 8.0 / xf.scale as f64;
-                        dimension_tool(doc, view, hp, raw, dim_axis, state, selection, &lines, tol)
-                    }
+                    let lines: Vec<(DVec2, DVec2, f64)> = plan
+                        .items
+                        .iter()
+                        .filter_map(|it| match it {
+                            PlanItem::Dimension { a, b, offset, .. } => Some((*a, *b, *offset)),
+                            _ => None,
+                        })
+                        .collect();
+                    let tol = 8.0 / xf.scale as f64;
+                    dimension_tool(doc, view, hp, raw, dim_axis, state, selection, &lines, tol)
                 }
                 _ => Ok(()),
             },
@@ -2842,13 +2888,21 @@ fn plan_click(
                 return Ok(());
             };
             let s = &state.parts;
-            let mut part = creabim_core::parts::Part::extrusion(level, outline.iter().map(|q| *q + p).collect(), s.extrusion_base, s.extrusion_height);
+            let mut part = creabim_core::parts::Part::extrusion(
+                level,
+                outline.iter().map(|q| *q + p).collect(),
+                s.extrusion_base,
+                s.extrusion_height,
+            );
             part.profile = Some(name.clone());
             let e = Element::new(name.clone(), ElementKind::Part(part));
             let id = e.id;
             doc.commit(creabim_core::Transaction::new("Place profile").insert(e))?;
             selection.only(id);
-            state.status = Some(format!("{name} placed, pulled up {}. Click again for another.", crate::units::len(s.extrusion_height)));
+            state.status = Some(format!(
+                "{name} placed, pulled up {}. Click again for another.",
+                crate::units::len(s.extrusion_height)
+            ));
             Ok(())
         }
         Tool::Slab
@@ -4059,12 +4113,19 @@ fn refresh_snaps(
 /// The lines of the references shown in `view` (another view's linework,
 /// a DXF drawing) snap as an underlay's do: ends, middles and along them
 /// (MU32). A picture has no lines to snap to.
-fn add_reference_snaps(s: &mut Snapper, state: &mut PlanState, model: &creabim_core::Model, view: ElementId) {
+fn add_reference_snaps(
+    s: &mut Snapper,
+    state: &mut PlanState,
+    model: &creabim_core::Model,
+    view: ElementId,
+) {
     // a huge drawing is cut short rather than slowing every snap
     const MOST: usize = 20_000;
     let mut n = 0;
     for e in model.iter() {
-        let ElementKind::Reference(r) = &e.kind else { continue };
+        let ElementKind::Reference(r) = &e.kind else {
+            continue;
+        };
         if r.hidden || !r.shown_in.contains(&view) {
             continue;
         }
@@ -4076,7 +4137,12 @@ fn add_reference_snaps(s: &mut Snapper, state: &mut PlanState, model: &creabim_c
                 if n >= MOST {
                     return;
                 }
-                s.add_segment(r.place(w[0]).extend(0.0), r.place(w[1]).extend(0.0), crate::snaps::Source::Underlay, Some(e.id));
+                s.add_segment(
+                    r.place(w[0]).extend(0.0),
+                    r.place(w[1]).extend(0.0),
+                    crate::snaps::Source::Underlay,
+                    Some(e.id),
+                );
                 n += 1;
             }
         }
@@ -4106,19 +4172,31 @@ fn plan_ranges(
     let mut seen = std::collections::HashSet::new();
     let mut ranges: Vec<(ElementId, f64, f64, f64, String)> = vec![];
     for e in model.iter() {
-        let ElementKind::View(v) = &e.kind else { continue };
-        let ViewKind::Plan { level, cut_height } = v.kind else { continue };
+        let ElementKind::View(v) = &e.kind else {
+            continue;
+        };
+        let ViewKind::Plan { level, cut_height } = v.kind else {
+            continue;
+        };
         if v.ceiling_plan || !seen.insert(level) {
             continue;
         }
-        let Some(l) = model.level(level) else { continue };
+        let Some(l) = model.level(level) else {
+            continue;
+        };
         let below = model
             .levels()
             .map(|(_, x)| x.elevation)
             .filter(|z| *z < l.elevation - 1e-6)
             .fold(None, |m: Option<f64>, z| Some(m.map_or(z, |m| m.max(z))));
         let depth = v.graphics.depth(l.elevation, below);
-        ranges.push((e.id, l.elevation, l.elevation + cut_height, l.elevation - depth, e.name.clone()));
+        ranges.push((
+            e.id,
+            l.elevation,
+            l.elevation + cut_height,
+            l.elevation - depth,
+            e.name.clone(),
+        ));
     }
     let accent = Color32::from_rgb(230, 120, 30);
     // the band's ends, in the drawing: its own, else the drawing's width
@@ -4132,14 +4210,21 @@ fn plan_ranges(
     let (x0, x1) = (sx(ex0), sx(ex1));
     let pointer = response.hover_pos();
     let dragged = state.range_drag.map(|d| d.0);
-    let near_line = pointer.filter(|p| p.x >= x0 - 8.0 && p.x <= x1 + 8.0).and_then(|p| {
-        ranges
-            .iter()
-            .flat_map(|r| [(r.0, (y_of(r.2) - p.y).abs()), (r.0, (y_of(r.3) - p.y).abs() + 2.0)])
-            .filter(|(_, d)| *d < 8.0)
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(id, _)| id)
-    });
+    let near_line = pointer
+        .filter(|p| p.x >= x0 - 8.0 && p.x <= x1 + 8.0)
+        .and_then(|p| {
+            ranges
+                .iter()
+                .flat_map(|r| {
+                    [
+                        (r.0, (y_of(r.2) - p.y).abs()),
+                        (r.0, (y_of(r.3) - p.y).abs() + 2.0),
+                    ]
+                })
+                .filter(|(_, d)| *d < 8.0)
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(id, _)| id)
+        });
     // the last one read stays only while the pointer is inside its band
     // or by its end handles; else none is lit (MU36: quiet until asked)
     let kept = state.range_focus.filter(|f| {
@@ -4147,7 +4232,10 @@ fn plan_ranges(
             || pointer.is_some_and(|p| {
                 ranges.iter().find(|r| r.0 == *f).is_some_and(|r| {
                     let (a, b) = (y_of(r.2), y_of(r.3));
-                    p.y >= a.min(b) - 10.0 && p.y <= a.max(b) + 10.0 && p.x >= x0 - 14.0 && p.x <= x1 + 14.0
+                    p.y >= a.min(b) - 10.0
+                        && p.y <= a.max(b) + 10.0
+                        && p.x >= x0 - 14.0
+                        && p.x <= x1 + 14.0
                 })
             })
     });
@@ -4163,15 +4251,39 @@ fn plan_ranges(
     for (id, z, cut, deep, name) in order {
         let on = Some(*id) == focus;
         let (yc, yd) = (y_of(*cut), y_of(*deep));
-        let ink = if on { accent } else { accent.gamma_multiply(0.45) };
+        let ink = if on {
+            accent
+        } else {
+            accent.gamma_multiply(0.45)
+        };
         if on {
             let band = Rect::from_min_max(egui::pos2(x0, yc.min(yd)), egui::pos2(x1, yc.max(yd)));
             painter.rect_filled(band, 0.0, accent.gamma_multiply(0.12));
-            painter.add(egui::Shape::dashed_line(&[egui::pos2(x0, yd), egui::pos2(x1, yd)], Stroke::new(1.2, accent), 5.0, 3.0));
-            painter.text(egui::pos2(x1 - 6.0, yd + 3.0), egui::Align2::RIGHT_TOP, format!("view depth {}", crate::units::len(z - deep)), font.clone(), accent);
-            painter.text(egui::pos2(x1 - 6.0, yc - 3.0), egui::Align2::RIGHT_BOTTOM, format!("{name} · cut {}", crate::units::len(cut - z)), font.clone(), accent);
+            painter.add(egui::Shape::dashed_line(
+                &[egui::pos2(x0, yd), egui::pos2(x1, yd)],
+                Stroke::new(1.2, accent),
+                5.0,
+                3.0,
+            ));
+            painter.text(
+                egui::pos2(x1 - 6.0, yd + 3.0),
+                egui::Align2::RIGHT_TOP,
+                format!("view depth {}", crate::units::len(z - deep)),
+                font.clone(),
+                accent,
+            );
+            painter.text(
+                egui::pos2(x1 - 6.0, yc - 3.0),
+                egui::Align2::RIGHT_BOTTOM,
+                format!("{name} · cut {}", crate::units::len(cut - z)),
+                font.clone(),
+                accent,
+            );
         }
-        painter.line_segment([egui::pos2(x0, yc), egui::pos2(x1, yc)], Stroke::new(if on { 1.8 } else { 1.0 }, ink));
+        painter.line_segment(
+            [egui::pos2(x0, yc), egui::pos2(x1, yc)],
+            Stroke::new(if on { 1.8 } else { 1.0 }, ink),
+        );
         if !grips {
             continue;
         }
@@ -4183,7 +4295,12 @@ fn plan_ranges(
             let at = egui::pos2(x1, y);
             let hot = pointer.is_some_and(|p| p.distance(at) < 7.0);
             if on || hot {
-                painter.circle(at, if hot { 5.5 } else { 4.5 }, Color32::WHITE, Stroke::new(1.5, ink));
+                painter.circle(
+                    at,
+                    if hot { 5.5 } else { 4.5 },
+                    Color32::WHITE,
+                    Stroke::new(1.5, ink),
+                );
             }
             if hot {
                 over = Some((*id, g, *z));
@@ -4201,7 +4318,13 @@ fn plan_ranges(
             let at = egui::pos2(x, ym);
             let r = Rect::from_center_size(at, Vec2::new(7.0, 14.0));
             let hot = pointer.is_some_and(|p| r.expand(3.0).contains(p));
-            painter.rect(r, 2.0, if hot { accent } else { Color32::WHITE }, Stroke::new(1.4, accent), egui::StrokeKind::Middle);
+            painter.rect(
+                r,
+                2.0,
+                if hot { accent } else { Color32::WHITE },
+                Stroke::new(1.4, accent),
+                egui::StrokeKind::Middle,
+            );
             if hot {
                 over = Some((focus.unwrap_or(section), g, 0.0));
             }
@@ -4221,7 +4344,10 @@ fn plan_ranges(
             Some((id, RangeGrip::Cut, _)) => Some((id, true)),
             Some((id, RangeGrip::Depth, _)) => Some((id, false)),
             _ => pointer.filter(|p| p.x >= x0 && p.x <= x1).and_then(|p| {
-                ranges.iter().find(|r| (y_of(r.2) - p.y).abs() < 5.0).map(|r| (r.0, true))
+                ranges
+                    .iter()
+                    .find(|r| (y_of(r.2) - p.y).abs() < 5.0)
+                    .map(|r| (r.0, true))
             }),
         };
         if let (Some((f, is_cut)), Some(p)) = (hit, pointer) {
@@ -4231,7 +4357,10 @@ fn plan_ranges(
         }
     }
     if let Some((id, is_cut, z, at)) = state.range_edit {
-        let cur = ranges.iter().find(|r| r.0 == id).map(|r| if is_cut { r.2 - r.1 } else { r.1 - r.3 });
+        let cur = ranges
+            .iter()
+            .find(|r| r.0 == id)
+            .map(|r| if is_cut { r.2 - r.1 } else { r.1 - r.3 });
         let mut v = cur.unwrap_or(0.0);
         let mut close = false;
         egui::Area::new(egui::Id::new(("range.edit", section)))
@@ -4243,24 +4372,34 @@ fn plan_ranges(
                         ui.label(if is_cut { "Cut height" } else { "View depth" });
                         let r = ui.add(crate::units::drag(&mut v).range(0.0..=100.0));
                         r.request_focus();
-                        if ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape)) {
+                        if ui.input(|i| {
+                            i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape)
+                        }) {
                             close = true;
                         }
                     });
                 });
             });
         if cur.is_some_and(|c| (c - v).abs() > 1e-9) {
-            let r = doc.edit_merged(id, if is_cut { "Plan cut height" } else { "Plan view depth" }, |e| {
-                if let ElementKind::View(view) = &mut e.kind {
-                    if is_cut {
-                        if let ViewKind::Plan { cut_height, .. } = &mut view.kind {
-                            *cut_height = v.max(0.1);
+            let r = doc.edit_merged(
+                id,
+                if is_cut {
+                    "Plan cut height"
+                } else {
+                    "Plan view depth"
+                },
+                |e| {
+                    if let ElementKind::View(view) = &mut e.kind {
+                        if is_cut {
+                            if let ViewKind::Plan { cut_height, .. } = &mut view.kind {
+                                *cut_height = v.max(0.1);
+                            }
+                        } else {
+                            view.graphics.range.view_depth = Some(v.max(0.0));
                         }
-                    } else {
-                        view.graphics.range.view_depth = Some(v.max(0.0));
                     }
-                }
-            });
+                },
+            );
             let _ = z;
             if let Err(e) = r {
                 return Some(Some(e.to_string()));
@@ -4298,17 +4437,25 @@ fn plan_ranges(
         RangeGrip::Cut | RangeGrip::Depth => {
             let y = (w.y * 100.0).round() / 100.0;
             let is_cut = g == RangeGrip::Cut;
-            let r = doc.edit_merged(id, if is_cut { "Plan cut height" } else { "Plan view depth" }, |e| {
-                if let ElementKind::View(v) = &mut e.kind {
-                    if is_cut {
-                        if let ViewKind::Plan { cut_height, .. } = &mut v.kind {
-                            *cut_height = (y - z).max(0.1);
+            let r = doc.edit_merged(
+                id,
+                if is_cut {
+                    "Plan cut height"
+                } else {
+                    "Plan view depth"
+                },
+                |e| {
+                    if let ElementKind::View(v) = &mut e.kind {
+                        if is_cut {
+                            if let ViewKind::Plan { cut_height, .. } = &mut v.kind {
+                                *cut_height = (y - z).max(0.1);
+                            }
+                        } else {
+                            v.graphics.range.view_depth = Some((z - y).max(0.0));
                         }
-                    } else {
-                        v.graphics.range.view_depth = Some((z - y).max(0.0));
                     }
-                }
-            });
+                },
+            );
             state.status = Some(if is_cut {
                 format!("Cut height {}", crate::units::len((y - z).max(0.1)))
             } else {
@@ -4536,7 +4683,12 @@ pub(crate) fn nav_input(
         .is_some_and(|h| column.expand(40.0).contains(h));
     let fade = if near { 1.0 } else { 0.45 };
     let mut out = None;
-    let mut look = NavLook { rect, column, fade, buttons: vec![] };
+    let mut look = NavLook {
+        rect,
+        column,
+        fade,
+        buttons: vec![],
+    };
     let buttons = [
         ("zoom-in", "Zoom in: click a step, or drag up and down"),
         ("zoom-out", "Zoom out: click a step, or drag up and down"),
@@ -4628,10 +4780,17 @@ pub(crate) fn keep_colours(
 /// The shapes on `layer` dark paper leaves alone this frame.
 pub(crate) fn kept_colours(ctx: &egui::Context, layer: egui::LayerId) -> Vec<(usize, usize)> {
     let pass = ctx.cumulative_pass_nr();
-    ctx.data(|d| d.get_temp::<(u64, Vec<(egui::LayerId, usize, usize)>)>(egui::Id::new("paper.keep")))
-        .filter(|l| l.0 == pass)
-        .map(|l| l.1.into_iter().filter(|r| r.0 == layer).map(|r| (r.1, r.2)).collect())
-        .unwrap_or_default()
+    ctx.data(|d| {
+        d.get_temp::<(u64, Vec<(egui::LayerId, usize, usize)>)>(egui::Id::new("paper.keep"))
+    })
+    .filter(|l| l.0 == pass)
+    .map(|l| {
+        l.1.into_iter()
+            .filter(|r| r.0 == layer)
+            .map(|r| (r.1, r.2))
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 /// Each 3D crop box as a rectangle on `view`'s drawing: its footprint
@@ -4740,7 +4899,14 @@ pub struct Ovr {
 
 impl Default for Ovr {
     fn default() -> Self {
-        Self { fade: 0.0, colour: None, hatch_off: false, proj: 1.0, cut: 1.0, dashed: false }
+        Self {
+            fade: 0.0,
+            colour: None,
+            hatch_off: false,
+            proj: 1.0,
+            cut: 1.0,
+            dashed: false,
+        }
     }
 }
 
@@ -4784,7 +4950,11 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
             }
             if let Some(c) = o.colour {
                 let [a, b, d] = c.0;
-                r.colour = Some(Color32::from_rgb((a * 255.0) as u8, (b * 255.0) as u8, (d * 255.0) as u8));
+                r.colour = Some(Color32::from_rgb(
+                    (a * 255.0) as u8,
+                    (b * 255.0) as u8,
+                    (d * 255.0) as u8,
+                ));
             }
             if let Some(pat) = &o.pattern {
                 r.dashed = !matches!(pat, creabim_core::styles::LinePattern::Solid);
@@ -4811,9 +4981,20 @@ pub fn draw_item(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bo
 }
 
 /// [`draw_item`] with a view's overrides for the element.
-pub fn draw_item_with(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selected: bool, mm: f64, o: &Ovr) {
+pub fn draw_item_with(
+    painter: &egui::Painter,
+    xf: &Xf,
+    item: &PlanItem,
+    selected: bool,
+    mm: f64,
+    o: &Ovr,
+) {
     let highlight = Color32::from_rgb(230, 120, 30);
-    let ink = if selected { highlight } else { o.colour.unwrap_or(Color32::BLACK) };
+    let ink = if selected {
+        highlight
+    } else {
+        o.colour.unwrap_or(Color32::BLACK)
+    };
     let grey = |g: u8| o.colour.unwrap_or(Color32::from_gray(g));
     let hatch = paper::HATCH_SPACING * mm;
     // annotation text is a fixed size on paper, so it scales with zoom
@@ -4829,7 +5010,9 @@ pub fn draw_item_with(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selecte
             let fill = match (selected, rgb) {
                 (true, _) => Color32::from_rgb(250, 205, 160),
                 // Colour and hatch: the material's colour under it (MU32)
-                (false, Some([r, g, b])) => Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8),
+                (false, Some([r, g, b])) => {
+                    Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+                }
                 (false, None) => Color32::from_gray(gray),
             };
             fill_polygon(painter, xf, points, fill);
@@ -4908,14 +5091,24 @@ pub fn draw_item_with(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selecte
                         (1.0 * o.proj, grey(120))
                     };
                     if o.dashed {
-                        painter.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(w, c), 6.0, 4.0));
+                        painter.extend(egui::Shape::dashed_line(
+                            &[a, b],
+                            Stroke::new(w, c),
+                            6.0,
+                            4.0,
+                        ));
                     } else {
                         painter.line_segment([a, b], Stroke::new(w, c));
                     }
                 }
                 Pen::Cut => {
                     if o.dashed {
-                        painter.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(1.8 * o.cut, ink), 6.0, 4.0));
+                        painter.extend(egui::Shape::dashed_line(
+                            &[a, b],
+                            Stroke::new(1.8 * o.cut, ink),
+                            6.0,
+                            4.0,
+                        ));
                     } else {
                         painter.line_segment([a, b], Stroke::new(1.8 * o.cut, ink));
                     }
@@ -5696,7 +5889,9 @@ fn dimension_tool(
                 creabim_core::DimAxis::Aligned
             };
             let mut offset = dim_offset(axis, pa, pb, raw);
-            let u = axis.direction(pa, pb).unwrap_or((pb - pa).normalize_or_zero());
+            let u = axis
+                .direction(pa, pb)
+                .unwrap_or((pb - pa).normalize_or_zero());
             let n = u.perp();
             // onto another dimension's line, parallel and near (MU23)
             let mine = pa.dot(n) + offset;
@@ -5735,7 +5930,9 @@ fn dimension_tool(
                 // the chain goes on from the second point, on this line
                 state.chain_line = Some((axis, pa + n * offset));
                 state.dim = vec![(b, pb)];
-                state.status = Some("Continuous: click the next point; Esc or right-click ends the chain.".into());
+                state.status = Some(
+                    "Continuous: click the next point; Esc or right-click ends the chain.".into(),
+                );
             }
             doc.commit(Transaction::new("Add dimension").insert(e))
         }
@@ -6662,9 +6859,10 @@ mod dimension_chain_tests {
         let mut sel = Selection::default();
         let h = |x: f64| (HostPoint::free(DVec2::new(x, 0.0)), DVec2::new(x, 0.0));
         let ax = creabim_core::DimAxis::Horizontal;
-        let mut click = |doc: &mut creabim_core::Document, state: &mut PlanState, x: f64, raw: DVec2| {
-            dimension_tool(doc, view, h(x), raw, ax, state, &mut sel, &[], 0.1).unwrap();
-        };
+        let mut click =
+            |doc: &mut creabim_core::Document, state: &mut PlanState, x: f64, raw: DVec2| {
+                dimension_tool(doc, view, h(x), raw, ax, state, &mut sel, &[], 0.1).unwrap();
+            };
         click(&mut doc, &mut state, 0.0, DVec2::ZERO);
         click(&mut doc, &mut state, 2.0, DVec2::ZERO);
         click(&mut doc, &mut state, 1.0, DVec2::new(1.0, 1.5)); // the line, 1.5 up
@@ -6692,14 +6890,51 @@ mod dimension_chain_tests {
         state.cancel();
         state.dim_chain = false;
         let others = [(DVec2::new(0.0, 0.0), DVec2::new(2.0, 0.0), 3.0)];
-        dimension_tool(&mut doc, view, h(10.0), DVec2::ZERO, ax, &mut state, &mut sel, &others, 0.2).unwrap();
-        dimension_tool(&mut doc, view, h(12.0), DVec2::ZERO, ax, &mut state, &mut sel, &others, 0.2).unwrap();
-        dimension_tool(&mut doc, view, h(11.0), DVec2::new(11.0, 3.1), ax, &mut state, &mut sel, &others, 0.2).unwrap();
+        dimension_tool(
+            &mut doc,
+            view,
+            h(10.0),
+            DVec2::ZERO,
+            ax,
+            &mut state,
+            &mut sel,
+            &others,
+            0.2,
+        )
+        .unwrap();
+        dimension_tool(
+            &mut doc,
+            view,
+            h(12.0),
+            DVec2::ZERO,
+            ax,
+            &mut state,
+            &mut sel,
+            &others,
+            0.2,
+        )
+        .unwrap();
+        dimension_tool(
+            &mut doc,
+            view,
+            h(11.0),
+            DVec2::new(11.0, 3.1),
+            ax,
+            &mut state,
+            &mut sel,
+            &others,
+            0.2,
+        )
+        .unwrap();
         let last = doc
             .model()
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Dimension(d) if d.view == view && (d.a.local.x - 10.0).abs() < 1e-9 => Some(d.offset),
+                ElementKind::Dimension(d)
+                    if d.view == view && (d.a.local.x - 10.0).abs() < 1e-9 =>
+                {
+                    Some(d.offset)
+                }
                 _ => None,
             })
             .last()

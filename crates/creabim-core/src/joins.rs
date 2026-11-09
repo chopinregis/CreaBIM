@@ -796,7 +796,11 @@ fn joins_among(walls: &[Joinable], rules: &[JoinRule]) -> HashMap<ElementId, Wal
                     if tee_run {
                         let ext = butt(p, d_in, t, q, *d_out, t_o, false).map(|(l, r)| (l, r, 0.0));
                         if let Some((left, right, core)) = ext {
-                            let (l, r) = if local_left > 0.0 { (left, right) } else { (right, left) };
+                            let (l, r) = if local_left > 0.0 {
+                                (left, right)
+                            } else {
+                                (right, left)
+                            };
                             if at_end {
                                 ends.end = [l, r];
                                 ends.core[1] = core;
@@ -1211,8 +1215,10 @@ pub fn follow(before: &Model, changed: &mut [Element]) -> Vec<(Element, Element)
                     }
                     // a wall lying exactly on this one (its copy, or a
                     // copy left behind) is not joined to it (MU25)
-                    let on_me = (o.wall.start.distance(ow.start) < 1e-6 && o.wall.end.distance(ow.end) < 1e-6)
-                        || (o.wall.start.distance(ow.end) < 1e-6 && o.wall.end.distance(ow.start) < 1e-6);
+                    let on_me = (o.wall.start.distance(ow.start) < 1e-6
+                        && o.wall.end.distance(ow.end) < 1e-6)
+                        || (o.wall.start.distance(ow.end) < 1e-6
+                            && o.wall.end.distance(ow.start) < 1e-6);
                     if on_me {
                         continue;
                     }

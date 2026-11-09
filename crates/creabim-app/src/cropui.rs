@@ -129,7 +129,9 @@ impl CreaBimApp {
     pub(super) fn cut_box(&mut self, view: ElementId, up: bool) {
         let model = self.doc.model();
         let Some(e) = model.get(view) else { return };
-        let ElementKind::View(v) = &e.kind else { return };
+        let ElementKind::View(v) = &e.kind else {
+            return;
+        };
         let name = format!("{} cut", e.name);
         let (mut lo, mut hi) = self
             .shown_bounds(None)
@@ -151,7 +153,9 @@ impl CreaBimApp {
                     lo.z = z - v.graphics.depth(z, below);
                 }
             }
-            ViewKind::Section { start, end, depth, .. } => {
+            ViewKind::Section {
+                start, end, depth, ..
+            } => {
                 let look = (end - start).normalize_or_zero().perp();
                 let (a, b) = (start, start + look * depth);
                 if look.x.abs() > 0.999 {
@@ -170,7 +174,10 @@ impl CreaBimApp {
                 return;
             }
         }
-        let existing = model.iter().find(|x| x.name == name && matches!(x.kind, ElementKind::CropBox(_))).map(|x| x.id);
+        let existing = model
+            .iter()
+            .find(|x| x.name == name && matches!(x.kind, ElementKind::CropBox(_)))
+            .map(|x| x.id);
         let c = CropBox::new(None, lo, hi);
         let r = match existing {
             Some(id) => self.doc.edit(id, &format!("Update {name}"), |x| {
@@ -180,7 +187,10 @@ impl CreaBimApp {
                     old.enabled = true;
                 }
             }),
-            None => self.doc.commit(Transaction::new(format!("Add {name}")).insert(Element::new(name.clone(), ElementKind::CropBox(c)))),
+            None => self.doc.commit(
+                Transaction::new(format!("Add {name}"))
+                    .insert(Element::new(name.clone(), ElementKind::CropBox(c))),
+            ),
         };
         self.report(
             r,
@@ -695,7 +705,10 @@ impl CreaBimApp {
         // doors, masses, furniture, columns and beams had none), kept
         // while the model and the list stay the same
         let rev = model.revision();
-        let fresh = self.outside_bounds.as_ref().is_some_and(|(r, l, _)| *r == rev && *l == ids);
+        let fresh = self
+            .outside_bounds
+            .as_ref()
+            .is_some_and(|(r, l, _)| *r == rev && *l == ids);
         if !fresh {
             let only: std::collections::HashSet<ElementId> = ids.iter().copied().collect();
             let mut b: std::collections::HashMap<ElementId, (DVec3, DVec3)> = Default::default();
@@ -709,7 +722,11 @@ impl CreaBimApp {
             }
             self.outside_bounds = Some((rev, ids.clone(), b));
         }
-        let bounds = self.outside_bounds.as_ref().map(|c| c.2.clone()).unwrap_or_default();
+        let bounds = self
+            .outside_bounds
+            .as_ref()
+            .map(|c| c.2.clone())
+            .unwrap_or_default();
         let model = self.doc.model();
         for id in ids {
             let selected = self.selection.contains(id);
@@ -787,8 +804,11 @@ impl CreaBimApp {
         rect: egui::Rect,
         outside: &[(ElementId, (DVec3, DVec3), ElementId)],
     ) {
-        let picked: Vec<(ElementId, (DVec3, DVec3), ElementId)> =
-            outside.iter().filter(|o| self.selection.contains(o.0)).copied().collect();
+        let picked: Vec<(ElementId, (DVec3, DVec3), ElementId)> = outside
+            .iter()
+            .filter(|o| self.selection.contains(o.0))
+            .copied()
+            .collect();
         let outside = &picked[..];
         let Some((first, _, b)) = outside.first() else {
             self.outside_said = None;
@@ -798,8 +818,16 @@ impl CreaBimApp {
         // said once in the status bar too, as a new element lands outside
         if self.outside_said != Some(*first) {
             self.outside_said = Some(*first);
-            let name = self.doc.model().get(*first).map_or("It".into(), |e| e.name.clone());
-            let bx = self.doc.model().get(b).map_or("the crop box".into(), |e| e.name.clone());
+            let name = self
+                .doc
+                .model()
+                .get(*first)
+                .map_or("It".into(), |e| e.name.clone());
+            let bx = self
+                .doc
+                .model()
+                .get(b)
+                .map_or("the crop box".into(), |e| e.name.clone());
             self.status = format!(
                 "{name} is outside {bx}, so the 3D view crops it away: extend the box, show it anyway or turn the crop off (the chip at the top)."
             );
@@ -899,9 +927,8 @@ impl CreaBimApp {
 fn hull(p: &[egui::Pos2]) -> Vec<egui::Pos2> {
     let mut v: Vec<egui::Pos2> = p.to_vec();
     v.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
-    let cross = |o: egui::Pos2, a: egui::Pos2, b: egui::Pos2| {
-        (a - o).x * (b - o).y - (a - o).y * (b - o).x
-    };
+    let cross =
+        |o: egui::Pos2, a: egui::Pos2, b: egui::Pos2| (a - o).x * (b - o).y - (a - o).y * (b - o).x;
     let mut h: Vec<egui::Pos2> = vec![];
     for pass in 0..2 {
         let start = h.len();
@@ -991,4 +1018,3 @@ mod tests {
         assert_eq!(app.crop_box(mine).unwrap().0.name, "Crop box 1");
     }
 }
-

@@ -434,9 +434,40 @@ pub fn pick() -> u8 {
 pub fn pick_allows(k: &HandleKind) -> bool {
     use HandleKind as K;
     match pick() {
-        1 => matches!(k, K::Vertex { .. } | K::MeshVertex(_) | K::WallEnd { .. } | K::GridEnd { .. } | K::Member { .. } | K::MeshMove | K::Rotate),
-        2 => matches!(k, K::Edge { .. } | K::AddVertex { .. } | K::MeshEdge(..) | K::OpeningJamb { .. } | K::OpeningHead | K::OpeningSill | K::MeshMove | K::Rotate),
-        3 => matches!(k, K::Face(_) | K::WallFace | K::WallTop | K::SlabTop | K::SlabUnderside | K::MeshLift | K::ShaftBase | K::ShaftTop | K::MeshMove | K::Rotate),
+        1 => matches!(
+            k,
+            K::Vertex { .. }
+                | K::MeshVertex(_)
+                | K::WallEnd { .. }
+                | K::GridEnd { .. }
+                | K::Member { .. }
+                | K::MeshMove
+                | K::Rotate
+        ),
+        2 => matches!(
+            k,
+            K::Edge { .. }
+                | K::AddVertex { .. }
+                | K::MeshEdge(..)
+                | K::OpeningJamb { .. }
+                | K::OpeningHead
+                | K::OpeningSill
+                | K::MeshMove
+                | K::Rotate
+        ),
+        3 => matches!(
+            k,
+            K::Face(_)
+                | K::WallFace
+                | K::WallTop
+                | K::SlabTop
+                | K::SlabUnderside
+                | K::MeshLift
+                | K::ShaftBase
+                | K::ShaftTop
+                | K::MeshMove
+                | K::Rotate
+        ),
         _ => true,
     }
 }
@@ -5226,7 +5257,7 @@ mod tests {
                 ) || (matches!(h.kind, HandleKind::Edge { .. })
                     && matches!(e.kind, ElementKind::Slab(_) | ElementKind::Roof(_)))
                     || (matches!(h.kind, HandleKind::Member { .. })
-                    && matches!(e.kind, ElementKind::Footing(_)));
+                        && matches!(e.kind, ElementKind::Footing(_)));
                 if !side || dir.z.abs() > 0.1 {
                     continue;
                 }

@@ -122,11 +122,14 @@ impl PaperMark {
     pub fn bounds(&self) -> (DVec2, DVec2) {
         match &self.kind {
             PaperMarkKind::Cloud { arc, .. } => {
-                let (lo, hi) = self
-                    .cloud_outline()
-                    .iter()
-                    .fold((DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)), |(a, b), p| (a.min(*p), b.max(*p)));
-                (lo - DVec2::splat(arc / 2.0), hi + DVec2::splat(arc / 2.0) + DVec2::new(8.0, 8.0))
+                let (lo, hi) = self.cloud_outline().iter().fold(
+                    (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+                    |(a, b), p| (a.min(*p), b.max(*p)),
+                );
+                (
+                    lo - DVec2::splat(arc / 2.0),
+                    hi + DVec2::splat(arc / 2.0) + DVec2::new(8.0, 8.0),
+                )
             }
             PaperMarkKind::RevisionTable => {
                 (self.at, self.at + DVec2::new(110.0, self.size * 2.4 * 5.0))

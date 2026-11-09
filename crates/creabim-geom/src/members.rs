@@ -24,9 +24,15 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
                 let hi = s.points.iter().map(|p| p.y).fold(f64::MIN, f64::max);
                 let prof: Vec<DVec2> = s.points.iter().map(|p| DVec2::new(p.x, p.y - hi)).collect();
                 let path = [b.start.extend(top), b.end.extend(top)];
-                (crate::parts::sweep_mesh(&prof, &path, false), [0.72, 0.64, 0.52])
+                (
+                    crate::parts::sweep_mesh(&prof, &path, false),
+                    [0.72, 0.64, 0.52],
+                )
             }
-            _ => (slab_mesh(&b.outline(), b.top(model), b.depth), [0.72, 0.64, 0.52]),
+            _ => (
+                slab_mesh(&b.outline(), b.top(model), b.depth),
+                [0.72, 0.64, 0.52],
+            ),
         },
         ElementKind::Roof(r) => {
             let holes = creabim_core::slab::holes_of(model, e);
@@ -41,13 +47,19 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
         ),
         ElementKind::Railing(r) => {
             let path = r.path_in(model);
-            let rail = r.rail_profile.as_deref().and_then(|n| creabim_core::profiles::find(model, n));
+            let rail = r
+                .rail_profile
+                .as_deref()
+                .and_then(|n| creabim_core::profiles::find(model, n));
             let m = match rail {
                 // the posts and bottom bar as usual, the top rail the
                 // profile swept along the path, its insertion point on top
                 Some(p) => {
                     let mut m = railing_mesh(&path, r.height - RAIL_SIZE, r.post_spacing);
-                    let top: Vec<DVec3> = path.iter().map(|q| *q + DVec3::Z * (r.height - RAIL_SIZE)).collect();
+                    let top: Vec<DVec3> = path
+                        .iter()
+                        .map(|q| *q + DVec3::Z * (r.height - RAIL_SIZE))
+                        .collect();
                     m.append(&crate::parts::sweep_mesh(&p, &top, false));
                     m
                 }

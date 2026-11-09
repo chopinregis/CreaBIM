@@ -1318,12 +1318,12 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     crate::props::row(ui, "Size on paper", |ui| {
         if crate::props::fill(
             ui,
-                egui::DragValue::new(&mut s.size)
-                    .speed(0.05)
-                    .range(0.5..=50.0)
-                    .suffix(" mm"),
-            )
-            .changed()
+            egui::DragValue::new(&mut s.size)
+                .speed(0.05)
+                .range(0.5..=50.0)
+                .suffix(" mm"),
+        )
+        .changed()
         {
             label = Some("Text size");
         }
@@ -1350,11 +1350,17 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             ui.spacing_mut().item_spacing.x = 1.0;
             let h = ui.spacing().interact_size.y;
             let w = ((ui.available_width() - 1.0) / 2.0).max(30.0);
-            if ui.add_sized([w, h], egui::Button::selectable(s.bold, "Bold")).clicked() {
+            if ui
+                .add_sized([w, h], egui::Button::selectable(s.bold, "Bold"))
+                .clicked()
+            {
                 s.bold = !s.bold;
                 label = Some("Bold text");
             }
-            if ui.add_sized([w, h], egui::Button::selectable(s.italic, "Italic")).clicked() {
+            if ui
+                .add_sized([w, h], egui::Button::selectable(s.italic, "Italic"))
+                .clicked()
+            {
                 s.italic = !s.italic;
                 label = Some("Italic text");
             }
@@ -1366,10 +1372,26 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
         "Align",
         &mut s.align,
         &[
-            (TextAlign::Usual, "Usual", "Each kind's own: notes from the left, room tags centred"),
-            (TextAlign::Left, "Left", "Every line from the block's left edge"),
-            (TextAlign::Centre, "Centre", "Every line on the block's middle"),
-            (TextAlign::Right, "Right", "Every line against the block's right edge"),
+            (
+                TextAlign::Usual,
+                "Usual",
+                "Each kind's own: notes from the left, room tags centred",
+            ),
+            (
+                TextAlign::Left,
+                "Left",
+                "Every line from the block's left edge",
+            ),
+            (
+                TextAlign::Centre,
+                "Centre",
+                "Every line on the block's middle",
+            ),
+            (
+                TextAlign::Right,
+                "Right",
+                "Every line against the block's right edge",
+            ),
         ],
     ) {
         label = Some("Text alignment");
@@ -1459,12 +1481,12 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
         let mut size = s.end_size.unwrap_or(creabim_geom::annotation::END_SIZE);
         if crate::props::fill(
             ui,
-                egui::DragValue::new(&mut size)
-                    .speed(0.05)
-                    .range(0.5..=10.0)
-                    .suffix(" mm"),
-            )
-            .changed()
+            egui::DragValue::new(&mut size)
+                .speed(0.05)
+                .range(0.5..=10.0)
+                .suffix(" mm"),
+        )
+        .changed()
         {
             s.end_size = Some(size);
             label = Some("Terminator size");
@@ -1590,7 +1612,13 @@ pub fn note_ui(
     crate::props::flow(ui, |ui| {
         ui.label("Text");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if crate::props::icon_button(ui, "maximise", "Edit in a larger window (or double-click the note)").clicked() {
+            if crate::props::icon_button(
+                ui,
+                "maximise",
+                "Edit in a larger window (or double-click the note)",
+            )
+            .clicked()
+            {
                 *pop_out = true;
             }
         });
@@ -1627,14 +1655,24 @@ pub fn note_ui(
         crate::props::flow(ui, |ui| {
             if ui
                 .checkbox(&mut boxed, "Wrap at")
-                .on_hover_text("Lines wrap to this width on paper; off, each line runs as long as it is")
+                .on_hover_text(
+                    "Lines wrap to this width on paper; off, each line runs as long as it is",
+                )
                 .changed()
             {
                 n.width = boxed.then_some(60.0);
                 label = Some("Note box");
             }
             if let Some(w) = &mut n.width {
-                if ui.add(egui::DragValue::new(w).speed(0.5).range(5.0..=800.0).suffix(" mm")).changed() {
+                if ui
+                    .add(
+                        egui::DragValue::new(w)
+                            .speed(0.5)
+                            .range(5.0..=800.0)
+                            .suffix(" mm"),
+                    )
+                    .changed()
+                {
                     label = Some("Note box");
                 }
             }

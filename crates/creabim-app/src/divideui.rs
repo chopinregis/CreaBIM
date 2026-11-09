@@ -16,7 +16,13 @@ pub struct DivideUi {
 
 impl Default for DivideUi {
     fn default() -> Self {
-        Self { open: false, parts: 4, dir: Dir::Along, make: Make::Cuts, gap: 0.0 }
+        Self {
+            open: false,
+            parts: 4,
+            dir: Dir::Along,
+            make: Make::Cuts,
+            gap: 0.0,
+        }
     }
 }
 
@@ -26,7 +32,10 @@ impl CreaBimApp {
             return;
         }
         let all = self.selection.all();
-        let host = all.first().copied().filter(|h| divide::span(self.doc.model(), *h).is_some());
+        let host = all
+            .first()
+            .copied()
+            .filter(|h| divide::span(self.doc.model(), *h).is_some());
         let item = (all.len() > 1).then(|| all.last().copied()).flatten();
         let mut open = true;
         let mut go = false;
@@ -110,7 +119,15 @@ impl CreaBimApp {
         self.divide.open = open;
         if let (true, Some(h)) = (go, host) {
             let d = self.divide.clone();
-            match divide::divide(self.doc.model(), h, d.parts, d.dir, d.make, d.gap, item.filter(|_| d.make == Make::Copies)) {
+            match divide::divide(
+                self.doc.model(),
+                h,
+                d.parts,
+                d.dir,
+                d.make,
+                d.gap,
+                item.filter(|_| d.make == Make::Copies),
+            ) {
                 Ok(tx) => {
                     let r = self.doc.commit(tx);
                     self.report(r, format!("Divided in {}. Ctrl+Z puts it back.", d.parts));

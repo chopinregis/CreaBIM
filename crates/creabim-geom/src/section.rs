@@ -254,7 +254,12 @@ pub fn level_datums(model: &Model, span: (f64, f64), scale: f64) -> Vec<PlanItem
             item: Box::new(crate::annotation::Annotation {
                 shape: crate::annotation::Shape::Level {
                     at: DVec2::new(x1, l.elevation),
-                    elevation: creabim_core::write_number(model, creabim_core::NumberKind::LevelHeads, None, l.elevation),
+                    elevation: creabim_core::write_number(
+                        model,
+                        creabim_core::NumberKind::LevelHeads,
+                        None,
+                        l.elevation,
+                    ),
                     line_end: None,
                 },
                 text: e.name.clone(),
@@ -796,12 +801,18 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     {
         use creabim_core::graphics::DrawingStyle as S;
         let style = v.graphics.drawing_style;
-        if let (creabim_core::ViewKind::Plan { level, cut_height }, S::MaterialColour | S::ColourHatch | S::ColourWash) = (&v.kind, style) {
+        if let (
+            creabim_core::ViewKind::Plan { level, cut_height },
+            S::MaterialColour | S::ColourHatch | S::ColourWash,
+        ) = (&v.kind, style)
+        {
             let z0 = model.level(*level).map_or(0.0, |l| l.elevation);
             let cut = z0 + cut_height;
             let mut under: Vec<(f64, PlanItem)> = vec![];
             for e in model.iter() {
-                let ElementKind::Roof(r) = &e.kind else { continue };
+                let ElementKind::Roof(r) = &e.kind else {
+                    continue;
+                };
                 let base = model.level(r.level).map_or(0.0, |l| l.elevation) + r.base_offset;
                 if base < z0 - 0.5 || base + r.peak() > cut || hidden.contains(&e.id) {
                     continue;
@@ -816,8 +827,19 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                         }
                     })
                     .unwrap_or([0.6, 0.6, 0.6]);
-                let rgb = if style == S::ColourWash { rgb.map(|c| c + (1.0 - c) * 0.55) } else { rgb.map(|c| c + (1.0 - c) * 0.25) };
-                under.push((base + r.peak(), PlanItem::Shade { id: e.id, points: r.eave_outline(), rgb }));
+                let rgb = if style == S::ColourWash {
+                    rgb.map(|c| c + (1.0 - c) * 0.55)
+                } else {
+                    rgb.map(|c| c + (1.0 - c) * 0.25)
+                };
+                under.push((
+                    base + r.peak(),
+                    PlanItem::Shade {
+                        id: e.id,
+                        points: r.eave_outline(),
+                        rgb,
+                    },
+                ));
             }
             // the lower first, so a higher roof covers it (MU34: the
             // green roof, lower, was drawn over the slate)
@@ -859,7 +881,13 @@ pub fn apply_drawing_style(
         S::Clean => items.retain(|it| !matches!(it, PlanItem::Fill { .. })),
         S::Poche | S::MaterialColour | S::ColourWash | S::GreyWash => {
             for it in items.iter_mut() {
-                let PlanItem::Fill { id, points, rgb: own, .. } = it else {
+                let PlanItem::Fill {
+                    id,
+                    points,
+                    rgb: own,
+                    ..
+                } = it
+                else {
                     continue;
                 };
                 let own = *own;
@@ -1153,9 +1181,7 @@ pub fn feature_edges_over(item: &SceneItem, cos: f32) -> Vec<(DVec3, DVec3)> {
     }
     let mut out: Vec<(DVec3, DVec3)> = edges
         .into_values()
-        .filter(|(_, _, ns)| {
-            ns.len() == 1 || ns.iter().any(|a| ns.iter().any(|b| a.dot(*b) < cos))
-        })
+        .filter(|(_, _, ns)| ns.len() == 1 || ns.iter().any(|a| ns.iter().any(|b| a.dot(*b) < cos)))
         .map(|(a, b, _)| (a, b))
         .collect();
     out.sort_by(|x, y| {

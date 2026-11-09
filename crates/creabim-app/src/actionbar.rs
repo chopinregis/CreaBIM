@@ -526,10 +526,7 @@ mod tests {
         // a wall alone: its own first, then the common ones
         app.selection.only(wall);
         let (own, common) = app.element_actions();
-        assert_eq!(
-            ids(&own),
-            ["wall.flip", "wall.attach", "bar.maketype"]
-        );
+        assert_eq!(ids(&own), ["wall.flip", "wall.attach", "bar.maketype"]);
         assert_eq!(common[0].label, "Duplicate");
         assert!(common.iter().any(|a| a.label == "Show only selected"));
         assert_eq!(common.last().unwrap().id, "nav.fitsel");

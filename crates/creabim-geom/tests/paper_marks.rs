@@ -14,7 +14,11 @@ fn a_sheet_draws_its_north_arrow_and_scale_bar() {
     let m = creabim_geom::sheet::MARGIN;
     let tb = creabim_geom::sheet::TITLE_BLOCK;
     let north = PaperMark::north_arrow(sheet, DVec2::new(s.width - m - 16.0, m + tb.y + 18.0));
-    let bar = PaperMark::scale_bar(sheet, DVec2::new(s.width - m - tb.x + 6.0, m + tb.y + 10.0), 100.0);
+    let bar = PaperMark::scale_bar(
+        sheet,
+        DVec2::new(s.width - m - tb.x + 6.0, m + tb.y + 10.0),
+        100.0,
+    );
     let info = creabim_geom::sheet::SheetInfo::default();
     let before = creabim_geom::sheet::sheet_svg(doc.model(), sheet, &info).unwrap();
     let (rev, drawn) = (doc.model().revision(), doc.model().drawing_revision());
@@ -50,8 +54,14 @@ fn a_revision_cloud_and_the_revisions_table_draw_on_the_sheet() {
     let table = PaperMark::revision_table(sheet, DVec2::new(200.0, 80.0));
     doc.commit(
         Transaction::new("revs")
-            .insert(Element::new("Revision cloud", ElementKind::PaperMark(cloud)))
-            .insert(Element::new("Revisions table", ElementKind::PaperMark(table))),
+            .insert(Element::new(
+                "Revision cloud",
+                ElementKind::PaperMark(cloud),
+            ))
+            .insert(Element::new(
+                "Revisions table",
+                ElementKind::PaperMark(table),
+            )),
     )
     .unwrap();
     let svg = creabim_geom::sheet::sheet_svg(doc.model(), sheet, &Default::default()).unwrap();

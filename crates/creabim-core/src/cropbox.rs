@@ -38,7 +38,11 @@ pub enum Outside {
 }
 
 impl Outside {
-    pub const ALL: [Outside; 3] = [Outside::Hidden, Outside::GhostSelected, Outside::AlwaysGhost];
+    pub const ALL: [Outside; 3] = [
+        Outside::Hidden,
+        Outside::GhostSelected,
+        Outside::AlwaysGhost,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {

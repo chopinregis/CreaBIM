@@ -50,34 +50,68 @@ pub fn span(model: &Model, id: ElementId) -> Option<Span> {
         let len = a.distance(b);
         (len > 1e-6).then(|| {
             let u = (b - a) / len;
-            Span { level, o: a, u, v: u.perp(), len, width, z0, z1 }
+            Span {
+                level,
+                o: a,
+                u,
+                v: u.perp(),
+                len,
+                width,
+                z0,
+                z1,
+            }
         })
     };
     match &e.kind {
-        ElementKind::Wall(w) => line(Some(w.level), w.start, w.end, w.thickness, w.base_offset, w.base_offset + w.height),
+        ElementKind::Wall(w) => line(
+            Some(w.level),
+            w.start,
+            w.end,
+            w.thickness,
+            w.base_offset,
+            w.base_offset + w.height,
+        ),
         ElementKind::Beam(b) => line(Some(b.level), b.start, b.end, 0.0, 0.0, 0.0),
         ElementKind::Guide(g) => line(g.level, g.a.truncate(), g.b.truncate(), 0.0, g.a.z, g.a.z),
         ElementKind::Part(p) => match &p.form {
-            crate::parts::Form::Extrusion { outline, holes, base, height, plane: None } if holes.is_empty() && outline.len() >= 3 => {
+            crate::parts::Form::Extrusion {
+                outline,
+                holes,
+                base,
+                height,
+                plane: None,
+            } if holes.is_empty() && outline.len() >= 3 => {
                 // along its longest side, across to the far side of it
                 let n = outline.len();
-                let i = (0..n)
-                    .max_by(|a, b| {
-                        let la = outline[*a].distance(outline[(*a + 1) % n]);
-                        let lb = outline[*b].distance(outline[(*b + 1) % n]);
-                        la.total_cmp(&lb)
-                    })?;
+                let i = (0..n).max_by(|a, b| {
+                    let la = outline[*a].distance(outline[(*a + 1) % n]);
+                    let lb = outline[*b].distance(outline[(*b + 1) % n]);
+                    la.total_cmp(&lb)
+                })?;
                 let (a, b) = (outline[i], outline[(i + 1) % n]);
                 let len = a.distance(b);
                 let u = (b - a) / len;
                 let c = outline.iter().copied().sum::<DVec2>() / n as f64;
-                let v = if (c - a).dot(u.perp()) >= 0.0 { u.perp() } else { -u.perp() };
+                let v = if (c - a).dot(u.perp()) >= 0.0 {
+                    u.perp()
+                } else {
+                    -u.perp()
+                };
                 let along: Vec<f64> = outline.iter().map(|p| (*p - a).dot(u)).collect();
                 let across: Vec<f64> = outline.iter().map(|p| (*p - a).dot(v)).collect();
                 let lo = along.iter().copied().fold(f64::MAX, f64::min);
                 let hi = along.iter().copied().fold(f64::MIN, f64::max);
                 let w = across.iter().copied().fold(f64::MIN, f64::max);
-                Some(Span { level: Some(p.level), o: a + u * lo, u, v, len: hi - lo, width: w, z0: *base, z1: base + height })
+                Some(Span {
+                    level: Some(p.level),
+                    o: a + u * lo,
+                    u,
+                    v,
+                    len: hi - lo,
+                    width: w,
+                    z0: *base,
+                    z1: base + height,
+                })
             }
             _ => None,
         },
@@ -118,16 +152,26 @@ pub fn divide(
     if total < 1e-6 {
         return Err(format!("{} has no height to divide.", e.name));
     }
-    let gap = if make == Make::Cuts { gap.max(0.0) } else { 0.0 };
+    let gap = if make == Make::Cuts {
+        gap.max(0.0)
+    } else {
+        0.0
+    };
     let ps = parts(total, n, gap).ok_or("The gaps leave no room for the parts.")?;
     let mut tx = Transaction::new(format!("Divide {} in {n}", e.name));
     match make {
         // a wall cut into walls: side by side along it, or stacked up it
         // (a base course, bands), each a wall of its own (MU37)
         Make::Cuts if matches!(e.kind, ElementKind::Wall(_)) => {
-            let ElementKind::Wall(w0) = &e.kind else { unreachable!() };
+            let ElementKind::Wall(w0) = &e.kind else {
+                unreachable!()
+            };
             for (k, (t, size)) in ps.iter().enumerate() {
-                let mut now = if k == 0 { e.clone() } else { Element::new(format!("{} {}", e.name, k + 1), e.kind.clone()) };
+                let mut now = if k == 0 {
+                    e.clone()
+                } else {
+                    Element::new(format!("{} {}", e.name, k + 1), e.kind.clone())
+                };
                 if let ElementKind::Wall(w) = &mut now.kind {
                     match dir {
                         Dir::Along => {
@@ -146,7 +190,11 @@ pub fn divide(
                         }
                     }
                 }
-                tx = if k == 0 { tx.replace(e.clone(), now) } else { tx.insert(now) };
+                tx = if k == 0 {
+                    tx.replace(e.clone(), now)
+                } else {
+                    tx.insert(now)
+                };
             }
         }
         Make::Cuts => {
@@ -157,9 +205,19 @@ pub fn divide(
                 return Err("Only a part pulled up from a plan outline can be cut.".into());
             };
             for (k, (t, size)) in ps.iter().enumerate() {
-                let mut now = if k == 0 { e.clone() } else { Element::new(format!("{} {}", e.name, k + 1), e.kind.clone()) };
+                let mut now = if k == 0 {
+                    e.clone()
+                } else {
+                    Element::new(format!("{} {}", e.name, k + 1), e.kind.clone())
+                };
                 if let ElementKind::Part(q) = &mut now.kind {
-                    if let crate::parts::Form::Extrusion { outline, base: b, height, .. } = &mut q.form {
+                    if let crate::parts::Form::Extrusion {
+                        outline,
+                        base: b,
+                        height,
+                        ..
+                    } = &mut q.form
+                    {
                         match dir {
                             Dir::Along => {
                                 let a = s.o + s.u * *t;
@@ -177,7 +235,11 @@ pub fn divide(
                         }
                     }
                 }
-                tx = if k == 0 { tx.replace(e.clone(), now) } else { tx.insert(now) };
+                tx = if k == 0 {
+                    tx.replace(e.clone(), now)
+                } else {
+                    tx.insert(now)
+                };
             }
         }
         Make::Guides => {
@@ -195,7 +257,11 @@ pub fn divide(
                     }
                     Dir::Up => {
                         let z = s.z0 + t;
-                        crate::Guide { level: s.level, a: s.o.extend(z), b: (s.o + s.u * s.len).extend(z) }
+                        crate::Guide {
+                            level: s.level,
+                            a: s.o.extend(z),
+                            b: (s.o + s.u * s.len).extend(z),
+                        }
                     }
                 };
                 tx = tx.insert(Element::new("Guide", ElementKind::Guide(g)));
@@ -204,7 +270,8 @@ pub fn divide(
         Make::Copies => {
             let item = item.ok_or("Select the element to copy too: the one to divide first, then what goes in each part.")?;
             let it = model.get(item).ok_or("It is gone.")?;
-            let at = crate::transform::pivot(model, item).ok_or_else(|| format!("{} can't be placed.", it.name))?;
+            let at = crate::transform::pivot(model, item)
+                .ok_or_else(|| format!("{} can't be placed.", it.name))?;
             let base = crate::members::elevation(model, s.level.unwrap_or(item));
             let base = if s.level.is_some() { base } else { 0.0 };
             // along: each part's middle; up: each division
@@ -218,12 +285,18 @@ pub fn divide(
                     Dir::Up => DVec3::Z * (base + s.z0 + t - at.z),
                 };
                 if k == 0 {
-                    let moved = crate::transform::transformed(model, it, &crate::transform::Xform::Move(d))
-                        .ok_or_else(|| format!("{} doesn't move that way.", it.name))?;
+                    let moved =
+                        crate::transform::transformed(model, it, &crate::transform::Xform::Move(d))
+                            .ok_or_else(|| format!("{} doesn't move that way.", it.name))?;
                     tx = tx.replace(it.clone(), moved);
                 } else {
                     for c in crate::transform::duplicate(model, item) {
-                        let moved = crate::transform::transformed(model, &c, &crate::transform::Xform::Move(d)).unwrap_or(c);
+                        let moved = crate::transform::transformed(
+                            model,
+                            &c,
+                            &crate::transform::Xform::Move(d),
+                        )
+                        .unwrap_or(c);
                         tx = tx.insert(moved);
                     }
                 }
@@ -239,13 +312,25 @@ mod tests {
     use crate::{Document, Level};
 
     fn setup(outline: Vec<DVec2>) -> (Document, ElementId) {
-        let l = Element::new("L0", ElementKind::Level(Level { elevation: 0.0, height: 3.0 }));
+        let l = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
         let lid = l.id;
         let p = Element::new(
             "Cabinet",
             ElementKind::Part(crate::parts::Part {
                 level: lid,
-                form: crate::parts::Form::Extrusion { outline, holes: vec![], base: 0.0, height: 2.0, plane: None },
+                form: crate::parts::Form::Extrusion {
+                    outline,
+                    holes: vec![],
+                    base: 0.0,
+                    height: 2.0,
+                    plane: None,
+                },
                 void: false,
                 material: None,
                 ifc_class: "IfcBuildingElementProxy".into(),
@@ -254,12 +339,18 @@ mod tests {
         );
         let id = p.id;
         let mut doc = Document::new();
-        doc.commit(Transaction::new("setup").insert(l).insert(p)).unwrap();
+        doc.commit(Transaction::new("setup").insert(l).insert(p))
+            .unwrap();
         (doc, id)
     }
 
     fn rect(w: f64, d: f64) -> Vec<DVec2> {
-        vec![DVec2::ZERO, DVec2::new(w, 0.0), DVec2::new(w, d), DVec2::new(0.0, d)]
+        vec![
+            DVec2::ZERO,
+            DVec2::new(w, 0.0),
+            DVec2::new(w, d),
+            DVec2::new(0.0, d),
+        ]
     }
 
     #[test]
@@ -272,7 +363,9 @@ mod tests {
             .iter()
             .filter_map(|e| match &e.kind {
                 ElementKind::Part(p) => match &p.form {
-                    crate::parts::Form::Extrusion { outline, .. } => Some(crate::polygon::signed_area2(outline) / 2.0),
+                    crate::parts::Form::Extrusion { outline, .. } => {
+                        Some(crate::polygon::signed_area2(outline) / 2.0)
+                    }
                     _ => None,
                 },
                 _ => None,
@@ -283,7 +376,8 @@ mod tests {
             assert!((a - 0.92 * 0.6).abs() < 1e-9, "{a}");
         }
         let (mut doc, id) = setup(rect(1.0, 0.6));
-        doc.commit(divide(doc.model(), id, 5, Dir::Up, Make::Cuts, 0.018, None).unwrap()).unwrap();
+        doc.commit(divide(doc.model(), id, 5, Dir::Up, Make::Cuts, 0.018, None).unwrap())
+            .unwrap();
         let tops: Vec<f64> = doc
             .model()
             .iter()
@@ -301,13 +395,30 @@ mod tests {
 
     #[test]
     fn a_wall_cuts_into_stacked_walls_and_up_takes_guides() {
-        let l = Element::new("L0", ElementKind::Level(Level { elevation: 0.0, height: 3.0 }));
+        let l = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
         let lid = l.id;
-        let w = Element::new("W", ElementKind::Wall(crate::Wall::new(lid, DVec2::ZERO, DVec2::new(4.0, 0.0), 0.2, 3.0)));
+        let w = Element::new(
+            "W",
+            ElementKind::Wall(crate::Wall::new(
+                lid,
+                DVec2::ZERO,
+                DVec2::new(4.0, 0.0),
+                0.2,
+                3.0,
+            )),
+        );
         let wid = w.id;
         let mut doc = Document::new();
-        doc.commit(Transaction::new("setup").insert(l).insert(w)).unwrap();
-        doc.commit(divide(doc.model(), wid, 3, Dir::Up, Make::Cuts, 0.0, None).unwrap()).unwrap();
+        doc.commit(Transaction::new("setup").insert(l).insert(w))
+            .unwrap();
+        doc.commit(divide(doc.model(), wid, 3, Dir::Up, Make::Cuts, 0.0, None).unwrap())
+            .unwrap();
         let mut walls: Vec<(f64, f64)> = doc
             .model()
             .iter()
@@ -319,7 +430,13 @@ mod tests {
         walls.sort_by(|a, b| a.0.total_cmp(&b.0));
         assert_eq!(walls.len(), 3);
         assert!((walls[1].0 - 1.0).abs() < 1e-9 && (walls[2].1 - 1.0).abs() < 1e-9);
-        assert_eq!(divide(doc.model(), wid, 4, Dir::Up, Make::Guides, 0.0, None).unwrap().ops.len(), 3);
+        assert_eq!(
+            divide(doc.model(), wid, 4, Dir::Up, Make::Guides, 0.0, None)
+                .unwrap()
+                .ops
+                .len(),
+            3
+        );
     }
 
     #[test]

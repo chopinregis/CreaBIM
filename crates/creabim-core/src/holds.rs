@@ -41,7 +41,10 @@ pub fn place_of(model: &Model, id: ElementId) -> Option<Place> {
         ElementKind::Column(c) => Some(Place::Point(c.position)),
         // a level, in a section's (along, height) space: a level line at
         // its elevation (A5-2), held only against other levels
-        ElementKind::Level(l) => Some(Place::Line(DVec2::new(0.0, l.elevation), DVec2::new(1.0, l.elevation))),
+        ElementKind::Level(l) => Some(Place::Line(
+            DVec2::new(0.0, l.elevation),
+            DVec2::new(1.0, l.elevation),
+        )),
         _ => None,
     }
 }

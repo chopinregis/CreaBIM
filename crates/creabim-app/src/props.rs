@@ -39,7 +39,8 @@ fn box_id(ui: &Ui) -> egui::Id {
 pub fn icon_button(ui: &mut Ui, icon: &str, tip: &str) -> Response {
     let (r, resp) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::click());
     if resp.hovered() {
-        ui.painter().rect_filled(r, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+        ui.painter()
+            .rect_filled(r, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
     }
     let ink = ui.visuals().text_color();
     crate::svgicon::paint(ui.painter(), r.shrink(3.0), icon, ink);
@@ -153,19 +154,27 @@ fn inset(_ui: &Ui) -> f32 {
 pub fn head_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     let w = ui.available_width();
     let h = ui.spacing().interact_size.y;
-    ui.allocate_ui_with_layout(Vec2::new(w, h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-        let muted = ui.visuals().widgets.noninteractive.fg_stroke.color;
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(58.0, h), Sense::hover());
-        let mut job = egui::text::LayoutJob::single_section(
-            label.to_string(),
-            egui::TextFormat::simple(egui::TextStyle::Body.resolve(ui.style()), muted),
-        );
-        job.wrap = egui::text::TextWrapping::truncate_at_width(54.0);
-        let g = ui.painter().layout_job(job);
-        ui.painter().galley(rect.left_center() - Vec2::new(0.0, g.size().y / 2.0), g, muted);
-        add(ui)
-    })
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, h),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+            let muted = ui.visuals().widgets.noninteractive.fg_stroke.color;
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(58.0, h), Sense::hover());
+            let mut job = egui::text::LayoutJob::single_section(
+                label.to_string(),
+                egui::TextFormat::simple(egui::TextStyle::Body.resolve(ui.style()), muted),
+            );
+            job.wrap = egui::text::TextWrapping::truncate_at_width(54.0);
+            let g = ui.painter().layout_job(job);
+            ui.painter().galley(
+                rect.left_center() - Vec2::new(0.0, g.size().y / 2.0),
+                g,
+                muted,
+            );
+            add(ui)
+        },
+    )
     .inner
 }
 
@@ -254,7 +263,12 @@ pub fn flow<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerRespon
 /// A choice of a few as one row of equal joined buttons filling the field
 /// column, the chosen one lit: Blender's expanded list (MU31). Returns
 /// true when it changed.
-pub fn choice<T: PartialEq + Copy>(ui: &mut Ui, label: &str, value: &mut T, options: &[(T, &str, &str)]) -> bool {
+pub fn choice<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    label: &str,
+    value: &mut T,
+    options: &[(T, &str, &str)],
+) -> bool {
     let mut changed = false;
     row(ui, label, |ui| {
         ui.spacing_mut().item_spacing.x = 1.0;
@@ -272,7 +286,9 @@ pub fn choice<T: PartialEq + Copy>(ui: &mut Ui, label: &str, value: &mut T, opti
             };
             // a label too long for its button is cut with …, its whole name
             // and what it does on hover, as Blender's (MU34)
-            let mut b = egui::Button::selectable(on, *text).corner_radius(r).truncate();
+            let mut b = egui::Button::selectable(on, *text)
+                .corner_radius(r)
+                .truncate();
             if !on {
                 b = b.fill(box_fill(ui.visuals()));
             }
@@ -297,7 +313,9 @@ pub fn action(ui: &mut Ui, label: &str, text: &str, tip: &str, enabled: bool) ->
     row(ui, label, |ui| {
         let h = ui.spacing().interact_size.y;
         let w = ui.available_width().max(40.0);
-        let r = ui.add_enabled_ui(enabled, |ui| ui.add_sized([w, h], egui::Button::new(text))).inner;
+        let r = ui
+            .add_enabled_ui(enabled, |ui| ui.add_sized([w, h], egui::Button::new(text)))
+            .inner;
         if tip.is_empty() {
             r
         } else {
@@ -308,13 +326,20 @@ pub fn action(ui: &mut Ui, label: &str, text: &str, tip: &str, enabled: bool) ->
 
 /// Two buttons sharing the field column, as Blender's paired operators.
 /// Each is (text, tip, enabled); returns which was clicked.
-pub fn actions2(ui: &mut Ui, label: &str, a: (&str, &str, bool), b: (&str, &str, bool)) -> (bool, bool) {
+pub fn actions2(
+    ui: &mut Ui,
+    label: &str,
+    a: (&str, &str, bool),
+    b: (&str, &str, bool),
+) -> (bool, bool) {
     row(ui, label, |ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         let h = ui.spacing().interact_size.y;
         let w = ((ui.available_width() - 4.0) / 2.0).max(30.0);
         let go = |ui: &mut Ui, (t, tip, on): (&str, &str, bool)| {
-            let r = ui.add_enabled_ui(on, |ui| ui.add_sized([w, h], egui::Button::new(t))).inner;
+            let r = ui
+                .add_enabled_ui(on, |ui| ui.add_sized([w, h], egui::Button::new(t)))
+                .inner;
             if tip.is_empty() {
                 r.clicked()
             } else {

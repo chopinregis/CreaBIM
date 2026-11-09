@@ -277,7 +277,11 @@ pub fn show(
             };
             let rr = row(ui, fill);
             if selected {
-                ui.painter().rect_filled(egui::Rect::from_min_size(rr.min, egui::vec2(3.0, rr.height())), 1.0, SELECTED_BAR);
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(rr.min, egui::vec2(3.0, rr.height())),
+                    1.0,
+                    SELECTED_BAR,
+                );
             }
             for (i, (c, col)) in cells(rr).into_iter().zip(&table.columns).enumerate() {
                 let text = &r.cells[i];
@@ -294,7 +298,11 @@ pub fn show(
                     Some(Field::Name) => {
                         let mut name = e.name.clone();
                         if ui
-                            .put(inner, egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center))
+                            .put(
+                                inner,
+                                egui::TextEdit::singleline(&mut name)
+                                    .vertical_align(egui::Align::Center),
+                            )
                             .changed()
                         {
                             edit = Some((r.id, Box::new(move |e| e.name = name)));

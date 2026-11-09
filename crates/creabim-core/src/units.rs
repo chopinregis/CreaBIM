@@ -621,13 +621,22 @@ impl NumberFormats {
 
 /// The format a `kind` of annotation writes with in `model`: its own
 /// (`own`, one dimension's) over the style pack's for the kind.
-pub fn number_format(model: &crate::Model, kind: NumberKind, own: Option<NumberFormat>) -> NumberFormat {
+pub fn number_format(
+    model: &crate::Model,
+    kind: NumberKind,
+    own: Option<NumberFormat>,
+) -> NumberFormat {
     let pack = crate::styles::active_pack(model).number_formats.get(kind);
     own.map_or(pack, |o| o.over(pack))
 }
 
 /// A length of `kind` as `model` writes it.
-pub fn write_number(model: &crate::Model, kind: NumberKind, own: Option<NumberFormat>, metres: f64) -> String {
+pub fn write_number(
+    model: &crate::Model,
+    kind: NumberKind,
+    own: Option<NumberFormat>,
+    metres: f64,
+) -> String {
     number_format(model, kind, own).write(&model.units(), kind, metres)
 }
 
@@ -646,21 +655,48 @@ mod format_tests {
         assert_eq!(level.write(&mm, NumberKind::LevelHeads, 3.0), "+3.000");
         assert_eq!(level.write(&mm, NumberKind::LevelHeads, 0.0), "±0.000");
         assert_eq!(level.write(&mm, NumberKind::LevelHeads, -0.45), "-0.450");
-        let bare = NumberFormat { leading_zero: Some(false), trailing_zeros: Some(false), ..level };
+        let bare = NumberFormat {
+            leading_zero: Some(false),
+            trailing_zeros: Some(false),
+            ..level
+        };
         assert_eq!(bare.write(&mm, NumberKind::LevelHeads, -0.45), "-.45");
         assert_eq!(bare.write(&mm, NumberKind::LevelHeads, 3.0), "+3");
         // the project's: as dimensions always were
-        assert_eq!(NumberFormat::default().write(&mm, NumberKind::Dimensions, 3.0), "3000");
-        let with = NumberFormat { symbol: Some(true), precision: Some(1), ..Default::default() };
+        assert_eq!(
+            NumberFormat::default().write(&mm, NumberKind::Dimensions, 3.0),
+            "3000"
+        );
+        let with = NumberFormat {
+            symbol: Some(true),
+            precision: Some(1),
+            ..Default::default()
+        };
         assert_eq!(with.write(&mm, NumberKind::Dimensions, 3.0), "3000.0 mm");
         // imperial: fractions keep their marks, decimal feet can drop theirs
         let ft = Units::imperial();
-        assert_eq!(NumberFormat::default().write(&ft, NumberKind::Dimensions, 1.0668), "3'-6\"");
-        assert_eq!(NumberFormat::default().write(&ft, NumberKind::LevelHeads, 0.0), "±0'-0\"");
-        let dec = NumberFormat { unit: Some(LengthUnit::Feet), symbol: Some(false), ..Default::default() };
+        assert_eq!(
+            NumberFormat::default().write(&ft, NumberKind::Dimensions, 1.0668),
+            "3'-6\""
+        );
+        assert_eq!(
+            NumberFormat::default().write(&ft, NumberKind::LevelHeads, 0.0),
+            "±0'-0\""
+        );
+        let dec = NumberFormat {
+            unit: Some(LengthUnit::Feet),
+            symbol: Some(false),
+            ..Default::default()
+        };
         assert_eq!(dec.write(&ft, NumberKind::Dimensions, 1.0668), "3.50");
-        let eighth = NumberFormat { precision: Some(3), ..Default::default() };
-        assert_eq!(eighth.write(&ft, NumberKind::Dimensions, 1.0668 + 0.0127), "3'-6 1/2\"");
+        let eighth = NumberFormat {
+            precision: Some(3),
+            ..Default::default()
+        };
+        assert_eq!(
+            eighth.write(&ft, NumberKind::Dimensions, 1.0668 + 0.0127),
+            "3'-6 1/2\""
+        );
     }
 }
 

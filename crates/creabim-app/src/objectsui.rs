@@ -349,7 +349,8 @@ fn part_material(
     egui::ComboBox::from_id_salt(("part_material", salt))
         .icon(crate::props::combo_icon)
         .selected_text(shown)
-        .width(ui.available_width().min(170.0)).truncate()
+        .width(ui.available_width().min(170.0))
+        .truncate()
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(current, None, "None").changed();
             for e in model
@@ -486,10 +487,13 @@ pub(super) fn object_fields(
     hung: bool,
 ) -> &'static str {
     let mut label = "";
-    let height = if hung { "Below the ceiling" } else { "Above its level" };
+    let height = if hung {
+        "Below the ceiling"
+    } else {
+        "Above its level"
+    };
     crate::props::row(ui, height, |ui| {
-        if crate::props::fill(ui, crate::units::drag(&mut o.offset).range(-10.0..=100.0))
-            .changed()
+        if crate::props::fill(ui, crate::units::drag(&mut o.offset).range(-10.0..=100.0)).changed()
         {
             label = "Object height";
         }

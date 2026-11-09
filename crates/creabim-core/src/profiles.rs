@@ -124,7 +124,11 @@ impl NamedProfile {
         }
         // the faces the shapes make, filled as picked, as one outline
         let mut parts = crate::regions::filled(&self.region_loops(), &self.flips);
-        parts.sort_by(|a, b| crate::polygon::signed_area2(b).abs().total_cmp(&crate::polygon::signed_area2(a).abs()));
+        parts.sort_by(|a, b| {
+            crate::polygon::signed_area2(b)
+                .abs()
+                .total_cmp(&crate::polygon::signed_area2(a).abs())
+        });
         let mut it = parts.into_iter();
         let Some(first) = it.next() else { return main };
         let rest: Vec<Vec<DVec2>> = it.collect();
@@ -137,7 +141,10 @@ impl NamedProfile {
         self.shapes()
             .iter()
             .filter(|s| s.points.len() >= 2)
-            .map(|s| crate::regions::Loop { points: s.outline(), solid: s.open })
+            .map(|s| crate::regions::Loop {
+                points: s.outline(),
+                solid: s.open,
+            })
             .collect()
     }
 
@@ -150,11 +157,10 @@ impl NamedProfile {
     /// False when no face is there.
     pub fn toggle_face(&mut self, p: DVec2) -> bool {
         let fs = self.faces();
-        let Some(f) = fs
-            .iter()
-            .filter(|f| f.holds(p))
-            .min_by(|a, b| crate::polygon::signed_area2(&a.outer).total_cmp(&crate::polygon::signed_area2(&b.outer)))
-        else {
+        let Some(f) = fs.iter().filter(|f| f.holds(p)).min_by(|a, b| {
+            crate::polygon::signed_area2(&a.outer)
+                .total_cmp(&crate::polygon::signed_area2(&b.outer))
+        }) else {
             return false;
         };
         let before = self.flips.len();
@@ -167,7 +173,11 @@ impl NamedProfile {
 
     /// Every shape: the first, then the rest, as drawn (for the editor).
     pub fn shapes(&self) -> Vec<ProfileShape> {
-        let mut v = vec![ProfileShape { points: self.points.clone(), open: self.open, thickness: self.thickness }];
+        let mut v = vec![ProfileShape {
+            points: self.points.clone(),
+            open: self.open,
+            thickness: self.thickness,
+        }];
         v.extend(self.more.iter().cloned());
         v
     }
@@ -215,18 +225,40 @@ pub const PRESETS: [&str; 12] = [
 ];
 
 fn circle(c: DVec2, r: f64, n: usize, from: f64, to: f64) -> Vec<DVec2> {
-    (0..=n).map(|i| c + DVec2::from_angle(from + (to - from) * i as f64 / n as f64) * r).collect()
+    (0..=n)
+        .map(|i| c + DVec2::from_angle(from + (to - from) * i as f64 / n as f64) * r)
+        .collect()
 }
 
 /// A preset's outline, at its usual size.
 pub fn preset(name: &str) -> Option<Vec<DVec2>> {
-    let p = |v: &[(f64, f64)]| v.iter().map(|(x, y)| DVec2::new(*x, *y)).collect::<Vec<_>>();
+    let p = |v: &[(f64, f64)]| {
+        v.iter()
+            .map(|(x, y)| DVec2::new(*x, *y))
+            .collect::<Vec<_>>()
+    };
     Some(match name {
         "Coping" => crate::parts::coping(0.2, 0.04, 0.06),
         "Plinth" => crate::parts::plinth(0.2, 0.03, 0.3, false),
         "Bar" => crate::parts::rectangle(0.15, 0.15),
-        "Cornice" => p(&[(0.0, 0.0), (0.05, 0.0), (0.05, 0.03), (0.09, 0.05), (0.12, 0.09), (0.15, 0.15), (0.15, 0.2), (0.0, 0.2)]),
-        "Skirting" => p(&[(0.0, 0.0), (0.018, 0.0), (0.018, 0.08), (0.012, 0.095), (0.012, 0.1), (0.0, 0.1)]),
+        "Cornice" => p(&[
+            (0.0, 0.0),
+            (0.05, 0.0),
+            (0.05, 0.03),
+            (0.09, 0.05),
+            (0.12, 0.09),
+            (0.15, 0.15),
+            (0.15, 0.2),
+            (0.0, 0.2),
+        ]),
+        "Skirting" => p(&[
+            (0.0, 0.0),
+            (0.018, 0.0),
+            (0.018, 0.08),
+            (0.012, 0.095),
+            (0.012, 0.1),
+            (0.0, 0.1),
+        ]),
         "Gutter" => {
             // a half-round, open at its top, 3 mm thick
             let (r, t) = (0.06, 0.003);
@@ -245,11 +277,33 @@ pub fn preset(name: &str) -> Option<Vec<DVec2>> {
         "I-section" => {
             let (h, b, tf, tw) = (0.2, 0.1, 0.0085, 0.0056);
             let (x, w) = (b / 2.0, tw / 2.0);
-            p(&[(-x, 0.0), (x, 0.0), (x, tf), (w, tf), (w, h - tf), (x, h - tf), (x, h), (-x, h), (-x, h - tf), (-w, h - tf), (-w, tf), (-x, tf)])
+            p(&[
+                (-x, 0.0),
+                (x, 0.0),
+                (x, tf),
+                (w, tf),
+                (w, h - tf),
+                (x, h - tf),
+                (x, h),
+                (-x, h),
+                (-x, h - tf),
+                (-w, h - tf),
+                (-w, tf),
+                (-x, tf),
+            ])
         }
         "Channel" => {
             let (h, b, t) = (0.15, 0.075, 0.007);
-            p(&[(0.0, 0.0), (b, 0.0), (b, t), (t, t), (t, h - t), (b, h - t), (b, h), (0.0, h)])
+            p(&[
+                (0.0, 0.0),
+                (b, 0.0),
+                (b, t),
+                (t, t),
+                (t, h - t),
+                (b, h - t),
+                (b, h),
+                (0.0, h),
+            ])
         }
         "Angle" => {
             let (a, t) = (0.08, 0.008);
@@ -258,7 +312,16 @@ pub fn preset(name: &str) -> Option<Vec<DVec2>> {
         "T-section" => {
             let (h, b, t) = (0.1, 0.1, 0.01);
             let (x, w) = (b / 2.0, t / 2.0);
-            p(&[(-w, 0.0), (w, 0.0), (w, h - t), (x, h - t), (x, h), (-x, h), (-x, h - t), (-w, h - t)])
+            p(&[
+                (-w, 0.0),
+                (w, 0.0),
+                (w, h - t),
+                (x, h - t),
+                (x, h),
+                (-x, h),
+                (-x, h - t),
+                (-w, h - t),
+            ])
         }
         "Tube" => {
             // a round tube, its wall a thin ring cut at the top to stay one outline
@@ -276,7 +339,10 @@ pub fn preset(name: &str) -> Option<Vec<DVec2>> {
 
 /// The project's own profiles.
 pub fn project_profiles(model: &Model) -> Vec<NamedProfile> {
-    model.project_info().map(|(_, p)| p.profiles.clone()).unwrap_or_default()
+    model
+        .project_info()
+        .map(|(_, p)| p.profiles.clone())
+        .unwrap_or_default()
 }
 
 /// A profile by name: the project's first, then the presets.
@@ -290,7 +356,10 @@ pub fn find(model: &Model, name: &str) -> Option<Vec<DVec2>> {
 
 /// Write the project's profiles (one undo step).
 pub fn set_profiles(model: &Model, profiles: Vec<NamedProfile>, label: &str) -> crate::Transaction {
-    let mut info = model.project_info().map(|(_, p)| p.clone()).unwrap_or_default();
+    let mut info = model
+        .project_info()
+        .map(|(_, p)| p.clone())
+        .unwrap_or_default();
     info.profiles = profiles;
     let mut tx = crate::project::set_project(model, info);
     tx.label = label.into();
@@ -299,7 +368,12 @@ pub fn set_profiles(model: &Model, profiles: Vec<NamedProfile>, label: &str) -> 
 
 /// The parts made with library profile `name`, set to `outline`: what
 /// editing a profile adds to its undo step (MU36).
-pub fn follow(model: &Model, name: &str, outline: &[DVec2], tx: crate::Transaction) -> crate::Transaction {
+pub fn follow(
+    model: &Model,
+    name: &str,
+    outline: &[DVec2],
+    tx: crate::Transaction,
+) -> crate::Transaction {
     let mut tx = tx;
     for e in users(model, name) {
         let mut now = e.clone();
@@ -346,7 +420,9 @@ pub fn users<'a>(model: &'a Model, name: &str) -> Vec<&'a crate::Element> {
 
 /// How many elements made with `name` don't have its current shape yet.
 pub fn stale(model: &Model, name: &str) -> usize {
-    let Some(now) = find(model, name) else { return 0 };
+    let Some(now) = find(model, name) else {
+        return 0;
+    };
     users(model, name)
         .into_iter()
         .filter(|e| match &e.kind {
@@ -363,11 +439,17 @@ pub fn stale(model: &Model, name: &str) -> usize {
 
 /// A name not yet taken: `base`, else `base 2`, `base 3`…
 pub fn free_name(model: &Model, base: &str) -> String {
-    let taken: Vec<String> = project_profiles(model).into_iter().map(|p| p.name).collect();
+    let taken: Vec<String> = project_profiles(model)
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
     if !taken.iter().any(|t| t == base) && preset(base).is_none() {
         return base.into();
     }
-    (2..).map(|n| format!("{base} {n}")).find(|n| !taken.contains(n)).unwrap_or_default()
+    (2..)
+        .map(|n| format!("{base} {n}"))
+        .find(|n| !taken.contains(n))
+        .unwrap_or_default()
 }
 
 /// The id trace references of profile `name` are shown in (MU37): not an
@@ -391,7 +473,10 @@ pub fn from_shapes(model: &Model, ids: &[crate::ElementId]) -> Option<NamedProfi
     let raw: Vec<(Vec<DVec2>, bool)> = ids.iter().filter_map(|id| raw_shape(model, *id)).collect();
     let first = raw.first()?;
     let all = raw.iter().flat_map(|(p, _)| p.iter().copied());
-    let (lo, hi) = all.fold((DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)), |(a, b), p| (a.min(p), b.max(p)));
+    let (lo, hi) = all.fold(
+        (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+        |(a, b), p| (a.min(p), b.max(p)),
+    );
     let o = DVec2::new((lo.x + hi.x) / 2.0, lo.y);
     let mv = |v: &Vec<DVec2>| v.iter().map(|p| *p - o).collect::<Vec<_>>();
     Some(NamedProfile {
@@ -399,7 +484,14 @@ pub fn from_shapes(model: &Model, ids: &[crate::ElementId]) -> Option<NamedProfi
         points: mv(&first.0),
         open: first.1,
         thickness: None,
-        more: raw[1..].iter().map(|(p, open)| ProfileShape { points: mv(p), open: *open, thickness: None }).collect(),
+        more: raw[1..]
+            .iter()
+            .map(|(p, open)| ProfileShape {
+                points: mv(p),
+                open: *open,
+                thickness: None,
+            })
+            .collect(),
         flips: vec![],
     })
 }
@@ -454,12 +546,19 @@ mod tests {
         let p = NamedProfile {
             name: "X".into(),
             points: crate::parts::rectangle(0.1, 0.05),
-            more: vec![ProfileShape { points: cw, open: false, thickness: None }],
+            more: vec![ProfileShape {
+                points: cw,
+                open: false,
+                thickness: None,
+            }],
             ..Default::default()
         };
         let o = p.outline();
         let a = crate::polygon::signed_area2(&o) / 2.0;
-        assert!((a.abs() - (0.005 + 0.025 * 0.078 - 2.0 * 0.025 * 0.05)).abs() < 1e-9, "{a}");
+        assert!(
+            (a.abs() - (0.005 + 0.025 * 0.078 - 2.0 * 0.025 * 0.05)).abs() < 1e-9,
+            "{a}"
+        );
     }
 
     use super::*;
@@ -476,11 +575,19 @@ mod tests {
     #[test]
     fn project_profiles_are_kept_with_the_project_and_found_by_name() {
         let mut doc = crate::Document::new();
-        let p = NamedProfile { name: "Sill".into(), points: crate::parts::rectangle(0.2, 0.05), ..Default::default() };
-        doc.commit(set_profiles(doc.model(), vec![p.clone()], "Add profile")).unwrap();
+        let p = NamedProfile {
+            name: "Sill".into(),
+            points: crate::parts::rectangle(0.2, 0.05),
+            ..Default::default()
+        };
+        doc.commit(set_profiles(doc.model(), vec![p.clone()], "Add profile"))
+            .unwrap();
         assert_eq!(find(doc.model(), "Sill"), Some(p.points));
         // an open line sweeps as a thin outline
-        let t = thicken(&[DVec2::ZERO, DVec2::new(0.1, 0.0), DVec2::new(0.1, 0.1)], 0.02);
+        let t = thicken(
+            &[DVec2::ZERO, DVec2::new(0.1, 0.0), DVec2::new(0.1, 0.1)],
+            0.02,
+        );
         assert_eq!(t.len(), 6);
         assert!(crate::polygon::signed_area2(&t).abs() > 1e-6);
         assert!(find(doc.model(), "Cornice").is_some());

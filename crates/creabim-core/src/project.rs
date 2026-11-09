@@ -80,13 +80,19 @@ pub fn pad_from_markdown(md: &str) -> Vec<PadItem> {
     };
     for line in md.lines() {
         let t = line.trim();
-        let todo = t
-            .strip_prefix("- [ ] ")
-            .map(|r| (false, r))
-            .or_else(|| t.strip_prefix("- [x] ").or(t.strip_prefix("- [X] ")).map(|r| (true, r)));
+        let todo = t.strip_prefix("- [ ] ").map(|r| (false, r)).or_else(|| {
+            t.strip_prefix("- [x] ")
+                .or(t.strip_prefix("- [X] "))
+                .map(|r| (true, r))
+        });
         if let Some((done, r)) = todo {
             flush(&mut note, &mut out);
-            out.push(PadItem { text: r.into(), todo: true, done, link: None });
+            out.push(PadItem {
+                text: r.into(),
+                todo: true,
+                done,
+                link: None,
+            });
         } else if t.is_empty() {
             flush(&mut note, &mut out);
         } else {
@@ -96,7 +102,12 @@ pub fn pad_from_markdown(md: &str) -> Vec<PadItem> {
                     n.text.push('\n');
                     n.text.push_str(t);
                 }
-                None => note = Some(PadItem { text: t.into(), ..Default::default() }),
+                None => {
+                    note = Some(PadItem {
+                        text: t.into(),
+                        ..Default::default()
+                    })
+                }
             }
         }
     }
@@ -106,15 +117,25 @@ pub fn pad_from_markdown(md: &str) -> Vec<PadItem> {
 
 /// Items as markdown: to-dos as `- [ ]`/`- [x]` lines, notes as
 /// paragraphs, each link named after what it points at.
-pub fn pad_to_markdown(items: &[&PadItem], name_of: &dyn Fn(crate::ElementId) -> Option<String>) -> String {
+pub fn pad_to_markdown(
+    items: &[&PadItem],
+    name_of: &dyn Fn(crate::ElementId) -> Option<String>,
+) -> String {
     let mut todos = String::new();
     let mut notes = String::new();
     for i in items {
-        let link = i.link.and_then(name_of).map(|n| format!(" (\u{2192} {n})")).unwrap_or_default();
+        let link = i
+            .link
+            .and_then(name_of)
+            .map(|n| format!(" (\u{2192} {n})"))
+            .unwrap_or_default();
         if i.todo {
             let mut lines = i.text.lines();
             let first = lines.next().unwrap_or("");
-            todos.push_str(&format!("- [{}] {first}{link}\n", if i.done { "x" } else { " " }));
+            todos.push_str(&format!(
+                "- [{}] {first}{link}\n",
+                if i.done { "x" } else { " " }
+            ));
             for l in lines {
                 todos.push_str(&format!("  {l}\n"));
             }
@@ -210,7 +231,10 @@ mod tests {
         let back = pad_to_markdown(&refs, &|_| None);
         assert!(back.contains("- [x] Start a new project"));
         assert!(back.contains("## Notes"));
-        assert_eq!(pad_from_markdown(&back).iter().filter(|i| i.todo).count(), 2);
+        assert_eq!(
+            pad_from_markdown(&back).iter().filter(|i| i.todo).count(),
+            2
+        );
     }
 
     #[test]

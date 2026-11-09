@@ -125,7 +125,8 @@ pub fn schedule_by(model: &Model, category: ScheduleCategory, by_type: bool) -> 
         return takeoff_schedule(model, by_type);
     }
     let units = model.units();
-    let mm = |v: f64| creabim_core::write_number(model, creabim_core::NumberKind::Schedules, None, v);
+    let mm =
+        |v: f64| creabim_core::write_number(model, creabim_core::NumberKind::Schedules, None, v);
     let area = |v: f64| units.area(v);
     let name = |id: ElementId| model.get(id).map(|e| e.name.clone()).unwrap_or_default();
     let material = |e: &Element| {

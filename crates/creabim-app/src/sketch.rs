@@ -658,16 +658,19 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
         }
         None => {
             let n = sk.segment_count();
-            crate::props::note(ui, format!(
-                "{n} segment{}{}, {}",
-                if n == 1 { "" } else { "s" },
-                match arcs {
-                    0 => String::new(),
-                    1 => " (1 arc)".into(),
-                    k => format!(" ({k} arcs)"),
-                },
-                if sk.closed { "closed" } else { "open" }
-            ));
+            crate::props::note(
+                ui,
+                format!(
+                    "{n} segment{}{}, {}",
+                    if n == 1 { "" } else { "s" },
+                    match arcs {
+                        0 => String::new(),
+                        1 => " (1 arc)".into(),
+                        k => format!(" ({k} arcs)"),
+                    },
+                    if sk.closed { "closed" } else { "open" }
+                ),
+            );
             let mut closed = sk.closed;
             if sk.can_close() && crate::props::switch(ui, &mut closed, "Closed").changed() {
                 sk.set_closed(closed);
@@ -703,7 +706,9 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
     // each constraint a label/field row, its value filling the field
     // column, a remove icon at its end (MU35)
     ui.add_space(4.0);
-    crate::props::row(ui, "Constraints", |ui| ui.label(format!("{}", sk.constraints.len())));
+    crate::props::row(ui, "Constraints", |ui| {
+        ui.label(format!("{}", sk.constraints.len()))
+    });
     if sk.constraints.is_empty() {
         crate::props::note(ui, "None yet. Add one below; the sketch moves to meet it.");
     }
@@ -723,11 +728,14 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
                 match c.value() {
                     Some(v) => {
                         let mut value = v;
-                        let r = ui.add_sized([w, h], crate::units::drag(&mut value).range(0.001..=1e4));
+                        let r =
+                            ui.add_sized([w, h], crate::units::drag(&mut value).range(0.001..=1e4));
                         if r.changed() {
                             match sk.set_dimension(i, value) {
                                 Ok(()) => edit = Edit::Done("Dimension"),
-                                Err(e) => edit = Edit::Refused(format!("Couldn't change that: {e}")),
+                                Err(e) => {
+                                    edit = Edit::Refused(format!("Couldn't change that: {e}"))
+                                }
                             }
                         }
                     }
@@ -796,12 +804,26 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
                 });
         });
         let corner = form.kind == 7;
-        picker(ui, if two || corner { "First" } else { "Of" }, "constraint_a", &mut form.a, corner);
+        picker(
+            ui,
+            if two || corner { "First" } else { "Of" },
+            "constraint_a",
+            &mut form.a,
+            corner,
+        );
         if two || corner {
             picker(ui, "Second", "constraint_b", &mut form.b, corner);
         }
     }
-    if crate::props::action(ui, "", "Add constraint", "The sketch moves to meet it", true).clicked() {
+    if crate::props::action(
+        ui,
+        "",
+        "Add constraint",
+        "The sketch moves to meet it",
+        true,
+    )
+    .clicked()
+    {
         let (a, b) = (form.a, form.b);
         let mut c = match form.kind {
             0 => Constraint::Length {
@@ -830,7 +852,10 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
     }
     ui.data_mut(|d| d.insert_temp(id, form));
     if !sk.constraints.is_empty() {
-        crate::props::note(ui, "Drag a value or type it; the sketch follows. Its first corner stays put.");
+        crate::props::note(
+            ui,
+            "Drag a value or type it; the sketch follows. Its first corner stays put.",
+        );
     }
     edit
 }

@@ -268,11 +268,13 @@ impl CutPiece {
             Some(l) => l.material.and_then(mat),
             None => {
                 let e = model.get(self.id)?;
-                creabim_core::material_of(model, e).map(|(_, m)| m.color).or_else(|| {
-                    let (_, a) = creabim_core::assembly::assembly_of(model, e)?;
-                    let i = (0..a.layers.len()).find(|i| a.is_core(*i))?;
-                    mat(a.layers[i].material?)
-                })
+                creabim_core::material_of(model, e)
+                    .map(|(_, m)| m.color)
+                    .or_else(|| {
+                        let (_, a) = creabim_core::assembly::assembly_of(model, e)?;
+                        let i = (0..a.layers.len()).find(|i| a.is_core(*i))?;
+                        mat(a.layers[i].material?)
+                    })
             }
         }
     }
@@ -969,7 +971,11 @@ pub fn plan_view_with(
                 // or range below it reaches it (MU36: it was on only one)
                 None => {
                     let z0 = model.level(level).map_or(0.0, |l| l.elevation);
-                    let zs = f.mesh.vertices.iter().map(|v| f.to_model(*v).z + f.origin.z);
+                    let zs = f
+                        .mesh
+                        .vertices
+                        .iter()
+                        .map(|v| f.to_model(*v).z + f.origin.z);
                     let (lo, hi) = zs.fold((f64::MAX, f64::MIN), |(a, b), z| (a.min(z), b.max(z)));
                     // under the cut and not wholly below the floor's slab
                     lo < z0 + cut_height && hi > z0 - 0.5
@@ -1213,7 +1219,8 @@ pub fn plan_view_with(
                 if let ElementKind::Part(p) = k {
                     if !p.void {
                         if let Some(mesh) = crate::parts::part_mesh(model, p) {
-                            let color = creabim_core::material_of(model, e).map_or([0.78, 0.76, 0.72], |(_, m)| m.color);
+                            let color = creabim_core::material_of(model, e)
+                                .map_or([0.78, 0.76, 0.72], |(_, m)| m.color);
                             let item = crate::scene::SceneItem {
                                 id: e.id,
                                 mesh,
@@ -2201,7 +2208,11 @@ fn section_marker(
 pub fn level_under(model: &Model, z: f64) -> Option<ElementId> {
     let mut all: Vec<(ElementId, f64)> = model.levels().map(|(e, l)| (e.id, l.elevation)).collect();
     all.sort_by(|a, b| a.1.total_cmp(&b.1));
-    all.iter().rev().find(|l| l.1 <= z + 0.05).or(all.first()).map(|l| l.0)
+    all.iter()
+        .rev()
+        .find(|l| l.1 <= z + 0.05)
+        .or(all.first())
+        .map(|l| l.0)
 }
 
 #[cfg(test)]
@@ -2744,4 +2755,3 @@ mod tests {
         assert!(!washed(bow, true));
     }
 }
-

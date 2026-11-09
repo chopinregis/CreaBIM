@@ -650,12 +650,18 @@ pub fn ref_frame(model: &Model, r: &crate::Reference) -> Option<crate::DrawingFr
 /// says without drawing it: free, on a level line, on a wall, or where it
 /// was put on a body.
 fn drawn_at(model: &Model, p: &crate::HostPoint) -> Option<DVec2> {
-    let Some(h) = p.host else { return Some(p.local) };
+    let Some(h) = p.host else {
+        return Some(p.local);
+    };
     match &model.get(h)?.kind {
         ElementKind::Level(l) => Some(DVec2::new(p.local.x, l.elevation + p.local.y)),
         ElementKind::Wall(w) => {
             let d = w.direction();
-            let u = if p.from_end { w.length() + p.local.x } else { p.local.x };
+            let u = if p.from_end {
+                w.length() + p.local.x
+            } else {
+                p.local.x
+            };
             Some(w.start + d * u + d.perp() * p.local.y)
         }
         ElementKind::Opening(o) => match &model.get(o.host)?.kind {
@@ -1045,7 +1051,12 @@ mod tests {
         // joined at its corner, not inside it (MU23)
         let (_, hi) = crate::walls::clear_span(&m, o.host);
         assert!(hi <= wall_len + 1e-9);
-        assert!((o.offset + o.width - hi).abs() < 1e-9, "{} {} {hi}", o.offset, o.width);
+        assert!(
+            (o.offset + o.width - hi).abs() < 1e-9,
+            "{} {} {hi}",
+            o.offset,
+            o.width
+        );
         let turn = Xform::Rotate {
             center: DVec2::ZERO,
             degrees: 10.0,
@@ -1302,7 +1313,10 @@ mod reference_moves {
     #[test]
     fn a_reference_in_a_section_moves_on_the_section_plane() {
         // a section running along +Y
-        let v = Element::new("Section", ElementKind::View(View::section(DVec2::ZERO, DVec2::new(0.0, 10.0), 5.0, true)));
+        let v = Element::new(
+            "Section",
+            ElementKind::View(View::section(DVec2::ZERO, DVec2::new(0.0, 10.0), 5.0, true)),
+        );
         let vid = v.id;
         let model = Model::from_elements([v]).unwrap();
         let mut r = Reference::new(RefSource::View(vid), vec![vid]);
@@ -1310,8 +1324,9 @@ mod reference_moves {
         let e = Element::new("Ref", ElementKind::Reference(r));
         // 1 m up and 3 m along the section line
         let moved = transformed(&model, &e, &Xform::Move(DVec3::new(0.0, 3.0, 1.0))).unwrap();
-        let ElementKind::Reference(r) = moved.kind else { panic!() };
+        let ElementKind::Reference(r) = moved.kind else {
+            panic!()
+        };
         assert!((r.at - DVec2::new(5.0, 2.0)).length() < 1e-9, "{:?}", r.at);
-
     }
 }

@@ -76,7 +76,12 @@ fn weight_combo(
     let text = w.map_or("As drawn".to_string(), |w| w.label());
     egui::ComboBox::from_id_salt(salt)
         .icon(crate::props::combo_icon)
-        .width(ui.spacing().combo_width.max(108.0).min(ui.available_width()))
+        .width(
+            ui.spacing()
+                .combo_width
+                .max(108.0)
+                .min(ui.available_width()),
+        )
         .selected_text(text)
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(w, None, "As drawn").changed();
@@ -158,7 +163,12 @@ fn name_combo(
     let mut changed = false;
     egui::ComboBox::from_id_salt(salt)
         .icon(crate::props::combo_icon)
-        .width(ui.spacing().combo_width.max(108.0).min(ui.available_width()))
+        .width(
+            ui.spacing()
+                .combo_width
+                .max(108.0)
+                .min(ui.available_width()),
+        )
         .selected_text(v.as_deref().unwrap_or(none))
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(v, None, none).changed();
@@ -227,7 +237,8 @@ fn limit_ui(
             .map_or(none.to_string(), |x| x.1.clone());
         egui::ComboBox::from_id_salt(salt)
             .icon(crate::props::combo_icon)
-            .width(ui.available_width().min(130.0)).truncate()
+            .width(ui.available_width().min(130.0))
+            .truncate()
             .selected_text(current)
             .show_ui(ui, |ui| {
                 if ui.selectable_label(l.is_none(), none).clicked() {
@@ -618,7 +629,12 @@ impl CreaBimApp {
         }
     }
 
-    fn view_graphics_inner(&mut self, ui: &mut egui::Ui, id: ElementId, cut_box: &mut Option<bool>) {
+    fn view_graphics_inner(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: ElementId,
+        cut_box: &mut Option<bool>,
+    ) {
         let Some(ElementKind::View(v)) = self.doc.model().get(id).map(|e| &e.kind) else {
             return;
         };
@@ -637,8 +653,9 @@ impl CreaBimApp {
             // the cut, as in the header (MU32: only the header had it)
             if let ViewKind::Plan { cut_height, .. } = &mut v.kind {
                 crate::props::row(ui, "Cut height", |ui| {
-                    let r = crate::props::fill(ui, crate::units::drag(cut_height).range(0.0..=100.0))
-                        .on_hover_text("How high above its level the plan is cut");
+                    let r =
+                        crate::props::fill(ui, crate::units::drag(cut_height).range(0.0..=100.0))
+                            .on_hover_text("How high above its level the plan is cut");
                     if r.changed() {
                         label = Some("Cut height");
                     }
@@ -651,8 +668,16 @@ impl CreaBimApp {
             let (down, up) = crate::props::actions2(
                 ui,
                 "Section box",
-                ("Below the cut", "Cut the 3D view as this plan sees it", true),
-                ("Above (ceilings)", "Keep what is above the cut, to look up at the ceilings", true),
+                (
+                    "Below the cut",
+                    "Cut the 3D view as this plan sees it",
+                    true,
+                ),
+                (
+                    "Above (ceilings)",
+                    "Keep what is above the cut, to look up at the ceilings",
+                    true,
+                ),
             );
             if down || up {
                 *cut_box = Some(up);
@@ -660,7 +685,14 @@ impl CreaBimApp {
         }
         // a section's cut as a section box in 3D too (MU34 A2)
         if matches!(v.kind, ViewKind::Section { .. })
-            && crate::props::action(ui, "Section box", "In 3D", "Cut the 3D view as this section sees it: from its line to its depth", true).clicked()
+            && crate::props::action(
+                ui,
+                "Section box",
+                "In 3D",
+                "Cut the 3D view as this section sees it: from its line to its depth",
+                true,
+            )
+            .clicked()
         {
             *cut_box = Some(false);
         }
@@ -1199,7 +1231,11 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
                         .join(" ");
                     ui.label("Dashes");
                     if ui
-                        .add(egui::TextEdit::singleline(&mut dashes).vertical_align(egui::Align::Center).desired_width(80.0))
+                        .add(
+                            egui::TextEdit::singleline(&mut dashes)
+                                .vertical_align(egui::Align::Center)
+                                .desired_width(80.0),
+                        )
                         .on_hover_text("Dash, gap, dash, gap…, spaced; 0 is a dot. Empty is solid.")
                         .changed()
                     {

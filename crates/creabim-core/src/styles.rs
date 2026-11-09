@@ -547,7 +547,10 @@ pub struct StylePack {
     #[serde(default, skip_serializing_if = "crate::MembraneLook::is_default")]
     pub membranes: crate::MembraneLook,
     /// How numbers read, per kind of annotation (A5-2).
-    #[serde(default, skip_serializing_if = "crate::units::NumberFormats::is_default")]
+    #[serde(
+        default,
+        skip_serializing_if = "crate::units::NumberFormats::is_default"
+    )]
     pub number_formats: crate::units::NumberFormats,
 }
 

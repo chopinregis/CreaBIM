@@ -175,7 +175,8 @@ fn material_pick(
         egui::ComboBox::from_id_salt(("type_material", salt))
             .icon(crate::props::combo_icon)
             .selected_text(shown)
-            .width(ui.available_width().min(150.0)).truncate()
+            .width(ui.available_width().min(150.0))
+            .truncate()
             .show_ui(ui, |ui| {
                 changed |= ui.selectable_value(current, None, "By type").changed();
                 for (id, n) in &materials {
@@ -206,7 +207,8 @@ fn assembly_pick(
         egui::ComboBox::from_id_salt("type_assembly")
             .icon(crate::props::combo_icon)
             .selected_text(shown)
-            .width(ui.available_width().min(170.0)).truncate()
+            .width(ui.available_width().min(170.0))
+            .truncate()
             .show_ui(ui, |ui| {
                 changed |= ui
                     .selectable_value(current, None, "None (single material)")
@@ -351,11 +353,19 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
         }
         TypeParams::Column(c) => {
             let mut round = matches!(c.profile, creabim_core::Profile::Round { .. });
-            if crate::props::choice(ui, "Profile", &mut round, &[(false, "Rectangular", ""), (true, "Round", "")]) {
+            if crate::props::choice(
+                ui,
+                "Profile",
+                &mut round,
+                &[(false, "Rectangular", ""), (true, "Round", "")],
+            ) {
                 c.profile = if round {
                     creabim_core::Profile::Round { diameter: 0.3 }
                 } else {
-                    creabim_core::Profile::Rectangle { width: 0.3, depth: 0.3 }
+                    creabim_core::Profile::Rectangle {
+                        width: 0.3,
+                        depth: 0.3,
+                    }
                 };
                 label = "Type profile";
             }
@@ -458,7 +468,10 @@ pub(super) fn holes_fields(
     if holes.is_empty() && shafts == 0 {
         crate::props::note(ui, "None yet. Draw one, or a shaft through several floors.");
     } else if !holes.is_empty() {
-        crate::props::note(ui, "Edit (Enter) shows each hole's corners and edges to reshape it.");
+        crate::props::note(
+            ui,
+            "Edit (Enter) shows each hole's corners and edges to reshape it.",
+        );
     }
     if shafts > 0 {
         ui.label(
@@ -662,7 +675,13 @@ impl CreaBimApp {
     /// element it fits), what it overrides, and buttons to reset, update
     /// the type, make a type of it and select the type's instances.
     pub(super) fn type_picker(&mut self, ui: &mut egui::Ui, id: ElementId) {
-        if self.doc.model().get(id).and_then(|e| TypeCategory::of(&e.kind)).is_none() {
+        if self
+            .doc
+            .model()
+            .get(id)
+            .and_then(|e| TypeCategory::of(&e.kind))
+            .is_none()
+        {
             return;
         }
         // a folding header as every other section's (MU31: a bare title)
@@ -778,15 +797,31 @@ impl CreaBimApp {
                 crate::props::flow(ui, |ui| {
                     let two = cat != TypeCategory::Object;
                     let gap = ui.spacing().item_spacing.x;
-                    let w = if two { (ui.available_width() - gap) / 2.0 } else { ui.available_width() };
-                    if ui.add_sized([w, 22.0], egui::Button::new("Edit\u{2026}")).on_hover_text(format!("Edit the type \u{201c}{}\u{201d}: every instance follows", self.doc.model().get(t).map_or(String::new(), |e| e.name.clone()))).clicked() {
+                    let w = if two {
+                        (ui.available_width() - gap) / 2.0
+                    } else {
+                        ui.available_width()
+                    };
+                    if ui
+                        .add_sized([w, 22.0], egui::Button::new("Edit\u{2026}"))
+                        .on_hover_text(format!(
+                            "Edit the type \u{201c}{}\u{201d}: every instance follows",
+                            self.doc
+                                .model()
+                                .get(t)
+                                .map_or(String::new(), |e| e.name.clone())
+                        ))
+                        .clicked()
+                    {
                         self.types.open = true;
                         self.types.current = Some(t);
                     }
                     if two
                         && ui
                             .add_sized([w, 22.0], egui::Button::new("New"))
-                            .on_hover_text("A new type with its values, which it becomes an instance of")
+                            .on_hover_text(
+                                "A new type with its values, which it becomes an instance of",
+                            )
                             .clicked()
                     {
                         asks.push(TypeAsk::FromElement(id));

@@ -510,7 +510,9 @@ pub fn clear_span(model: &Model, wall_id: ElementId) -> (f64, f64) {
     let along = w.direction();
     let (mut lo, mut hi) = (0.0_f64, len);
     for e in model.iter() {
-        let ElementKind::Wall(v) = &e.kind else { continue };
+        let ElementKind::Wall(v) = &e.kind else {
+            continue;
+        };
         if e.id == wall_id || v.level != w.level || v.curtain.is_some() || v.length() < 1e-6 {
             continue;
         }
@@ -526,7 +528,9 @@ pub fn clear_span(model: &Model, wall_id: ElementId) -> (f64, f64) {
         let reach = v.thickness / 2.0 / sin + w.thickness / 2.0 * cos / sin;
         let near = |p: DVec2| {
             // the other wall's end, or its body, at this wall's end point
-            let ends = [v.start, v.end].iter().any(|q| q.distance(p) < v.thickness.max(w.thickness));
+            let ends = [v.start, v.end]
+                .iter()
+                .any(|q| q.distance(p) < v.thickness.max(w.thickness));
             let t = ((p - v.start).dot(dir)).clamp(0.0, v.length());
             let on = (v.start + dir * t).distance(p) < v.thickness / 2.0 + 0.02;
             ends || on
@@ -995,7 +999,13 @@ mod widen_tests {
         };
         let c = Element::new(
             "C",
-            ElementKind::Wall(Wall::new(l, DVec2::new(6.0, 0.0), DVec2::new(6.0, 3.0), 0.2, 2.7)),
+            ElementKind::Wall(Wall::new(
+                l,
+                DVec2::new(6.0, 0.0),
+                DVec2::new(6.0, 3.0),
+                0.2,
+                2.7,
+            )),
         );
         Transaction::new("corner").insert(c).apply(&mut m).unwrap();
         let (lo, hi) = clear_span(&m, host);

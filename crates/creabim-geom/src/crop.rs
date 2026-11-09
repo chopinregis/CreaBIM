@@ -122,7 +122,12 @@ pub fn crop(d: &PlanView, lo: DVec2, hi: DVec2) -> PlanView {
                     });
                 }
             }
-            PlanItem::Fill { id, points, hatch, rgb } => {
+            PlanItem::Fill {
+                id,
+                points,
+                hatch,
+                rgb,
+            } => {
                 let points = clip_polygon(points, lo, hi);
                 if !points.is_empty() {
                     items.push(PlanItem::Fill {

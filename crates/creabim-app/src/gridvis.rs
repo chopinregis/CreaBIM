@@ -903,7 +903,11 @@ impl CreaBimApp {
                 );
                 crate::props::flow(ui, |ui| {
                     ui.label("Every");
-                    let r = ui.add(egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center).desired_width(110.0));
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut text)
+                            .vertical_align(egui::Align::Center)
+                            .desired_width(110.0),
+                    );
                     if !r.has_focus() && !r.lost_focus() && ui.memory(|m| m.focused().is_none()) {
                         r.request_focus();
                     }
@@ -1224,7 +1228,11 @@ impl CreaBimApp {
         crate::props::flow(ui, |ui| {
             ui.label("Prefix");
             if ui
-                .add(egui::TextEdit::singleline(&mut g.prefix).vertical_align(egui::Align::Center).desired_width(60.0))
+                .add(
+                    egui::TextEdit::singleline(&mut g.prefix)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(60.0),
+                )
                 .changed()
             {
                 label = "Grid prefix";
@@ -1888,4 +1896,3 @@ mod tests {
         assert_eq!(app.first_hit_3d(o, d).map(|h| h.id), Some(beam));
     }
 }
-

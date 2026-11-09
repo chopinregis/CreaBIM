@@ -630,7 +630,12 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
     match kind {
         ElementKind::Column(c) => {
             let mut round = matches!(c.profile, Profile::Round { .. });
-            if crate::props::choice(ui, "Profile", &mut round, &[(false, "Rectangular", ""), (true, "Round", "")]) {
+            if crate::props::choice(
+                ui,
+                "Profile",
+                &mut round,
+                &[(false, "Rectangular", ""), (true, "Round", "")],
+            ) {
                 label = "Column profile";
             }
             if label == "Column profile" {
@@ -755,18 +760,33 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             }
             let n = r.boundary.len();
             if matches!(r.shape, RoofShape::Shed | RoofShape::Gable) && n > 0 {
-                let what = if r.shape == RoofShape::Shed { "Low edge" } else { "Eave edge" };
+                let what = if r.shape == RoofShape::Shed {
+                    "Low edge"
+                } else {
+                    "Eave edge"
+                };
                 crate::props::row(ui, what, |ui| {
                     crate::props::flow(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
                         let h = ui.spacing().interact_size.y;
                         let w = ((ui.available_width() - 2.0) / 3.0).max(24.0);
-                        if ui.add_sized([w, h], egui::Button::new("‹")).on_hover_text("The edge before").clicked() {
+                        if ui
+                            .add_sized([w, h], egui::Button::new("‹"))
+                            .on_hover_text("The edge before")
+                            .clicked()
+                        {
                             r.edge = (r.edge + n - 1) % n;
                             label = "Roof edge";
                         }
-                        ui.add_sized([w, h], egui::Label::new(format!("{} of {n}", r.edge % n + 1)));
-                        if ui.add_sized([w, h], egui::Button::new("›")).on_hover_text("The next edge").clicked() {
+                        ui.add_sized(
+                            [w, h],
+                            egui::Label::new(format!("{} of {n}", r.edge % n + 1)),
+                        );
+                        if ui
+                            .add_sized([w, h], egui::Button::new("›"))
+                            .on_hover_text("The next edge")
+                            .clicked()
+                        {
                             r.edge = (r.edge + 1) % n;
                             label = "Roof edge";
                         }
@@ -837,7 +857,12 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                         label = "Stair landing";
                     }
                 });
-                if crate::props::choice(ui, "Turns", &mut l.left, &[(true, "Left", ""), (false, "Right", "")]) {
+                if crate::props::choice(
+                    ui,
+                    "Turns",
+                    &mut l.left,
+                    &[(true, "Left", ""), (false, "Right", "")],
+                ) {
                     label = "Stair turn";
                 }
             }
@@ -875,20 +900,33 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             // its top rail from the profile library (MU36)
             crate::props::row(ui, "Top rail", |ui| {
                 let w = ui.available_width();
-                let mut names: Vec<String> = creabim_core::profiles::project_profiles(model).into_iter().map(|p| p.name).collect();
+                let mut names: Vec<String> = creabim_core::profiles::project_profiles(model)
+                    .into_iter()
+                    .map(|p| p.name)
+                    .collect();
                 names.extend(["Handrail", "Tube", "Bar"].iter().map(|s| s.to_string()));
                 egui::ComboBox::from_id_salt("rail.profile")
                     .icon(crate::props::combo_icon)
                     .width(w)
                     .truncate()
-                    .selected_text(r.rail_profile.clone().unwrap_or_else(|| "Square bar".into()))
+                    .selected_text(
+                        r.rail_profile
+                            .clone()
+                            .unwrap_or_else(|| "Square bar".into()),
+                    )
                     .show_ui(ui, |ui| {
-                        if ui.selectable_label(r.rail_profile.is_none(), "Square bar").clicked() {
+                        if ui
+                            .selectable_label(r.rail_profile.is_none(), "Square bar")
+                            .clicked()
+                        {
                             r.rail_profile = None;
                             label = "Railing top rail";
                         }
                         for n in &names {
-                            if ui.selectable_label(r.rail_profile.as_deref() == Some(n.as_str()), n).clicked() {
+                            if ui
+                                .selectable_label(r.rail_profile.as_deref() == Some(n.as_str()), n)
+                                .clicked()
+                            {
                                 r.rail_profile = Some(n.clone());
                                 label = "Railing top rail";
                             }
@@ -896,7 +934,12 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                     });
             });
             if let Some(side) = &mut r.stair {
-                if crate::props::choice(ui, "Side", &mut side.left, &[(true, "Left", ""), (false, "Right", "")]) {
+                if crate::props::choice(
+                    ui,
+                    "Side",
+                    &mut side.left,
+                    &[(true, "Left", ""), (false, "Right", "")],
+                ) {
                     label = "Railing side";
                 }
                 weak(ui, "Follows its stair.".into());

@@ -80,7 +80,11 @@ pub fn dim_levels(model: &Model, id: ElementId) -> Option<[(ElementId, DVec2); 2
 /// the level at the end nearer `click`, the other stays (A5-2).
 fn dim_level_temp(model: &Model, id: ElementId, click: DVec2) -> Option<TempDim> {
     let [p, q] = dim_levels(model, id)?;
-    let (mine, other) = if p.1.distance(click) <= q.1.distance(click) { (p, q) } else { (q, p) };
+    let (mine, other) = if p.1.distance(click) <= q.1.distance(click) {
+        (p, q)
+    } else {
+        (q, p)
+    };
     let z = |l: ElementId| model.level(l).map_or(0.0, |l| l.elevation);
     let (zm, zo) = (z(mine.0), z(other.0));
     Some(TempDim {
@@ -92,7 +96,8 @@ fn dim_level_temp(model: &Model, id: ElementId, click: DVec2) -> Option<TempDim>
         how: How::Spacing {
             n: DVec2::new(0.0, if zm >= zo { 1.0 } else { -1.0 }),
         },
-        held: matches!(&model.get(id)?.kind, ElementKind::Dimension(d) if d.held.is_some()).then_some(id),
+        held: matches!(&model.get(id)?.kind, ElementKind::Dimension(d) if d.held.is_some())
+            .then_some(id),
         to: name_of(model, other.0),
     })
 }
@@ -156,8 +161,14 @@ pub fn find(model: &Model, level: ElementId, id: ElementId, near: DVec2) -> Vec<
                 _ => None,
             })
             .collect();
-        let below = others.iter().filter(|o| o.1 < z - 1e-9).max_by(|a, b| a.1.total_cmp(&b.1));
-        let above = others.iter().filter(|o| o.1 > z + 1e-9).min_by(|a, b| a.1.total_cmp(&b.1));
+        let below = others
+            .iter()
+            .filter(|o| o.1 < z - 1e-9)
+            .max_by(|a, b| a.1.total_cmp(&b.1));
+        let above = others
+            .iter()
+            .filter(|o| o.1 > z + 1e-9)
+            .min_by(|a, b| a.1.total_cmp(&b.1));
         return [below, above]
             .into_iter()
             .flatten()
@@ -1045,11 +1056,20 @@ mod level_tests {
 
     fn levels() -> (Document, [ElementId; 3]) {
         crate::units::set(creabim_core::Units::metric());
-        let mk = |n: &str, z: f64| Element::new(n, ElementKind::Level(Level { elevation: z, height: 3.0 }));
+        let mk = |n: &str, z: f64| {
+            Element::new(
+                n,
+                ElementKind::Level(Level {
+                    elevation: z,
+                    height: 3.0,
+                }),
+            )
+        };
         let (a, b, c) = (mk("Ground", 0.0), mk("First", 3.0), mk("Roof", 6.0));
         let ids = [a.id, b.id, c.id];
         let mut doc = Document::new();
-        doc.commit(Transaction::new("levels").insert(a).insert(b).insert(c)).unwrap();
+        doc.commit(Transaction::new("levels").insert(a).insert(b).insert(c))
+            .unwrap();
         (doc, ids)
     }
 
@@ -1074,7 +1094,12 @@ mod level_tests {
         let (mut doc, [g, f, _]) = levels();
         let v = Element::new(
             "Section A",
-            ElementKind::View(creabim_core::View::section(DVec2::ZERO, DVec2::new(10.0, 0.0), 5.0, true)),
+            ElementKind::View(creabim_core::View::section(
+                DVec2::ZERO,
+                DVec2::new(10.0, 0.0),
+                5.0,
+                true,
+            )),
         );
         let view = v.id;
         doc.commit(Transaction::new("view").insert(v)).unwrap();
@@ -1084,7 +1109,10 @@ mod level_tests {
             from_end: false,
             body: None,
         };
-        let dim = Element::new("Dimension", ElementKind::Dimension(Dimension::linear(view, on(g, 2.0), on(f, 2.0), 0.5)));
+        let dim = Element::new(
+            "Dimension",
+            ElementKind::Dimension(Dimension::linear(view, on(g, 2.0), on(f, 2.0), 0.5)),
+        );
         let id = dim.id;
         doc.commit(Transaction::new("dim").insert(dim)).unwrap();
         // clicked near its top end: the first floor moves, the ground stays
@@ -1104,7 +1132,12 @@ mod level_tests {
         let (mut doc, [g, f, r]) = levels();
         let v = Element::new(
             "Section A",
-            ElementKind::View(creabim_core::View::section(DVec2::ZERO, DVec2::new(10.0, 0.0), 5.0, true)),
+            ElementKind::View(creabim_core::View::section(
+                DVec2::ZERO,
+                DVec2::new(10.0, 0.0),
+                5.0,
+                true,
+            )),
         );
         let view = v.id;
         doc.commit(Transaction::new("view").insert(v)).unwrap();
@@ -1117,6 +1150,9 @@ mod level_tests {
         let (tx, _) = set(doc.model(), &dims[0], 3.4).unwrap();
         doc.commit(tx).unwrap();
         assert!((doc.model().level(f).unwrap().elevation - 3.4).abs() < 1e-9);
-        assert!((doc.model().level(r).unwrap().elevation - 6.4).abs() < 1e-9, "the roof keeps 3 m above");
+        assert!(
+            (doc.model().level(r).unwrap().elevation - 6.4).abs() < 1e-9,
+            "the roof keeps 3 m above"
+        );
     }
 }

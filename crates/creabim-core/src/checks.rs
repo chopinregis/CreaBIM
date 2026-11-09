@@ -447,7 +447,8 @@ mod tests {
         let n = copy.direction().perp();
         copy.start += n * 0.05 + copy.direction() * 0.5;
         copy.end += n * 0.05;
-        m.insert(crate::Element::new("Copy", crate::ElementKind::Wall(copy))).unwrap();
+        m.insert(crate::Element::new("Copy", crate::ElementKind::Wall(copy)))
+            .unwrap();
         let pairs = overlapping_walls(&m);
         assert_eq!(pairs.len(), before + 1);
         assert!(pairs.iter().any(|(a, b)| *a == id || *b == id));

@@ -2788,7 +2788,10 @@ mod tests {
         assert_eq!(doc.model().len(), n, "one copy made");
         assert_eq!(walls(&doc), 1, "only the original on its spot");
         let moved = wall_start(&doc, copies[0]);
-        assert!((moved - start - DVec2::new(1.5, 0.0)).length() < 1e-6, "{moved} {start}");
+        assert!(
+            (moved - start - DVec2::new(1.5, 0.0)).length() < 1e-6,
+            "{moved} {start}"
+        );
         assert_eq!(wall_start(&doc, id), start);
     }
 
@@ -2818,7 +2821,14 @@ mod tests {
             m.step(&mut doc, &click(at(2.0, 2.0)), map);
             m.step(&mut doc, &pointer(at(3.0, 2.0)), map);
             m.step(&mut doc, &click(at(3.5, 2.0)), map);
-            m.step(&mut doc, &Events { escape: true, ..Default::default() }, map);
+            m.step(
+                &mut doc,
+                &Events {
+                    escape: true,
+                    ..Default::default()
+                },
+                map,
+            );
         });
         assert!(doc.model().len() > n, "a copy was placed");
         assert_eq!(on_spot(&doc), 1, "one wall on the original spot");

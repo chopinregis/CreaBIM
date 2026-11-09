@@ -281,7 +281,9 @@ pub fn place_labels(items: &mut Vec<PlanItem>, mm: f64) {
     for (k, b) in movable {
         let block = matches!(items[k], PlanItem::Annotation { .. });
         let same = groups.iter_mut().find(|(ks, _)| {
-            block && matches!(items[ks[0]], PlanItem::Annotation { .. }) && items[ks[0]].id() == items[k].id()
+            block
+                && matches!(items[ks[0]], PlanItem::Annotation { .. })
+                && items[ks[0]].id() == items[k].id()
         });
         match same {
             Some((ks, g)) => {
@@ -363,7 +365,14 @@ pub fn place_labels(items: &mut Vec<PlanItem>, mm: f64) {
         let far = d.length() > LEADER_PAST * mm;
         // one leader for the block, from its first line
         for (n, &j) in ks.iter().enumerate() {
-            shift(&mut items[j], d, b.centre(), far && n == 0, &mut leaders, nb);
+            shift(
+                &mut items[j],
+                d,
+                b.centre(),
+                far && n == 0,
+                &mut leaders,
+                nb,
+            );
         }
         taken.push((nb, k));
     }

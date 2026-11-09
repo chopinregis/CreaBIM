@@ -376,15 +376,21 @@ impl CreaBimApp {
         // a group of the folded browser's rail: its items, to pick (MU29)
         if let Some(group) = key.strip_prefix("rail:") {
             let state = self.left_state();
-            let Some(g) = state["groups"].as_array().and_then(|gs| gs.iter().find(|g| g["key"].as_str() == Some(group))) else {
+            let Some(g) = state["groups"]
+                .as_array()
+                .and_then(|gs| gs.iter().find(|g| g["key"].as_str() == Some(group)))
+            else {
                 return vec![];
             };
             let mut items = vec![];
             for r in g["rows"].as_array().into_iter().flatten().take(60) {
                 items.push(
-                    Item::new(format!("railpick:{}", r["id"].as_str().unwrap_or("")), r["name"].as_str().unwrap_or(""))
-                        .icon(crate::svgicon::named(r["icon"].as_str().unwrap_or("")))
-                        .checked(r["sel"].as_bool().unwrap_or(false)),
+                    Item::new(
+                        format!("railpick:{}", r["id"].as_str().unwrap_or("")),
+                        r["name"].as_str().unwrap_or(""),
+                    )
+                    .icon(crate::svgicon::named(r["icon"].as_str().unwrap_or("")))
+                    .checked(r["sel"].as_bool().unwrap_or(false)),
                 );
             }
             return items;
@@ -595,10 +601,12 @@ impl CreaBimApp {
                 ];
                 if let Some((_, z)) = self.work_level() {
                     items.push(
-                        Item::new("wp.offset", "Level plane you can offset").icon("level-offset").hint(format!(
-                            "A plane at {} to slide up and down",
-                            crate::units::elevation(z)
-                        )),
+                        Item::new("wp.offset", "Level plane you can offset")
+                            .icon("level-offset")
+                            .hint(format!(
+                                "A plane at {} to slide up and down",
+                                crate::units::elevation(z)
+                            )),
                     );
                 }
                 items
@@ -649,10 +657,16 @@ impl CreaBimApp {
                 let now = crate::snaps::divisions();
                 let mut div = vec![Item::new("snap.div:0", "Off").checked(now == 0)];
                 for n in [3u8, 4, 5, 6, 8, 10] {
-                    div.push(Item::new(format!("snap.div:{n}"), format!("{n} parts")).checked(now == n));
+                    div.push(
+                        Item::new(format!("snap.div:{n}"), format!("{n} parts")).checked(now == n),
+                    );
                 }
                 items.push(Item::sub(
-                    if now == 0 { "Divisions: off".to_string() } else { format!("Divisions: {now}") },
+                    if now == 0 {
+                        "Divisions: off".to_string()
+                    } else {
+                        format!("Divisions: {now}")
+                    },
                     div,
                 ));
                 items
@@ -1806,15 +1820,17 @@ impl CreaBimApp {
     /// Why `t` can't be used in the view in front, if it can't: the
     /// annotation tools on a sheet, in 3D or a schedule (MU24).
     pub(super) fn tool_unusable(&self, t: Tool) -> Option<&'static str> {
-        let front = self.active_view.and_then(|v| match self.doc.model().get(v).map(|e| &e.kind) {
-            Some(ElementKind::Sheet(_)) => Some("sheet"),
-            Some(ElementKind::View(view)) => Some(match view.kind {
-                ViewKind::Plan { .. } | ViewKind::Section { .. } => "drawing",
-                ViewKind::Axonometric { .. } => "3d",
-                ViewKind::Schedule { .. } => "schedule",
-            }),
-            _ => None,
-        });
+        let front = self
+            .active_view
+            .and_then(|v| match self.doc.model().get(v).map(|e| &e.kind) {
+                Some(ElementKind::Sheet(_)) => Some("sheet"),
+                Some(ElementKind::View(view)) => Some(match view.kind {
+                    ViewKind::Plan { .. } | ViewKind::Section { .. } => "drawing",
+                    ViewKind::Axonometric { .. } => "3d",
+                    ViewKind::Schedule { .. } => "schedule",
+                }),
+                _ => None,
+            });
         let measures = matches!(
             t,
             Tool::Dimension
@@ -1827,8 +1843,12 @@ impl CreaBimApp {
                 | Tool::Detail
         );
         match front? {
-            "sheet" if measures => Some("on a sheet, double-click a view to dimension or tag inside it"),
-            "3d" if measures || t == Tool::Note => Some("annotation goes in plans, sections and sheets, not the 3D view"),
+            "sheet" if measures => {
+                Some("on a sheet, double-click a view to dimension or tag inside it")
+            }
+            "3d" if measures || t == Tool::Note => {
+                Some("annotation goes in plans, sections and sheets, not the 3D view")
+            }
             "schedule" if measures || t == Tool::Note => Some("a schedule takes no annotation"),
             _ => None,
         }
@@ -1843,9 +1863,14 @@ impl CreaBimApp {
         let plan = model
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::View(v) if matches!(v.kind, creabim_core::ViewKind::Plan { .. }) && v.callout.is_none() => {
+                ElementKind::View(v)
+                    if matches!(v.kind, creabim_core::ViewKind::Plan { .. })
+                        && v.callout.is_none() =>
+                {
                     let lvl = match v.kind {
-                        creabim_core::ViewKind::Plan { level, .. } => creabim_core::members::elevation(model, level),
+                        creabim_core::ViewKind::Plan { level, .. } => {
+                            creabim_core::members::elevation(model, level)
+                        }
                         _ => 0.0,
                     };
                     Some((lvl, e.clone(), v.clone()))
@@ -1860,27 +1885,44 @@ impl CreaBimApp {
         };
         v.scale = 500.0;
         v.browser_order = None;
-        for c in [Category::Dimensions, Category::Tags, Category::Notes, Category::Grids, Category::SectionMarks, Category::Objects, Category::Guides, Category::Sketches] {
+        for c in [
+            Category::Dimensions,
+            Category::Tags,
+            Category::Notes,
+            Category::Grids,
+            Category::SectionMarks,
+            Category::Objects,
+            Category::Guides,
+            Category::Sketches,
+        ] {
             if !v.hidden.categories.contains(&c) {
                 v.hidden.categories.push(c);
             }
         }
         let view = Element::new(format!("Key plan ({})", from.name), ElementKind::View(v));
         let view_id = view.id;
-        let Some(s) = creabim_geom::sheet::sheet_of(model, sheet) else { return };
+        let Some(s) = creabim_geom::sheet::sheet_of(model, sheet) else {
+            return;
+        };
         let m = creabim_geom::sheet::MARGIN;
-        let top = creabim_geom::sheet::title_block_box(model, sheet).map_or(m + 45.0, |(_, hi)| hi.y);
+        let top =
+            creabim_geom::sheet::title_block_box(model, sheet).map_or(m + 45.0, |(_, hi)| hi.y);
         let at = glam::DVec2::new(s.width - m - 40.0, top + 30.0);
         // the view first, then its viewport, made against the model with
         // the view in it; one undo step
-        if let Err(e) = self.doc.commit(Transaction::new("Add key plan").insert(view)) {
+        if let Err(e) = self
+            .doc
+            .commit(Transaction::new("Add key plan").insert(view))
+        {
             self.status = format!("Couldn't do that: {e}");
             return;
         }
         let vp = creabim_geom::sheet::new_viewport(self.doc.model(), sheet, view_id, at);
         let e = Element::new("Key plan", ElementKind::Viewport(vp));
         let id = e.id;
-        let r = self.doc.commit_merged(Transaction::new("Add key plan").insert(e));
+        let r = self
+            .doc
+            .commit_merged(Transaction::new("Add key plan").insert(e));
         self.selection.only(id);
         self.report(r, "Key plan placed over the title block: the whole floor at 1:500. Drag it where it goes; it is a view of its own in the browser.");
     }
@@ -2227,7 +2269,14 @@ impl CreaBimApp {
                 let r = self
                     .doc
                     .edit_merged(id, "Change view", |e| e.kind = ElementKind::View(v.clone()));
-                self.report(r, if on { "Room tags shown in this view." } else { "Room tags hidden in this view." });
+                self.report(
+                    r,
+                    if on {
+                        "Room tags shown in this view."
+                    } else {
+                        "Room tags hidden in this view."
+                    },
+                );
             }
             "view.tagrooms" => {
                 self.status = match crate::roomtool::tag_rooms(&mut self.doc, id) {
@@ -3348,7 +3397,10 @@ impl CreaBimApp {
                     (Some(web), false) => {
                         let o = web.rects[msg.pane as usize].min;
                         let f = |k: &str| b[k].as_f64().unwrap_or(0.0) as f32;
-                        let r = egui::Rect::from_min_size(o + egui::vec2(f("x"), f("y")), egui::vec2(f("w"), f("h")));
+                        let r = egui::Rect::from_min_size(
+                            o + egui::vec2(f("x"), f("y")),
+                            egui::vec2(f("w"), f("h")),
+                        );
                         Some((text, r))
                     }
                     _ => None,
@@ -3512,7 +3564,12 @@ impl CreaBimApp {
             NATIVE.with(|n| n.set(Some(r)));
         }
         // a web row's hint, as the app's own tooltips look (MU26)
-        if let Some((text, r)) = self.shell.web_tip.clone().filter(|_| self.shell.popup.is_none()) {
+        if let Some((text, r)) = self
+            .shell
+            .web_tip
+            .clone()
+            .filter(|_| self.shell.popup.is_none())
+        {
             let screen = ctx.content_rect();
             let below = r.bottom() + 6.0;
             // web panels paint over the app's own drawing, so the tip
@@ -3576,7 +3633,11 @@ impl CreaBimApp {
         // drag the browser's right edge to widen it
         let folded = self.shell.settings.left_folded;
         let left = egui::Panel::left(if folded { "web_left_rail" } else { "web_left" })
-            .default_size(if folded { 44.0 } else { self.shell.settings.left_width })
+            .default_size(if folded {
+                44.0
+            } else {
+                self.shell.settings.left_width
+            })
             .size_range(if folded { 44.0..=44.0 } else { 180.0..=520.0 })
             .resizable(!folded)
             .show_separator_line(true)
@@ -3593,7 +3654,11 @@ impl CreaBimApp {
             egui::pos2(left.right() + 3.0, left.center().y - 23.0),
             folded,
             false,
-            if folded { "Open the project browser (Ctrl+[)" } else { "Fold the browser to a rail (Ctrl+[)" },
+            if folded {
+                "Open the project browser (Ctrl+[)"
+            } else {
+                "Fold the browser to a rail (Ctrl+[)"
+            },
         ) {
             self.shell.settings.left_folded = !folded;
             self.shell.settings.store();
@@ -3842,7 +3907,11 @@ impl CreaBimApp {
             }
             ui.separator();
             ui.label("File:");
-            ui.add(egui::TextEdit::singleline(&mut self.path).vertical_align(egui::Align::Center).desired_width(220.0));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.path)
+                    .vertical_align(egui::Align::Center)
+                    .desired_width(220.0),
+            );
         });
         if let Some(id) = picked {
             let ctx = ui.ctx().clone();

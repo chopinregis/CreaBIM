@@ -277,7 +277,8 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         return (String::new(), false);
     };
     let material = creabim_core::material_of(model, e).map(|(m, _)| m.name.clone());
-    let units = creabim_core::units::number_format(model, creabim_core::NumberKind::Tags, None).units(&model.units());
+    let units = creabim_core::units::number_format(model, creabim_core::NumberKind::Tags, None)
+        .units(&model.units());
     let tag = |m: f64| creabim_core::write_number(model, creabim_core::NumberKind::Tags, None, m);
     let with_material = |t: f64| match &material {
         Some(m) => format!("{m} {}", tag(t)),
@@ -295,14 +296,7 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         ElementKind::Wall(w) => (with_material(w.thickness), false),
         ElementKind::Slab(s) => (with_material(s.thickness), false),
         ElementKind::Column(c) => (c.profile.label_in(&units), false),
-        ElementKind::Beam(b) => (
-            format!(
-                "{} × {}",
-                tag(b.width),
-                tag(b.depth)
-            ),
-            false,
-        ),
+        ElementKind::Beam(b) => (format!("{} × {}", tag(b.width), tag(b.depth)), false),
         ElementKind::Roof(r) => (
             format!("{} {:.0}°", with_material(r.thickness), r.pitch),
             false,
@@ -314,11 +308,9 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         },
         ElementKind::Footing(f) => (
             match f.kind {
-                creabim_core::FootingKind::Strip => format!(
-                    "{} × {}",
-                    tag(f.width),
-                    tag(f.thickness)
-                ),
+                creabim_core::FootingKind::Strip => {
+                    format!("{} × {}", tag(f.width), tag(f.thickness))
+                }
                 creabim_core::FootingKind::Pad => format!(
                     "{} × {} × {}",
                     tag(f.width),
@@ -468,7 +460,10 @@ pub fn room_tag_items(
             let mut y = at.y + total / 2.0;
             let mut items = vec![];
             // left or right aligned: every line against the block's edge
-            let block = lines.iter().map(|(t, l)| l.width(t) * mm).fold(0.0, f64::max);
+            let block = lines
+                .iter()
+                .map(|(t, l)| l.width(t) * mm)
+                .fold(0.0, f64::max);
             for ((text, l), step) in lines.into_iter().zip(steps) {
                 let w = l.width(&text) * mm;
                 let x = match look.align {
@@ -710,7 +705,12 @@ fn measured(
         item: Box::new(Annotation {
             shape,
             text: measure(
-                &creabim_core::units::number_format(model, creabim_core::NumberKind::Dimensions, d.format).units(&model.units()),
+                &creabim_core::units::number_format(
+                    model,
+                    creabim_core::NumberKind::Dimensions,
+                    d.format,
+                )
+                .units(&model.units()),
                 d.kind,
                 c,
                 a,
@@ -876,7 +876,12 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     a,
                     b: b2,
                     offset: d.offset,
-                    text: creabim_core::write_number(model, creabim_core::NumberKind::Dimensions, d.format, a.distance(b2)),
+                    text: creabim_core::write_number(
+                        model,
+                        creabim_core::NumberKind::Dimensions,
+                        d.format,
+                        a.distance(b2),
+                    ),
                     look: look_of(model, d.style, d.color),
                     witness,
                     breaks: vec![],

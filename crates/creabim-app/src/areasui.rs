@@ -218,44 +218,76 @@ impl CreaBimApp {
         let p = self.shell.theme.palette();
         ui.painter().rect_filled(body, 0.0, p.panel);
         let inner = body.shrink2(egui::vec2(18.0, 12.0));
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(inner)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
         child.set_clip_rect(body);
         let note = self.selection.active.filter(|id| {
-            matches!(self.doc.model().get(*id).map(|e| &e.kind), Some(ElementKind::Note(_)))
+            matches!(
+                self.doc.model().get(*id).map(|e| &e.kind),
+                Some(ElementKind::Note(_))
+            )
         });
-        egui::ScrollArea::vertical().id_salt("notes.area").show(&mut child, |ui| {
-            ui.set_max_width(inner.width().min(760.0));
-            match note {
-                Some(id) => {
-                    let Some(ElementKind::Note(n)) = self.doc.model().get(id).map(|e| e.kind.clone()) else {
-                        return;
-                    };
-                    let mut n = n;
-                    let name = self.doc.model().get(id).map_or(String::new(), |e| e.name.clone());
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("{name}: its text")).strong());
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.checkbox(&mut n.markdown, "Lists and headings")
-                                .on_hover_text("- bullets, 1. numbers, # headings drawn as such on paper");
+        egui::ScrollArea::vertical()
+            .id_salt("notes.area")
+            .show(&mut child, |ui| {
+                ui.set_max_width(inner.width().min(760.0));
+                match note {
+                    Some(id) => {
+                        let Some(ElementKind::Note(n)) =
+                            self.doc.model().get(id).map(|e| e.kind.clone())
+                        else {
+                            return;
+                        };
+                        let mut n = n;
+                        let name = self
+                            .doc
+                            .model()
+                            .get(id)
+                            .map_or(String::new(), |e| e.name.clone());
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("{name}: its text")).strong());
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.checkbox(&mut n.markdown, "Lists and headings")
+                                        .on_hover_text(
+                                        "- bullets, 1. numbers, # headings drawn as such on paper",
+                                    );
+                                },
+                            );
                         });
-                    });
-                    let h = (inner.height() - 60.0).max(160.0);
-                    let r = ui.add_sized(
-                        [ui.available_width(), h],
-                        egui::TextEdit::multiline(&mut n.text).font(egui::TextStyle::Monospace),
-                    );
-                    let changed = r.changed() || self.doc.model().get(id).is_some_and(|e| e.kind != ElementKind::Note(n.clone()));
-                    if changed {
-                        let r = self.doc.edit_merged(id, "Note text", |e| e.kind = ElementKind::Note(n.clone()));
-                        if let Err(e) = r {
-                            self.status = format!("Couldn't do that: {e}");
+                        let h = (inner.height() - 60.0).max(160.0);
+                        let r = ui.add_sized(
+                            [ui.available_width(), h],
+                            egui::TextEdit::multiline(&mut n.text).font(egui::TextStyle::Monospace),
+                        );
+                        let changed = r.changed()
+                            || self
+                                .doc
+                                .model()
+                                .get(id)
+                                .is_some_and(|e| e.kind != ElementKind::Note(n.clone()));
+                        if changed {
+                            let r = self.doc.edit_merged(id, "Note text", |e| {
+                                e.kind = ElementKind::Note(n.clone())
+                            });
+                            if let Err(e) = r {
+                                self.status = format!("Couldn't do that: {e}");
+                            }
                         }
+                        ui.label(
+                            egui::RichText::new(
+                                "Select something else to see the project's notepad here.",
+                            )
+                            .weak(),
+                        );
                     }
-                    ui.label(egui::RichText::new("Select something else to see the project's notepad here.").weak());
+                    None => self.notes_pad(ui),
                 }
-                None => self.notes_pad(ui),
-            }
-        });
+            });
     }
 
     pub(super) fn show_areas(
@@ -682,7 +714,10 @@ impl CreaBimApp {
             Shows::Profiles => (
                 "profile",
                 "Profiles",
-                self.profiles.current.clone().unwrap_or_else(|| "Pick a profile".to_string()),
+                self.profiles
+                    .current
+                    .clone()
+                    .unwrap_or_else(|| "Pick a profile".to_string()),
             ),
             _ => ("box", "3D view", "Model".to_string()),
         };
@@ -752,8 +787,13 @@ impl CreaBimApp {
         // no Edit mode, so no menu
         let modal_view = match shows {
             Shows::Model => true,
-            Shows::View(v) => !self.is_sheet(v)
-                && !matches!(self.view(v).map(|v| &v.kind), Some(ViewKind::Schedule { .. })),
+            Shows::View(v) => {
+                !self.is_sheet(v)
+                    && !matches!(
+                        self.view(v).map(|v| &v.kind),
+                        Some(ViewKind::Schedule { .. })
+                    )
+            }
             _ => false,
         };
         let mut mode_w = 0.0;
@@ -776,7 +816,10 @@ impl CreaBimApp {
                     (3, "pick-face", "Faces (3): faces, tops, undersides"),
                 ] {
                     let on = handles::pick() == k;
-                    if icon_btn(&mut child, icon, on, true, &p).on_hover_text(tip).clicked() {
+                    if icon_btn(&mut child, icon, on, true, &p)
+                        .on_hover_text(tip)
+                        .clicked()
+                    {
                         handles::set_pick(if on { 0 } else { k });
                     }
                 }
@@ -961,7 +1004,9 @@ impl CreaBimApp {
                     Item::new("mode.edit", "Edit mode")
                         .checked(editing)
                         .enabled(can || editing)
-                        .hint("One element's points, edges and faces (select one element first). Tab"),
+                        .hint(
+                            "One element's points, edges and faces (select one element first). Tab",
+                        ),
                 ]
             }
             "area.more" => {
@@ -1175,7 +1220,11 @@ impl CreaBimApp {
             .open(&mut open)
             .show(ctx, |ui| {
                 ui.label("A name for these areas, to pick from Workspace at the top right:");
-                let r = ui.add(egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center).desired_width(220.0));
+                let r = ui.add(
+                    egui::TextEdit::singleline(&mut name)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(220.0),
+                );
                 r.request_focus();
                 done = ui.input(|i| i.key_pressed(egui::Key::Enter)) || ui.button("Save").clicked();
             });
@@ -1324,11 +1373,22 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
             if let Some(n) = c["badge"].as_u64().filter(|n| *n > 0) {
                 let at = r.rect.right_bottom() - egui::vec2(4.0, 4.0);
                 let text = n.to_string();
-                let g = ui.painter().layout_no_wrap(text, egui::FontId::proportional(9.5), egui::Color32::WHITE);
+                let g = ui.painter().layout_no_wrap(
+                    text,
+                    egui::FontId::proportional(9.5),
+                    egui::Color32::WHITE,
+                );
                 let w = (g.size().x + 6.0).max(13.0);
                 let pill = egui::Rect::from_center_size(at, egui::vec2(w, 13.0));
-                ui.painter().rect(pill, 6.5, p.accent, egui::Stroke::new(1.5, p.panel), egui::StrokeKind::Outside);
-                ui.painter().galley(pill.center() - g.size() / 2.0, g, egui::Color32::WHITE);
+                ui.painter().rect(
+                    pill,
+                    6.5,
+                    p.accent,
+                    egui::Stroke::new(1.5, p.panel),
+                    egui::StrokeKind::Outside,
+                );
+                ui.painter()
+                    .galley(pill.center() - g.size() / 2.0, g, egui::Color32::WHITE);
             }
             r.clicked()
                 .then(|| Ask::Run(c["id"].as_str().unwrap_or("").into()))
@@ -1425,11 +1485,20 @@ fn pill(
     let (r, resp) = ui.allocate_exact_size(egui::vec2(34.0, 26.0), Sense::click());
     // the view-type menu: the darker tone, as Blender's editor-type button
     let _ = strong;
-    let fill = if resp.hovered() { p.raise2.gamma_multiply(1.1) } else { p.raise2 };
+    let fill = if resp.hovered() {
+        p.raise2.gamma_multiply(1.1)
+    } else {
+        p.raise2
+    };
     ui.painter().rect_filled(r, 6.0, fill);
     let ir = Rect::from_min_size(r.min + egui::vec2(3.0, 4.0), egui::vec2(18.0, 18.0));
     // the same quiet shade as the rail's icons until hovered (MU29)
-    crate::svgicon::paint(ui.painter(), ir, icon, if resp.hovered() { p.text } else { p.muted });
+    crate::svgicon::paint(
+        ui.painter(),
+        ir,
+        icon,
+        if resp.hovered() { p.text } else { p.muted },
+    );
     let cr = Rect::from_min_size(
         egui::pos2(r.right() - 12.0, r.center().y - 4.0),
         egui::vec2(8.0, 8.0),
@@ -1446,7 +1515,8 @@ fn name_button(ui: &mut egui::Ui, name: &str, w: f32, p: &crate::theme::Palette)
         .layout_no_wrap(name.to_string(), font.clone(), p.text);
     let width = (galley.size().x + 26.0).min(w);
     let (r, resp) = ui.allocate_exact_size(egui::vec2(width, 26.0), Sense::click());
-    ui.painter().rect_filled(r, 6.0, if resp.hovered() { p.raise2 } else { p.raise });
+    ui.painter()
+        .rect_filled(r, 6.0, if resp.hovered() { p.raise2 } else { p.raise });
     let clip = Rect::from_min_max(r.min, egui::pos2(r.right() - 16.0, r.bottom()));
     ui.painter().with_clip_rect(clip).galley(
         egui::pos2(r.left() + 6.0, r.center().y - galley.size().y / 2.0),
@@ -1463,13 +1533,22 @@ fn name_button(ui: &mut egui::Ui, name: &str, w: f32, p: &crate::theme::Palette)
 
 /// The mode button of a view's header: "Object" or "Edit", in the accent
 /// colour while editing.
-fn mode_button(ui: &mut egui::Ui, editing: bool, compact: bool, p: &crate::theme::Palette) -> egui::Response {
+fn mode_button(
+    ui: &mut egui::Ui,
+    editing: bool,
+    compact: bool,
+    p: &crate::theme::Palette,
+) -> egui::Response {
     let text = if editing { "Edit mode" } else { "Object mode" };
     // the theme's colours, the accent while editing (MU29: a fixed orange
     // clashed with the themes)
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(if compact { 40.0 } else { 106.0 }, 26.0), egui::Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(if compact { 40.0 } else { 106.0 }, 26.0),
+        egui::Sense::click(),
+    );
     let fill = if editing {
-        p.accent.gamma_multiply(if resp.hovered() { 0.3 } else { 0.2 })
+        p.accent
+            .gamma_multiply(if resp.hovered() { 0.3 } else { 0.2 })
     } else if resp.hovered() {
         p.raise2.gamma_multiply(1.1)
     } else {
@@ -1487,8 +1566,21 @@ fn mode_button(ui: &mut egui::Ui, editing: bool, compact: bool, p: &crate::theme
     };
     if compact {
         let ir = Rect::from_min_size(rect.min + egui::vec2(5.0, 4.0), egui::vec2(18.0, 18.0));
-        crate::svgicon::paint(ui.painter(), ir, if editing { "pick-vertex" } else { "box" }, ink);
-        crate::props::combo_icon(ui, egui::Rect::from_center_size(rect.right_center() - egui::vec2(8.0, 0.0), egui::vec2(8.0, 8.0)), &ui.visuals().widgets.inactive.clone(), false);
+        crate::svgicon::paint(
+            ui.painter(),
+            ir,
+            if editing { "pick-vertex" } else { "box" },
+            ink,
+        );
+        crate::props::combo_icon(
+            ui,
+            egui::Rect::from_center_size(
+                rect.right_center() - egui::vec2(8.0, 0.0),
+                egui::vec2(8.0, 8.0),
+            ),
+            &ui.visuals().widgets.inactive.clone(),
+            false,
+        );
         return resp.on_hover_text(text);
     }
     ui.painter().text(
@@ -1498,7 +1590,15 @@ fn mode_button(ui: &mut egui::Ui, editing: bool, compact: bool, p: &crate::theme
         egui::FontId::proportional(12.0),
         ink,
     );
-    crate::props::combo_icon(ui, egui::Rect::from_center_size(rect.right_center() - egui::vec2(10.0, 0.0), egui::vec2(10.0, 10.0)), &ui.visuals().widgets.inactive.clone(), false);
+    crate::props::combo_icon(
+        ui,
+        egui::Rect::from_center_size(
+            rect.right_center() - egui::vec2(10.0, 0.0),
+            egui::vec2(10.0, 10.0),
+        ),
+        &ui.visuals().widgets.inactive.clone(),
+        false,
+    );
     resp
 }
 

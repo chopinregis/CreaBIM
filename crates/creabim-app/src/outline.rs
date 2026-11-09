@@ -153,7 +153,11 @@ impl Outline {
         };
         let n = self.points.len();
         // the count, and how to close, always said (A5-3)
-        let close = if n >= 3 { " · C or Enter closes, a double-click closes there" } else { "" };
+        let close = if n >= 3 {
+            " · C or Enter closes, a double-click closes there"
+        } else {
+            ""
+        };
         format!(
             "{what} ({n} point{}): {next}{close}. A arcs, L lines; Backspace takes back a point, Esc or right-click too.",
             if n == 1 { "" } else { "s" }
@@ -669,23 +673,56 @@ mod close_tests {
         let m = Model::default();
         let mut o = Outline::new_slab(&m, ElementId::new(), DVec2::ZERO);
         for p in [DVec2::new(4.0, 0.0), DVec2::new(4.0, 3.0)] {
-            assert!(matches!(o.input_more(false, false, false, Some((p, false)), false, false, false), Next::Drawing(_)));
+            assert!(matches!(
+                o.input_more(false, false, false, Some((p, false)), false, false, false),
+                Next::Drawing(_)
+            ));
         }
         // a point within 2 mm of another is not added
-        o.input_more(false, false, false, Some((DVec2::new(4.001, 3.0), false)), false, false, false);
+        o.input_more(
+            false,
+            false,
+            false,
+            Some((DVec2::new(4.001, 3.0), false)),
+            false,
+            false,
+            false,
+        );
         assert_eq!(o.points.len(), 3);
         // Backspace takes one back, then it goes on
         o.input_more(false, false, false, None, false, false, true);
         assert_eq!(o.points.len(), 2);
-        o.input_more(false, false, false, Some((DVec2::new(4.0, 3.0), false)), false, false, false);
+        o.input_more(
+            false,
+            false,
+            false,
+            Some((DVec2::new(4.0, 3.0), false)),
+            false,
+            false,
+            false,
+        );
         // C (as Enter) closes
-        assert!(matches!(o.input_more(true, false, false, None, false, false, false), Next::Finish(true)));
+        assert!(matches!(
+            o.input_more(true, false, false, None, false, false, false),
+            Next::Finish(true)
+        ));
         // so does clicking within 2 mm of the first point, and a double-click
         let mut o2 = o.clone();
         assert!(matches!(
-            o2.input_more(false, false, false, Some((DVec2::new(0.001, 0.0), false)), false, false, false),
+            o2.input_more(
+                false,
+                false,
+                false,
+                Some((DVec2::new(0.001, 0.0), false)),
+                false,
+                false,
+                false
+            ),
             Next::Finish(true)
         ));
-        assert!(matches!(o.input_more(false, false, false, None, false, true, false), Next::Finish(true)));
+        assert!(matches!(
+            o.input_more(false, false, false, None, false, true, false),
+            Next::Finish(true)
+        ));
     }
 }

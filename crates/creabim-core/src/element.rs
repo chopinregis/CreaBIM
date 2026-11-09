@@ -357,7 +357,11 @@ impl Element {
                 }
             }
             ElementKind::Reference(r) => {
-                if r.scale.is_finite() && r.scale > 0.0 && r.at.is_finite() && r.rotation.is_finite() {
+                if r.scale.is_finite()
+                    && r.scale > 0.0
+                    && r.at.is_finite()
+                    && r.rotation.is_finite()
+                {
                     Ok(())
                 } else {
                     Err("a reference needs a finite place and a scale above zero".into())
@@ -514,7 +518,12 @@ impl ElementKind {
             ElementKind::Units(_) => "Units",
             ElementKind::Project(_) => "Project information",
             ElementKind::Reference(_) => "Reference",
-            ElementKind::PaperMark(m) => match m.kind { crate::papermark::PaperMarkKind::NorthArrow { .. } => "North arrow", crate::papermark::PaperMarkKind::ScaleBar { .. } => "Scale bar", crate::papermark::PaperMarkKind::Cloud { .. } => "Revision cloud", crate::papermark::PaperMarkKind::RevisionTable => "Revisions table" },
+            ElementKind::PaperMark(m) => match m.kind {
+                crate::papermark::PaperMarkKind::NorthArrow { .. } => "North arrow",
+                crate::papermark::PaperMarkKind::ScaleBar { .. } => "Scale bar",
+                crate::papermark::PaperMarkKind::Cloud { .. } => "Revision cloud",
+                crate::papermark::PaperMarkKind::RevisionTable => "Revisions table",
+            },
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
@@ -841,7 +850,7 @@ pub struct Tag {
     /// its layers' build-up one line each, outside to inside, instead of
     /// its mark.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub material: bool
+    pub material: bool,
 }
 
 impl Tag {
@@ -2084,7 +2093,15 @@ pub struct SheetTitle {
 
 impl Default for SheetTitle {
     fn default() -> Self {
-        Self { hidden: false, show_scale: true, show_number: true, offset: DVec2::ZERO, size: 3.5, text: String::new(), style: None }
+        Self {
+            hidden: false,
+            show_scale: true,
+            show_number: true,
+            offset: DVec2::ZERO,
+            size: 3.5,
+            text: String::new(),
+            style: None,
+        }
     }
 }
 

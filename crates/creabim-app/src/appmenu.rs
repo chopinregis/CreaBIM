@@ -160,8 +160,18 @@ impl CreaBimApp {
         let pack = creabim_core::styles::active_pack(self.doc.model());
         for (i, k) in creabim_core::NumberKind::ALL.into_iter().enumerate() {
             let f = pack.number_formats.get(k);
-            let said = if f.is_default() { "project".to_string() } else { f.write(&units, k, if k.is_level() { 3.0 } else { 1.0668 }) };
-            items.push(Item::new(format!("units.kind:{i}"), format!("{}  ·  {said}", k.label())).hint("Opens its number format"));
+            let said = if f.is_default() {
+                "project".to_string()
+            } else {
+                f.write(&units, k, if k.is_level() { 3.0 } else { 1.0668 })
+            };
+            items.push(
+                Item::new(
+                    format!("units.kind:{i}"),
+                    format!("{}  ·  {said}", k.label()),
+                )
+                .hint("Opens its number format"),
+            );
         }
         items.push(Item::Separator);
         items.push(
@@ -215,7 +225,11 @@ impl CreaBimApp {
             "app.settings" => self.settings_open = true,
             "app.exit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             "units.kind" => {
-                if let Some(k) = arg.parse::<usize>().ok().and_then(|i| creabim_core::NumberKind::ALL.get(i)) {
+                if let Some(k) = arg
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|i| creabim_core::NumberKind::ALL.get(i))
+                {
                     self.levels.units_kind = Some(*k);
                     self.levels.units_open = true;
                 }
@@ -735,7 +749,11 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(ids.len(), 12, "six units, five number formats and the window: {ids:?}");
+        assert_eq!(
+            ids.len(),
+            12,
+            "six units, five number formats and the window: {ids:?}"
+        );
         let ctx = egui::Context::default();
         app.run_action(&ctx, "units.set:3");
         assert_eq!(app.doc.model().units().length, LengthUnit::FeetInches);

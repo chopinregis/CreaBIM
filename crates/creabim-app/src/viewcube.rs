@@ -439,7 +439,11 @@ impl ViewCube {
         self.hot = Some((c, 2.05 * s + 8.0, column));
         let hot = move |p: Pos2| p.distance(c) < 2.05 * s + 8.0 || column.expand(2.0).contains(p);
         let over = ui.input(|i| i.pointer.hover_pos()).is_some_and(hot);
-        let sense = if over || self.grab.is_some() { Sense::click_and_drag() } else { Sense::hover() };
+        let sense = if over || self.grab.is_some() {
+            Sense::click_and_drag()
+        } else {
+            Sense::hover()
+        };
         let response = ui.interact(area, ui.id().with("viewcube"), sense);
         let mut painter = ui.painter_at(rect);
         let hover = response.hover_pos();
@@ -836,7 +840,9 @@ pub fn target_of(pick: Pick, cam: &OrbitCamera) -> Option<(f32, f32)> {
             (yaw / FRAC_PI_4).round() * FRAC_PI_4 + q as f32 * FRAC_PI_2,
             pitch,
         )),
-        Pick::Home | Pick::Projection | Pick::Zoom | Pick::Pan | Pick::FitAll | Pick::FitSel => None,
+        Pick::Home | Pick::Projection | Pick::Zoom | Pick::Pan | Pick::FitAll | Pick::FitSel => {
+            None
+        }
     }
 }
 

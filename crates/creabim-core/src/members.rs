@@ -226,7 +226,11 @@ impl Column {
         match &self.section {
             Some(s) if s.points.len() >= 3 => {
                 let turn = DVec2::from_angle(self.rotation.to_radians());
-                let mut pts: Vec<DVec2> = s.points.iter().map(|p| self.position + turn.rotate(*p)).collect();
+                let mut pts: Vec<DVec2> = s
+                    .points
+                    .iter()
+                    .map(|p| self.position + turn.rotate(*p))
+                    .collect();
                 if crate::polygon::signed_area2(&pts) < 0.0 {
                     pts.reverse();
                 }
@@ -294,7 +298,12 @@ impl Beam {
             _ => (self.width / 2.0, self.width / 2.0),
         };
         let (nl, nr) = (d.perp() * l, d.perp() * r);
-        vec![self.start - nr, self.end - nr, self.end + nl, self.start + nl]
+        vec![
+            self.start - nr,
+            self.end - nr,
+            self.end + nl,
+            self.start + nl,
+        ]
     }
 }
 

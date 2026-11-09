@@ -563,7 +563,12 @@ impl Snapper {
             let n = divisions();
             if n > 2 {
                 for k in 1..n {
-                    self.point(a + (b - a) * (k as f64 / n as f64), SnapKind::Division, src, host);
+                    self.point(
+                        a + (b - a) * (k as f64 / n as f64),
+                        SnapKind::Division,
+                        src,
+                        host,
+                    );
                 }
             }
         }
@@ -966,7 +971,9 @@ impl Snapper {
                 .iter()
                 .enumerate()
                 .filter_map(|(i, g)| {
-                    let d = g.shape.screen_distance(cursor, project, g.z.unwrap_or(0.0))?;
+                    let d = g
+                        .shape
+                        .screen_distance(cursor, project, g.z.unwrap_or(0.0))?;
                     (d < TOLERANCE).then_some((d, i))
                 })
                 .collect()
@@ -2091,7 +2098,12 @@ pub fn clip_segment(a: Pos2, b: Pos2, r: egui::Rect) -> Option<(Pos2, Pos2)> {
     }
     let d = b - a;
     let (mut t0, mut t1) = (0.0f32, 1.0f32);
-    for (p, q) in [(-d.x, a.x - r.left()), (d.x, r.right() - a.x), (-d.y, a.y - r.top()), (d.y, r.bottom() - a.y)] {
+    for (p, q) in [
+        (-d.x, a.x - r.left()),
+        (d.x, r.right() - a.x),
+        (-d.y, a.y - r.top()),
+        (d.y, r.bottom() - a.y),
+    ] {
         if p == 0.0 {
             if q < 0.0 {
                 return None;
@@ -2139,8 +2151,7 @@ pub fn draw_guides(
                 }
             }
             GuideShape::Line { p, d } => {
-                let (Some(a), Some(b)) = (project(p.extend(z)), project((p + d).extend(z)))
-                else {
+                let (Some(a), Some(b)) = (project(p.extend(z)), project((p + d).extend(z))) else {
                     continue;
                 };
                 let u = (b - a).normalized();

@@ -184,7 +184,10 @@ impl Graph {
 /// A point just inside a loop, off its edges.
 fn inside_point(outer: &[DVec2], holes: &[Vec<DVec2>]) -> DVec2 {
     let n = outer.len();
-    let size = outer.iter().fold(0.0f64, |m, p| m.max(p.distance(outer[0]))).max(1e-6);
+    let size = outer
+        .iter()
+        .fold(0.0f64, |m, p| m.max(p.distance(outer[0])))
+        .max(1e-6);
     for scale in [1e-4, 1e-3, 1e-2, 1e-5] {
         for i in 0..n {
             let (a, b) = (outer[i], outer[(i + 1) % n]);
@@ -211,7 +214,12 @@ pub fn faces(loops: &[Loop], flips: &[DVec2]) -> Vec<Face> {
     for (pts, _) in cycles {
         let a = signed_area2(&pts);
         if a > EPS {
-            faces.push(Face { outer: pts, holes: vec![], sample: DVec2::ZERO, filled: false });
+            faces.push(Face {
+                outer: pts,
+                holes: vec![],
+                sample: DVec2::ZERO,
+                filled: false,
+            });
         } else if a < -EPS {
             holes.push(pts);
         }
@@ -223,7 +231,11 @@ pub fn faces(loops: &[Loop], flips: &[DVec2]) -> Vec<Face> {
         let host = faces
             .iter()
             .enumerate()
-            .filter(|(_, f)| contains(&f.outer, p) && !f.outer.iter().any(|q| q.distance(p) < 1e-12) && signed_area2(&f.outer) > -signed_area2(&h) + EPS)
+            .filter(|(_, f)| {
+                contains(&f.outer, p)
+                    && !f.outer.iter().any(|q| q.distance(p) < 1e-12)
+                    && signed_area2(&f.outer) > -signed_area2(&h) + EPS
+            })
             .min_by(|x, y| signed_area2(&x.1.outer).total_cmp(&signed_area2(&y.1.outer)))
             .map(|(i, _)| i);
         if let Some(i) = host {
@@ -233,8 +245,13 @@ pub fn faces(loops: &[Loop], flips: &[DVec2]) -> Vec<Face> {
     for f in &mut faces {
         f.sample = inside_point(&f.outer, &f.holes);
         let s = f.sample;
-        let covered = loops.iter().filter(|l| !l.solid && l.points.len() >= 3 && contains(&l.points, s)).count();
-        let solid = loops.iter().any(|l| l.solid && l.points.len() >= 3 && contains(&l.points, s));
+        let covered = loops
+            .iter()
+            .filter(|l| !l.solid && l.points.len() >= 3 && contains(&l.points, s))
+            .count();
+        let solid = loops
+            .iter()
+            .any(|l| l.solid && l.points.len() >= 3 && contains(&l.points, s));
         let flipped = flips.iter().filter(|q| f.holds(**q)).count();
         f.filled = (covered % 2 == 1 || solid) != (flipped % 2 == 1);
     }
@@ -255,7 +272,10 @@ pub fn filled(loops: &[Loop], flips: &[DVec2]) -> Vec<Vec<DVec2>> {
         let d = b - a;
         let span = d.length().max(1e-9);
         let p = (a + b) / 2.0 + d.perp() / span * (span * 1e-6).max(1e-9);
-        fs.iter().filter(|f| f.holds(p)).min_by(|x, y| signed_area2(&x.outer).total_cmp(&signed_area2(&y.outer))).is_some_and(|f| f.filled)
+        fs.iter()
+            .filter(|f| f.holds(p))
+            .min_by(|x, y| signed_area2(&x.outer).total_cmp(&signed_area2(&y.outer)))
+            .is_some_and(|f| f.filled)
     };
     let left: Vec<bool> = (0..g.half.len()).map(side).collect();
     let boundary = |h: usize| left[h] && !left[h ^ 1];
@@ -267,7 +287,12 @@ mod tests {
     use super::*;
 
     fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<DVec2> {
-        vec![DVec2::new(x0, y0), DVec2::new(x1, y0), DVec2::new(x1, y1), DVec2::new(x0, y1)]
+        vec![
+            DVec2::new(x0, y0),
+            DVec2::new(x1, y0),
+            DVec2::new(x1, y1),
+            DVec2::new(x0, y1),
+        ]
     }
 
     fn area(loops: &[Vec<DVec2>]) -> f64 {
@@ -276,14 +301,32 @@ mod tests {
 
     #[test]
     fn a_shape_inside_another_is_a_hole_and_a_pick_fills_it() {
-        let l = vec![Loop { points: rect(0.0, 0.0, 4.0, 4.0), solid: false }, Loop { points: rect(1.0, 1.0, 2.0, 2.0), solid: false }];
+        let l = vec![
+            Loop {
+                points: rect(0.0, 0.0, 4.0, 4.0),
+                solid: false,
+            },
+            Loop {
+                points: rect(1.0, 1.0, 2.0, 2.0),
+                solid: false,
+            },
+        ];
         assert!((area(&filled(&l, &[])) - 15.0).abs() < 1e-9);
         assert!((area(&filled(&l, &[DVec2::new(1.5, 1.5)])) - 16.0).abs() < 1e-9);
     }
 
     #[test]
     fn overlapping_shapes_leave_their_overlap_void_until_picked() {
-        let l = vec![Loop { points: rect(0.0, 0.0, 4.0, 2.0), solid: false }, Loop { points: rect(1.0, -1.0, 2.0, 3.0), solid: false }];
+        let l = vec![
+            Loop {
+                points: rect(0.0, 0.0, 4.0, 2.0),
+                solid: false,
+            },
+            Loop {
+                points: rect(1.0, -1.0, 2.0, 3.0),
+                solid: false,
+            },
+        ];
         // 8 + 4 - 2 * 2 (the overlap, void)
         assert!((area(&filled(&l, &[])) - 8.0).abs() < 1e-9);
         assert!((area(&filled(&l, &[DVec2::new(1.5, 1.0)])) - 10.0).abs() < 1e-9);
@@ -295,16 +338,38 @@ mod tests {
     fn a_shape_drawn_clockwise_crosses_the_same() {
         let mut cw = rect(-0.0125, -0.014, 0.0125, 0.064);
         cw.reverse();
-        let l = vec![Loop { points: rect(-0.05, 0.0, 0.05, 0.05), solid: false }, Loop { points: cw, solid: false }];
+        let l = vec![
+            Loop {
+                points: rect(-0.05, 0.0, 0.05, 0.05),
+                solid: false,
+            },
+            Loop {
+                points: cw,
+                solid: false,
+            },
+        ];
         let fs = faces(&l, &[]);
         let a = area(&filled(&l, &[]));
         // 0.005 + 0.025 * 0.078 - 2 * 0.025 * 0.05
-        assert!((a - (0.005 + 0.025 * 0.078 - 2.0 * 0.025 * 0.05)).abs() < 1e-9, "{a} {}", fs.len());
+        assert!(
+            (a - (0.005 + 0.025 * 0.078 - 2.0 * 0.025 * 0.05)).abs() < 1e-9,
+            "{a} {}",
+            fs.len()
+        );
     }
 
     #[test]
     fn a_solid_wire_fills_what_it_covers() {
-        let l = vec![Loop { points: rect(0.0, 0.0, 4.0, 2.0), solid: false }, Loop { points: rect(3.0, 1.0, 5.0, 3.0), solid: true }];
+        let l = vec![
+            Loop {
+                points: rect(0.0, 0.0, 4.0, 2.0),
+                solid: false,
+            },
+            Loop {
+                points: rect(3.0, 1.0, 5.0, 3.0),
+                solid: true,
+            },
+        ];
         assert!((area(&filled(&l, &[])) - 11.0).abs() < 1e-9);
     }
 }

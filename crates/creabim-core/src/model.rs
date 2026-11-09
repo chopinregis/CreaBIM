@@ -54,7 +54,10 @@ impl Model {
         match &e.kind {
             ElementKind::PaperMark(_) | ElementKind::Viewport(_) => true,
             ElementKind::Note(n) => {
-                matches!(self.get(n.view).map(|v| &v.kind), Some(ElementKind::Sheet(_)))
+                matches!(
+                    self.get(n.view).map(|v| &v.kind),
+                    Some(ElementKind::Sheet(_))
+                )
             }
             _ => false,
         }

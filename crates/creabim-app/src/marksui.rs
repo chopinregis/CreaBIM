@@ -337,14 +337,23 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
             for class in MarkClass::ALL {
                 let r = rules.rule_mut(class);
                 ui.checkbox(&mut r.auto, class.label());
-                ui.add(egui::TextEdit::singleline(&mut r.prefix).vertical_align(egui::Align::Center).desired_width(44.0));
-                ui.add(egui::TextEdit::singleline(&mut r.separator).vertical_align(egui::Align::Center).desired_width(24.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut r.prefix)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(44.0),
+                );
+                ui.add(
+                    egui::TextEdit::singleline(&mut r.separator)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(24.0),
+                );
                 ui.add(egui::DragValue::new(&mut r.padding).range(1..=6));
                 ui.checkbox(&mut r.by_level, "");
                 egui::ComboBox::from_id_salt(("mark_order", class))
                     .icon(crate::props::combo_icon)
                     .selected_text(r.order.label())
-                    .width(ui.available_width().min(150.0)).truncate()
+                    .width(ui.available_width().min(150.0))
+                    .truncate()
                     .show_ui(ui, |ui| {
                         for o in MarkOrder::ALL {
                             ui.selectable_value(&mut r.order, o, o.label());

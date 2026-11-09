@@ -13,8 +13,8 @@ use crate::sketch::{Click, SketchDraft};
 use crate::snaps::{self, SnapKind, Snapper};
 use creabim_core::{
     element::FREE_MESH_CLASSES, sample::sample_house, Axis, BoolOp, Cut, Document, Element,
-    ElementId, ElementKind, Hatch, Material, Model, ScheduleCategory,
-    Sheet, Transaction, Underlay, View, ViewKind, ViewStyle, Workplane,
+    ElementId, ElementKind, Hatch, Material, Model, ScheduleCategory, Sheet, Transaction, Underlay,
+    View, ViewKind, ViewStyle, Workplane,
 };
 use creabim_geom::sheet::{self as sheets, PlacedView, SheetInfo};
 use creabim_geom::{pick, plan::Pen, section::Drawing, PlanItem, SceneItem};
@@ -31,12 +31,10 @@ pub(crate) mod appmenu;
 mod areasui;
 #[path = "assemblies.rs"]
 mod assemblies;
-#[path = "divideui.rs"]
-mod divideui;
-#[path = "profilesui.rs"]
-mod profilesui;
 #[path = "cropui.rs"]
 mod cropui;
+#[path = "divideui.rs"]
+mod divideui;
 #[path = "drafting.rs"]
 mod drafting;
 #[path = "editui.rs"]
@@ -59,6 +57,8 @@ mod marksui;
 mod materials;
 #[path = "objectsui.rs"]
 mod objectsui;
+#[path = "profilesui.rs"]
+mod profilesui;
 #[path = "selectsimilar.rs"]
 mod selectsimilar;
 #[path = "shell.rs"]
@@ -254,7 +254,11 @@ pub struct CreaBimApp {
     /// The 3D extents the crop ghosts were measured from: the model's
     /// revision, the elements asked for, and their boxes.
     #[allow(clippy::type_complexity)]
-    outside_bounds: Option<(u64, Vec<ElementId>, std::collections::HashMap<ElementId, (DVec3, DVec3)>)>,
+    outside_bounds: Option<(
+        u64,
+        Vec<ElementId>,
+        std::collections::HashMap<ElementId, (DVec3, DVec3)>,
+    )>,
     /// The Settings window is open.
     settings_open: bool,
     /// The Project information window (A7-5).
@@ -865,22 +869,35 @@ impl CreaBimApp {
     /// views. A picture shows its frame.
     /// Where Divide will cut, while its window is open (MU36): a mark at
     /// each division on the selected element's length or height.
-    fn draw_divide_preview(&self, painter: &egui::Painter, project: &dyn Fn(DVec3) -> Option<egui::Pos2>) {
+    fn draw_divide_preview(
+        &self,
+        painter: &egui::Painter,
+        project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+    ) {
         use creabim_core::divide::{self, Dir, Make};
         if !self.divide.open {
             return;
         }
         let model = self.doc.model();
-        let Some(h) = self.selection.all().first().copied() else { return };
-        let Some(s) = divide::span(model, h) else { return };
+        let Some(h) = self.selection.all().first().copied() else {
+            return;
+        };
+        let Some(s) = divide::span(model, h) else {
+            return;
+        };
         let d = &self.divide;
-        let lift = s.level.and_then(|l| model.level(l)).map_or(0.0, |l| l.elevation);
+        let lift = s
+            .level
+            .and_then(|l| model.level(l))
+            .map_or(0.0, |l| l.elevation);
         let total = match d.dir {
             Dir::Along => s.len,
             Dir::Up => s.z1 - s.z0,
         };
         let gap = if d.make == Make::Cuts { d.gap } else { 0.0 };
-        let Some(parts) = divide::parts(total, d.parts, gap) else { return };
+        let Some(parts) = divide::parts(total, d.parts, gap) else {
+            return;
+        };
         let accent = Color32::from_rgb(230, 120, 30);
         let stroke = egui::Stroke::new(2.0, accent);
         let mid = s.o + s.v * (s.width / 2.0);
@@ -912,7 +929,11 @@ impl CreaBimApp {
                 ElementKind::Reference(r)
                     if !r.hidden
                         && r.in_3d
-                        && (if self.camera.ortho { r.in_orthographic } else { r.in_perspective })
+                        && (if self.camera.ortho {
+                            r.in_orthographic
+                        } else {
+                            r.in_perspective
+                        })
                         && !self.hidden.contains(&e.id) =>
                 {
                     // its own strength in 3D, when it has one
@@ -927,7 +948,11 @@ impl CreaBimApp {
 
     /// The reference whose line (or a picture's frame) is within 6 px of
     /// `p` in 3D.
-    fn reference_near_3d(&mut self, p: egui::Pos2, project: &dyn Fn(DVec3) -> Option<egui::Pos2>) -> Option<ElementId> {
+    fn reference_near_3d(
+        &mut self,
+        p: egui::Pos2,
+        project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+    ) -> Option<ElementId> {
         let near = |a: egui::Pos2, b: egui::Pos2| {
             let ab = b - a;
             let t = ((p - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
@@ -937,8 +962,14 @@ impl CreaBimApp {
             let model = self.doc.model();
             let world = |q: DVec2| crate::handles::ref_world(model, &r, q);
             let polys: Vec<Vec<DVec2>> = match self.plan.ref_cache.get(model, id, &r) {
-                crate::trace::Shown::Lines(l) => l.iter().map(|l| l.iter().map(|q| r.place(*q)).collect()).collect(),
-                _ => r.outline().map(|c| vec![c.iter().chain(c.first()).copied().collect()]).unwrap_or_default(),
+                crate::trace::Shown::Lines(l) => l
+                    .iter()
+                    .map(|l| l.iter().map(|q| r.place(*q)).collect())
+                    .collect(),
+                _ => r
+                    .outline()
+                    .map(|c| vec![c.iter().chain(c.first()).copied().collect()])
+                    .unwrap_or_default(),
             };
             for l in polys {
                 let pts: Vec<egui::Pos2> = l.iter().filter_map(|q| project(world(*q))).collect();
@@ -950,14 +981,20 @@ impl CreaBimApp {
         None
     }
 
-    fn draw_references_3d(&mut self, painter: &egui::Painter, project: &dyn Fn(DVec3) -> Option<egui::Pos2>) {
+    fn draw_references_3d(
+        &mut self,
+        painter: &egui::Painter,
+        project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+    ) {
         let refs = self.refs_in_3d();
         // a huge drawing is cut short rather than slowing the 3D view
         let mut budget = 30_000usize;
         for (id, r) in refs {
             let model = self.doc.model();
             let world = |p: DVec2| crate::handles::ref_world(model, &r, p);
-            let ink = crate::trace::colour(&r).unwrap_or(Color32::from_gray(150)).gamma_multiply(r.opacity.clamp(0.15, 1.0));
+            let ink = crate::trace::colour(&r)
+                .unwrap_or(Color32::from_gray(150))
+                .gamma_multiply(r.opacity.clamp(0.15, 1.0));
             let stroke = egui::Stroke::new(1.0, ink);
             match self.plan.ref_cache.get(model, id, &r) {
                 crate::trace::Shown::Lines(lines) => {
@@ -965,7 +1002,10 @@ impl CreaBimApp {
                         if budget == 0 {
                             return;
                         }
-                        let pts: Vec<egui::Pos2> = l.iter().filter_map(|p| project(world(r.place(*p)))).collect();
+                        let pts: Vec<egui::Pos2> = l
+                            .iter()
+                            .filter_map(|p| project(world(r.place(*p))))
+                            .collect();
                         budget = budget.saturating_sub(pts.len());
                         if pts.len() >= 2 {
                             painter.add(egui::Shape::line(pts, stroke));
@@ -977,19 +1017,26 @@ impl CreaBimApp {
                 crate::trace::Shown::Picture(raster) => {
                     let Some([lo, hi]) = r.bounds else { continue };
                     let tex = crate::textures::texture(painter.ctx(), &raster);
-                    let tint = crate::trace::colour(&r).unwrap_or(Color32::WHITE).gamma_multiply(r.opacity.clamp(0.0, 1.0));
+                    let tint = crate::trace::colour(&r)
+                        .unwrap_or(Color32::WHITE)
+                        .gamma_multiply(r.opacity.clamp(0.0, 1.0));
                     const N: usize = 12;
                     let mut mesh = egui::Mesh::with_texture(tex);
                     let mut ok = true;
                     for j in 0..=N {
                         for i in 0..=N {
                             let (fu, fv) = (i as f64 / N as f64, j as f64 / N as f64);
-                            let q = DVec2::new(lo.x + (hi.x - lo.x) * fu, lo.y + (hi.y - lo.y) * fv);
+                            let q =
+                                DVec2::new(lo.x + (hi.x - lo.x) * fu, lo.y + (hi.y - lo.y) * fv);
                             let Some(pos) = project(world(r.place(q))) else {
                                 ok = false;
                                 break;
                             };
-                            mesh.vertices.push(egui::epaint::Vertex { pos, uv: egui::pos2(fu as f32, 1.0 - fv as f32), color: tint });
+                            mesh.vertices.push(egui::epaint::Vertex {
+                                pos,
+                                uv: egui::pos2(fu as f32, 1.0 - fv as f32),
+                                color: tint,
+                            });
                         }
                     }
                     if ok {
@@ -1005,7 +1052,11 @@ impl CreaBimApp {
                 }
                 _ => {
                     if let Some(c) = r.outline() {
-                        let pts: Vec<egui::Pos2> = c.iter().chain(c.first()).filter_map(|p| project(world(*p))).collect();
+                        let pts: Vec<egui::Pos2> = c
+                            .iter()
+                            .chain(c.first())
+                            .filter_map(|p| project(world(*p)))
+                            .collect();
                         painter.add(egui::Shape::line(pts, egui::Stroke::new(1.0, ink)));
                     }
                 }
@@ -1242,7 +1293,8 @@ impl CreaBimApp {
                 let cmd = i.modifiers.command;
                 (
                     cmd && !i.modifiers.shift && i.key_pressed(egui::Key::Z),
-                    cmd && (i.key_pressed(egui::Key::Y) || (i.modifiers.shift && i.key_pressed(egui::Key::Z))),
+                    cmd && (i.key_pressed(egui::Key::Y)
+                        || (i.modifiers.shift && i.key_pressed(egui::Key::Z))),
                 )
             });
             if undo {
@@ -1333,15 +1385,26 @@ impl CreaBimApp {
                 && self.plan.modal.is_none()
                 && !self.plan.busy()
                 && !ctx.egui_wants_keyboard_input();
-            let layered = self.plan.edit.is_some_and(|id| handles::has_layers(self.doc.model(), id));
+            let layered = self
+                .plan
+                .edit
+                .is_some_and(|id| handles::has_layers(self.doc.model(), id));
             // Tab still cycles what lies under the pointer when there are
             // several things there (MU25); otherwise it switches the mode
             let cycling = self.plan.hover.as_ref().is_some_and(|h| h.under.len() >= 2);
-            if free && !layered && !cycling && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) {
+            if free
+                && !layered
+                && !cycling
+                && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab))
+            {
                 self.toggle_edit_mode();
             }
             if free && self.plan.edit.is_some() {
-                for (k, key) in [(1u8, egui::Key::Num1), (2, egui::Key::Num2), (3, egui::Key::Num3)] {
+                for (k, key) in [
+                    (1u8, egui::Key::Num1),
+                    (2, egui::Key::Num2),
+                    (3, egui::Key::Num3),
+                ] {
                     if ctx.input(|i| i.modifiers.is_none() && i.key_pressed(key)) {
                         handles::set_pick(if handles::pick() == k { 0 } else { k });
                         self.status = match handles::pick() {
@@ -1368,7 +1431,8 @@ impl CreaBimApp {
         // Shift+A the Add menu, with nothing selected (with a selection it
         // keeps selecting all of its type); PgUp / PgDn the previous and
         // next sheet, or view of the same kind
-        if !ctx.egui_wants_keyboard_input() && self.plan.modal.is_none() && self.add_menu.is_none() {
+        if !ctx.egui_wants_keyboard_input() && self.plan.modal.is_none() && self.add_menu.is_none()
+        {
             let (d, t, n, add, prev, next) = ctx.input(|i| {
                 let m = i.modifiers;
                 let plain = !m.command && !m.alt && !m.shift;
@@ -1382,7 +1446,10 @@ impl CreaBimApp {
                 )
             });
             let tag_all = ctx.input(|i| {
-                i.modifiers.shift && !i.modifiers.command && !i.modifiers.alt && i.key_pressed(egui::Key::T)
+                i.modifiers.shift
+                    && !i.modifiers.command
+                    && !i.modifiers.alt
+                    && i.key_pressed(egui::Key::T)
             });
             if tag_all {
                 self.run_action(ctx, "tag.all");
@@ -1407,7 +1474,12 @@ impl CreaBimApp {
         }
         self.add_menu_window(ctx);
         // Ctrl+P: this sheet as a PDF; Ctrl+Shift+P: Export sheets (MU22)
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::P)) {
+        if ctx.input_mut(|i| {
+            i.consume_key(
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                egui::Key::P,
+            )
+        }) {
             self.sheets_export_open = true;
         } else if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::P)) {
             if self.active_view.is_some_and(|id| self.is_sheet(id)) {
@@ -3608,12 +3680,17 @@ impl CreaBimApp {
         // points rested on and through where the line starts
         let guides = guides_3d(&self.rested_3d.0, from, z, self.plan.guide_step, &snap_cfg);
         let rested: Vec<DVec3> = if guides.is_empty() {
-            self.rested_3d.0.iter().map(|p| p.truncate().extend(z)).collect()
+            self.rested_3d
+                .0
+                .iter()
+                .map(|p| p.truncate().extend(z))
+                .collect()
         } else {
             vec![]
         };
         let track = snaps::track_points(&chain, &rested);
-        let Some(hit) = snapper.snap_guided(&snap_cfg, hover, project, from, &track, &guides, free) else {
+        let Some(hit) = snapper.snap_guided(&snap_cfg, hover, project, from, &track, &guides, free)
+        else {
             return;
         };
         snaps::draw_guides(painter, project, &guides, &hit.guides);
@@ -3805,7 +3882,10 @@ fn guides_3d(
     }
     let refs: Vec<snaps::Reference> = rested
         .iter()
-        .map(|p| snaps::Reference::Point { p: *p, kind: SnapKind::Endpoint })
+        .map(|p| snaps::Reference::Point {
+            p: *p,
+            kind: SnapKind::Endpoint,
+        })
         .collect();
     let mut g = snaps::temp_guides(&refs, from, step);
     snaps::lift(&mut g, z);
@@ -3849,7 +3929,6 @@ fn rest_points(
             }
         }
     }
-
 }
 
 impl CreaBimApp {
@@ -3858,7 +3937,8 @@ impl CreaBimApp {
     /// its settings; Add modifier above them.
     fn modifiers_tab(&mut self, ui: &mut egui::Ui, id: ElementId) {
         use creabim_core::{Modifier, ModifierKind};
-        let Some(ElementKind::FreeMesh(before)) = self.doc.model().get(id).map(|e| e.kind.clone()) else {
+        let Some(ElementKind::FreeMesh(before)) = self.doc.model().get(id).map(|e| e.kind.clone())
+        else {
             ui.label(egui::RichText::new("This element takes no modifiers yet.").weak());
             return;
         };
@@ -3892,8 +3972,14 @@ impl CreaBimApp {
                 .inner_margin(egui::Margin::symmetric(6, 4))
                 .show(ui, |ui| {
                     crate::props::flow(ui, |ui| {
-                        let chev = if open { "chevron-down" } else { "chevron-right" };
-                        if crate::props::icon_button(ui, chev, if open { "Fold" } else { "Open" }).clicked() {
+                        let chev = if open {
+                            "chevron-down"
+                        } else {
+                            "chevron-right"
+                        };
+                        if crate::props::icon_button(ui, chev, if open { "Fold" } else { "Open" })
+                            .clicked()
+                        {
                             ui.ctx().data_mut(|d| d.insert_temp(key, !open));
                         }
                         ui.label(egui::RichText::new(md.kind.label()).strong());
@@ -3902,7 +3988,14 @@ impl CreaBimApp {
                                 action = Some((i, 0));
                             }
                             ui.menu_button("\u{22ef}", |ui| {
-                                if i == 0 && ui.button("Apply").on_hover_text("Make it part of the mesh, so you can edit the result").clicked() {
+                                if i == 0
+                                    && ui
+                                        .button("Apply")
+                                        .on_hover_text(
+                                            "Make it part of the mesh, so you can edit the result",
+                                        )
+                                        .clicked()
+                                {
                                     action = Some((i, 2));
                                     ui.close();
                                 }
@@ -3916,7 +4009,13 @@ impl CreaBimApp {
                                 }
                             });
                             let eye = if md.enabled { "eye" } else { "eye-off" };
-                            if crate::props::icon_button(ui, eye, "Show it in the views (off: the mesh without it)").clicked() {
+                            if crate::props::icon_button(
+                                ui,
+                                eye,
+                                "Show it in the views (off: the mesh without it)",
+                            )
+                            .clicked()
+                            {
                                 md.enabled = !md.enabled;
                                 label = "Switch modifier";
                             }
@@ -3926,16 +4025,26 @@ impl CreaBimApp {
                         return;
                     }
                     let num = |ui: &mut egui::Ui, name: &str, v: &mut f64| {
-                        crate::props::row(ui, name, |ui| crate::props::fill(ui, crate::units::drag(v)).changed())
+                        crate::props::row(ui, name, |ui| {
+                            crate::props::fill(ui, crate::units::drag(v)).changed()
+                        })
                     };
                     match &mut md.kind {
                         ModifierKind::Array { count, offset } => {
                             crate::props::row(ui, "Count", |ui| {
-                                if crate::props::fill(ui, egui::DragValue::new(count).speed(0.1).range(1..=200)).changed() {
+                                if crate::props::fill(
+                                    ui,
+                                    egui::DragValue::new(count).speed(0.1).range(1..=200),
+                                )
+                                .changed()
+                                {
                                     label = "Array count";
                                 }
                             });
-                            if num(ui, "Offset X", &mut offset.x) | num(ui, "Offset Y", &mut offset.y) | num(ui, "Offset Z", &mut offset.z) {
+                            if num(ui, "Offset X", &mut offset.x)
+                                | num(ui, "Offset Y", &mut offset.y)
+                                | num(ui, "Offset Z", &mut offset.z)
+                            {
                                 label = "Array offset";
                             }
                         }
@@ -3960,7 +4069,12 @@ impl CreaBimApp {
                         }
                         ModifierKind::Subdivision { levels } => {
                             crate::props::row(ui, "Levels", |ui| {
-                                if crate::props::fill(ui, egui::DragValue::new(levels).speed(0.05).range(0..=4)).changed() {
+                                if crate::props::fill(
+                                    ui,
+                                    egui::DragValue::new(levels).speed(0.05).range(0..=4),
+                                )
+                                .changed()
+                                {
                                     label = "Subdivision levels";
                                 }
                             });
@@ -3991,7 +4105,9 @@ impl CreaBimApp {
             None => {}
         }
         if m != before && !label.is_empty() {
-            let r = self.doc.edit_merged(id, label, |e| e.kind = ElementKind::FreeMesh(m.clone()));
+            let r = self
+                .doc
+                .edit_merged(id, label, |e| e.kind = ElementKind::FreeMesh(m.clone()));
             self.report(r, format!("{label}."));
         }
     }
@@ -4002,7 +4118,12 @@ impl CreaBimApp {
     /// saving sit in the ⋯ menu; markdown is only how it is written out.
     fn notes_pad(&mut self, ui: &mut egui::Ui) {
         use creabim_core::project::PadItem;
-        let mut info = self.doc.model().project_info().map(|(_, p)| p.clone()).unwrap_or_default();
+        let mut info = self
+            .doc
+            .model()
+            .project_info()
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
         if info.pad.is_empty() && !info.notes.trim().is_empty() {
             info.pad = creabim_core::project::pad_from_markdown(&info.notes);
             info.notes.clear();
@@ -4047,10 +4168,22 @@ impl CreaBimApp {
             });
         });
         for todo in [true, false] {
-            let idx: Vec<usize> = (0..info.pad.len()).filter(|k| info.pad[*k].todo == todo).collect();
+            let idx: Vec<usize> = (0..info.pad.len())
+                .filter(|k| info.pad[*k].todo == todo)
+                .collect();
             let done = idx.iter().filter(|k| info.pad[**k].done).count();
-            let title = if todo { format!("To-dos  {done}/{}", idx.len()) } else { format!("Notes  {}", idx.len()) };
-            if !self.prop_header(ui, if todo { "pad.todos" } else { "pad.notes" }, &title, true, None) {
+            let title = if todo {
+                format!("To-dos  {done}/{}", idx.len())
+            } else {
+                format!("Notes  {}", idx.len())
+            };
+            if !self.prop_header(
+                ui,
+                if todo { "pad.todos" } else { "pad.notes" },
+                &title,
+                true,
+                None,
+            ) {
                 continue;
             }
             if idx.is_empty() {
@@ -4073,7 +4206,11 @@ impl CreaBimApp {
                         r.request_focus();
                         ui.ctx().data_mut(|d| d.remove::<usize>(fk));
                     }
-                    if !r.has_focus() && !r.gained_focus() && ui.input(|i| i.pointer.any_pressed()) && !r.hovered() {
+                    if !r.has_focus()
+                        && !r.gained_focus()
+                        && ui.input(|i| i.pointer.any_pressed())
+                        && !r.hovered()
+                    {
                         editing = None;
                     }
                     crate::props::flow(ui, |ui| {
@@ -4111,11 +4248,17 @@ impl CreaBimApp {
                         }
                         if crate::props::icon_button(ui, "pencil", "Edit").clicked() {
                             editing = Some(k);
-                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("pad.focus"), k));
+                            ui.ctx()
+                                .data_mut(|d| d.insert_temp(egui::Id::new("pad.focus"), k));
                         }
                         if let Some(l) = item.link {
-                            let name = names.get(&l).cloned().unwrap_or_else(|| "something deleted".into());
-                            if crate::props::icon_button(ui, "link", &format!("Go to {name}")).clicked() {
+                            let name = names
+                                .get(&l)
+                                .cloned()
+                                .unwrap_or_else(|| "something deleted".into());
+                            if crate::props::icon_button(ui, "link", &format!("Go to {name}"))
+                                .clicked()
+                            {
                                 follow = Some(l);
                             }
                         }
@@ -4124,28 +4267,53 @@ impl CreaBimApp {
                     title_rect
                 });
                 let r = row.inner;
-                let r = egui::Rect::from_min_max(egui::pos2(r.left(), row.response.rect.top()), egui::pos2(r.right().max(r.left() + 20.0), row.response.rect.bottom()));
+                let r = egui::Rect::from_min_max(
+                    egui::pos2(r.left(), row.response.rect.top()),
+                    egui::pos2(r.right().max(r.left() + 20.0), row.response.rect.bottom()),
+                );
                 let resp = ui.interact(r, egui::Id::new(("pad.row", k)), egui::Sense::click());
-                let text = if item.title().is_empty() { "(empty)" } else { item.title() };
-                let color = if item.done { ui.visuals().weak_text_color() } else { ui.visuals().text_color() };
-                let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(12.0), color);
+                let text = if item.title().is_empty() {
+                    "(empty)"
+                } else {
+                    item.title()
+                };
+                let color = if item.done {
+                    ui.visuals().weak_text_color()
+                } else {
+                    ui.visuals().text_color()
+                };
+                let galley = ui.painter().layout_no_wrap(
+                    text.to_string(),
+                    egui::FontId::proportional(12.0),
+                    color,
+                );
                 let painter = ui.painter().with_clip_rect(r);
                 let wide = galley.size().x > r.width();
                 let y = r.center().y - galley.size().y / 2.0;
                 painter.galley(egui::pos2(r.left(), y), galley, color);
                 if item.done {
-                    painter.line_segment([egui::pos2(r.left(), r.center().y), egui::pos2(r.right(), r.center().y)], egui::Stroke::new(1.0, color.gamma_multiply(0.6)));
+                    painter.line_segment(
+                        [
+                            egui::pos2(r.left(), r.center().y),
+                            egui::pos2(r.right(), r.center().y),
+                        ],
+                        egui::Stroke::new(1.0, color.gamma_multiply(0.6)),
+                    );
                 }
                 if wide {
                     let bg = ui.visuals().panel_fill;
                     for s in 0..14 {
                         let x = r.right() - 14.0 + s as f32;
-                        painter.line_segment([egui::pos2(x, r.top()), egui::pos2(x, r.bottom())], egui::Stroke::new(1.0, bg.gamma_multiply(s as f32 / 14.0)));
+                        painter.line_segment(
+                            [egui::pos2(x, r.top()), egui::pos2(x, r.bottom())],
+                            egui::Stroke::new(1.0, bg.gamma_multiply(s as f32 / 14.0)),
+                        );
                     }
                 }
                 if resp.on_hover_text(item.text.as_str()).double_clicked() {
                     editing = Some(k);
-                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("pad.focus"), k));
+                    ui.ctx()
+                        .data_mut(|d| d.insert_temp(egui::Id::new("pad.focus"), k));
                 }
             }
         }
@@ -4159,14 +4327,29 @@ impl CreaBimApp {
             let r = ui.add(
                 egui::TextEdit::singleline(&mut new)
                     .vertical_align(egui::Align::Center)
-                    .hint_text(if as_todo { "New to-do, Enter" } else { "New note, Enter" })
+                    .hint_text(if as_todo {
+                        "New to-do, Enter"
+                    } else {
+                        "New note, Enter"
+                    })
                     .desired_width((ui.available_width() - 64.0).max(60.0)),
             );
-            if ui.selectable_label(as_todo, "To-do").on_hover_text("Add it as a to-do (else a note)").clicked() {
+            if ui
+                .selectable_label(as_todo, "To-do")
+                .on_hover_text("Add it as a to-do (else a note)")
+                .clicked()
+            {
                 as_todo = !as_todo;
             }
-            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !new.trim().is_empty() {
-                info.pad.push(PadItem { text: new.trim().to_string(), todo: as_todo, ..Default::default() });
+            if r.lost_focus()
+                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                && !new.trim().is_empty()
+            {
+                info.pad.push(PadItem {
+                    text: new.trim().to_string(),
+                    todo: as_todo,
+                    ..Default::default()
+                });
                 new.clear();
                 r.request_focus();
             }
@@ -4183,7 +4366,9 @@ impl CreaBimApp {
         if let Some(what) = export {
             let model = self.doc.model();
             let all: Vec<&PadItem> = info.pad.iter().collect();
-            let md = creabim_core::project::pad_to_markdown(&all, &|id| model.get(id).map(|e| e.name.clone()));
+            let md = creabim_core::project::pad_to_markdown(&all, &|id| {
+                model.get(id).map(|e| e.name.clone())
+            });
             match what {
                 "copy" => {
                     ui.ctx().copy_text(md);
@@ -4236,8 +4421,16 @@ impl CreaBimApp {
             return;
         }
         let pairs = creabim_core::checks::overlapping_walls(self.doc.model());
-        if let Some((a, b)) = pairs.iter().find(|(a, b)| picked.contains(a) || picked.contains(b)) {
-            let name = |id: &ElementId| self.doc.model().get(*id).map_or("a wall".into(), |e| e.name.clone());
+        if let Some((a, b)) = pairs
+            .iter()
+            .find(|(a, b)| picked.contains(a) || picked.contains(b))
+        {
+            let name = |id: &ElementId| {
+                self.doc
+                    .model()
+                    .get(*id)
+                    .map_or("a wall".into(), |e| e.name.clone())
+            };
             self.status = format!(
                 "{} now overlaps {} along its length: one wall in plan, two in 3D. Manage \u{203a} Overlapping walls merges them.",
                 name(a),
@@ -4267,7 +4460,10 @@ impl CreaBimApp {
                 }
             }
             let r = self.doc.commit(tx);
-            self.report(r, format!("Guides copied to {} other sheets.", others.len()));
+            self.report(
+                r,
+                format!("Guides copied to {} other sheets.", others.len()),
+            );
         }
         if let Some(id) = self.plan.edit_note.take() {
             self.note_editor = Some(id);
@@ -4350,9 +4546,19 @@ impl CreaBimApp {
             let from = outline.points.last().map(|p| p.extend(outline.z));
             let snapper = &self.snaps_3d.as_ref()?.2;
             let shape: Vec<DVec3> = outline.points.iter().map(|p| p.extend(outline.z)).collect();
-            let guides = guides_3d(&self.rested_3d.0, from, outline.z, self.plan.guide_step, &snap_cfg);
+            let guides = guides_3d(
+                &self.rested_3d.0,
+                from,
+                outline.z,
+                self.plan.guide_step,
+                &snap_cfg,
+            );
             let rested: Vec<DVec3> = if guides.is_empty() {
-                self.rested_3d.0.iter().map(|p| p.truncate().extend(outline.z)).collect()
+                self.rested_3d
+                    .0
+                    .iter()
+                    .map(|p| p.truncate().extend(outline.z))
+                    .collect()
             } else {
                 vec![]
             };
@@ -4383,7 +4589,15 @@ impl CreaBimApp {
         let Some(o) = self.plan.outline.as_mut() else {
             return;
         };
-        match o.input_more(enter, escape, right, click, arc, response.double_clicked(), backspace) {
+        match o.input_more(
+            enter,
+            escape,
+            right,
+            click,
+            arc,
+            response.double_clicked(),
+            backspace,
+        ) {
             crate::outline::Next::Drawing(hint) => self.status = hint,
             crate::outline::Next::Cancel(msg) => {
                 self.plan.outline = None;
@@ -4556,7 +4770,10 @@ impl CreaBimApp {
             if response.hovered() && !ui.ctx().egui_wants_keyboard_input() {
                 let (a, l) = ui.input(|i| {
                     let plain = !i.modifiers.command && !i.modifiers.alt;
-                    (plain && i.key_pressed(egui::Key::A), plain && i.key_pressed(egui::Key::L))
+                    (
+                        plain && i.key_pressed(egui::Key::A),
+                        plain && i.key_pressed(egui::Key::L),
+                    )
                 });
                 if a || l {
                     self.plan.slab_arc = a;
@@ -4677,7 +4894,8 @@ impl CreaBimApp {
         };
         let accent = Color32::from_rgb(230, 120, 30);
         // a slab, roof or shaft's Rectangle too, not only a face's (MU31)
-        let rect_preview = (crate::partstool::on_face(&self.plan).is_some() || self.plan.tool.draws_outline())
+        let rect_preview = (crate::partstool::on_face(&self.plan).is_some()
+            || self.plan.tool.draws_outline())
             && self.plan.slab_mode == crate::slabtool::SlabMode::Rectangle;
         match self.plan.sketch.as_ref().filter(|_| mine) {
             // a rectangle on a face shows whole as the corner follows (MU24)
@@ -4730,7 +4948,8 @@ impl CreaBimApp {
                 return;
             }
             // a sweep along a path drawn on a face
-            if let Some((profile, name)) = crate::partstool::face_sweep(&app.plan, app.doc.model()) {
+            if let Some((profile, name)) = crate::partstool::face_sweep(&app.plan, app.doc.model())
+            {
                 let name = name.as_str();
                 match d.finish_sweep(&mut app.doc, profile, name, closed) {
                     Ok(Some(id)) => {
@@ -4810,7 +5029,10 @@ impl CreaBimApp {
         // more closes and makes it; again with nothing drawn, it leaves
         // the tool, as everywhere
         let on_face = crate::partstool::on_face(&self.plan).is_some();
-        if response.secondary_clicked() && self.plan.sketch.is_none() && self.plan.tool != Tool::Select {
+        if response.secondary_clicked()
+            && self.plan.sketch.is_none()
+            && self.plan.tool != Tool::Select
+        {
             self.plan.step_back();
             if let Some(s) = self.plan.status.take() {
                 self.status = s;
@@ -4834,7 +5056,8 @@ impl CreaBimApp {
         if !response.clicked() {
             return;
         }
-        let rect_on_face = (crate::partstool::on_face(&self.plan).is_some() || self.plan.tool.draws_outline())
+        let rect_on_face = (crate::partstool::on_face(&self.plan).is_some()
+            || self.plan.tool.draws_outline())
             && self.plan.slab_mode == crate::slabtool::SlabMode::Rectangle;
         match &mut self.plan.sketch {
             None => {
@@ -5063,7 +5286,8 @@ impl CreaBimApp {
         egui::ComboBox::from_id_salt("workplane")
             .icon(crate::props::combo_icon)
             .selected_text(text)
-            .width(ui.available_width().min(150.0)).truncate()
+            .width(ui.available_width().min(150.0))
+            .truncate()
             .show_ui(ui, |ui| {
                 if ui
                     .selectable_label(self.workplane.is_none(), "Level (follows the plan)")
@@ -5119,9 +5343,11 @@ impl CreaBimApp {
             ui.label("Pivot:").on_hover_text(
                 "What R and S turn and scale about. Shift+right-click places the pivot cursor.",
             );
-            egui::ComboBox::from_id_salt("pivot").icon(crate::props::combo_icon)
+            egui::ComboBox::from_id_salt("pivot")
+                .icon(crate::props::combo_icon)
                 .selected_text(self.plan.pivot.label())
-                .width(ui.available_width().min(150.0)).truncate()
+                .width(ui.available_width().min(150.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     for p in crate::modal::Pivot::ALL {
                         ui.selectable_value(&mut self.plan.pivot, p, p.label());
@@ -5145,9 +5371,11 @@ impl CreaBimApp {
                 Some(s) => format!("{} {current}", s.number),
                 None => current,
             };
-            egui::ComboBox::from_id_salt("view").icon(crate::props::combo_icon)
+            egui::ComboBox::from_id_salt("view")
+                .icon(crate::props::combo_icon)
                 .selected_text(current)
-                .width(ui.available_width().min(190.0)).truncate()
+                .width(ui.available_width().min(190.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     for (id, name, _) in views {
                         ui.selectable_value(&mut self.active_view, Some(id), name);
@@ -5225,7 +5453,8 @@ impl CreaBimApp {
             }
             ui.label("Wall thickness:");
             ui.add(crate::units::drag(&mut self.plan.wall_thickness).range(0.05..=1.0));
-            egui::ComboBox::from_id_salt("wall_location").icon(crate::props::combo_icon)
+            egui::ComboBox::from_id_salt("wall_location")
+                .icon(crate::props::combo_icon)
                 .selected_text(self.plan.wall_location.label())
                 .show_ui(ui, |ui| {
                     for l in creabim_core::LocationLine::ALL {
@@ -5251,7 +5480,8 @@ impl CreaBimApp {
         egui::ComboBox::from_id_salt("place_view")
             .icon(crate::props::combo_icon)
             .selected_text("Place view…")
-            .width(ui.available_width().min(150.0)).truncate()
+            .width(ui.available_width().min(150.0))
+            .truncate()
             .show_ui(ui, |ui| {
                 for (id, name, _) in self.views() {
                     let label = if placed.contains(&id) {
@@ -5633,7 +5863,16 @@ impl CreaBimApp {
         let list: Vec<(ElementId, String)> = if k == 0 {
             sheets::sheets(model)
                 .into_iter()
-                .map(|(id, s)| (id, format!("{} {}", s.number, model.get(id).map_or("", |e| e.name.as_str()))))
+                .map(|(id, s)| {
+                    (
+                        id,
+                        format!(
+                            "{} {}",
+                            s.number,
+                            model.get(id).map_or("", |e| e.name.as_str())
+                        ),
+                    )
+                })
                 .collect()
         } else {
             model
@@ -5642,20 +5881,30 @@ impl CreaBimApp {
                 .map(|e| (e.id, e.name.clone()))
                 .collect()
         };
-        let Some(i) = list.iter().position(|(id, _)| *id == now) else { return };
+        let Some(i) = list.iter().position(|(id, _)| *id == now) else {
+            return;
+        };
         let j = (i as i32 + by).rem_euclid(list.len() as i32) as usize;
         let (id, name) = list[j].clone();
         self.active_view = Some(id);
-        self.status = format!("{name} ({}/{}). PgUp / PgDn step through them.", j + 1, list.len());
+        self.status = format!(
+            "{name} ({}/{}). PgUp / PgDn step through them.",
+            j + 1,
+            list.len()
+        );
     }
 
     /// Shift+A (MU24, as Blender's Add menu): every tool, found by typing,
     /// the ones that can't be used in the view in front greyed.
     fn add_menu_window(&mut self, ctx: &egui::Context) {
-        let Some(mut q) = self.add_menu.clone() else { return };
+        let Some(mut q) = self.add_menu.clone() else {
+            return;
+        };
         let mut pick = None;
         let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-        let at = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(ctx.content_rect().center());
+        let at = ctx
+            .input(|i| i.pointer.hover_pos())
+            .unwrap_or(ctx.content_rect().center());
         let shown = egui::Area::new(egui::Id::new("add.menu"))
             .order(egui::Order::Foreground)
             .fixed_pos(at)
@@ -5663,7 +5912,11 @@ impl CreaBimApp {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_width(240.0);
                     ui.label(egui::RichText::new("Add").strong());
-                    let r = ui.add(egui::TextEdit::singleline(&mut q).vertical_align(egui::Align::Center).hint_text("Type to find a tool"));
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut q)
+                            .vertical_align(egui::Align::Center)
+                            .hint_text("Type to find a tool"),
+                    );
                     r.request_focus();
                     let want = q.to_lowercase();
                     let found: Vec<Tool> = Tool::ALL
@@ -5671,17 +5924,19 @@ impl CreaBimApp {
                         .copied()
                         .filter(|t| *t != Tool::Select && t.label().to_lowercase().contains(&want))
                         .collect();
-                    egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                        for t in &found {
-                            if ui
-                                .add(egui::Button::new(t.label()).frame(false))
-                                .on_hover_text(t.hint())
-                                .clicked()
-                            {
-                                pick = Some(*t);
+                    egui::ScrollArea::vertical()
+                        .max_height(320.0)
+                        .show(ui, |ui| {
+                            for t in &found {
+                                if ui
+                                    .add(egui::Button::new(t.label()).frame(false))
+                                    .on_hover_text(t.hint())
+                                    .clicked()
+                                {
+                                    pick = Some(*t);
+                                }
                             }
-                        }
-                    });
+                        });
                     if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         pick = found.first().copied();
                     }
@@ -5710,12 +5965,18 @@ impl CreaBimApp {
     /// sheet's revisions table, on `sheet` (Annotate board step 4).
     fn add_revision_mark(&mut self, sheet: ElementId, table: bool) {
         let model = self.doc.model();
-        let Some(s) = sheets::sheet_of(model, sheet) else { return };
+        let Some(s) = sheets::sheet_of(model, sheet) else {
+            return;
+        };
         let (w, h) = (s.width, s.height);
         let mark = if table {
             let m = creabim_geom::sheet::MARGIN;
-            let top = creabim_geom::sheet::title_block_box(model, sheet).map_or(m + 45.0, |(_, hi)| hi.y);
-            creabim_core::PaperMark::revision_table(sheet, glam::DVec2::new(w - m - 112.0, top + 34.0))
+            let top =
+                creabim_geom::sheet::title_block_box(model, sheet).map_or(m + 45.0, |(_, hi)| hi.y);
+            creabim_core::PaperMark::revision_table(
+                sheet,
+                glam::DVec2::new(w - m - 112.0, top + 34.0),
+            )
         } else {
             let last = model
                 .iter()
@@ -5727,15 +5988,23 @@ impl CreaBimApp {
                     _ => None,
                 })
                 .max();
-            let next = last.map_or('A', |c| ((c as u8).saturating_add(1)) as char).to_string();
+            let next = last
+                .map_or('A', |c| ((c as u8).saturating_add(1)) as char)
+                .to_string();
             creabim_core::PaperMark::cloud(sheet, glam::DVec2::new(w / 2.0, h / 2.0), &next)
         };
-        let what = if table { "Revisions table" } else { "Revision cloud" };
+        let what = if table {
+            "Revisions table"
+        } else {
+            "Revision cloud"
+        };
         let e = Element::new(what, ElementKind::PaperMark(mark));
         let id = e.id;
         if self
             .doc
-            .commit(creabim_core::Transaction::new(format!("Add {}", what.to_lowercase())).insert(e))
+            .commit(
+                creabim_core::Transaction::new(format!("Add {}", what.to_lowercase())).insert(e),
+            )
             .is_ok()
         {
             self.selection.only(id);
@@ -5759,45 +6028,81 @@ impl CreaBimApp {
         let (tb_left, tb_top) = creabim_geom::sheet::title_block_box(model, sheet)
             .map_or((w - m - tb.x, m + tb.y), |(lo, hi)| (lo.x, hi.y));
         let mark = if north {
-            creabim_core::PaperMark::north_arrow(sheet, glam::DVec2::new(w - m - 16.0, tb_top + 18.0))
+            creabim_core::PaperMark::north_arrow(
+                sheet,
+                glam::DVec2::new(w - m - 16.0, tb_top + 18.0),
+            )
         } else {
             // the scale of the views on it, else 1:100
             let scale = model
                 .iter()
                 .find_map(|e| match &e.kind {
-                    ElementKind::Viewport(vp) if vp.sheet == sheet => match model.get(vp.view).map(|v| &v.kind) {
-                        Some(ElementKind::View(v)) if !matches!(v.kind, ViewKind::Schedule { .. }) => Some(v.scale),
-                        _ => None,
-                    },
+                    ElementKind::Viewport(vp) if vp.sheet == sheet => {
+                        match model.get(vp.view).map(|v| &v.kind) {
+                            Some(ElementKind::View(v))
+                                if !matches!(v.kind, ViewKind::Schedule { .. }) =>
+                            {
+                                Some(v.scale)
+                            }
+                            _ => None,
+                        }
+                    }
                     _ => None,
                 })
                 .unwrap_or(100.0);
-            creabim_core::PaperMark::scale_bar(sheet, glam::DVec2::new(tb_left + 4.0, tb_top + 10.0), scale)
+            creabim_core::PaperMark::scale_bar(
+                sheet,
+                glam::DVec2::new(tb_left + 4.0, tb_top + 10.0),
+                scale,
+            )
         };
         let what = if north { "North arrow" } else { "Scale bar" };
         let e = Element::new(what, ElementKind::PaperMark(mark));
         let id = e.id;
         if self
             .doc
-            .commit(creabim_core::Transaction::new(format!("Add {}", what.to_lowercase())).insert(e))
+            .commit(
+                creabim_core::Transaction::new(format!("Add {}", what.to_lowercase())).insert(e),
+            )
             .is_ok()
         {
             self.selection.only(id);
             self.prop_tab = PropTab::Element;
-            self.status = format!("{what} added. Drag it where it goes; Properties sets its size{}.", if north { " and angle" } else { ", scale and length" });
+            self.status = format!(
+                "{what} added. Drag it where it goes; Properties sets its size{}.",
+                if north {
+                    " and angle"
+                } else {
+                    ", scale and length"
+                }
+            );
         }
     }
 
     /// The sheets the Export sheets dialog would write, in sheet order.
     fn sheets_to_export(&self, this_only: bool) -> Vec<ElementId> {
-        let all: Vec<ElementId> = sheets::sheets(self.doc.model()).into_iter().map(|(id, _)| id).collect();
+        let all: Vec<ElementId> = sheets::sheets(self.doc.model())
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
         if this_only {
-            return self.active_view.filter(|id| all.contains(id)).into_iter().collect();
+            return self
+                .active_view
+                .filter(|id| all.contains(id))
+                .into_iter()
+                .collect();
         }
         match self.sheets_export.scope {
             ExportScope::All => all,
-            ExportScope::Chosen => all.into_iter().filter(|id| self.sheets_export.chosen.contains(id)).collect(),
-            ExportScope::This => self.active_view.filter(|id| all.contains(id)).into_iter().collect(),
+            ExportScope::Chosen => all
+                .into_iter()
+                .filter(|id| self.sheets_export.chosen.contains(id))
+                .collect(),
+            ExportScope::This => self
+                .active_view
+                .filter(|id| all.contains(id))
+                .into_iter()
+                .collect(),
         }
     }
 
@@ -5815,7 +6120,9 @@ impl CreaBimApp {
         let info = self.sheet_info();
         let model = self.doc.model();
         let name_of = |id: ElementId| {
-            let n = sheets::sheet_of(model, id).map(|s| s.number.clone()).unwrap_or_default();
+            let n = sheets::sheet_of(model, id)
+                .map(|s| s.number.clone())
+                .unwrap_or_default();
             let t = model.get(id).map(|e| e.name.clone()).unwrap_or_default();
             let raw = format!("{n} {t}");
             raw.trim()
@@ -5840,7 +6147,13 @@ impl CreaBimApp {
             };
             let r = std::fs::write(&out, pdf);
             let n = ids.len();
-            self.report(r, format!("Exported {n} sheet{} to {out}", if n == 1 { "" } else { "s" }));
+            self.report(
+                r,
+                format!(
+                    "Exported {n} sheet{} to {out}",
+                    if n == 1 { "" } else { "s" }
+                ),
+            );
             return;
         }
         // a PDF each, named by number and name, in a folder
@@ -5865,7 +6178,11 @@ impl CreaBimApp {
             }
         }
         self.last_export_dir = Some(dir.clone());
-        self.status = format!("Exported {written} sheet PDF{} to {}", if written == 1 { "" } else { "s" }, dir.display());
+        self.status = format!(
+            "Exported {written} sheet PDF{} to {}",
+            if written == 1 { "" } else { "s" },
+            dir.display()
+        );
     }
 
     /// The Export sheets dialog (MU22): all, chosen or this sheet, as one
@@ -5892,7 +6209,9 @@ impl CreaBimApp {
                 .filter(|id| all.iter().any(|(s, _)| s == id))
                 .collect();
         }
-        let this = self.active_view.filter(|id| all.iter().any(|(s, _)| s == id));
+        let this = self
+            .active_view
+            .filter(|id| all.iter().any(|(s, _)| s == id));
         let mut open = true;
         let mut go = false;
         let mut cancel = false;
@@ -5906,8 +6225,16 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 crate::props::row(ui, "Sheets", |ui| {
                     crate::props::flow(ui, |ui| {
-                        ui.selectable_value(&mut x.scope, ExportScope::All, format!("All ({})", all.len()));
-                        ui.selectable_value(&mut x.scope, ExportScope::Chosen, format!("Chosen ({})", x.chosen.len()));
+                        ui.selectable_value(
+                            &mut x.scope,
+                            ExportScope::All,
+                            format!("All ({})", all.len()),
+                        );
+                        ui.selectable_value(
+                            &mut x.scope,
+                            ExportScope::Chosen,
+                            format!("Chosen ({})", x.chosen.len()),
+                        );
                         ui.add_enabled_ui(this.is_some(), |ui| {
                             ui.selectable_value(&mut x.scope, ExportScope::This, "This one")
                                 .on_disabled_hover_text("Open a sheet first");
@@ -5915,18 +6242,20 @@ impl CreaBimApp {
                     })
                 });
                 if x.scope == ExportScope::Chosen {
-                    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
-                        for (id, name) in &all {
-                            let mut on = x.chosen.contains(id);
-                            if crate::props::check(ui, "", &mut on, name.as_str()).changed() {
-                                if on {
-                                    x.chosen.insert(*id);
-                                } else {
-                                    x.chosen.remove(id);
+                    egui::ScrollArea::vertical()
+                        .max_height(180.0)
+                        .show(ui, |ui| {
+                            for (id, name) in &all {
+                                let mut on = x.chosen.contains(id);
+                                if crate::props::check(ui, "", &mut on, name.as_str()).changed() {
+                                    if on {
+                                        x.chosen.insert(*id);
+                                    } else {
+                                        x.chosen.remove(id);
+                                    }
                                 }
                             }
-                        }
-                    });
+                        });
                 }
                 crate::props::row(ui, "As", |ui| {
                     crate::props::flow(ui, |ui| {
@@ -6025,7 +6354,13 @@ impl CreaBimApp {
         ui.add_space(6.0);
         // the tab's own title says what it is; this section lists them,
         // and its ? says what a reference is (MU27)
-        if !self.prop_header(ui, "trace.list", "References here", true, Some("trace-reference")) {
+        if !self.prop_header(
+            ui,
+            "trace.list",
+            "References here",
+            true,
+            Some("trace-reference"),
+        ) {
             return;
         }
         let model = self.doc.model();
@@ -6105,35 +6440,43 @@ impl CreaBimApp {
         let mut select = None;
         let mut flip = None;
         // a long list scrolls in its own box; Add stays in reach (MU28)
-        egui::ScrollArea::vertical().id_salt(("trace.list", v)).max_height(240.0).show(ui, |ui| {
-        for (id, name, hidden) in &here {
-            crate::props::flow(ui, |ui| {
-                let eye = if *hidden { "eye-off" } else { "eye" };
-                let (rr, resp) =
-                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                crate::svgicon::paint(ui.painter(), rr.shrink(2.0), eye, ui.visuals().text_color());
-                if resp
-                    .on_hover_text(if *hidden { "Show it" } else { "Hide it" })
-                    .clicked()
-                {
-                    flip = Some(*id);
-                }
-                // one line, cut with … and whole on hover (MU23)
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-                let on = self.selection.contains(*id);
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 22.0],
-                        egui::Button::selectable(on, name.as_str()).truncate(),
-                    )
-                    .on_hover_text(name.as_str())
-                    .clicked()
-                {
-                    select = Some(*id);
+        egui::ScrollArea::vertical()
+            .id_salt(("trace.list", v))
+            .max_height(240.0)
+            .show(ui, |ui| {
+                for (id, name, hidden) in &here {
+                    crate::props::flow(ui, |ui| {
+                        let eye = if *hidden { "eye-off" } else { "eye" };
+                        let (rr, resp) =
+                            ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                        crate::svgicon::paint(
+                            ui.painter(),
+                            rr.shrink(2.0),
+                            eye,
+                            ui.visuals().text_color(),
+                        );
+                        if resp
+                            .on_hover_text(if *hidden { "Show it" } else { "Hide it" })
+                            .clicked()
+                        {
+                            flip = Some(*id);
+                        }
+                        // one line, cut with … and whole on hover (MU23)
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                        let on = self.selection.contains(*id);
+                        if ui
+                            .add_sized(
+                                [ui.available_width(), 22.0],
+                                egui::Button::selectable(on, name.as_str()).truncate(),
+                            )
+                            .on_hover_text(name.as_str())
+                            .clicked()
+                        {
+                            select = Some(*id);
+                        }
+                    });
                 }
             });
-        }
-        });
         if let Some(id) = select {
             self.selection.only(id);
             self.prop_tab = PropTab::Element;
@@ -6190,7 +6533,8 @@ impl CreaBimApp {
                     ui.ctx().copy_text(name.clone());
                 }
                 if path.is_some()
-                    && crate::props::icon_button(ui, "folder-open", "Another file in its place").clicked()
+                    && crate::props::icon_button(ui, "folder-open", "Another file in its place")
+                        .clicked()
                 {
                     replace = true;
                 }
@@ -6208,7 +6552,13 @@ impl CreaBimApp {
                         [w, 22.0],
                         egui::Label::new(egui::RichText::new(p.clone()).weak()).truncate(),
                     );
-                    if crate::props::icon_button(ui, "refresh-cw", "Read the file again, after it changed").clicked() {
+                    if crate::props::icon_button(
+                        ui,
+                        "refresh-cw",
+                        "Read the file again, after it changed",
+                    )
+                    .clicked()
+                    {
                         self.plan.ref_cache.forget(id);
                     }
                 })
@@ -6287,51 +6637,53 @@ impl CreaBimApp {
                 })
         });
         // narrow, the swatches wrap rather than run off the panel (MU34)
-        crate::props::row(ui, "Colour", |ui| crate::props::flow(ui, |ui| {
-            let swatch = |ui: &mut egui::Ui, c: Option<Color32>, on: bool, tip: &str| {
-                let (rr, resp) =
-                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                match c {
-                    Some(c) => {
-                        ui.painter().circle_filled(rr.center(), 8.0, c);
+        crate::props::row(ui, "Colour", |ui| {
+            crate::props::flow(ui, |ui| {
+                let swatch = |ui: &mut egui::Ui, c: Option<Color32>, on: bool, tip: &str| {
+                    let (rr, resp) =
+                        ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                    match c {
+                        Some(c) => {
+                            ui.painter().circle_filled(rr.center(), 8.0, c);
+                        }
+                        None => {
+                            // its own colours: a split swatch
+                            ui.painter().circle_stroke(
+                                rr.center(),
+                                7.5,
+                                egui::Stroke::new(1.2, ui.visuals().weak_text_color()),
+                            );
+                            ui.painter().line_segment(
+                                [
+                                    rr.center() + egui::vec2(-5.0, 5.0),
+                                    rr.center() + egui::vec2(5.0, -5.0),
+                                ],
+                                egui::Stroke::new(1.2, ui.visuals().weak_text_color()),
+                            );
+                        }
                     }
-                    None => {
-                        // its own colours: a split swatch
+                    if on {
                         ui.painter().circle_stroke(
                             rr.center(),
-                            7.5,
-                            egui::Stroke::new(1.2, ui.visuals().weak_text_color()),
-                        );
-                        ui.painter().line_segment(
-                            [
-                                rr.center() + egui::vec2(-5.0, 5.0),
-                                rr.center() + egui::vec2(5.0, -5.0),
-                            ],
-                            egui::Stroke::new(1.2, ui.visuals().weak_text_color()),
+                            10.0,
+                            egui::Stroke::new(1.5, ui.visuals().text_color()),
                         );
                     }
-                }
-                if on {
-                    ui.painter().circle_stroke(
-                        rr.center(),
-                        10.0,
-                        egui::Stroke::new(1.5, ui.visuals().text_color()),
-                    );
-                }
-                resp.on_hover_text(tip).clicked()
-            };
-            if swatch(ui, None, r.colour.is_none(), "Its own colours") {
-                r.colour = None;
-                label = Some("Reference colour");
-            }
-            for (i, (cname, [cr, cg, cb])) in REFERENCE_COLOURS.iter().enumerate() {
-                let c = Color32::from_rgb(*cr, *cg, *cb);
-                if swatch(ui, Some(c), r.colour == Some(i as u8), cname) {
-                    r.colour = Some(i as u8);
+                    resp.on_hover_text(tip).clicked()
+                };
+                if swatch(ui, None, r.colour.is_none(), "Its own colours") {
+                    r.colour = None;
                     label = Some("Reference colour");
                 }
-            }
-        }));
+                for (i, (cname, [cr, cg, cb])) in REFERENCE_COLOURS.iter().enumerate() {
+                    let c = Color32::from_rgb(*cr, *cg, *cb);
+                    if swatch(ui, Some(c), r.colour == Some(i as u8), cname) {
+                        r.colour = Some(i as u8);
+                        label = Some("Reference colour");
+                    }
+                }
+            })
+        });
         crate::props::row(ui, "Strength", |ui| {
             if ui
                 .add(egui::Slider::new(&mut r.opacity, 0.05..=1.0).show_value(false))
@@ -6344,9 +6696,16 @@ impl CreaBimApp {
             ui,
             "Drawn",
             &mut r.over,
-            &[(false, "Under", "Under the model"), (true, "Over", "Over the model")],
+            &[
+                (false, "Under", "Under the model"),
+                (true, "Over", "Over the model"),
+            ],
         ) {
-            label = Some(if r.over { "Reference over" } else { "Reference under" });
+            label = Some(if r.over {
+                "Reference over"
+            } else {
+                "Reference under"
+            });
         }
         // one switch a row, so none runs off a narrow panel (MU34)
         if crate::props::switch(ui, &mut r.locked, "Locked").changed() {
@@ -6359,7 +6718,9 @@ impl CreaBimApp {
         // (MU34)
         if crate::props::subsection(ui, "ref.3d", "In 3D", true) {
             if crate::props::switch(ui, &mut r.in_3d, "Shown")
-                .on_hover_text("Shown in the 3D view too, where its views are; off, only in its views")
+                .on_hover_text(
+                    "Shown in the 3D view too, where its views are; off, only in its views",
+                )
                 .changed()
             {
                 label = Some("Reference in 3D");
@@ -6372,7 +6733,10 @@ impl CreaBimApp {
                 }
                 if let Some(o) = &mut r.opacity_3d {
                     crate::props::row(ui, "Strength", |ui| {
-                        if ui.add(egui::Slider::new(o, 0.05..=1.0).show_value(false)).drag_stopped() {
+                        if ui
+                            .add(egui::Slider::new(o, 0.05..=1.0).show_value(false))
+                            .drag_stopped()
+                        {
                             label = Some("Reference strength in 3D");
                         }
                     });
@@ -6386,7 +6750,13 @@ impl CreaBimApp {
             }
         }
         // its own box, folding (MU23)
-        if !self.prop_header(ui, "refplace", "Place and size", true, Some("trace-reference")) {
+        if !self.prop_header(
+            ui,
+            "refplace",
+            "Place and size",
+            true,
+            Some("trace-reference"),
+        ) {
             return label;
         }
         let mut at = r.at;
@@ -6525,7 +6895,10 @@ impl CreaBimApp {
                             let turn = r.rotation;
                             if self
                                 .doc
-                                .commit(creabim_core::Transaction::new("Align reference").replace(e, after))
+                                .commit(
+                                    creabim_core::Transaction::new("Align reference")
+                                        .replace(e, after),
+                                )
                                 .is_ok()
                             {
                                 self.status = format!("Aligned: turned to {turn:.2}°.");
@@ -6544,12 +6917,17 @@ impl CreaBimApp {
                 .to_lowercase();
             let p = path.display().to_string();
             let source = match ext.as_str() {
-                "png" | "jpg" | "jpeg" => creabim_core::RefSource::Image { path: p, width: 10.0 },
+                "png" | "jpg" | "jpeg" => creabim_core::RefSource::Image {
+                    path: p,
+                    width: 10.0,
+                },
                 "dxf" => creabim_core::RefSource::Dxf { path: p },
                 _ => {
                     self.status = format!(
                         "{} can't be a reference: drop a PNG, JPEG or DXF file.",
-                        path.file_name().and_then(|n| n.to_str()).unwrap_or("That file")
+                        path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("That file")
                     );
                     continue;
                 }
@@ -6673,22 +7051,25 @@ impl CreaBimApp {
                         // folding, as the plan's Graphics and the others (MU37)
                         let gid = egui::Id::new("props.view.graphics.open");
                         let open = ui.ctx().data(|d| d.get_temp::<bool>(gid)).unwrap_or(true);
-                        if crate::props::header(ui, "Graphics", open, false).0.clicked() {
+                        if crate::props::header(ui, "Graphics", open, false)
+                            .0
+                            .clicked()
+                        {
                             ui.ctx().data_mut(|d| d.insert_temp(gid, !open));
                         }
                         if open {
-                        crate::props::row(ui, "Drawing style", |ui| {
-                            egui::ComboBox::from_id_salt("section.panel.drawing_style")
-                                .icon(crate::props::combo_icon)
-                                .selected_text(style.label())
-                                .width(ui.available_width())
-                                .show_ui(ui, |ui| {
-                                    for s in creabim_core::graphics::DrawingStyle::ALL {
-                                        ui.selectable_value(&mut style, s, s.label())
-                                            .on_hover_text(s.hint());
-                                    }
-                                });
-                        });
+                            crate::props::row(ui, "Drawing style", |ui| {
+                                egui::ComboBox::from_id_salt("section.panel.drawing_style")
+                                    .icon(crate::props::combo_icon)
+                                    .selected_text(style.label())
+                                    .width(ui.available_width())
+                                    .show_ui(ui, |ui| {
+                                        for s in creabim_core::graphics::DrawingStyle::ALL {
+                                            ui.selectable_value(&mut style, s, s.label())
+                                                .on_hover_text(s.hint());
+                                        }
+                                    });
+                            });
                         }
                         if style != view.graphics.drawing_style {
                             let r = self.doc.edit(v, "Drawing style", |e| {
@@ -6791,7 +7172,14 @@ impl CreaBimApp {
         }
         // even parts of its length (MU34 B2)
         if creabim_core::divide::span(self.doc.model(), id).is_some()
-            && crate::props::action(ui, "Divide", "Into even parts…", "Cut it into parts, put guides at the divisions, or copy something into each part", true).clicked()
+            && crate::props::action(
+                ui,
+                "Divide",
+                "Into even parts…",
+                "Cut it into parts, put guides at the divisions, or copy something into each part",
+                true,
+            )
+            .clicked()
         {
             self.divide.open = true;
         }
@@ -6801,7 +7189,9 @@ impl CreaBimApp {
         };
         // its own folding panel, as Type and Geometry are (MU32)
         let hint = format!("say:{}", editmode::panel_hint(&e.kind));
-        if self.plan.edit == Some(id) && self.prop_header(ui, "editing", "Editing", true, Some(&hint)) {
+        if self.plan.edit == Some(id)
+            && self.prop_header(ui, "editing", "Editing", true, Some(&hint))
+        {
             // the layers' grips, without having to know Tab (MU18), as a
             // choice in the field column
             if handles::has_layers(self.doc.model(), id) {
@@ -6983,8 +7373,16 @@ impl CreaBimApp {
                         "Keep",
                         &mut self.plan.slab_keep_bottom,
                         &[
-                            (false, "Top", "A new thickness moves the underside; the top stays put."),
-                            (true, "Bottom", "A new thickness moves the top; the underside stays put."),
+                            (
+                                false,
+                                "Top",
+                                "A new thickness moves the underside; the top stays put.",
+                            ),
+                            (
+                                true,
+                                "Bottom",
+                                "A new thickness moves the top; the underside stays put.",
+                            ),
                         ],
                     );
                     if num(ui, "Top offset", &mut s.top_offset, -100.0, 100.0) {
@@ -7287,7 +7685,13 @@ impl CreaBimApp {
                             {
                                 self.copy_guides = Some((id, sh.guides.clone()));
                             }
-                            if ui.add_enabled(!sh.guides.is_empty(), egui::Button::new("Clear").small()).clicked() {
+                            if ui
+                                .add_enabled(
+                                    !sh.guides.is_empty(),
+                                    egui::Button::new("Clear").small(),
+                                )
+                                .clicked()
+                            {
                                 sh.guides.clear();
                                 label = "Clear guides";
                             }
@@ -7357,7 +7761,9 @@ impl CreaBimApp {
                     }
                     // its title on the sheet (MU27): its view's, so every
                     // sheet it is on agrees
-                    if let Some(ElementKind::View(view)) = self.doc.model().get(vp.view).map(|e| e.kind.clone()) {
+                    if let Some(ElementKind::View(view)) =
+                        self.doc.model().get(vp.view).map(|e| e.kind.clone())
+                    {
                         let mut t = view.sheet_title.clone();
                         let before = t.clone();
                         if crate::props::subsection(ui, "viewport.title", "Title", true) {
@@ -7377,7 +7783,13 @@ impl CreaBimApp {
                                     )
                                 });
                                 crate::props::row(ui, "Size", |ui| {
-                                    crate::props::fill(ui, egui::DragValue::new(&mut t.size).speed(0.1).range(1.5..=10.0).suffix(" mm"))
+                                    crate::props::fill(
+                                        ui,
+                                        egui::DragValue::new(&mut t.size)
+                                            .speed(0.1)
+                                            .range(1.5..=10.0)
+                                            .suffix(" mm"),
+                                    )
                                 });
                                 // its font, weight and colour: a text style
                                 let styles: Vec<(ElementId, String)> = self
@@ -7397,22 +7809,36 @@ impl CreaBimApp {
                                         .selected_text(now)
                                         .width(ui.available_width())
                                         .show_ui(ui, |ui| {
-                                            if ui.selectable_label(t.style.is_none(), "Plain").clicked() {
+                                            if ui
+                                                .selectable_label(t.style.is_none(), "Plain")
+                                                .clicked()
+                                            {
                                                 t.style = None;
                                             }
                                             for (i, n) in &styles {
-                                                if ui.selectable_label(t.style == Some(*i), n).clicked() {
+                                                if ui
+                                                    .selectable_label(t.style == Some(*i), n)
+                                                    .clicked()
+                                                {
                                                     t.style = Some(*i);
                                                 }
                                             }
                                         })
                                 });
-                                for (name, v) in [("Moved X", &mut t.offset.x), ("Moved Y", &mut t.offset.y)] {
+                                for (name, v) in
+                                    [("Moved X", &mut t.offset.x), ("Moved Y", &mut t.offset.y)]
+                                {
                                     crate::props::row(ui, name, |ui| {
-                                        crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).suffix(" mm"))
+                                        crate::props::fill(
+                                            ui,
+                                            egui::DragValue::new(v).speed(0.5).suffix(" mm"),
+                                        )
                                     });
                                 }
-                                ui.label(egui::RichText::new("Or drag the title itself on the sheet.").weak());
+                                ui.label(
+                                    egui::RichText::new("Or drag the title itself on the sheet.")
+                                        .weak(),
+                                );
                             }
                         }
                         if t != before {
@@ -7591,12 +8017,25 @@ impl CreaBimApp {
                         if let Some(f) = &mut d.format {
                             let was = *f;
                             let units = self.doc.model().units();
-                            levelsui::kind_format(ui, f, &units, creabim_core::NumberKind::Dimensions);
+                            levelsui::kind_format(
+                                ui,
+                                f,
+                                &units,
+                                creabim_core::NumberKind::Dimensions,
+                            );
                             if *f != was {
                                 label = "Dimension number format";
                             }
                         }
-                        if crate::props::action(ui, "", "Number formats…", "The style pack's formats for every kind", true).clicked() {
+                        if crate::props::action(
+                            ui,
+                            "",
+                            "Number formats…",
+                            "The style pack's formats for every kind",
+                            true,
+                        )
+                        .clicked()
+                        {
                             self.levels.units_kind = Some(creabim_core::NumberKind::Dimensions);
                             self.levels.units_open = true;
                         }
@@ -7667,9 +8106,13 @@ impl CreaBimApp {
                         None => 10.0,
                     };
                     let mut pop = false;
-                    if let Some(l) =
-                        crate::annotate::note_ui(ui, n, &mut self.plan.anno.focus_text, unit, &mut pop)
-                    {
+                    if let Some(l) = crate::annotate::note_ui(
+                        ui,
+                        n,
+                        &mut self.plan.anno.focus_text,
+                        unit,
+                        &mut pop,
+                    ) {
                         label = l;
                     }
                     if pop {
@@ -7697,7 +8140,10 @@ impl CreaBimApp {
                     for (name, v) in [("X", &mut n.at.x), ("Y", &mut n.at.y)] {
                         crate::props::row(ui, name, |ui| {
                             let r = if on_sheet {
-                                crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).suffix(" mm"))
+                                crate::props::fill(
+                                    ui,
+                                    egui::DragValue::new(v).speed(0.5).suffix(" mm"),
+                                )
                             } else {
                                 crate::props::fill(ui, crate::units::drag(v))
                             };
@@ -7808,7 +8254,10 @@ impl CreaBimApp {
                         label = "Move sketch"
                     }
                     let n = sk.plane.normal();
-                    crate::props::note(ui, format!("Its plane faces ({:.2}, {:.2}, {:.2}).", n.x, n.y, n.z));
+                    crate::props::note(
+                        ui,
+                        format!("Its plane faces ({:.2}, {:.2}, {:.2}).", n.x, n.y, n.z),
+                    );
                     crate::props::row(ui, "Extrude by", |ui| {
                         crate::props::fill(ui, crate::units::drag(&mut self.extrude_distance))
                     });
@@ -7818,7 +8267,11 @@ impl CreaBimApp {
                     let extrude = crate::props::action(
                         ui,
                         "",
-                        if sk.closed { "Extrude into a mass (E)" } else { "Extrude into a surface (E)" },
+                        if sk.closed {
+                            "Extrude into a mass (E)"
+                        } else {
+                            "Extrude into a surface (E)"
+                        },
                         "",
                         !crossed,
                     )
@@ -7833,8 +8286,7 @@ impl CreaBimApp {
                             "Open: a wire. Extruding it makes a surface."
                         },
                     );
-                    if extrude
-                    {
+                    if extrude {
                         extrude_sketch = true;
                     }
                 }
@@ -7893,11 +8345,13 @@ impl CreaBimApp {
                         }
                     });
 
-                    ui.label(egui::RichText::new(format!(
-                        "Modifiers: {} (the wrench tab)",
-                        m.modifiers.len()
-                    ))
-                    .weak());
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Modifiers: {} (the wrench tab)",
+                            m.modifiers.len()
+                        ))
+                        .weak(),
+                    );
                     ui.label(format!(
                         "{} vertices, {} faces",
                         m.mesh.vertices.len(),
@@ -7909,7 +8363,9 @@ impl CreaBimApp {
                         let on = self.face.is_some();
                         crate::props::row(ui, "Face", |ui| match self.face {
                             Some(f) => ui.label(format!("{f}")),
-                            None => ui.label(egui::RichText::new("click one in the 3D view").weak()),
+                            None => {
+                                ui.label(egui::RichText::new("click one in the 3D view").weak())
+                            }
                         });
                         crate::props::row(ui, "Distance", |ui| {
                             crate::props::fill(ui, crate::units::drag(&mut self.extrude_distance))
@@ -7917,7 +8373,11 @@ impl CreaBimApp {
                         let (ex, mv) = crate::props::actions2(
                             ui,
                             "Face",
-                            ("Extrude", "Push the face out by the distance, with new sides (E)", on),
+                            (
+                                "Extrude",
+                                "Push the face out by the distance, with new sides (E)",
+                                on,
+                            ),
                             ("Move", "Move the face along its normal by the distance", on),
                         );
                         if let (true, Some(f)) = (ex, self.face) {
@@ -7930,14 +8390,22 @@ impl CreaBimApp {
                             m.mesh.translate_vertices(&verts, n);
                             label = "Move face";
                         }
-                        if crate::props::action(ui, "", "Taper", "Scale the face to 80%", on).clicked() {
+                        if crate::props::action(ui, "", "Taper", "Scale the face to 80%", on)
+                            .clicked()
+                        {
                             if let Some(f) = self.face {
                                 m.mesh.scale_face(f, 0.8);
                                 label = "Taper face";
                             }
                         }
-                        if crate::props::action(ui, "Mesh", "Subdivide", "Catmull-Clark: every face split in four, the shape smoothed", true)
-                            .clicked()
+                        if crate::props::action(
+                            ui,
+                            "Mesh",
+                            "Subdivide",
+                            "Catmull-Clark: every face split in four, the shape smoothed",
+                            true,
+                        )
+                        .clicked()
                         {
                             m.mesh = m.mesh.subdivide();
                             self.face = None;
@@ -8230,7 +8698,11 @@ impl CreaBimApp {
                 .collect();
             // one quiet line under the header rows, its help on hover
             // (MU36: a block above the name)
-            multi = Some(format!("{} selected: {}", self.selection.len(), list.join(", ")));
+            multi = Some(format!(
+                "{} selected: {}",
+                self.selection.len(),
+                list.join(", ")
+            ));
         }
         // an object is what its type says: a basin an IfcSanitaryTerminal
         let class = creabim_core::objects::type_of(self.doc.model(), &e)
@@ -8267,8 +8739,11 @@ impl CreaBimApp {
                     .unwrap_or("This element");
                 self.quick_help_button(ui, page, title);
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(class.clone()).color(pal.accent)).truncate())
-                        .on_hover_text(class.clone());
+                    ui.add(
+                        egui::Label::new(egui::RichText::new(class.clone()).color(pal.accent))
+                            .truncate(),
+                    )
+                    .on_hover_text(class.clone());
                 });
             })
         });
@@ -8324,7 +8799,12 @@ impl CreaBimApp {
         if self.selection.active.is_none() {
             out.push(PropTab::Model3d);
         }
-        if let Some(ElementKind::FreeMesh(_)) = self.selection.active.and_then(|id| self.doc.model().get(id)).map(|e| &e.kind) {
+        if let Some(ElementKind::FreeMesh(_)) = self
+            .selection
+            .active
+            .and_then(|id| self.doc.model().get(id))
+            .map(|e| &e.kind)
+        {
             if let Some(at) = out.iter().position(|t| *t == PropTab::Element) {
                 out.insert(at + 1, PropTab::Modifiers);
             }
@@ -8385,7 +8865,10 @@ impl CreaBimApp {
         // the column runs from the panel's very top, so its edge meets the
         // window's line cleanly (MU27: a stub of panel showed above it)
         let from = ui.clip_rect().top().min(top.y);
-        let strip = egui::Rect::from_min_max(egui::pos2(top.x, from), egui::pos2(top.x + W, top.y + height));
+        let strip = egui::Rect::from_min_max(
+            egui::pos2(top.x, from),
+            egui::pos2(top.x + W, top.y + height),
+        );
         ui.painter().rect_filled(strip, 0.0, column);
         ui.allocate_ui_with_layout(
             egui::vec2(W, height),
@@ -8483,14 +8966,30 @@ fn paper_mark_fields(
     let mut label = None;
     let color = &mut m.color;
     match &mut m.kind {
-        PaperMarkKind::Cloud { w, h, rev, date, what, points, arc } => {
+        PaperMarkKind::Cloud {
+            w,
+            h,
+            rev,
+            date,
+            what,
+            points,
+            arc,
+        } => {
             // its shape: a box sized by its grips, or points of its own
             // (MU25)
             let mut free = points.len() >= 3;
             crate::props::row(ui, "Shape", |ui| {
                 crate::props::flow(ui, |ui| {
-                    if ui.selectable_label(!free, "Box").on_hover_text("Drag its corner and edge grips to size it").clicked() && free {
-                        let (lo, hi) = points.iter().fold((DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)), |(a, b), p| (a.min(*p), b.max(*p)));
+                    if ui
+                        .selectable_label(!free, "Box")
+                        .on_hover_text("Drag its corner and edge grips to size it")
+                        .clicked()
+                        && free
+                    {
+                        let (lo, hi) = points.iter().fold(
+                            (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+                            |(a, b), p| (a.min(*p), b.max(*p)),
+                        );
                         *w = (hi.x - lo.x).max(5.0);
                         *h = (hi.y - lo.y).max(5.0);
                         points.clear();
@@ -8511,9 +9010,15 @@ fn paper_mark_fields(
                 });
             });
             crate::props::row(ui, "Scallops", |ui| {
-                if crate::props::fill(ui, egui::DragValue::new(arc).speed(0.1).range(2.0..=30.0).suffix(" mm"))
-                    .on_hover_text("How long each arc is along the outline")
-                    .changed()
+                if crate::props::fill(
+                    ui,
+                    egui::DragValue::new(arc)
+                        .speed(0.1)
+                        .range(2.0..=30.0)
+                        .suffix(" mm"),
+                )
+                .on_hover_text("How long each arc is along the outline")
+                .changed()
                 {
                     label = Some("Revision cloud");
                 }
@@ -8521,7 +9026,11 @@ fn paper_mark_fields(
             crate::props::row(ui, "Colour", |ui| {
                 crate::props::flow(ui, |ui| {
                     let mut own = color.is_some();
-                    if ui.checkbox(&mut own, "Own").on_hover_text("Black without one").changed() {
+                    if ui
+                        .checkbox(&mut own, "Own")
+                        .on_hover_text("Black without one")
+                        .changed()
+                    {
                         *color = own.then_some([0.85, 0.1, 0.1]);
                         label = Some("Revision cloud colour");
                     }
@@ -8534,7 +9043,11 @@ fn paper_mark_fields(
             });
             let text = |ui: &mut egui::Ui, name: &str, v: &mut String| {
                 crate::props::row(ui, name, |ui| {
-                    crate::props::fill(ui, egui::TextEdit::singleline(v).vertical_align(egui::Align::Center)).changed()
+                    crate::props::fill(
+                        ui,
+                        egui::TextEdit::singleline(v).vertical_align(egui::Align::Center),
+                    )
+                    .changed()
                 })
             };
             if text(ui, "Revision", rev) | text(ui, "Date", date) | text(ui, "What changed", what) {
@@ -8543,8 +9056,14 @@ fn paper_mark_fields(
             if !free {
                 for (name, v) in [("Width", w), ("Height", h)] {
                     crate::props::row(ui, name, |ui| {
-                        if crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).range(5.0..=800.0).suffix(" mm"))
-                            .changed()
+                        if crate::props::fill(
+                            ui,
+                            egui::DragValue::new(v)
+                                .speed(0.5)
+                                .range(5.0..=800.0)
+                                .suffix(" mm"),
+                        )
+                        .changed()
                         {
                             label = Some("Revision cloud");
                         }
@@ -8556,8 +9075,14 @@ fn paper_mark_fields(
         }
         PaperMarkKind::RevisionTable => {
             crate::props::row(ui, "Text", |ui| {
-                if crate::props::fill(ui, egui::DragValue::new(&mut m.size).speed(0.1).range(1.5..=6.0).suffix(" mm"))
-                    .changed()
+                if crate::props::fill(
+                    ui,
+                    egui::DragValue::new(&mut m.size)
+                        .speed(0.1)
+                        .range(1.5..=6.0)
+                        .suffix(" mm"),
+                )
+                .changed()
                 {
                     label = Some("Revisions table");
                 }
@@ -8577,7 +9102,9 @@ fn paper_mark_fields(
             }
             if let Some(r) = rotation {
                 crate::props::row(ui, "Angle", |ui| {
-                    if crate::props::fill(ui, egui::DragValue::new(r).speed(0.5).suffix("°")).changed() {
+                    if crate::props::fill(ui, egui::DragValue::new(r).speed(0.5).suffix("°"))
+                        .changed()
+                    {
                         label = Some("North arrow");
                     }
                 });
@@ -8585,7 +9112,10 @@ fn paper_mark_fields(
             crate::props::row(ui, "Height", |ui| {
                 if crate::props::fill(
                     ui,
-                    egui::DragValue::new(&mut m.size).speed(0.2).range(6.0..=60.0).suffix(" mm"),
+                    egui::DragValue::new(&mut m.size)
+                        .speed(0.2)
+                        .range(6.0..=60.0)
+                        .suffix(" mm"),
                 )
                 .changed()
                 {
@@ -8601,8 +9131,11 @@ fn paper_mark_fields(
             crate::props::row(ui, "Scale", |ui| {
                 crate::props::flow(ui, |ui| {
                     ui.label("1 :");
-                    if crate::props::fill(ui, egui::DragValue::new(scale).speed(1.0).range(1.0..=10000.0))
-                        .changed()
+                    if crate::props::fill(
+                        ui,
+                        egui::DragValue::new(scale).speed(1.0).range(1.0..=10000.0),
+                    )
+                    .changed()
                     {
                         label = Some("Scale bar");
                     }
@@ -8611,7 +9144,10 @@ fn paper_mark_fields(
             crate::props::row(ui, "Length", |ui| {
                 if crate::props::fill(
                     ui,
-                    egui::DragValue::new(length).speed(0.1).range(0.1..=10000.0).suffix(" m"),
+                    egui::DragValue::new(length)
+                        .speed(0.1)
+                        .range(0.1..=10000.0)
+                        .suffix(" m"),
                 )
                 .changed()
                 {
@@ -8626,7 +9162,10 @@ fn paper_mark_fields(
             crate::props::row(ui, "Thickness", |ui| {
                 if crate::props::fill(
                     ui,
-                    egui::DragValue::new(&mut m.size).speed(0.1).range(0.5..=10.0).suffix(" mm"),
+                    egui::DragValue::new(&mut m.size)
+                        .speed(0.1)
+                        .range(0.5..=10.0)
+                        .suffix(" mm"),
                 )
                 .changed()
                 {
@@ -8641,9 +9180,15 @@ fn paper_mark_fields(
         ("Y", &mut m.at.y, "Millimetres from the sheet's bottom edge"),
     ] {
         crate::props::row(ui, name, |ui| {
-            if crate::props::fill(ui, egui::DragValue::new(v).speed(0.5).range(-2000.0..=2000.0).suffix(" mm"))
-                .on_hover_text(tip)
-                .changed()
+            if crate::props::fill(
+                ui,
+                egui::DragValue::new(v)
+                    .speed(0.5)
+                    .range(-2000.0..=2000.0)
+                    .suffix(" mm"),
+            )
+            .on_hover_text(tip)
+            .changed()
             {
                 label = Some("Place paper mark");
             }
@@ -8888,119 +9433,135 @@ impl eframe::App for CreaBimApp {
                 .show(ui, |ui| self.outliner(ui));
         }
         let right_folded = self.shell.settings.right_folded;
-        let right = egui::Panel::right(if right_folded { "properties_rail" } else { "properties" })
-            .default_size(if right_folded { 40.0 } else { self.shell.settings.right_width })
-            .size_range(if right_folded { 40.0..=40.0 } else { 220.0..=640.0 })
-            .frame(
-                // flush at the left, where the tab column is (MU22)
-                egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin {
-                    left: 0,
-                    right: 4,
-                    top: 0,
-                    bottom: 4,
-                }),
-            )
-            .show(ui, |ui| {
-                // the panel keeps the width it was given: what is wider
-                // wraps, folds into one column or is clipped, and never
-                // pushes the panel wider as the selection changes
-                let rect = ui.available_rect_before_wrap();
-                let clip = rect.expand2(egui::vec2(6.0, 0.0)).intersect(ui.clip_rect());
-                let folded = self.shell.settings.right_folded;
-                let edge = ui.max_rect();
-                if fold_handle(
-                    ui.ctx(),
-                    "props",
-                    egui::pos2(edge.left() - 11.0, edge.center().y - 23.0),
-                    folded,
-                    true,
-                    if folded { "Open Properties (Ctrl+])" } else { "Fold Properties to its tabs (Ctrl+])" },
-                ) {
-                    self.shell.settings.right_folded = !folded;
-                    self.shell.settings.store();
+        let right = egui::Panel::right(if right_folded {
+            "properties_rail"
+        } else {
+            "properties"
+        })
+        .default_size(if right_folded {
+            40.0
+        } else {
+            self.shell.settings.right_width
+        })
+        .size_range(if right_folded {
+            40.0..=40.0
+        } else {
+            220.0..=640.0
+        })
+        .frame(
+            // flush at the left, where the tab column is (MU22)
+            egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin {
+                left: 0,
+                right: 4,
+                top: 0,
+                bottom: 4,
+            }),
+        )
+        .show(ui, |ui| {
+            // the panel keeps the width it was given: what is wider
+            // wraps, folds into one column or is clipped, and never
+            // pushes the panel wider as the selection changes
+            let rect = ui.available_rect_before_wrap();
+            let clip = rect.expand2(egui::vec2(6.0, 0.0)).intersect(ui.clip_rect());
+            let folded = self.shell.settings.right_folded;
+            let edge = ui.max_rect();
+            if fold_handle(
+                ui.ctx(),
+                "props",
+                egui::pos2(edge.left() - 11.0, edge.center().y - 23.0),
+                folded,
+                true,
+                if folded {
+                    "Open Properties (Ctrl+])"
+                } else {
+                    "Fold Properties to its tabs (Ctrl+])"
+                },
+            ) {
+                self.shell.settings.right_folded = !folded;
+                self.shell.settings.store();
+            }
+            let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+            inner.set_clip_rect(clip);
+            inner.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+            // one grid for every row (A4-1): controls as tight as
+            // Blender's (MU22), the scroll bar in a gutter of its own
+            inner.spacing_mut().interact_size.y = 24.0;
+            // text a size down, as Blender's panels (MU22): rows fit
+            // on one line at the panel's usual width
+            for (style, font) in inner.style_mut().text_styles.iter_mut() {
+                font.size = match style {
+                    egui::TextStyle::Small => 10.5,
+                    egui::TextStyle::Heading => 14.0,
+                    _ => (font.size - 1.5).clamp(11.0, 12.5),
+                };
+            }
+            inner.spacing_mut().item_spacing = egui::vec2(4.0, 3.0);
+            inner.spacing_mut().button_padding = egui::vec2(6.0, 2.0);
+            // editable fields (dropdowns, numbers, text) in the field
+            // colour, a tone apart from the panel, as Blender does, so
+            // they read at a glance as things you can change (MU20)
+            {
+                let p = crate::theme::Palette::of(ui.ctx());
+                let w = &mut inner.visuals_mut().widgets;
+                w.inactive.weak_bg_fill = p.field;
+                w.inactive.bg_stroke = egui::Stroke::new(1.0, p.edge);
+            }
+            let mut bar = egui::style::ScrollStyle::solid();
+            bar.bar_width = 6.0;
+            bar.bar_inner_margin = 4.0;
+            inner.spacing_mut().scroll = bar;
+            // as Blender's editor (MU22): the tab column down the left
+            // edge, a tone darker, then the pinned header and the
+            // tab's sections, which scroll
+            inner.set_max_width(rect.width());
+            let tabs = self.prop_tabs();
+            // a placing tool just picked opens its Next tab; a first
+            // selection opens Element; otherwise the tab stays
+            let now = (self.plan.tool, self.selection.active.is_some());
+            if now != self.prop_seen {
+                if now.0 != self.prop_seen.0 && now.0 != Tool::Select && !now.1 {
+                    self.prop_tab = PropTab::Next;
+                } else if now.1 && !self.prop_seen.1 {
+                    self.prop_tab = PropTab::Element;
                 }
-                let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect));
-                inner.set_clip_rect(clip);
-                inner.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                // one grid for every row (A4-1): controls as tight as
-                // Blender's (MU22), the scroll bar in a gutter of its own
-                inner.spacing_mut().interact_size.y = 24.0;
-                // text a size down, as Blender's panels (MU22): rows fit
-                // on one line at the panel's usual width
-                for (style, font) in inner.style_mut().text_styles.iter_mut() {
-                    font.size = match style {
-                        egui::TextStyle::Small => 10.5,
-                        egui::TextStyle::Heading => 14.0,
-                        _ => (font.size - 1.5).clamp(11.0, 12.5),
-                    };
+                self.prop_seen = now;
+            }
+            if !tabs.contains(&self.prop_tab) {
+                self.prop_tab = tabs[0];
+            }
+            // a tool just picked opens its Next tab; a new selection
+            // with no tab of its own opens Element
+            inner.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                self.prop_strip(ui, &tabs, rect.height());
+                if self.shell.settings.right_folded {
+                    return;
                 }
-                inner.spacing_mut().item_spacing = egui::vec2(4.0, 3.0);
-                inner.spacing_mut().button_padding = egui::vec2(6.0, 2.0);
-                // editable fields (dropdowns, numbers, text) in the field
-                // colour, a tone apart from the panel, as Blender does, so
-                // they read at a glance as things you can change (MU20)
-                {
-                    let p = crate::theme::Palette::of(ui.ctx());
-                    let w = &mut inner.visuals_mut().widgets;
-                    w.inactive.weak_bg_fill = p.field;
-                    w.inactive.bg_stroke = egui::Stroke::new(1.0, p.edge);
-                }
-                let mut bar = egui::style::ScrollStyle::solid();
-                bar.bar_width = 6.0;
-                bar.bar_inner_margin = 4.0;
-                inner.spacing_mut().scroll = bar;
-                // as Blender's editor (MU22): the tab column down the left
-                // edge, a tone darker, then the pinned header and the
-                // tab's sections, which scroll
-                inner.set_max_width(rect.width());
-                let tabs = self.prop_tabs();
-                // a placing tool just picked opens its Next tab; a first
-                // selection opens Element; otherwise the tab stays
-                let now = (self.plan.tool, self.selection.active.is_some());
-                if now != self.prop_seen {
-                    if now.0 != self.prop_seen.0 && now.0 != Tool::Select && !now.1 {
-                        self.prop_tab = PropTab::Next;
-                    } else if now.1 && !self.prop_seen.1 {
-                        self.prop_tab = PropTab::Element;
-                    }
-                    self.prop_seen = now;
-                }
-                if !tabs.contains(&self.prop_tab) {
-                    self.prop_tab = tabs[0];
-                }
-                // a tool just picked opens its Next tab; a new selection
-                // with no tab of its own opens Element
-                inner.horizontal_top(|ui| {
-                    ui.spacing_mut().item_spacing.x = 0.0;
-                    self.prop_strip(ui, &tabs, rect.height());
-                    if self.shell.settings.right_folded {
-                        return;
-                    }
-                    ui.add_space(12.0);
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 3.0);
-                        let w = ui.available_width();
-                        // the header as wide as the boxes under it, which
-                        // leave the scroll bar its gutter: wider, its
-                        // fields and Delete ran off the panel (MU24)
-                        ui.set_max_width(w - 16.0);
-                        ui.add_space(4.0);
-                        self.properties_header(ui);
-                        egui::ScrollArea::vertical()
-                            .auto_shrink(false)
-                            .show(ui, |ui| {
-                                ui.set_max_width(w - 16.0);
-                                crate::props::boxes(ui, true);
-                                self.properties(ui);
-                                crate::props::close_box(ui);
-                                crate::props::boxes(ui, false);
-                            });
-                    });
+                ui.add_space(12.0);
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(4.0, 3.0);
+                    let w = ui.available_width();
+                    // the header as wide as the boxes under it, which
+                    // leave the scroll bar its gutter: wider, its
+                    // fields and Delete ran off the panel (MU24)
+                    ui.set_max_width(w - 16.0);
+                    ui.add_space(4.0);
+                    self.properties_header(ui);
+                    egui::ScrollArea::vertical()
+                        .auto_shrink(false)
+                        .show(ui, |ui| {
+                            ui.set_max_width(w - 16.0);
+                            crate::props::boxes(ui, true);
+                            self.properties(ui);
+                            crate::props::close_box(ui);
+                            crate::props::boxes(ui, false);
+                        });
                 });
-                ui.allocate_rect(rect, egui::Sense::hover());
-            })
-            .response
-            .rect;
+            });
+            ui.allocate_rect(rect, egui::Sense::hover());
+        })
+        .response
+        .rect;
         // remember a new width once the drag is over
         let width = right.width().round();
         if (width - self.shell.settings.right_width).abs() >= 1.0
@@ -9840,7 +10401,10 @@ mod sheet_tools_tests {
         let ctx = egui::Context::default();
         let before = app.plan.temp_dims_off;
         app.run_action(&ctx, "view.tempdims");
-        assert_ne!(app.plan.temp_dims_off, before, "temporary dimensions toggle");
+        assert_ne!(
+            app.plan.temp_dims_off, before,
+            "temporary dimensions toggle"
+        );
         app.run_action(&ctx, "sheet.preview");
         assert!(app.print_preview, "print preview toggles");
         app.run_action(&ctx, "export.sheets");
@@ -9877,26 +10441,37 @@ mod sheet_tools_tests {
         let (_, tb_hi) = creabim_geom::sheet::title_block_box(app.doc.model(), sheet).unwrap();
         for m in &marks {
             let (lo, hi) = m.bounds();
-            assert!(lo.x > 0.0 && lo.y > 0.0 && hi.x < s.width && hi.y < s.height, "{lo} {hi}");
-            assert!(lo.y > tb_hi.y, "clear of the title block: {lo} over {tb_hi}");
+            assert!(
+                lo.x > 0.0 && lo.y > 0.0 && hi.x < s.width && hi.y < s.height,
+                "{lo} {hi}"
+            );
+            assert!(
+                lo.y > tb_hi.y,
+                "clear of the title block: {lo} over {tb_hi}"
+            );
         }
         assert!(page(&app) > plain, "the PDF draws them");
         // they move with Move, and only across the sheet
-        let r = app.doc.commit(creabim_core::Transaction::new("t").replace(
-            app.doc.model().get(north).unwrap().clone(),
-            creabim_core::transform::transformed(
-                app.doc.model(),
-                app.doc.model().get(north).unwrap(),
-                &creabim_core::transform::Xform::Move(glam::DVec3::new(5.0, 0.0, 0.0)),
-            )
-            .unwrap(),
-        ));
+        let r = app.doc.commit(
+            creabim_core::Transaction::new("t").replace(
+                app.doc.model().get(north).unwrap().clone(),
+                creabim_core::transform::transformed(
+                    app.doc.model(),
+                    app.doc.model().get(north).unwrap(),
+                    &creabim_core::transform::Xform::Move(glam::DVec3::new(5.0, 0.0, 0.0)),
+                )
+                .unwrap(),
+            ),
+        );
         assert!(r.is_ok());
         // their Properties draw
         app.selection.only(bar);
         let ctx = egui::Context::default();
         let raw = egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 900.0))),
+            screen_rect: Some(Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(400.0, 900.0),
+            )),
             ..Default::default()
         };
         let mut out = ctx.run_ui(raw, |ui| {
@@ -9909,7 +10484,10 @@ mod sheet_tools_tests {
     #[test]
     fn export_sheets_writes_chosen_sheets_one_pdf_each() {
         let mut app = crate::app::test_app();
-        let all: Vec<ElementId> = sheets::sheets(app.doc.model()).iter().map(|(id, _)| *id).collect();
+        let all: Vec<ElementId> = sheets::sheets(app.doc.model())
+            .iter()
+            .map(|(id, _)| *id)
+            .collect();
         app.sheets_export.scope = ExportScope::Chosen;
         app.sheets_export.chosen = all.iter().take(2).copied().collect();
         assert_eq!(app.sheets_to_export(false).len(), all.len().min(2));
@@ -10035,7 +10613,14 @@ fn on_face_now(plan: &crate::planview::PlanState) -> bool {
 /// A slim handle on a panel's edge that folds or opens it (MU29): a
 /// control of the panel, not one of its tabs. `left_of` puts it on the
 /// panel's left edge, pointing the way it will go.
-pub(crate) fn fold_handle(ctx: &egui::Context, id: &str, at: egui::Pos2, folded: bool, left_of: bool, tip: &str) -> bool {
+pub(crate) fn fold_handle(
+    ctx: &egui::Context,
+    id: &str,
+    at: egui::Pos2,
+    folded: bool,
+    left_of: bool,
+    tip: &str,
+) -> bool {
     let p = crate::theme::Palette::of(ctx);
     let mut clicked = false;
     egui::Area::new(egui::Id::new(("fold-handle", id)))
@@ -10043,20 +10628,46 @@ pub(crate) fn fold_handle(ctx: &egui::Context, id: &str, at: egui::Pos2, folded:
         .fixed_pos(at)
         .show(ctx, |ui| {
             let (r, resp) = ui.allocate_exact_size(egui::vec2(11.0, 46.0), egui::Sense::click());
-            let fill = if resp.hovered() { p.raise2 } else { p.raise.gamma_multiply(0.8) };
-            let round = if left_of {
-                egui::CornerRadius { nw: 6, sw: 6, ne: 0, se: 0 }
+            let fill = if resp.hovered() {
+                p.raise2
             } else {
-                egui::CornerRadius { nw: 0, sw: 0, ne: 6, se: 6 }
+                p.raise.gamma_multiply(0.8)
             };
-            ui.painter().rect(r, round, fill, egui::Stroke::new(1.0, p.border), egui::StrokeKind::Inside);
+            let round = if left_of {
+                egui::CornerRadius {
+                    nw: 6,
+                    sw: 6,
+                    ne: 0,
+                    se: 0,
+                }
+            } else {
+                egui::CornerRadius {
+                    nw: 0,
+                    sw: 0,
+                    ne: 6,
+                    se: 6,
+                }
+            };
+            ui.painter().rect(
+                r,
+                round,
+                fill,
+                egui::Stroke::new(1.0, p.border),
+                egui::StrokeKind::Inside,
+            );
             // a small chevron: which way it goes
             let c = r.center();
             let s = if folded == left_of { -1.0 } else { 1.0 };
             let ink = if resp.hovered() { p.text } else { p.muted };
-            let pts = [c + egui::vec2(-1.5 * s, -4.0), c + egui::vec2(1.5 * s, 0.0), c + egui::vec2(-1.5 * s, 4.0)];
-            ui.painter().line_segment([pts[0], pts[1]], egui::Stroke::new(1.4, ink));
-            ui.painter().line_segment([pts[1], pts[2]], egui::Stroke::new(1.4, ink));
+            let pts = [
+                c + egui::vec2(-1.5 * s, -4.0),
+                c + egui::vec2(1.5 * s, 0.0),
+                c + egui::vec2(-1.5 * s, 4.0),
+            ];
+            ui.painter()
+                .line_segment([pts[0], pts[1]], egui::Stroke::new(1.4, ink));
+            ui.painter()
+                .line_segment([pts[1], pts[2]], egui::Stroke::new(1.4, ink));
             clicked = resp.on_hover_text(tip).clicked();
         });
     clicked

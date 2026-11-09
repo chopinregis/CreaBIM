@@ -186,7 +186,8 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             egui::ComboBox::from_id_salt("mat_category")
                 .icon(crate::props::combo_icon)
                 .selected_text(library::category_label(&m.category))
-                .width(ui.available_width().min(170.0)).truncate()
+                .width(ui.available_width().min(170.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     if ui
                         .selectable_label(m.category.is_empty(), "Uncategorised")
@@ -208,7 +209,11 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
 
             ui.label("Description");
             if ui
-                .add(egui::TextEdit::singleline(&mut m.description).vertical_align(egui::Align::Center).desired_width(170.0))
+                .add(
+                    egui::TextEdit::singleline(&mut m.description)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(170.0),
+                )
                 .changed()
             {
                 label = "Material description";
@@ -228,7 +233,8 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             egui::ComboBox::from_id_salt("mat_hatch")
                 .icon(crate::props::combo_icon)
                 .selected_text(m.hatch.label())
-                .width(ui.available_width().min(170.0)).truncate()
+                .width(ui.available_width().min(170.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     for h in Hatch::ALL {
                         if ui.selectable_value(&mut m.hatch, h, h.label()).changed() {
@@ -571,7 +577,8 @@ impl CreaBimApp {
                     ui.selectable_value(&mut self.mat.tab, MatTab::Library, "Library");
                     ui.separator();
                     ui.add(
-                        egui::TextEdit::singleline(&mut self.mat.filter).vertical_align(egui::Align::Center)
+                        egui::TextEdit::singleline(&mut self.mat.filter)
+                            .vertical_align(egui::Align::Center)
                             .hint_text("Find")
                             .desired_width(140.0),
                     );

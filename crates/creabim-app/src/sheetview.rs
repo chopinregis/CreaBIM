@@ -92,8 +92,11 @@ fn cloud_grips(m: &creabim_core::PaperMark) -> Vec<(CloudGrip, DVec2)> {
     if points.len() >= 3 {
         let pts: Vec<DVec2> = points.iter().map(|p| m.at + *p).collect();
         let n = pts.len();
-        let mut out: Vec<(CloudGrip, DVec2)> =
-            pts.iter().enumerate().map(|(i, p)| (CloudGrip::Node(i), *p)).collect();
+        let mut out: Vec<(CloudGrip, DVec2)> = pts
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (CloudGrip::Node(i), *p))
+            .collect();
         out.extend((0..n).map(|i| (CloudGrip::Insert(i), (pts[i] + pts[(i + 1) % n]) / 2.0)));
         out
     } else {
@@ -117,7 +120,8 @@ fn drag_cloud(was: &creabim_core::PaperMark, g: CloudGrip, to: DVec2) -> creabim
     if let creabim_core::PaperMarkKind::Cloud { w, h, points, .. } = &mut m.kind {
         match g {
             CloudGrip::Side(sx, sy) => {
-                let (mut lo, mut hi) = (at - DVec2::new(*w, *h) / 2.0, at + DVec2::new(*w, *h) / 2.0);
+                let (mut lo, mut hi) =
+                    (at - DVec2::new(*w, *h) / 2.0, at + DVec2::new(*w, *h) / 2.0);
                 if sx < 0 {
                     lo.x = to.x.min(hi.x - 5.0);
                 }
@@ -168,11 +172,22 @@ fn on_sheet(doc: &Document, sheet: ElementId, selection: &Selection) -> Vec<crea
 /// Points on a sheet the Move tool snaps to (MU29): the paper's corners,
 /// marks' and notes' anchors and corners, views' corners and centres, but
 /// none of what is being moved.
-fn sheet_snaps(doc: &Document, sheet: ElementId, views: &[PlacedView], skip: &[ElementId]) -> Vec<DVec2> {
+fn sheet_snaps(
+    doc: &Document,
+    sheet: ElementId,
+    views: &[PlacedView],
+    skip: &[ElementId],
+) -> Vec<DVec2> {
     let model = doc.model();
     let mut out = vec![];
     let corners = |out: &mut Vec<DVec2>, lo: DVec2, hi: DVec2| {
-        out.extend([lo, hi, DVec2::new(lo.x, hi.y), DVec2::new(hi.x, lo.y), (lo + hi) / 2.0]);
+        out.extend([
+            lo,
+            hi,
+            DVec2::new(lo.x, hi.y),
+            DVec2::new(hi.x, lo.y),
+            (lo + hi) / 2.0,
+        ]);
     };
     if let Some(s) = sheet::sheet_of(model, sheet) {
         corners(&mut out, DVec2::ZERO, DVec2::new(s.width, s.height));
@@ -236,7 +251,9 @@ fn sheet_move(
     // a move another view took while still waiting for its base point
     // (the pointer crossed it on the way here) comes back to the sheet
     let base_waiting = plan.modal.as_ref().is_some_and(|m| {
-        m.flow == crate::modal::Flow::Tool && m.stage() == crate::modal::Stage::Base && m.mode == Mode::Move
+        m.flow == crate::modal::Flow::Tool
+            && m.stage() == crate::modal::Stage::Base
+            && m.mode == Mode::Move
     });
     if base_waiting && response.hovered() && !on_sheet(doc, sheet, selection).is_empty() {
         if let Some(mut old) = plan.modal.take() {
@@ -256,7 +273,12 @@ fn sheet_move(
         let (q, took) = snap_on_sheet(xf.to_paper(p), &points, guides, tol);
         if took {
             let at = xf.to_screen(q);
-            painter.rect_stroke(Rect::from_center_size(at, Vec2::splat(9.0)), 1.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Middle);
+            painter.rect_stroke(
+                Rect::from_center_size(at, Vec2::splat(9.0)),
+                1.0,
+                egui::Stroke::new(1.5, ACCENT),
+                egui::StrokeKind::Middle,
+            );
         }
         q
     });
@@ -282,7 +304,8 @@ fn sheet_move(
         plan.armed = None;
         let base = if g || base_click { here } else { None };
         plan.status = Some(if base.is_some() {
-            "Move: move the pointer and click where it goes. Esc or right-click puts it back.".into()
+            "Move: move the pointer and click where it goes. Esc or right-click puts it back."
+                .into()
         } else {
             "Move: click the base point, then where it goes.".into()
         });
@@ -334,12 +357,16 @@ fn sheet_move(
             painter.circle_stroke(xf.to_screen(p), 5.0, egui::Stroke::new(1.5, ACCENT));
             if response.clicked() {
                 state.moving = Some((items, Some(p)));
-                plan.status = Some("Move: click where it goes. Esc or right-click puts it back.".into());
+                plan.status =
+                    Some("Move: click where it goes. Esc or right-click puts it back.".into());
             }
         }
         (Some(b), Some(p)) => {
             let by = p - b;
-            painter.line_segment([xf.to_screen(b), xf.to_screen(b + by)], egui::Stroke::new(1.0, ACCENT));
+            painter.line_segment(
+                [xf.to_screen(b), xf.to_screen(b + by)],
+                egui::Stroke::new(1.0, ACCENT),
+            );
             error = put(doc, by);
             if response.clicked() {
                 state.moving = None;
@@ -354,7 +381,12 @@ fn sheet_move(
 
 /// Put `items` back as they were, moved by `by` paper mm: one undo step
 /// while dragging.
-fn move_items(doc: &mut Document, items: &[creabim_core::Element], by: DVec2, label: &str) -> Option<String> {
+fn move_items(
+    doc: &mut Document,
+    items: &[creabim_core::Element],
+    by: DVec2,
+    label: &str,
+) -> Option<String> {
     for e in items {
         let orig = e.kind.clone();
         let r = doc.edit_merged(e.id, label, |el| {
@@ -378,7 +410,13 @@ fn move_items(doc: &mut Document, items: &[creabim_core::Element], by: DVec2, la
 }
 
 /// Outline what is being moved, so it reads as the selection (MU27).
-fn outline_items(painter: &egui::Painter, xf: &PaperXf, model: &creabim_core::Model, sheet: ElementId, ids: &[ElementId]) {
+fn outline_items(
+    painter: &egui::Painter,
+    xf: &PaperXf,
+    model: &creabim_core::Model,
+    sheet: ElementId,
+    ids: &[ElementId],
+) {
     let stroke = egui::Stroke::new(1.5, ACCENT);
     for e in model.iter().filter(|e| ids.contains(&e.id)) {
         let b = match &e.kind {
@@ -398,7 +436,12 @@ fn outline_items(painter: &egui::Painter, xf: &PaperXf, model: &creabim_core::Mo
             _ => None,
         };
         if let Some((lo, hi)) = b {
-            painter.rect_stroke(xf.rect_of(lo, hi).expand(3.0), 2.0, stroke, egui::StrokeKind::Outside);
+            painter.rect_stroke(
+                xf.rect_of(lo, hi).expand(3.0),
+                2.0,
+                stroke,
+                egui::StrokeKind::Outside,
+            );
         }
     }
 }
@@ -725,7 +768,8 @@ pub fn show(
     };
     // read now, drawn once the paper is down so it never hides under it
     // (MU25)
-    let (asked, nav_look) = crate::planview::nav_input(ui, rect, sheet_id, fit, picked, center, zoom);
+    let (asked, nav_look) =
+        crate::planview::nav_input(ui, rect, sheet_id, fit, picked, center, zoom);
     if let Some((c, z)) = asked {
         center = c;
         zoom = z;
@@ -771,7 +815,10 @@ pub fn show(
     sheet::draw_sheet_notes(&mut canvas, doc.model(), sheet_id);
     // working inside a view (double-click): the rest of the sheet greys
     // out, so it is clear where clicks go (MU24, Annotate board step 2)
-    if let Some(v) = state.active.and_then(|a| views.iter().find(|v| v.viewport == a)) {
+    if let Some(v) = state
+        .active
+        .and_then(|a| views.iter().find(|v| v.viewport == a))
+    {
         let (lo, hi) = v.bounds;
         let inner = xf.rect_of(lo, hi).expand(6.0);
         let veil = Color32::from_rgba_unmultiplied(120, 124, 128, 90);
@@ -779,14 +826,25 @@ pub fn show(
         for r in [
             Rect::from_min_max(outer.min, egui::pos2(outer.max.x, inner.min.y)),
             Rect::from_min_max(egui::pos2(outer.min.x, inner.max.y), outer.max),
-            Rect::from_min_max(egui::pos2(outer.min.x, inner.min.y), egui::pos2(inner.min.x, inner.max.y)),
-            Rect::from_min_max(egui::pos2(inner.max.x, inner.min.y), egui::pos2(outer.max.x, inner.max.y)),
+            Rect::from_min_max(
+                egui::pos2(outer.min.x, inner.min.y),
+                egui::pos2(inner.min.x, inner.max.y),
+            ),
+            Rect::from_min_max(
+                egui::pos2(inner.max.x, inner.min.y),
+                egui::pos2(outer.max.x, inner.max.y),
+            ),
         ] {
             if r.is_positive() {
                 painter.rect_filled(r, 0.0, veil);
             }
         }
-        painter.rect_stroke(inner, 3.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Outside);
+        painter.rect_stroke(
+            inner,
+            3.0,
+            egui::Stroke::new(1.5, ACCENT),
+            egui::StrokeKind::Outside,
+        );
     }
 
     // guides (MU26): ruler strips along the top and left edges to drag
@@ -794,9 +852,19 @@ pub fn show(
     // only while the header's Guides is on (MU27): the sheet stays clean
     let on = plan.sheet_guides;
     let guides = if on { s.guides.clone() } else { vec![] };
-    let top = Rect::from_min_max(rect.left_top() + Vec2::new(RULER, 0.0), egui::pos2(rect.right(), rect.top() + RULER));
-    let left = Rect::from_min_max(rect.left_top() + Vec2::new(0.0, RULER), egui::pos2(rect.left() + RULER, rect.bottom()));
-    let (top, left) = if on { (top, left) } else { (Rect::NOTHING, Rect::NOTHING) };
+    let top = Rect::from_min_max(
+        rect.left_top() + Vec2::new(RULER, 0.0),
+        egui::pos2(rect.right(), rect.top() + RULER),
+    );
+    let left = Rect::from_min_max(
+        rect.left_top() + Vec2::new(0.0, RULER),
+        egui::pos2(rect.left() + RULER, rect.bottom()),
+    );
+    let (top, left) = if on {
+        (top, left)
+    } else {
+        (Rect::NOTHING, Rect::NOTHING)
+    };
     let guide_ink = Color32::from_rgb(40, 170, 220);
     if on {
         let p = crate::theme::Palette::of(ui.ctx());
@@ -807,20 +875,43 @@ pub fn show(
         }
         // a tick every 10 mm of paper, longer each 50
         let step = 10.0;
-        let (lo, hi) = (xf.to_paper(rect.left_top()), xf.to_paper(rect.right_bottom()));
+        let (lo, hi) = (
+            xf.to_paper(rect.left_top()),
+            xf.to_paper(rect.right_bottom()),
+        );
         if zoom * step as f32 > 4.0 {
             let mut x = (lo.x / step).floor() * step;
             while x < hi.x {
                 let sx = xf.to_screen(DVec2::new(x, 0.0)).x;
-                let len = if (x / 50.0).round() * 50.0 == x { RULER * 0.7 } else { RULER * 0.35 };
-                painter.line_segment([egui::pos2(sx, top.bottom()), egui::pos2(sx, top.bottom() - len)], egui::Stroke::new(1.0, p.muted));
+                let len = if (x / 50.0).round() * 50.0 == x {
+                    RULER * 0.7
+                } else {
+                    RULER * 0.35
+                };
+                painter.line_segment(
+                    [
+                        egui::pos2(sx, top.bottom()),
+                        egui::pos2(sx, top.bottom() - len),
+                    ],
+                    egui::Stroke::new(1.0, p.muted),
+                );
                 x += step;
             }
             let mut y = (hi.y / step).floor() * step;
             while y < lo.y {
                 let sy = xf.to_screen(DVec2::new(0.0, y)).y;
-                let len = if (y / 50.0).round() * 50.0 == y { RULER * 0.7 } else { RULER * 0.35 };
-                painter.line_segment([egui::pos2(left.right(), sy), egui::pos2(left.right() - len, sy)], egui::Stroke::new(1.0, p.muted));
+                let len = if (y / 50.0).round() * 50.0 == y {
+                    RULER * 0.7
+                } else {
+                    RULER * 0.35
+                };
+                painter.line_segment(
+                    [
+                        egui::pos2(left.right(), sy),
+                        egui::pos2(left.right() - len, sy),
+                    ],
+                    egui::Stroke::new(1.0, p.muted),
+                );
                 y += step;
             }
         }
@@ -830,10 +921,16 @@ pub fn show(
     let line_of = |vertical: bool, at: f64| -> [Pos2; 2] {
         if vertical {
             let x = xf.to_screen(DVec2::new(at, 0.0)).x;
-            [egui::pos2(x, rect.top() + RULER), egui::pos2(x, rect.bottom())]
+            [
+                egui::pos2(x, rect.top() + RULER),
+                egui::pos2(x, rect.bottom()),
+            ]
         } else {
             let y = xf.to_screen(DVec2::new(0.0, at)).y;
-            [egui::pos2(rect.left() + RULER, y), egui::pos2(rect.right(), y)]
+            [
+                egui::pos2(rect.left() + RULER, y),
+                egui::pos2(rect.right(), y),
+            ]
         }
     };
     let dragging_guide = state.guide_drag.map(|g| g.0);
@@ -842,13 +939,22 @@ pub fn show(
             continue;
         }
         // dashed, so they read as guides, never as drawing (MU29)
-        painter.extend(egui::Shape::dashed_line(&line_of(*vertical, *at), egui::Stroke::new(1.0, guide_ink.gamma_multiply(0.85)), 6.0, 4.0));
+        painter.extend(egui::Shape::dashed_line(
+            &line_of(*vertical, *at),
+            egui::Stroke::new(1.0, guide_ink.gamma_multiply(0.85)),
+            6.0,
+            4.0,
+        ));
     }
     if on && state.active.is_none() && plan.tool == planview::Tool::Select {
         let near_guide = |q: Pos2| {
             guides.iter().position(|(vertical, at)| {
                 let [a, _] = line_of(*vertical, *at);
-                if *vertical { (q.x - a.x).abs() < 4.0 } else { (q.y - a.y).abs() < 4.0 }
+                if *vertical {
+                    (q.x - a.x).abs() < 4.0
+                } else {
+                    (q.y - a.y).abs() < 4.0
+                }
             })
         };
         let hover = response.hover_pos();
@@ -889,18 +995,24 @@ pub fn show(
                 );
                 if response.drag_stopped() {
                     let gone = top.contains(q) || left.contains(q) || !rect.contains(q);
-                    let _ = doc.edit(sheet_id, if gone { "Remove guide" } else { "Place guide" }, |e| {
-                        if let ElementKind::Sheet(sh) = &mut e.kind {
-                            match (which, gone) {
-                                (Some(i), true) if i < sh.guides.len() => {
-                                    sh.guides.remove(i);
+                    let _ = doc.edit(
+                        sheet_id,
+                        if gone { "Remove guide" } else { "Place guide" },
+                        |e| {
+                            if let ElementKind::Sheet(sh) = &mut e.kind {
+                                match (which, gone) {
+                                    (Some(i), true) if i < sh.guides.len() => {
+                                        sh.guides.remove(i);
+                                    }
+                                    (Some(i), false) if i < sh.guides.len() => {
+                                        sh.guides[i] = (vertical, at)
+                                    }
+                                    (None, false) => sh.guides.push((vertical, at)),
+                                    _ => {}
                                 }
-                                (Some(i), false) if i < sh.guides.len() => sh.guides[i] = (vertical, at),
-                                (None, false) => sh.guides.push((vertical, at)),
-                                _ => {}
                             }
-                        }
-                    });
+                        },
+                    );
                     plan.status = Some(if gone {
                         "Guide removed.".into()
                     } else {
@@ -952,16 +1064,26 @@ pub fn show(
                 let mut out: Vec<ElementId> = mark_boxes
                     .iter()
                     .rev()
-                    .filter(|(_, (lo, hi))| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y)
+                    .filter(|(_, (lo, hi))| {
+                        p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y
+                    })
                     .map(|(id, _)| *id)
                     .collect();
                 out.extend(note_items.iter().rev().filter_map(|it| match it {
-                    creabim_geom::PlanItem::Annotation { id, item } if item.hit(p, 6.0 / zoom as f64, 1.0) => {
+                    creabim_geom::PlanItem::Annotation { id, item }
+                        if item.hit(p, 6.0 / zoom as f64, 1.0) =>
+                    {
                         Some(*id)
                     }
                     _ => None,
                 }));
-                out.extend(views.iter().rev().filter(|v| contains(v, p)).map(|v| v.viewport));
+                out.extend(
+                    views
+                        .iter()
+                        .rev()
+                        .filter(|v| contains(v, p))
+                        .map(|v| v.viewport),
+                );
                 out
             },
         );
@@ -974,13 +1096,29 @@ pub fn show(
     for it in &note_items {
         if let creabim_geom::PlanItem::Annotation { id, item } = it {
             if Some(*id) == lit {
-                let pxf = planview::Xf { rect, center, scale: zoom };
-                crate::annotate::paint_weighted(&painter, &pxf, item, hover_stroke.color, 1.0, planview::TRACE);
+                let pxf = planview::Xf {
+                    rect,
+                    center,
+                    scale: zoom,
+                };
+                crate::annotate::paint_weighted(
+                    &painter,
+                    &pxf,
+                    item,
+                    hover_stroke.color,
+                    1.0,
+                    planview::TRACE,
+                );
             }
         }
     }
     if let Some((_, (lo, hi))) = mark_boxes.iter().find(|(id, _)| Some(*id) == lit) {
-        painter.rect_stroke(xf.rect_of(*lo, *hi).expand(3.0), 2.0, hover_stroke, egui::StrokeKind::Outside);
+        painter.rect_stroke(
+            xf.rect_of(*lo, *hi).expand(3.0),
+            2.0,
+            hover_stroke,
+            egui::StrokeKind::Outside,
+        );
     }
     if let Some(v) = views.iter().find(|v| Some(v.viewport) == lit) {
         let (lo, hi) = v.bounds;
@@ -1079,7 +1217,8 @@ pub fn show(
         && plan.tool != planview::Tool::Select
         && response.hovered()
         && (response.secondary_clicked()
-            || ui.input(|i| i.key_pressed(egui::Key::Escape)) && !ui.ctx().egui_wants_keyboard_input())
+            || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                && !ui.ctx().egui_wants_keyboard_input())
     {
         plan.step_back();
         return error;
@@ -1088,7 +1227,9 @@ pub fn show(
     // Move (the toolbar's or M) and G on what is written on the sheet
     // itself: notes and paper marks (MU23)
     if state.active.is_none() {
-        if let Some(r) = sheet_move(ui, doc, sheet_id, &response, &xf, state, plan, selection, &painter, views, &guides) {
+        if let Some(r) = sheet_move(
+            ui, doc, sheet_id, &response, &xf, state, plan, selection, &painter, views, &guides,
+        ) {
             return r.or(error);
         }
     }
@@ -1097,10 +1238,17 @@ pub fn show(
     if state.active.is_none() && plan.tool == planview::Tool::Select {
         if response.drag_started_by(egui::PointerButton::Primary) && state.group.is_none() {
             let items = on_sheet(doc, sheet_id, selection);
-            let press = ui.input(|i| i.pointer.press_origin()).or(pointer).map(|q| xf.to_paper(q));
+            let press = ui
+                .input(|i| i.pointer.press_origin())
+                .or(pointer)
+                .map(|q| xf.to_paper(q));
             if let (true, Some(p)) = (items.len() > 1, press) {
                 let on_one = mark_boxes.iter().any(|(id, (lo, hi))| {
-                    selection.contains(*id) && p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y
+                    selection.contains(*id)
+                        && p.x >= lo.x
+                        && p.x <= hi.x
+                        && p.y >= lo.y
+                        && p.y <= hi.y
                 }) || note_items.iter().any(|it| {
                     matches!(it, creabim_geom::PlanItem::Annotation { id, item }
                         if selection.contains(*id) && item.hit(p, 6.0 / zoom as f64, 1.0))
@@ -1119,7 +1267,10 @@ pub fn show(
             outline_items(&painter, &xf, doc.model(), sheet_id, &ids);
             if response.drag_stopped() || !response.dragged() {
                 state.group = None;
-                plan.status = Some(format!("Moved {} together. Ctrl+Z puts them back.", ids.len()));
+                plan.status = Some(format!(
+                    "Moved {} together. Ctrl+Z puts them back.",
+                    ids.len()
+                ));
             }
             return error;
         }
@@ -1151,7 +1302,9 @@ pub fn show(
             })
         });
         if let Some(e) = cloud.cloned() {
-            let ElementKind::PaperMark(m) = &e.kind else { unreachable!() };
+            let ElementKind::PaperMark(m) = &e.kind else {
+                unreachable!()
+            };
             let grips = cloud_grips(m);
             let near = |p: Pos2| {
                 grips
@@ -1167,13 +1320,31 @@ pub fn show(
                 let lit = over == Some(*g) || state.cloud_grip.as_ref().is_some_and(|c| c.1 == *g);
                 match g {
                     CloudGrip::Insert(_) => {
-                        painter.circle(at, if lit { 5.0 } else { 3.5 }, Color32::WHITE, egui::Stroke::new(1.2, ACCENT));
-                        painter.line_segment([at - Vec2::new(2.0, 0.0), at + Vec2::new(2.0, 0.0)], egui::Stroke::new(1.0, ACCENT));
-                        painter.line_segment([at - Vec2::new(0.0, 2.0), at + Vec2::new(0.0, 2.0)], egui::Stroke::new(1.0, ACCENT));
+                        painter.circle(
+                            at,
+                            if lit { 5.0 } else { 3.5 },
+                            Color32::WHITE,
+                            egui::Stroke::new(1.2, ACCENT),
+                        );
+                        painter.line_segment(
+                            [at - Vec2::new(2.0, 0.0), at + Vec2::new(2.0, 0.0)],
+                            egui::Stroke::new(1.0, ACCENT),
+                        );
+                        painter.line_segment(
+                            [at - Vec2::new(0.0, 2.0), at + Vec2::new(0.0, 2.0)],
+                            egui::Stroke::new(1.0, ACCENT),
+                        );
                     }
                     _ => {
-                        let r = Rect::from_center_size(at, Vec2::splat(if lit { 10.0 } else { 8.0 }));
-                        painter.rect(r, 1.0, if lit { ACCENT } else { Color32::WHITE }, egui::Stroke::new(1.3, ACCENT), egui::StrokeKind::Middle);
+                        let r =
+                            Rect::from_center_size(at, Vec2::splat(if lit { 10.0 } else { 8.0 }));
+                        painter.rect(
+                            r,
+                            1.0,
+                            if lit { ACCENT } else { Color32::WHITE },
+                            egui::Stroke::new(1.3, ACCENT),
+                            egui::StrokeKind::Middle,
+                        );
                     }
                 }
             }
@@ -1187,7 +1358,9 @@ pub fn show(
                 }
             }
             if let Some((was, g)) = state.cloud_grip.clone() {
-                if let (true, Some(p)) = (response.dragged_by(egui::PointerButton::Primary), pointer) {
+                if let (true, Some(p)) =
+                    (response.dragged_by(egui::PointerButton::Primary), pointer)
+                {
                     if let ElementKind::PaperMark(m0) = &was.kind {
                         let to = xf.to_paper(p);
                         let to = DVec2::new((to.x * 2.0).round() / 2.0, (to.y * 2.0).round() / 2.0);
@@ -1221,14 +1394,24 @@ pub fn show(
                 }
             }
         }
-        let hovered = response.hover_pos().map(|p| xf.to_paper(p)).and_then(at_point);
+        let hovered = response
+            .hover_pos()
+            .map(|p| xf.to_paper(p))
+            .and_then(at_point);
         for (id, _, (lo, hi)) in &marks {
             let lit = selection.contains(*id);
             if lit || hovered.is_some_and(|h| h.0 == *id) {
                 painter.rect_stroke(
                     xf.rect_of(*lo, *hi).expand(3.0),
                     2.0,
-                    egui::Stroke::new(1.5, if lit { ACCENT } else { hoverpick::HOVER.gamma_multiply(0.7) }),
+                    egui::Stroke::new(
+                        1.5,
+                        if lit {
+                            ACCENT
+                        } else {
+                            hoverpick::HOVER.gamma_multiply(0.7)
+                        },
+                    ),
                     egui::StrokeKind::Outside,
                 );
             }
@@ -1282,7 +1465,11 @@ pub fn show(
     if response.double_clicked() && state.active.is_none() {
         if let Some(p) = pointer.map(|q| xf.to_paper(q)) {
             let note = note_items.iter().rev().find_map(|it| match it {
-                creabim_geom::PlanItem::Annotation { id, item } if item.hit(p, 6.0 / zoom as f64, 1.0) => Some(*id),
+                creabim_geom::PlanItem::Annotation { id, item }
+                    if item.hit(p, 6.0 / zoom as f64, 1.0) =>
+                {
+                    Some(*id)
+                }
                 _ => None,
             });
             if let Some(id) = note {
@@ -1295,9 +1482,15 @@ pub fn show(
     // a view's title dragged on its own (MU27); checked before the notes take the click (MU29)
     if state.active.is_none() && plan.tool == planview::Tool::Select {
         if response.drag_started_by(egui::PointerButton::Primary) {
-            if let Some(p) = ui.input(|i| i.pointer.press_origin()).or(pointer).map(|q| xf.to_paper(q)) {
+            if let Some(p) = ui
+                .input(|i| i.pointer.press_origin())
+                .or(pointer)
+                .map(|q| xf.to_paper(q))
+            {
                 let on = views.iter().rev().find(|v| {
-                    v.title_box().is_some_and(|(lo, hi)| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y)
+                    v.title_box().is_some_and(|(lo, hi)| {
+                        p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y
+                    })
                 });
                 if let Some(v) = on {
                     state.title_drag = Some((v.view, v.title_look.offset, p));
@@ -1322,8 +1515,17 @@ pub fn show(
         }
         // the title under the pointer: outlined, so it reads as its own thing
         if let Some(p) = response.hover_pos().map(|q| xf.to_paper(q)) {
-            if let Some((lo, hi)) = views.iter().filter_map(|v| v.title_box()).find(|(lo, hi)| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y) {
-                painter.rect_stroke(xf.rect_of(lo, hi), 2.0, egui::Stroke::new(1.0, hoverpick::HOVER.gamma_multiply(0.7)), egui::StrokeKind::Outside);
+            if let Some((lo, hi)) = views
+                .iter()
+                .filter_map(|v| v.title_box())
+                .find(|(lo, hi)| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y)
+            {
+                painter.rect_stroke(
+                    xf.rect_of(lo, hi),
+                    2.0,
+                    egui::Stroke::new(1.0, hoverpick::HOVER.gamma_multiply(0.7)),
+                    egui::StrokeKind::Outside,
+                );
             }
         }
     }
@@ -1383,7 +1585,13 @@ pub fn show(
                 let stroke = egui::Stroke::new(1.0, ACCENT);
                 painter.rect_filled(r, 0.0, ACCENT.gamma_multiply(0.08));
                 if touching {
-                    let c = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+                    let c = [
+                        r.left_top(),
+                        r.right_top(),
+                        r.right_bottom(),
+                        r.left_bottom(),
+                        r.left_top(),
+                    ];
                     painter.add(egui::Shape::dashed_line(&c, stroke, 5.0, 3.0));
                 } else {
                     painter.rect_stroke(r, 0.0, stroke, egui::StrokeKind::Middle);
@@ -1403,17 +1611,33 @@ pub fn show(
                 for (id, bx) in &mark_boxes {
                     if take(*bx) {
                         ids.push(*id);
-                        painter.rect_stroke(xf.rect_of(bx.0, bx.1).expand(3.0), 2.0, lit, egui::StrokeKind::Outside);
+                        painter.rect_stroke(
+                            xf.rect_of(bx.0, bx.1).expand(3.0),
+                            2.0,
+                            lit,
+                            egui::StrokeKind::Outside,
+                        );
                     }
                 }
-                let pxf = planview::Xf { rect, center, scale: zoom };
+                let pxf = planview::Xf {
+                    rect,
+                    center,
+                    scale: zoom,
+                };
                 let model = doc.model();
                 for it in &note_items {
                     if let creabim_geom::PlanItem::Annotation { id, item } = it {
                         if let Some(ElementKind::Note(n)) = model.get(*id).map(|e| &e.kind) {
                             if take((n.at - DVec2::splat(2.0), n.at + DVec2::splat(2.0))) {
                                 ids.push(*id);
-                                crate::annotate::paint_weighted(&painter, &pxf, item, ACCENT, 1.0, planview::TRACE);
+                                crate::annotate::paint_weighted(
+                                    &painter,
+                                    &pxf,
+                                    item,
+                                    ACCENT,
+                                    1.0,
+                                    planview::TRACE,
+                                );
                             }
                         }
                     }
@@ -1421,7 +1645,12 @@ pub fn show(
                 for v in views {
                     if take(v.bounds) {
                         ids.push(v.viewport);
-                        painter.rect_stroke(xf.rect_of(v.bounds.0, v.bounds.1).expand(4.0), 2.0, lit, egui::StrokeKind::Outside);
+                        painter.rect_stroke(
+                            xf.rect_of(v.bounds.0, v.bounds.1).expand(4.0),
+                            2.0,
+                            lit,
+                            egui::StrokeKind::Outside,
+                        );
                     }
                 }
                 let n = ids.len();
@@ -1507,7 +1736,10 @@ pub fn show(
             if let Some(o) = others.iter().find(|o| (o.x - moved.x).abs() < tol) {
                 moved.x = o.x;
                 painter.extend(egui::Shape::dashed_line(
-                    &[xf.to_screen(DVec2::new(o.x, o.y)), xf.to_screen(DVec2::new(o.x, moved.y))],
+                    &[
+                        xf.to_screen(DVec2::new(o.x, o.y)),
+                        xf.to_screen(DVec2::new(o.x, moved.y)),
+                    ],
                     guide,
                     5.0,
                     4.0,
@@ -1516,7 +1748,10 @@ pub fn show(
             if let Some(o) = others.iter().find(|o| (o.y - moved.y).abs() < tol) {
                 moved.y = o.y;
                 painter.extend(egui::Shape::dashed_line(
-                    &[xf.to_screen(DVec2::new(o.x, o.y)), xf.to_screen(DVec2::new(moved.x, o.y))],
+                    &[
+                        xf.to_screen(DVec2::new(o.x, o.y)),
+                        xf.to_screen(DVec2::new(moved.x, o.y)),
+                    ],
                     guide,
                     5.0,
                     4.0,

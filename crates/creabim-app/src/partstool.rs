@@ -188,11 +188,18 @@ pub struct PartSettings {
 impl PartSettings {
     /// The profile new sweeps take, for a wall `wall` thick, and its name.
     pub fn sweep_profile(&self, model: &Model, wall: f64) -> (Vec<DVec2>, String) {
-        if let Some(p) = self.library.as_deref().and_then(|n| creabim_core::profiles::find(model, n)) {
+        if let Some(p) = self
+            .library
+            .as_deref()
+            .and_then(|n| creabim_core::profiles::find(model, n))
+        {
             return (p, self.library.clone().unwrap_or_default());
         }
         let (a, b) = self.size;
-        (self.profile.profile(wall, a, b, self.steps), self.profile.label().to_string())
+        (
+            self.profile.profile(wall, a, b, self.steps),
+            self.profile.label().to_string(),
+        )
     }
 
     /// The wall edge new sweeps follow: a library profile the top.
@@ -849,8 +856,14 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         let h = ui.spacing().interact_size.y;
                         let w = ((ui.available_width() - 26.0) / 3.0).max(30.0);
-                        let mut changed = ui.add_sized([w, h], crate::units::drag(&mut q.x)).on_hover_text("X").changed();
-                        changed |= ui.add_sized([w, h], crate::units::drag(&mut q.y)).on_hover_text("Y").changed();
+                        let mut changed = ui
+                            .add_sized([w, h], crate::units::drag(&mut q.x))
+                            .on_hover_text("X")
+                            .changed();
+                        changed |= ui
+                            .add_sized([w, h], crate::units::drag(&mut q.y))
+                            .on_hover_text("Y")
+                            .changed();
                         changed |= ui
                             .add_sized([w, h], crate::units::drag(&mut q.z))
                             .on_hover_text("Height above the level")
