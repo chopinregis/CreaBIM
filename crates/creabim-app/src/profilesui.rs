@@ -17,6 +17,25 @@ pub struct ProfilesUi {
     drag: Option<usize>,
     /// The name being typed.
     name: String,
+    /// The editor's centre and scale, held while a corner is dragged.
+    frame: Option<(glam::DVec2, f32)>,
+}
+
+/// A row of a list: its name from the left, lit when chosen.
+fn list_row(ui: &mut egui::Ui, on: bool, text: &str) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(Vec2::new(160.0, 22.0), egui::Sense::click());
+    let v = ui.visuals();
+    let fill = if on {
+        v.selection.bg_fill
+    } else if resp.hovered() {
+        v.widgets.hovered.weak_bg_fill
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    ui.painter().rect_filled(r, 5.0, fill);
+    let ink = if on { v.selection.stroke.color } else { v.text_color() };
+    ui.painter().text(r.left_center() + Vec2::new(8.0, 0.0), egui::Align2::LEFT_CENTER, text, egui::FontId::proportional(13.0), ink);
+    resp
 }
 
 impl CreaBimApp {
@@ -185,14 +204,14 @@ impl CreaBimApp {
                                 ui.label(egui::RichText::new("None yet").weak());
                             }
                             for p in &own {
-                                if ui.add_sized([160.0, 22.0], egui::Button::selectable(current.as_deref() == Some(p.name.as_str()), &p.name).truncate()).clicked() {
+                                if list_row(ui, current.as_deref() == Some(p.name.as_str()), &p.name).clicked() {
                                     pick = Some(p.name.clone());
                                 }
                             }
                             ui.add_space(6.0);
                             ui.label(egui::RichText::new("Presets").weak().small());
                             for p in PRESETS {
-                                if ui.add_sized([160.0, 22.0], egui::Button::selectable(current.as_deref() == Some(p), p)).clicked() {
+                                if list_row(ui, current.as_deref() == Some(p), p).clicked() {
                                     pick = Some(p.to_string());
                                 }
                             }
@@ -209,7 +228,9 @@ impl CreaBimApp {
                     ui.vertical(|ui| {
                         ui.set_width(300.0);
                         let Some(pts) = points.clone() else {
-                            crate::props::note(ui, "Pick a profile to see it. Presets can be copied into the project to edit.");
+                            ui.add_space(8.0);
+                            ui.label("Pick a profile to see it.");
+                            ui.label(egui::RichText::new("Presets can be copied into the project to edit.").weak());
                             return;
                         };
                         // its name, editable for the project's own
@@ -238,9 +259,16 @@ impl CreaBimApp {
                         let (rect, resp) = ui.allocate_exact_size(Vec2::new(300.0, 240.0), egui::Sense::click_and_drag());
                         let pal = crate::theme::Palette::of(ui.ctx());
                         ui.painter().rect_filled(rect, 8.0, pal.field);
-                        let span = (hi - lo).max_element().max(1e-3);
-                        let k = (rect.width().min(rect.height()) - 40.0) / span as f32;
-                        let mid = (lo + hi) / 2.0;
+                        let fit = {
+                            let span = (hi - lo).max_element().max(1e-3);
+                            ((lo + hi) / 2.0, (rect.width().min(rect.height()) - 40.0) / span as f32)
+                        };
+                        // held still while a corner is dragged (MU35: the
+                        // view refitting under the pointer ran away)
+                        let (mid, k) = match (pr.drag, pr.frame) {
+                            (Some(_), Some(f)) => f,
+                            _ => fit,
+                        };
                         let to_s = |p: glam::DVec2| rect.center() + Vec2::new(((p.x - mid.x) as f32) * k, -((p.y - mid.y) as f32) * k);
                         let to_w = |q: egui::Pos2| mid + glam::DVec2::new(((q.x - rect.center().x) / k) as f64, (-(q.y - rect.center().y) / k) as f64);
                         let scr: Vec<egui::Pos2> = pts.iter().map(|p| to_s(*p)).collect();
@@ -259,6 +287,7 @@ impl CreaBimApp {
                             }
                             if resp.drag_started() {
                                 pr.drag = ui.input(|i| i.pointer.press_origin()).and_then(near);
+                                pr.frame = Some(fit);
                             }
                             if let (Some(i), Some(q)) = (pr.drag, resp.interact_pointer_pos()) {
                                 if resp.dragged() {
@@ -276,6 +305,7 @@ impl CreaBimApp {
                             }
                             if resp.drag_stopped() {
                                 pr.drag = None;
+                                pr.frame = None;
                             }
                             // right-click a corner: remove it; double-click
                             // an edge: a corner there
@@ -310,19 +340,24 @@ impl CreaBimApp {
                             }
                             crate::props::note(ui, "Drag a corner; double-click an edge for a new one; right-click a corner to remove it. The cross is where it sits on the path.");
                         }
-                        let (use_it, copy) = crate::props::actions2(
-                            ui,
-                            "",
-                            ("Use for Sweep", "The Sweep tool takes this profile", true),
-                            (if is_own { "Duplicate" } else { "Copy to project" }, "A copy of it in the project, to edit", true),
-                        );
+                        let (use_it, copy) = ui
+                            .horizontal(|ui| {
+                                let w = (ui.available_width() - 6.0) / 2.0;
+                                let a = ui.add_sized([w, 24.0], egui::Button::new("Use for Sweep")).on_hover_text("The Sweep tool takes this profile").clicked();
+                                let b = ui
+                                    .add_sized([w, 24.0], egui::Button::new(if is_own { "Duplicate" } else { "Copy to project" }))
+                                    .on_hover_text("A copy of it in the project, to edit")
+                                    .clicked();
+                                (a, b)
+                            })
+                            .inner;
                         if use_it {
                             ask = Some("use");
                         }
                         if copy {
                             ask = Some("copy");
                         }
-                        if is_own && crate::props::action(ui, "", "Delete", "Sweeps made with it keep their shape", true).clicked() {
+                        if is_own && ui.add_sized([ui.available_width(), 24.0], egui::Button::new("Delete")).on_hover_text("Sweeps made with it keep their shape").clicked() {
                             let all: Vec<NamedProfile> = own.iter().filter(|p| Some(p.name.as_str()) != current.as_deref()).cloned().collect();
                             write = Some((all, "Delete profile", false));
                             pr.current = None;
