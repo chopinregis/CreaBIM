@@ -790,6 +790,41 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     // finally sit
     crate::annotate::break_dimensions(&mut d.items, v.scale / 1000.0);
     apply_drawing_style(model, &mut d.items, v.graphics.drawing_style);
+    // roofs seen from above, under a plan's cut: the colour styles wash
+    // them in their material's colour too (MU33: a roof plan stayed white,
+    // its roofs never being cut)
+    {
+        use creabim_core::graphics::DrawingStyle as S;
+        let style = v.graphics.drawing_style;
+        if let (creabim_core::ViewKind::Plan { level, cut_height }, S::MaterialColour | S::ColourHatch | S::ColourWash) = (&v.kind, style) {
+            let z0 = model.level(*level).map_or(0.0, |l| l.elevation);
+            let cut = z0 + cut_height;
+            let mut under = vec![];
+            for e in model.iter() {
+                let ElementKind::Roof(r) = &e.kind else { continue };
+                let base = model.level(r.level).map_or(0.0, |l| l.elevation) + r.base_offset;
+                if base < z0 - 0.5 || base + r.peak() > cut || hidden.contains(&e.id) {
+                    continue;
+                }
+                let rgb = creabim_core::material_of(model, e)
+                    .map(|(_, m)| m.color)
+                    .or_else(|| {
+                        let (_, a) = creabim_core::assembly::assembly_of(model, e)?;
+                        match &model.get(a.layers.first()?.material?)?.kind {
+                            ElementKind::Material(m) => Some(m.color),
+                            _ => None,
+                        }
+                    })
+                    .unwrap_or([0.6, 0.6, 0.6]);
+                let rgb = if style == S::ColourWash { rgb.map(|c| c + (1.0 - c) * 0.55) } else { rgb.map(|c| c + (1.0 - c) * 0.25) };
+                under.push(PlanItem::Shade { id: e.id, points: r.eave_outline(), rgb });
+            }
+            if !under.is_empty() {
+                under.append(&mut d.items);
+                d.items = under;
+            }
+        }
+    }
     Some(d)
 }
 

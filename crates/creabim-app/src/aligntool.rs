@@ -491,9 +491,18 @@ pub fn stretch_tx(
     if tx.ops.is_empty() {
         return Err(format!("{name} can't stretch that face."));
     }
-    let way = if s > 0.0 { "out" } else { "in" };
+    // which face moved, said plainly (MU33: a wall's bottom went 29 mm
+    // under its slab and nobody could tell what had done it)
+    let n = face.normal;
+    let (what, way) = if n.z < -0.7 {
+        ("bottom", if s > 0.0 { "down" } else { "up" })
+    } else if n.z > 0.7 {
+        ("top", if s > 0.0 { "up" } else { "down" })
+    } else {
+        ("side", if s > 0.0 { "out" } else { "in" })
+    };
     Ok((tx, format!(
-        "Stretched {name} {} {way} to the reference. Click more to stretch them to it; Esc lets it go.",
+        "Stretched the {what} of {name} {} {way} to the reference (Ctrl+Z puts it back). Click more to stretch them to it; Esc lets it go.",
         crate::units::len(s.abs())
     )))
 }

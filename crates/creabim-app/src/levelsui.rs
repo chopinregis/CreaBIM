@@ -667,7 +667,8 @@ impl CreaBimApp {
 /// "m · 3 · ±" for the kinds' list.
 fn format_summary(f: &creabim_core::NumberFormat, project: &Units, k: creabim_core::NumberKind) -> String {
     let u = f.units(project);
-    let mut s = format!("{} · {}", crate::app::appmenu::unit_short(u.length), u.precision);
+    let p = u.precisions().into_iter().find(|(p, _)| *p == u.precision).map_or(String::new(), |(_, l)| l);
+    let mut s = format!("{} · {p}", crate::app::appmenu::unit_short(u.length));
     if k.is_level() && f.sign.unwrap_or(true) {
         s.push_str(" ±");
     }
@@ -698,9 +699,10 @@ fn project_units(ui: &mut egui::Ui, units: &mut Units) {
     let label = if units.length.is_fractional() { "Rounding" } else { "Decimals" };
     precision_row(ui, label, units, None);
     crate::props::row(ui, "Looks like", |ui| {
-        ui.label(
+        ui.add(egui::Label::new(
             egui::RichText::new(format!("{}  ·  {}  ·  {}", units.length(1.0668), units.length(0.2032), units.area(12.5))).monospace(),
         )
+        .wrap())
     });
     crate::props::note(ui, "Any unit can be typed in a field: 3'-6 1/2\", 3 6, 1067 mm, 1.2 m.");
 }
@@ -708,7 +710,12 @@ fn project_units(ui: &mut egui::Ui, units: &mut Units) {
 /// A precision row: the unit's choices, with "Project" first when `of` is
 /// a kind's format.
 fn precision_row(ui: &mut egui::Ui, label: &str, units: &mut Units, of: Option<&mut Option<u8>>) {
-    let list = units.precisions();
+    // decimals as their count, so five buttons fit (MU32: "0.…" cut short)
+    let list: Vec<(u8, String)> = if units.length.is_fractional() {
+        units.precisions()
+    } else {
+        units.precisions().into_iter().map(|(p, _)| (p, p.to_string())).collect()
+    };
     match of {
         None => {
             if list.len() <= 5 {
@@ -802,7 +809,7 @@ pub(super) fn kind_format(ui: &mut egui::Ui, f: &mut creabim_core::NumberFormat,
     let samples: [f64; 3] = if k.is_level() { [3.0, 0.0, -0.45] } else { [3.0, 1.0668, 0.45] };
     crate::props::row(ui, "Looks like", |ui| {
         let t: Vec<String> = samples.iter().map(|m| f.write(project, k, *m)).collect();
-        ui.label(egui::RichText::new(t.join("   ·   ")).monospace())
+        ui.add(egui::Label::new(egui::RichText::new(t.join("  ·  ")).monospace()).wrap())
     });
     if !f.is_default() && crate::props::action(ui, "", "Reset to the project's", "Every field back to the project's", true).clicked() {
         *f = Default::default();

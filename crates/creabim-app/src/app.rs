@@ -852,16 +852,45 @@ impl CreaBimApp {
     /// The references in 3D (MU32): each where its views show it, on the
     /// plan's level or standing on the section's plane, faint as in the
     /// views. A picture shows its frame.
-    fn draw_references_3d(&mut self, painter: &egui::Painter, project: &dyn Fn(DVec3) -> Option<egui::Pos2>) {
-        let refs: Vec<(ElementId, creabim_core::Reference)> = self
-            .doc
+    /// The references shown in 3D: not hidden, and not kept to their views.
+    fn refs_in_3d(&self) -> Vec<(ElementId, creabim_core::Reference)> {
+        self.doc
             .model()
             .iter()
             .filter_map(|e| match &e.kind {
-                ElementKind::Reference(r) if !r.hidden && !self.hidden.contains(&e.id) => Some((e.id, r.clone())),
+                ElementKind::Reference(r) if !r.hidden && r.in_3d && !self.hidden.contains(&e.id) => Some((e.id, r.clone())),
                 _ => None,
             })
-            .collect();
+            .collect()
+    }
+
+    /// The reference whose line (or a picture's frame) is within 6 px of
+    /// `p` in 3D.
+    fn reference_near_3d(&mut self, p: egui::Pos2, project: &dyn Fn(DVec3) -> Option<egui::Pos2>) -> Option<ElementId> {
+        let near = |a: egui::Pos2, b: egui::Pos2| {
+            let ab = b - a;
+            let t = ((p - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
+            (a + ab * t).distance(p) < 6.0
+        };
+        for (id, r) in self.refs_in_3d() {
+            let model = self.doc.model();
+            let world = |q: DVec2| crate::handles::ref_world(model, &r, q);
+            let polys: Vec<Vec<DVec2>> = match self.plan.ref_cache.get(model, id, &r) {
+                crate::trace::Shown::Lines(l) => l.iter().map(|l| l.iter().map(|q| r.place(*q)).collect()).collect(),
+                _ => r.outline().map(|c| vec![c.iter().chain(c.first()).copied().collect()]).unwrap_or_default(),
+            };
+            for l in polys {
+                let pts: Vec<egui::Pos2> = l.iter().filter_map(|q| project(world(*q))).collect();
+                if pts.windows(2).any(|w| near(w[0], w[1])) {
+                    return Some(id);
+                }
+            }
+        }
+        None
+    }
+
+    fn draw_references_3d(&mut self, painter: &egui::Painter, project: &dyn Fn(DVec3) -> Option<egui::Pos2>) {
+        let refs = self.refs_in_3d();
         // a huge drawing is cut short rather than slowing the 3D view
         let mut budget = 30_000usize;
         for (id, r) in refs {
@@ -2840,9 +2869,12 @@ impl CreaBimApp {
                 // grid bubbles are drawn over everything, so they take
                 // clicks first
                 let bubble = self.grid_bubble_near(p, &project);
+                // a reference's lines, as a sketch's (MU33: only a 2D view
+                // could pick one)
+                let reference = self.reference_near_3d(p, &project);
                 // and so are crop box frames
                 let frame = || self.crop_frame_near(p, &project);
-                if let Some(id) = near_sketch.or(bubble).or_else(frame) {
+                if let Some(id) = near_sketch.or(bubble).or(reference).or_else(frame) {
                     pick(&mut self.selection, Some(id));
                     self.face = None;
                     return;
@@ -3054,6 +3086,23 @@ impl CreaBimApp {
             snapper.add_guides(self.doc.model(), GUIDE_REACH_3D);
             snapper.add_grids(self.doc.model(), &self.hidden_in_3d());
             snapper.add_sketches(self.doc.model(), exclude);
+            // the references' lines, where 3D shows them (MU33)
+            let mut n = 0usize;
+            for (id, r) in self.refs_in_3d() {
+                let model = self.doc.model();
+                if let crate::trace::Shown::Lines(lines) = self.plan.ref_cache.get(model, id, &r) {
+                    for l in lines.iter() {
+                        for w in l.windows(2) {
+                            if n < 20_000 {
+                                let a = crate::handles::ref_world(model, &r, r.place(w[0]));
+                                let b = crate::handles::ref_world(model, &r, r.place(w[1]));
+                                snapper.add_segment(a, b, crate::snaps::Source::Underlay, Some(id));
+                                n += 1;
+                            }
+                        }
+                    }
+                }
+            }
             self.snaps_3d = Some((rev, exclude.to_vec(), snapper));
         }
     }
@@ -6156,6 +6205,13 @@ impl CreaBimApp {
             if ui.checkbox(&mut r.hidden, "Hidden (Alt+F2)").changed() {
                 label = Some("Hide reference");
             }
+            if ui
+                .checkbox(&mut r.in_3d, "In 3D")
+                .on_hover_text("Shown in the 3D view too, where its views are; off, only in its views")
+                .changed()
+            {
+                label = Some("Reference in 3D");
+            }
         });
         // its own box, folding (MU23)
         if !self.prop_header(ui, "refplace", "Place and size", true, Some("trace-reference")) {
@@ -6545,7 +6601,8 @@ impl CreaBimApp {
             return;
         };
         // its own folding panel, as Type and Geometry are (MU32)
-        if self.plan.edit == Some(id) && self.prop_header(ui, "editing", "Editing", true, None) {
+        let hint = format!("say:{}", editmode::panel_hint(&e.kind));
+        if self.plan.edit == Some(id) && self.prop_header(ui, "editing", "Editing", true, Some(&hint)) {
             // the layers' grips, without having to know Tab (MU18), as a
             // choice in the field column
             if handles::has_layers(self.doc.model(), id) {
@@ -6567,7 +6624,6 @@ impl CreaBimApp {
                     };
                 }
             }
-            crate::props::note(ui, editmode::panel_hint(&e.kind));
             ui.add_space(4.0);
         }
 

@@ -171,17 +171,35 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             Xform::Move(d) => m.at += d.truncate(),
             _ => return None,
         },
-        ElementKind::Reference(r) => match t {
-            Xform::Move(d) => r.at += d.truncate(),
-            Xform::Rotate { degrees, .. } => {
-                r.at = t.point2(r.at);
-                r.rotation = (r.rotation + degrees).rem_euclid(360.0);
+        // a reference lives on its views' drawing: in a section that is
+        // the section's plane, so a move in the model is laid back onto it
+        // (MU33: Move read a section's up as the plan's Y)
+        ElementKind::Reference(r) => match ref_frame(model, r) {
+            Some(frame) => {
+                let on = |p: DVec3| frame.to_drawing(p);
+                match t {
+                    Xform::Move(_) | Xform::Scale { .. } => {
+                        let at = frame.to_model(r.at);
+                        r.at = on(t.point3(at));
+                        if let Xform::Scale { factor, .. } = t {
+                            r.scale *= factor;
+                        }
+                    }
+                    _ => return None,
+                }
             }
-            Xform::Scale { factor, .. } => {
-                r.at = t.point2(r.at);
-                r.scale *= factor;
-            }
-            _ => return None,
+            None => match t {
+                Xform::Move(d) => r.at += d.truncate(),
+                Xform::Rotate { degrees, .. } => {
+                    r.at = t.point2(r.at);
+                    r.rotation = (r.rotation + degrees).rem_euclid(360.0);
+                }
+                Xform::Scale { factor, .. } => {
+                    r.at = t.point2(r.at);
+                    r.scale *= factor;
+                }
+                _ => return None,
+            },
         },
         ElementKind::Wall(w) => {
             if !t.keeps_upright() {
@@ -593,7 +611,10 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
         ElementKind::CropBox(c) => c.center(),
         // (MU23) a reference turns and scales about its middle; a paper
         // mark and a note are where they are written
-        ElementKind::Reference(r) => r.at.extend(0.0),
+        ElementKind::Reference(r) => match ref_frame(model, r) {
+            Some(f) => f.to_model(r.at),
+            None => r.at.extend(0.0),
+        },
         ElementKind::PaperMark(m) => m.at.extend(0.0),
         ElementKind::Note(n) => match crate::DrawingFrame::of(model, n.view) {
             Some(f) => f.to_model(n.at),
@@ -614,6 +635,15 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
         }
         _ => return crate::members::pivot(model, e),
     })
+}
+
+/// The section a reference is shown in, as a drawing frame; none for a
+/// plan, whose coordinates are the model's own.
+pub fn ref_frame(model: &Model, r: &crate::Reference) -> Option<crate::DrawingFrame> {
+    match crate::DrawingFrame::of(model, *r.shown_in.first()?)? {
+        f @ crate::DrawingFrame::Section { .. } => Some(f),
+        _ => None,
+    }
 }
 
 /// Where a dimension's point sits on its drawing, as near as the model

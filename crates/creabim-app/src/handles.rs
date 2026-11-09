@@ -949,13 +949,22 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
             // in a section the grips stand on its plane (MU32: they lay
             // on the ground at the section's numbers)
             let w = |p: DVec2| ref_world(model, r, p);
+            // dragged on its own plane: a section's upright one, so the
+            // middle moves up and down in 3D too (MU33)
+            let normal = ref_plane(model, r).map_or(DVec3::Z, |(_, d)| d.perp().extend(0.0));
+            let on = |kind, at: DVec3| Handle {
+                kind,
+                at,
+                constraint: Constraint::Plane { point: at, normal },
+                nudge: 0.0,
+            };
             let Some(c) = r.outline() else {
-                return vec![flat(HandleKind::RefMove, w(r.at))];
+                return vec![on(HandleKind::RefMove, w(r.at))];
             };
             let mut out: Vec<Handle> = (0..4)
-                .map(|i| flat(HandleKind::RefScale(i), w(c[i])))
+                .map(|i| on(HandleKind::RefScale(i), w(c[i])))
                 .collect();
-            out.push(flat(HandleKind::RefMove, w(r.at)));
+            out.push(on(HandleKind::RefMove, w(r.at)));
             // turning is in plan only; a section's is typed in Properties
             if ref_plane(model, r).is_none() {
                 let top = (c[2] + c[3]) / 2.0;

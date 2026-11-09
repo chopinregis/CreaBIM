@@ -51,10 +51,17 @@ pub struct Reference {
     /// Hidden for now (Alt+F2 in a view it shows in).
     #[serde(default)]
     pub hidden: bool,
+    /// Off: shown in its views but not in 3D (MU33).
+    #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
+    pub in_3d: bool,
     /// What it shows spans, in its own coordinates (lower left, upper
     /// right), once known: its middle is what it turns and scales about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bounds: Option<[DVec2; 2]>,
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn one() -> f64 {
@@ -86,6 +93,7 @@ impl Reference {
             over: false,
             locked: false,
             hidden: false,
+            in_3d: true,
             bounds: None,
         }
     }

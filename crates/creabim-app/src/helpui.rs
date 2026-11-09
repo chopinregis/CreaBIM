@@ -164,7 +164,13 @@ impl CreaBimApp {
     /// the page `link` and a link to read the rest in the Help panel.
     /// Returns whether it was clicked.
     pub(super) fn quick_help_button(&mut self, ui: &mut egui::Ui, link: &str, title: &str) -> bool {
-        let lines = help::quick(link);
+        // "say:…" is the text itself, not a page (MU33: the Editing hint
+        // as a ? rather than a block in the panel)
+        let page = !link.starts_with("say:");
+        let lines = match link.strip_prefix("say:") {
+            Some(t) => vec![t.to_string()],
+            None => help::quick(link),
+        };
         if lines.is_empty() {
             return false;
         }
@@ -193,7 +199,7 @@ impl CreaBimApp {
                     ui.label(help::plain(l));
                 }
                 ui.add_space(4.0);
-                if ui.link("Read more in the guide →").clicked() {
+                if page && ui.link("Read more in the guide →").clicked() {
                     read = true;
                     ui.close();
                 }

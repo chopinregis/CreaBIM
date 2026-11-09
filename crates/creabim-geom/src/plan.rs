@@ -961,7 +961,9 @@ pub fn plan_view_with(
         let on_level = match &e.kind {
             ElementKind::Wall(w) => w.level == level,
             ElementKind::Slab(s) => s.level == level,
-            ElementKind::FreeMesh(f) => f.level == Some(level),
+            // an imported mesh with no level of its own is on the level its
+            // base stands on (MU33: a Blender import showed in no plan)
+            ElementKind::FreeMesh(f) => f.level.or_else(|| level_under(model, f.origin.z)) == Some(level),
             ElementKind::Footing(f) => f.plan_level(model) == level,
             k => creabim_core::members::level_of(k) == Some(level),
         };
@@ -2162,6 +2164,14 @@ fn section_marker(
     }
 }
 
+/// The level a height stands on: the highest at or below it, else the
+/// lowest.
+pub fn level_under(model: &Model, z: f64) -> Option<ElementId> {
+    let mut all: Vec<(ElementId, f64)> = model.levels().map(|(e, l)| (e.id, l.elevation)).collect();
+    all.sort_by(|a, b| a.1.total_cmp(&b.1));
+    all.iter().rev().find(|l| l.1 <= z + 0.05).or(all.first()).map(|l| l.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2702,3 +2712,4 @@ mod tests {
         assert!(!washed(bow, true));
     }
 }
+
