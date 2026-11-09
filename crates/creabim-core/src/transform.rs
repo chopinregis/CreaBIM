@@ -1293,3 +1293,25 @@ mod tests {
         assert_eq!(duplicate(&m, did).len(), 1);
     }
 }
+
+#[cfg(test)]
+mod reference_moves {
+    use super::*;
+    use crate::{Element, Model, RefSource, Reference, View};
+
+    #[test]
+    fn a_reference_in_a_section_moves_on_the_section_plane() {
+        // a section running along +Y
+        let v = Element::new("Section", ElementKind::View(View::section(DVec2::ZERO, DVec2::new(0.0, 10.0), 5.0, true)));
+        let vid = v.id;
+        let model = Model::from_elements([v]).unwrap();
+        let mut r = Reference::new(RefSource::View(vid), vec![vid]);
+        r.at = DVec2::new(2.0, 1.0);
+        let e = Element::new("Ref", ElementKind::Reference(r));
+        // 1 m up and 3 m along the section line
+        let moved = transformed(&model, &e, &Xform::Move(DVec3::new(0.0, 3.0, 1.0))).unwrap();
+        let ElementKind::Reference(r) = moved.kind else { panic!() };
+        assert!((r.at - DVec2::new(5.0, 2.0)).length() < 1e-9, "{:?}", r.at);
+
+    }
+}
