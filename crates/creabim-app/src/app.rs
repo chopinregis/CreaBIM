@@ -3585,13 +3585,20 @@ impl CreaBimApp {
         };
         // and the points rested on, as in plans (MU26: walls, beams and
         // the other level tools in 3D too)
-        let rested: Vec<DVec3> = self.rested_3d.0.iter().map(|p| p.truncate().extend(z)).collect();
+        // drafting's temporary guides on the level too (MU37): from the
+        // points rested on and through where the line starts
+        let guides = guides_3d(&self.rested_3d.0, from, z, self.plan.guide_step, &snap_cfg);
+        let rested: Vec<DVec3> = if guides.is_empty() {
+            self.rested_3d.0.iter().map(|p| p.truncate().extend(z)).collect()
+        } else {
+            vec![]
+        };
         let track = snaps::track_points(&chain, &rested);
-        let Some((snap, align)) =
-            snapper.snap_tracked(&snap_cfg, hover, project, from, &track, free)
-        else {
+        let Some(hit) = snapper.snap_guided(&snap_cfg, hover, project, from, &track, &guides, free) else {
             return;
         };
+        snaps::draw_guides(painter, project, &guides, &hit.guides);
+        let (snap, align) = (hit.snap, hit.align);
         rest_points(&mut self.rested_3d, ui.ctx(), Some(&snap), true);
         let p = snap.p.truncate();
         let at = p.extend(z);
@@ -3616,6 +3623,8 @@ impl CreaBimApp {
         if let Some(c) = project(at) {
             if snap.kind == SnapKind::Grid {
                 painter.circle_stroke(c, 4.0, egui::Stroke::new(1.0, accent));
+            } else if !hit.guides.is_empty() {
+                snaps::draw_guided(painter, project, &hit, &guides, from.and_then(project));
             } else {
                 snaps::draw_tracked(painter, project, snap, align, c, from.and_then(project));
             }
@@ -3760,6 +3769,28 @@ impl CreaBimApp {
     fn rest_3d(&mut self, ctx: &egui::Context, snap: Option<&crate::snaps::Snap>, drawing: bool) {
         rest_points(&mut self.rested_3d, ctx, snap, drawing);
     }
+}
+
+/// The temporary guides of drafting, on a level's plane in 3D (MU37: "make
+/// sure drafting temp guides also appear when modeling"): level, plumb and
+/// angled through each point rested on, and angled through `from`.
+fn guides_3d(
+    rested: &[DVec3],
+    from: Option<DVec3>,
+    z: f64,
+    step: f64,
+    cfg: &crate::snaps::SnapSettings,
+) -> Vec<crate::snaps::TempGuide> {
+    if !cfg.allows(SnapKind::OnTempGuide) || (rested.is_empty() && from.is_none()) {
+        return vec![];
+    }
+    let refs: Vec<snaps::Reference> = rested
+        .iter()
+        .map(|p| snaps::Reference::Point { p: *p, kind: SnapKind::Endpoint })
+        .collect();
+    let mut g = snaps::temp_guides(&refs, from, step);
+    snaps::lift(&mut g, z);
+    g
 }
 
 /// [`CreaBimApp::rest_3d`] on the rested points alone, for callers that
@@ -4300,11 +4331,20 @@ impl CreaBimApp {
             let from = outline.points.last().map(|p| p.extend(outline.z));
             let snapper = &self.snaps_3d.as_ref()?.2;
             let shape: Vec<DVec3> = outline.points.iter().map(|p| p.extend(outline.z)).collect();
-            let rested: Vec<DVec3> = self.rested_3d.0.iter().map(|p| p.truncate().extend(outline.z)).collect();
+            let guides = guides_3d(&self.rested_3d.0, from, outline.z, self.plan.guide_step, &snap_cfg);
+            let rested: Vec<DVec3> = if guides.is_empty() {
+                self.rested_3d.0.iter().map(|p| p.truncate().extend(outline.z)).collect()
+            } else {
+                vec![]
+            };
             let track = snaps::track_points(&shape, &rested);
-            let (s, align) = snapper.snap_tracked(&snap_cfg, h, project, from, &track, free)?;
+            let hit = snapper.snap_guided(&snap_cfg, h, project, from, &track, &guides, free)?;
+            snaps::draw_guides(painter, project, &guides, &hit.guides);
+            let (s, align) = (hit.snap, hit.align);
             if let Some(c) = project(s.p.truncate().extend(outline.z)) {
-                if s.kind != SnapKind::Grid {
+                if !hit.guides.is_empty() {
+                    snaps::draw_guided(painter, project, &hit, &guides, from.and_then(project));
+                } else if s.kind != SnapKind::Grid {
                     snaps::draw_tracked(painter, project, s, align, c, from.and_then(project));
                 }
             }
@@ -6611,7 +6651,13 @@ impl CreaBimApp {
                 if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
                     if matches!(view.kind, ViewKind::Section { .. }) {
                         let mut style = view.graphics.drawing_style;
-                        crate::props::section(ui, "Graphics");
+                        // folding, as the plan's Graphics and the others (MU37)
+                        let gid = egui::Id::new("props.view.graphics.open");
+                        let open = ui.ctx().data(|d| d.get_temp::<bool>(gid)).unwrap_or(true);
+                        if crate::props::header(ui, "Graphics", open, false).0.clicked() {
+                            ui.ctx().data_mut(|d| d.insert_temp(gid, !open));
+                        }
+                        if open {
                         crate::props::row(ui, "Drawing style", |ui| {
                             egui::ComboBox::from_id_salt("section.panel.drawing_style")
                                 .icon(crate::props::combo_icon)
@@ -6624,6 +6670,7 @@ impl CreaBimApp {
                                     }
                                 });
                         });
+                        }
                         if style != view.graphics.drawing_style {
                             let r = self.doc.edit(v, "Drawing style", |e| {
                                 if let ElementKind::View(x) = &mut e.kind {

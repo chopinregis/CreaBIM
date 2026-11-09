@@ -106,6 +106,19 @@ pub struct Column {
     /// level that is gone leaves the column as `height` says.
     #[serde(default, skip_serializing_if = "crate::WallTop::is_unconnected")]
     pub top: crate::WallTop,
+    /// A section from the profile library, over `profile` (MU37): its
+    /// insertion point on the column's position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<Section>,
+}
+
+/// A library profile a member is made with: its name, and its outline as
+/// it was when last updated from the library (so editing the profile
+/// changes nothing until approved, MU37).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Section {
+    pub name: String,
+    pub points: Vec<DVec2>,
 }
 
 impl Column {
@@ -119,6 +132,7 @@ impl Column {
             height: None,
             material: None,
             top: crate::WallTop::Unconnected,
+            section: None,
         }
     }
 
@@ -209,7 +223,17 @@ impl Column {
     }
 
     pub fn outline(&self) -> Vec<DVec2> {
-        self.profile.outline(self.position, self.rotation)
+        match &self.section {
+            Some(s) if s.points.len() >= 3 => {
+                let turn = DVec2::from_angle(self.rotation.to_radians());
+                let mut pts: Vec<DVec2> = s.points.iter().map(|p| self.position + turn.rotate(*p)).collect();
+                if crate::polygon::signed_area2(&pts) < 0.0 {
+                    pts.reverse();
+                }
+                pts
+            }
+            _ => self.profile.outline(self.position, self.rotation),
+        }
     }
 }
 
@@ -228,6 +252,10 @@ pub struct Beam {
     pub top_offset: f64,
     #[serde(default)]
     pub material: Option<ElementId>,
+    /// A section from the profile library (MU37), hung from its insertion
+    /// point on the beam's top line; `width` and `depth` follow it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<Section>,
 }
 
 impl Beam {
@@ -240,6 +268,7 @@ impl Beam {
             depth: 0.4,
             top_offset: 0.0,
             material: None,
+            section: None,
         }
     }
 
@@ -255,8 +284,17 @@ impl Beam {
     /// The footprint in plan, counter-clockwise.
     pub fn outline(&self) -> Vec<DVec2> {
         let d = (self.end - self.start).normalize_or_zero();
-        let n = d.perp() * self.width / 2.0;
-        vec![self.start - n, self.end - n, self.end + n, self.start + n]
+        // a library section: as wide as it reaches either side
+        let (l, r) = match &self.section {
+            Some(s) if !s.points.is_empty() => {
+                let lo = s.points.iter().map(|p| p.x).fold(f64::MAX, f64::min);
+                let hi = s.points.iter().map(|p| p.x).fold(f64::MIN, f64::max);
+                (hi.max(0.0), (-lo).max(0.0))
+            }
+            _ => (self.width / 2.0, self.width / 2.0),
+        };
+        let (nl, nr) = (d.perp() * l, d.perp() * r);
+        vec![self.start - nr, self.end - nr, self.end + nl, self.start + nl]
     }
 }
 

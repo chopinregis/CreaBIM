@@ -76,7 +76,7 @@ fn weight_combo(
     let text = w.map_or("As drawn".to_string(), |w| w.label());
     egui::ComboBox::from_id_salt(salt)
         .icon(crate::props::combo_icon)
-        .width(ui.spacing().combo_width.max(108.0))
+        .width(ui.spacing().combo_width.max(108.0).min(ui.available_width()))
         .selected_text(text)
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(w, None, "As drawn").changed();
@@ -116,7 +116,7 @@ fn pattern_combo(
     let mut changed = false;
     egui::ComboBox::from_id_salt(salt)
         .icon(crate::props::combo_icon)
-        .width(ui.spacing().combo_width.max(84.0))
+        .width(ui.spacing().combo_width.max(84.0).min(ui.available_width()))
         .selected_text(p.as_ref().map_or("As drawn", |p| p.label()))
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(p, None, "As drawn").changed();
@@ -158,7 +158,7 @@ fn name_combo(
     let mut changed = false;
     egui::ComboBox::from_id_salt(salt)
         .icon(crate::props::combo_icon)
-        .width(ui.spacing().combo_width.max(108.0))
+        .width(ui.spacing().combo_width.max(108.0).min(ui.available_width()))
         .selected_text(v.as_deref().unwrap_or(none))
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(v, None, none).changed();

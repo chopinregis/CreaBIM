@@ -290,7 +290,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                 egui::ComboBox::from_id_salt("mat_rate_per")
                     .icon(crate::props::combo_icon)
                     .selected_text(per.label())
-                    .width(70.0)
+                    .width(ui.available_width().min(70.0))
                     .show_ui(ui, |ui| {
                         for u in RateUnit::ALL {
                             if ui.selectable_label(per == u, u.label()).clicked() {

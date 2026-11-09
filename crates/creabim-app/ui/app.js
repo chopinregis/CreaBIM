@@ -829,6 +829,8 @@
 
   window.CB = {
     state(s) {
+      // profile pictures for the lists, drawn as icons (MU37)
+      if (s.icons) Object.assign(window.ICONS, s.icons);
       S = s;
       if (s.theme) document.documentElement.dataset.theme = s.theme;
       keepFocus(draw);

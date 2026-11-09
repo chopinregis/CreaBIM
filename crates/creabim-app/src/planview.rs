@@ -2037,6 +2037,41 @@ pub fn show(
             }
         }
     }
+    // a sweep traced: its band (the profile's width either side of the
+    // path) as a ghost, and its section at the pointer, so a wrong profile
+    // shows at once (MU37)
+    if let (Tool::Sweep, PaneKind::Plan { .. }, Some(b)) = (tool, kind, hover_world) {
+        let (prof, name) = state.parts.sweep_profile(doc.model(), 0.2);
+        if !prof.is_empty() {
+            let lo = prof.iter().map(|p| p.x).fold(f64::MAX, f64::min);
+            let hi = prof.iter().map(|p| p.x).fold(f64::MIN, f64::max);
+            let mut path = state.parts.path.clone();
+            path.push(b);
+            let ghost = Color32::from_rgb(230, 120, 30);
+            for w in path.windows(2) {
+                let d = (w[1] - w[0]).normalize_or_zero();
+                if d == DVec2::ZERO {
+                    continue;
+                }
+                let n = d.perp();
+                let band = [w[0] + n * lo, w[1] + n * lo, w[1] + n * hi, w[0] + n * hi];
+                let pts: Vec<Pos2> = band.iter().map(|p| xf.to_screen(*p)).collect();
+                painter.add(egui::Shape::convex_polygon(pts, ghost.gamma_multiply(0.15), Stroke::new(1.0, ghost.gamma_multiply(0.7))));
+            }
+            // the section itself, small, by the pointer
+            let span = prof.iter().fold((f64::MAX, f64::MIN, f64::MAX, f64::MIN), |a, p| (a.0.min(p.x), a.1.max(p.x), a.2.min(p.y), a.3.max(p.y)));
+            let size = (span.1 - span.0).max(span.3 - span.2).max(1e-6);
+            let k = 42.0 / size;
+            let at = xf.to_screen(b) + Vec2::new(26.0, 26.0);
+            let box_r = Rect::from_min_size(at, Vec2::splat(50.0));
+            let pal = crate::theme::Palette::of(ui.ctx());
+            painter.rect(box_r, 6.0, pal.panel, Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
+            let mid = DVec2::new((span.0 + span.1) / 2.0, (span.2 + span.3) / 2.0);
+            let sec: Vec<Pos2> = prof.iter().map(|p| box_r.center() + Vec2::new(((p.x - mid.x) * k) as f32, (-(p.y - mid.y) * k) as f32)).collect();
+            painter.add(egui::Shape::closed_line(sec, Stroke::new(1.2, pal.text)));
+            painter.text(box_r.center_bottom() + Vec2::new(0.0, 3.0), egui::Align2::CENTER_TOP, name, egui::FontId::proportional(10.5), pal.muted);
+        }
+    }
     // preview of the tool in progress
     if let (Some(a), Some(b)) = (state.pending, hover_world) {
         let accent = Stroke::new(1.5, Color32::from_rgb(230, 120, 30));

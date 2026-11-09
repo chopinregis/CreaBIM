@@ -622,6 +622,42 @@ pub fn plan_items(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
                 Some((lo, _)) if lo.z as f64 > cut_z + 1e-6 => {
                     overhead_outline_creased(&item, &mut out, crease)
                 }
+                // a sweep along a level path: its cut, and below the cut
+                // only its outer edges (the profile's width either side of
+                // the path), filled; no seams inside (MU37)
+                _ if matches!(p.form, creabim_core::parts::Form::Sweep { .. }) && p.face_normal().is_none() => {
+                    crate::plan::sliced_plan_creased(model, &item, cut_z, &mut out, -2.0);
+                    if let (creabim_core::parts::Form::Sweep { profile, .. }, Some((path, closed))) = (&p.form, p.path(model)) {
+                        let lo = profile.iter().map(|q| q.x).fold(f64::MAX, f64::min);
+                        let hi = profile.iter().map(|q| q.x).fold(f64::MIN, f64::max);
+                        let pts: Vec<DVec2> = path.iter().map(|q| q.truncate()).collect();
+                        let side = |off: f64| -> Vec<DVec2> {
+                            let n = pts.len();
+                            (0..n)
+                                .map(|i| {
+                                    let d0 = if i > 0 { (pts[i] - pts[i - 1]).normalize_or_zero() } else if closed && n > 2 { (pts[0] - pts[n - 1]).normalize_or_zero() } else { DVec2::ZERO };
+                                    let d1 = if i + 1 < n { (pts[i + 1] - pts[i]).normalize_or_zero() } else if closed && n > 2 { (pts[0] - pts[i]).normalize_or_zero() } else { DVec2::ZERO };
+                                    let m = (d0.perp() + d1.perp()).normalize_or_zero();
+                                    let c = m.dot(if d1 != DVec2::ZERO { d1.perp() } else { d0.perp() }).max(0.3);
+                                    pts[i] + m * (off / c)
+                                })
+                                .collect()
+                        };
+                        let (l, r) = (side(hi), side(lo));
+                        let mut lines = |v: &[DVec2]| {
+                            let k = if closed { v.len() } else { v.len().saturating_sub(1) };
+                            for i in 0..k {
+                                out.push(PlanItem::Line { id: e.id, pen: Pen::Projection, a: v[i], b: v[(i + 1) % v.len()] });
+                            }
+                        };
+                        lines(&l);
+                        lines(&r);
+                        if !closed && !l.is_empty() {
+                            out.push(PlanItem::Line { id: e.id, pen: Pen::Projection, a: l[0], b: r[0] });
+                            out.push(PlanItem::Line { id: e.id, pen: Pen::Projection, a: l[l.len() - 1], b: r[r.len() - 1] });
+                        }
+                    }
+                }
                 _ => crate::plan::sliced_plan_creased(model, &item, cut_z, &mut out, crease),
             }
             out

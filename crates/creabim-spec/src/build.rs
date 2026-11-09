@@ -1121,6 +1121,7 @@ fn column(c: &mut Ctx, col: &f::Column, at: &Path) {
         base_offset: c.l(col.base_offset),
         height: col.height.map(|h| c.l(h)),
         material: None,
+        section: None,
         top: match top {
             Some(t) => core::WallTop::UpToLevel {
                 level: t,
@@ -1171,6 +1172,7 @@ fn beam(c: &mut Ctx, b: &f::Beam, at: &Path) {
         depth: 0.4,
         top_offset: c.l(b.top_offset),
         material: None,
+        section: None,
     };
     let mut e = Element::new(name_of(&b.name, &b.id), ElementKind::Beam(beam));
     if !stamp(c, &mut e, &b.r#type, f::TypeCategory::Beam, at) {

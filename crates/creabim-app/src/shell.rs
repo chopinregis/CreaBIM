@@ -3733,6 +3733,7 @@ impl CreaBimApp {
                 items.is_empty(),
             )
         });
+        let icons_extra = self.profile_thumbs();
         let Some(web) = &mut self.shell.web else {
             return false;
         };
@@ -3759,6 +3760,8 @@ impl CreaBimApp {
         match popup {
             Some((_, _, true)) => self.close_popup(),
             Some((rect, state, false)) => {
+                let mut state = state;
+                state["icons"] = serde_json::Value::Object(icons_extra);
                 web.send(Pane::Popup, &state);
                 web.show_popup(rect, ppp);
                 if std::mem::take(&mut self.shell.focus_popup) {

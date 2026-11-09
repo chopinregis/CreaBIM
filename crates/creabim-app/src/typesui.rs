@@ -86,7 +86,7 @@ fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bo
         egui::ComboBox::from_id_salt(("curtain_rule", salt))
             .icon(crate::props::combo_icon)
             .selected_text(r.label())
-            .width(80.0)
+            .width(ui.available_width().min(80.0))
             .show_ui(ui, |ui| {
                 if ui.selectable_label(spacing, "Spacing").clicked() && !spacing {
                     *r = GridRule::Spacing(1.5);

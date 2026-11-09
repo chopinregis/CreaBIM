@@ -158,7 +158,7 @@ impl CreaBimApp {
             .or(self.active_view)
     }
 
-    fn store_areas(&mut self) {
+    pub(super) fn store_areas(&mut self) {
         self.shell.settings.areas = Some(self.areas.root.clone());
         self.shell.settings.store();
     }
@@ -667,6 +667,7 @@ impl CreaBimApp {
                 .into_iter()
                 .filter(|c| c["kind"] != "sep")
                 .collect(),
+            Shows::Profiles => self.profile_controls(),
             _ => vec![],
         };
         let (kind_icon, kind_label, name) = match shows {
@@ -677,7 +678,12 @@ impl CreaBimApp {
                 (icon, group, e.map_or(String::new(), |e| e.name.clone()))
             }
             Shows::Notes => ("sticky-note", "Notes", "Notepad".to_string()),
-            Shows::Profiles => ("profile", "Profiles", "Profile library".to_string()),
+            // the name is the profile shown; it lists the project's (MU37)
+            Shows::Profiles => (
+                "profile",
+                "Profiles",
+                self.profiles.current.clone().unwrap_or_else(|| "Pick a profile".to_string()),
+            ),
             _ => ("box", "3D view", "Model".to_string()),
         };
         let mut asks: Vec<Ask> = vec![];
@@ -700,20 +706,46 @@ impl CreaBimApp {
         if r.clicked() {
             asks.push(Ask::Popup("area.kind".into(), r.rect));
         }
-        let name_w = (room * 0.32).clamp(70.0, 220.0);
+        // a profile's name is short, and its own field follows (MU37)
+        let name_w = if matches!(shows, Shows::Profiles) {
+            (room * 0.16).clamp(80.0, 130.0)
+        } else {
+            (room * 0.32).clamp(70.0, 220.0)
+        };
         let r = name_button(&mut child, &name, name_w, &p).on_hover_text(format!(
             "{name}: click to show another of the {}",
             kind_label.to_lowercase()
         ));
         if r.clicked() {
             asks.push(Ask::Popup(
-                if matches!(shows, Shows::Model | Shows::Notes | Shows::Profiles) {
+                if matches!(shows, Shows::Profiles) {
+                    "prof.pick".into()
+                } else if matches!(shows, Shows::Model | Shows::Notes) {
                     "area.kind".into()
                 } else {
                     "area.views".into()
                 },
                 r.rect,
             ));
+        }
+        // what to do with profiles, beside the list of them (MU37): new,
+        // from the selection, duplicate, delete
+        let mut plus_w = 0.0;
+        if matches!(shows, Shows::Profiles) {
+            for (k, (id, icon, tip, on)) in self.profile_buttons().into_iter().enumerate() {
+                let r = icon_btn(&mut child, icon, false, on, &p).on_hover_text(tip);
+                if r.clicked() && on {
+                    asks.push(Ask::Run(id.into()));
+                }
+                plus_w += 28.0;
+                // its name to type, right after +
+                if k == 0 && room > 560.0 {
+                    child.add_space(4.0);
+                    self.profile_name_field(&mut child, &p);
+                    child.add_space(4.0);
+                    plus_w += 136.0;
+                }
+            }
         }
         // the mode after what it shows, as Blender's (MU27): Object or Edit,
         // then in Edit mode what a click picks; sheets and schedules have
@@ -753,7 +785,7 @@ impl CreaBimApp {
         }
         child.add_space(6.0);
         // its controls, as many as fit before More and maximise
-        let used = 34.0 + name_w + 10.0 + 2.0 * 26.0 + 8.0 + mode_w;
+        let used = 34.0 + name_w + 10.0 + 2.0 * 26.0 + 8.0 + mode_w + plus_w;
         let mut left = room - used;
         let mut over = vec![];
         for c in &controls {
@@ -842,6 +874,9 @@ impl CreaBimApp {
 
     /// The menus of an area's header, by key.
     pub(super) fn area_menu(&self, key: &str) -> Option<Vec<Item>> {
+        if let Some(items) = self.profile_menu(key) {
+            return Some(items);
+        }
         let i = self.areas.menu_area.unwrap_or(self.areas.focus);
         let shows = self.areas.root.areas();
         let here = shows.get(i).copied().unwrap_or(Shows::Model);

@@ -16,10 +16,18 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
             let (z0, z1) = c.span(model);
             (slab_mesh(&c.outline(), z1, z1 - z0), [0.78, 0.76, 0.72])
         }
-        ElementKind::Beam(b) => (
-            slab_mesh(&b.outline(), b.top(model), b.depth),
-            [0.72, 0.64, 0.52],
-        ),
+        // a library section swept along the beam, hung so its top is the
+        // beam's top (MU37)
+        ElementKind::Beam(b) => match &b.section {
+            Some(s) if s.points.len() >= 3 => {
+                let top = b.top(model);
+                let hi = s.points.iter().map(|p| p.y).fold(f64::MIN, f64::max);
+                let prof: Vec<DVec2> = s.points.iter().map(|p| DVec2::new(p.x, p.y - hi)).collect();
+                let path = [b.start.extend(top), b.end.extend(top)];
+                (crate::parts::sweep_mesh(&prof, &path, false), [0.72, 0.64, 0.52])
+            }
+            _ => (slab_mesh(&b.outline(), b.top(model), b.depth), [0.72, 0.64, 0.52]),
+        },
         ElementKind::Roof(r) => {
             let holes = creabim_core::slab::holes_of(model, e);
             (

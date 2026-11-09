@@ -122,9 +122,36 @@ pub fn divide(
     let ps = parts(total, n, gap).ok_or("The gaps leave no room for the parts.")?;
     let mut tx = Transaction::new(format!("Divide {} in {n}", e.name));
     match make {
+        // a wall cut into walls: side by side along it, or stacked up it
+        // (a base course, bands), each a wall of its own (MU37)
+        Make::Cuts if matches!(e.kind, ElementKind::Wall(_)) => {
+            let ElementKind::Wall(w0) = &e.kind else { unreachable!() };
+            for (k, (t, size)) in ps.iter().enumerate() {
+                let mut now = if k == 0 { e.clone() } else { Element::new(format!("{} {}", e.name, k + 1), e.kind.clone()) };
+                if let ElementKind::Wall(w) = &mut now.kind {
+                    match dir {
+                        Dir::Along => {
+                            let d = w0.direction();
+                            w.start = w0.start + d * *t;
+                            w.end = w.start + d * *size;
+                        }
+                        Dir::Up => {
+                            w.base_offset = w0.base_offset + t;
+                            w.height = *size;
+                            // the lower walls end at their own height
+                            if k + 1 < ps.len() {
+                                w.top = crate::WallTop::Unconnected;
+                                w.attach_top.clear();
+                            }
+                        }
+                    }
+                }
+                tx = if k == 0 { tx.replace(e.clone(), now) } else { tx.insert(now) };
+            }
+        }
         Make::Cuts => {
             let ElementKind::Part(p) = &e.kind else {
-                return Err("Only a part can be cut into parts; Guides or Copies divide the rest.".into());
+                return Err("Only a wall or a part can be cut into parts; Guides or Copies divide the rest.".into());
             };
             let crate::parts::Form::Extrusion { base, .. } = &p.form else {
                 return Err("Only a part pulled up from a plan outline can be cut.".into());
@@ -270,6 +297,29 @@ mod tests {
             .collect();
         assert_eq!(tops.len(), 5);
         assert!(tops.iter().any(|t| (t - 2.0).abs() < 1e-9));
+    }
+
+    #[test]
+    fn a_wall_cuts_into_stacked_walls_and_up_takes_guides() {
+        let l = Element::new("L0", ElementKind::Level(Level { elevation: 0.0, height: 3.0 }));
+        let lid = l.id;
+        let w = Element::new("W", ElementKind::Wall(crate::Wall::new(lid, DVec2::ZERO, DVec2::new(4.0, 0.0), 0.2, 3.0)));
+        let wid = w.id;
+        let mut doc = Document::new();
+        doc.commit(Transaction::new("setup").insert(l).insert(w)).unwrap();
+        doc.commit(divide(doc.model(), wid, 3, Dir::Up, Make::Cuts, 0.0, None).unwrap()).unwrap();
+        let mut walls: Vec<(f64, f64)> = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Wall(w) => Some((w.base_offset, w.height)),
+                _ => None,
+            })
+            .collect();
+        walls.sort_by(|a, b| a.0.total_cmp(&b.0));
+        assert_eq!(walls.len(), 3);
+        assert!((walls[1].0 - 1.0).abs() < 1e-9 && (walls[2].1 - 1.0).abs() < 1e-9);
+        assert_eq!(divide(doc.model(), wid, 4, Dir::Up, Make::Guides, 0.0, None).unwrap().ops.len(), 3);
     }
 
     #[test]

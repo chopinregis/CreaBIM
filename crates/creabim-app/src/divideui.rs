@@ -67,14 +67,12 @@ impl CreaBimApp {
                 });
                 // only what applies (MU36: guides going up ran off endlessly,
                 // a wall can't be cut into parts)
-                let part = matches!(model.get(h).map(|e| &e.kind), Some(ElementKind::Part(_)));
+                let cuttable = matches!(model.get(h).map(|e| &e.kind), Some(ElementKind::Part(_) | ElementKind::Wall(_)));
                 let mut opts: Vec<(Make, &str, &str)> = vec![];
-                if part {
-                    opts.push((Make::Cuts, "Cuts", "The element itself cut into the parts"));
+                if cuttable {
+                    opts.push((Make::Cuts, "Cuts", "Cut into parts: a wall into walls side by side or stacked (a base course, bands), a part into bays or shelves"));
                 }
-                if d.dir == Dir::Along {
-                    opts.push((Make::Guides, "Guides", "A guide across it at each division, to snap to"));
-                }
+                opts.push((Make::Guides, "Guides", if d.dir == Dir::Up { "A level guide along its face at each division, as long as it is" } else { "A guide across it at each division, to snap to" }));
                 opts.push((Make::Copies, "Copies", "What you Shift+clicked, one in each part"));
                 if !opts.iter().any(|o| o.0 == d.make) {
                     d.make = opts[0].0;

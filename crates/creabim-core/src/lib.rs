@@ -39,6 +39,7 @@ pub mod profiles;
 pub mod project;
 pub mod papermark;
 pub mod reference;
+pub mod regions;
 pub mod pushpull;
 pub mod room;
 pub mod sample;

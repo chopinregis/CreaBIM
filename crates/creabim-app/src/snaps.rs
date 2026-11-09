@@ -351,7 +351,7 @@ pub fn snap_bar(ui: &mut egui::Ui, s: &mut SnapSettings) {
         egui::ComboBox::from_id_salt("snap_kinds")
             .icon(crate::props::combo_icon)
             .selected_text(text)
-            .width(80.0)
+            .width(ui.available_width().min(80.0))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show_ui(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -966,13 +966,15 @@ impl Snapper {
                 .iter()
                 .enumerate()
                 .filter_map(|(i, g)| {
-                    let d = g.shape.screen_distance(cursor, project)?;
+                    let d = g.shape.screen_distance(cursor, project, g.z.unwrap_or(0.0))?;
                     (d < TOLERANCE).then_some((d, i))
                 })
                 .collect()
         } else {
             vec![]
         };
+        // the guides lie on one plane: z = 0 in plans, a level's in 3D
+        let gz = guides.first().and_then(|g| g.z).unwrap_or(0.0);
         // the alignment lines the pointer is near: the axes through the
         // start of the line, then through each point of the shape
         let mut lines: Vec<(f32, Line)> = vec![];
@@ -1015,7 +1017,7 @@ impl Snapper {
         if cfg.allows(SnapKind::GuideCross) && !near_guides.is_empty() {
             let mut best: Option<CrossPick> = None;
             let mut consider = |p: DVec2, used: Vec<usize>, l: Option<Line>, host| {
-                if let Some(d) = near(p.extend(0.0)) {
+                if let Some(d) = near(p.extend(gz)) {
                     if best.as_ref().is_none_or(|b| d < b.0) {
                         best = Some((d, p, used, l, host));
                     }
@@ -1051,7 +1053,7 @@ impl Snapper {
                         d: (b - a).normalize_or_zero(),
                     };
                     for p in g.cross(&edge) {
-                        let on = closest_on_segment(s.a, s.b, p.extend(0.0)).truncate();
+                        let on = closest_on_segment(s.a, s.b, p.extend(gz)).truncate();
                         if on.distance(p) < 1e-6 {
                             consider(p, vec![i], None, s.host);
                         }
@@ -1061,7 +1063,7 @@ impl Snapper {
             if let Some((_, p, used, l, host)) = best {
                 return Some(Guided {
                     snap: Snap {
-                        p: p.extend(0.0),
+                        p: p.extend(gz),
                         kind: SnapKind::GuideCross,
                         host,
                     },
@@ -1210,7 +1212,7 @@ impl Snapper {
                 };
                 return Some(Guided {
                     snap: Snap {
-                        p: p.extend(0.0),
+                        p: p.extend(gz),
                         kind: SnapKind::OnTempGuide,
                         host: None,
                     },
@@ -1786,6 +1788,16 @@ pub struct TempGuide {
     pub kind: GuideKind,
     /// The point it runs from, marked where it is drawn.
     pub at: DVec2,
+    /// The height of the plane it lies on, when drawn in 3D (on a level);
+    /// None in plans and sections, at z = 0.
+    pub z: Option<f64>,
+}
+
+/// Lay `guides` on the plane at height `z`, to draw and snap to in 3D.
+pub fn lift(guides: &mut [TempGuide], z: f64) {
+    for g in guides {
+        g.z = Some(z);
+    }
 }
 
 impl GuideShape {
@@ -1802,17 +1814,18 @@ impl GuideShape {
         &self,
         cursor: Pos2,
         project: &dyn Fn(DVec3) -> Option<Pos2>,
+        z: f64,
     ) -> Option<f32> {
         match *self {
             GuideShape::Line { p, d } => {
-                let (a, b) = (project(p.extend(0.0))?, project((p + d).extend(0.0))?);
+                let (a, b) = (project(p.extend(z))?, project((p + d).extend(z))?);
                 let ab = b - a;
                 let len = ab.length();
                 (len > 1e-6).then(|| ((cursor - a).x * ab.y - (cursor - a).y * ab.x).abs() / len)
             }
             GuideShape::Circle { c, r } => {
-                let sc = project(c.extend(0.0))?;
-                let sr = (project((c + DVec2::X * r).extend(0.0))? - sc).length();
+                let sc = project(c.extend(z))?;
+                let sr = (project((c + DVec2::X * r).extend(z))? - sc).length();
                 Some(((cursor - sc).length() - sr).abs())
             }
         }
@@ -1899,6 +1912,7 @@ pub fn temp_guides(refs: &[Reference], from: Option<DVec3>, step: f64) -> Vec<Te
                 shape: GuideShape::Line { p, d },
                 kind,
                 at,
+                z: None,
             });
         }
     };
@@ -1915,6 +1929,7 @@ pub fn temp_guides(refs: &[Reference], from: Option<DVec3>, step: f64) -> Vec<Te
                 shape: GuideShape::Circle { c, r },
                 kind: GuideKind::Circle,
                 at,
+                z: None,
             });
         }
     };
@@ -2074,9 +2089,21 @@ pub fn draw_guides(
         } else {
             Stroke::new(1.0, GUIDE.gamma_multiply(0.45))
         };
+        let z = g.z.unwrap_or(0.0);
         match g.shape {
+            // in 3D a guide runs to the horizon: along it, as far as it is
+            // seen in front of the camera
+            GuideShape::Line { p, d } if g.z.is_some() => {
+                let pts: Vec<Pos2> = (-400..=400)
+                    .filter_map(|k| project((p + d * (k as f64 * 0.5)).extend(z)))
+                    .filter(|s| s.x.is_finite() && s.y.is_finite())
+                    .collect();
+                if pts.len() >= 2 {
+                    painter.add(egui::Shape::dashed_line(&pts, stroke, 6.0, 5.0));
+                }
+            }
             GuideShape::Line { p, d } => {
-                let (Some(a), Some(b)) = (project(p.extend(0.0)), project((p + d).extend(0.0)))
+                let (Some(a), Some(b)) = (project(p.extend(z)), project((p + d).extend(z)))
                 else {
                     continue;
                 };
@@ -2095,14 +2122,14 @@ pub fn draw_guides(
                 let pts: Vec<Pos2> = (0..=96)
                     .filter_map(|k| {
                         let t = k as f64 / 96.0 * std::f64::consts::TAU;
-                        project((c + DVec2::from_angle(t) * r).extend(0.0))
+                        project((c + DVec2::from_angle(t) * r).extend(z))
                     })
                     .collect();
                 painter.add(egui::Shape::dashed_line(&pts, stroke, 6.0, 5.0));
             }
         }
         if on {
-            if let Some(s) = project(g.at.extend(0.0)) {
+            if let Some(s) = project(g.at.extend(z)) {
                 let k = 3.5;
                 painter.line_segment([s + egui::vec2(-k, -k), s + egui::vec2(k, k)], stroke);
                 painter.line_segment([s + egui::vec2(-k, k), s + egui::vec2(k, -k)], stroke);

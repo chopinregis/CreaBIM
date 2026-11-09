@@ -152,6 +152,7 @@ impl Importer<'_> {
             base_offset: shape.z0 - elev,
             height: Some(shape.z1 - shape.z0),
             material: self.material_for(id),
+            section: None,
             ..Column::new(level, position, profile)
         })
     }
@@ -183,6 +184,7 @@ impl Importer<'_> {
             depth,
             top_offset: storey_top - top,
             material: self.material_for(id),
+            section: None,
             ..Beam::new(level, start, end)
         })
     }
