@@ -838,6 +838,7 @@ impl CreaBimApp {
         if in_2d && self.rect_2d.is_some() {
             if let Some(v) = self.active_view {
                 self.plan.cameras.remove(&v);
+                self.plan.area_cameras.remove(&(self.areas.focus, v));
             }
             self.status = "Framed the drawing.".into();
         } else {

@@ -316,7 +316,6 @@ impl CreaBimApp {
         let mut timings: Vec<String> = vec![];
         // the first area showing a view has its shared camera; another
         // showing it too has its own, unless linked (A4-4)
-        let mut seen: std::collections::HashSet<ElementId> = Default::default();
         for (i, (r, s)) in rects.iter().zip(&shows).enumerate() {
             if !r.is_positive() {
                 bodies.push(Rect::NOTHING);
@@ -336,7 +335,11 @@ impl CreaBimApp {
                     let keep = self.rect_2d;
                     // two areas may show the same drawing
                     let t = std::time::Instant::now();
-                    let own = !seen.insert(*v) && !self.plan.linked_areas.contains(&i);
+                    // every area keeps its own camera, so one switching its
+                    // view never moves another's (MU34: the second area
+                    // showing a plan took the first's camera when the
+                    // first switched away); linked areas share one
+                    let own = !self.plan.linked_areas.contains(&i);
                     self.plan.area = own.then_some(i);
                     self.area_now = i;
                     ui.push_id(("area", i), |ui| self.show_plan(ui, body, background));

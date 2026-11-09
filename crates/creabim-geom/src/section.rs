@@ -799,7 +799,7 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
         if let (creabim_core::ViewKind::Plan { level, cut_height }, S::MaterialColour | S::ColourHatch | S::ColourWash) = (&v.kind, style) {
             let z0 = model.level(*level).map_or(0.0, |l| l.elevation);
             let cut = z0 + cut_height;
-            let mut under = vec![];
+            let mut under: Vec<(f64, PlanItem)> = vec![];
             for e in model.iter() {
                 let ElementKind::Roof(r) = &e.kind else { continue };
                 let base = model.level(r.level).map_or(0.0, |l| l.elevation) + r.base_offset;
@@ -817,8 +817,12 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
                     })
                     .unwrap_or([0.6, 0.6, 0.6]);
                 let rgb = if style == S::ColourWash { rgb.map(|c| c + (1.0 - c) * 0.55) } else { rgb.map(|c| c + (1.0 - c) * 0.25) };
-                under.push(PlanItem::Shade { id: e.id, points: r.eave_outline(), rgb });
+                under.push((base + r.peak(), PlanItem::Shade { id: e.id, points: r.eave_outline(), rgb }));
             }
+            // the lower first, so a higher roof covers it (MU34: the
+            // green roof, lower, was drawn over the slate)
+            under.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut under: Vec<PlanItem> = under.into_iter().map(|u| u.1).collect();
             if !under.is_empty() {
                 under.append(&mut d.items);
                 d.items = under;

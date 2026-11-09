@@ -1257,21 +1257,26 @@ pub fn look_ui(
                 out = LookEdit::NewStyle;
             }
         });
-    ui.horizontal(|ui| {
-        let mut own = color.is_some();
-        if crate::props::switch(ui, &mut own, "Own colour")
-            .on_hover_text("Override the style's colour for this one")
-            .changed()
-        {
-            *color = own.then_some([0.8, 0.1, 0.1]);
-            out = LookEdit::Changed("Annotation colour");
-        }
-        if let Some(c) = color {
+    // the switch, then the swatch on a row of its own (MU34: the swatch
+    // sat past the panel's edge)
+    let mut own = color.is_some();
+    if crate::props::switch(ui, &mut own, "Own colour")
+        .on_hover_text("Override the style's colour for this one")
+        .changed()
+    {
+        *color = own.then_some([0.8, 0.1, 0.1]);
+        out = LookEdit::Changed("Annotation colour");
+    }
+    if let Some(c) = color {
+        crate::props::row(ui, "Colour", |ui| {
+            let h = ui.spacing().interact_size.y;
+            ui.spacing_mut().interact_size.x = ui.available_width().max(40.0);
+            ui.spacing_mut().interact_size.y = h;
             if ui.color_edit_button_rgb(c).changed() {
                 out = LookEdit::Changed("Annotation colour");
             }
-        }
-    });
+        });
+    }
     out
 }
 
