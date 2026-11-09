@@ -1435,7 +1435,20 @@ pub fn show(
     };
     // temporary dimensions of the one element selected: click a value
     // and type, or click its padlock (2.10 part 3)
-    if let (PaneKind::Plan { level }, Tool::Select, false) = (kind, tool, state.temp_dims_off) {
+    // a level's in a section or elevation (A5-2)
+    let level_picked = selection.active.is_some_and(|id| {
+        doc.model().get(id).is_some_and(|e| matches!(e.kind, ElementKind::Level(_)))
+            || crate::tempdims::dim_levels(doc.model(), id).is_some()
+    });
+    if response.clicked() {
+        state.temp.click = response.interact_pointer_pos().map(|p| xf.to_world(p));
+    }
+    let temp_level = match kind {
+        PaneKind::Plan { level } if !level_picked => Some(level),
+        PaneKind::Section { .. } if level_picked => Some(view),
+        _ => None,
+    };
+    if let (Some(level), Tool::Select, false) = (temp_level, tool, state.temp_dims_off) {
         let quiet = state.modal.is_some()
             || state.grip.is_some()
             || state.edit.is_some()

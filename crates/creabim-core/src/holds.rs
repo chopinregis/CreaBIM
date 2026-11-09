@@ -39,6 +39,9 @@ pub fn place_of(model: &Model, id: ElementId) -> Option<Place> {
         ElementKind::Wall(w) if w.length() > 1e-9 => Some(Place::Line(w.start, w.end)),
         ElementKind::Grid(g) if g.start.distance(g.end) > 1e-9 => Some(Place::Line(g.start, g.end)),
         ElementKind::Column(c) => Some(Place::Point(c.position)),
+        // a level, in a section's (along, height) space: a level line at
+        // its elevation (A5-2), held only against other levels
+        ElementKind::Level(l) => Some(Place::Line(DVec2::new(0.0, l.elevation), DVec2::new(1.0, l.elevation))),
         _ => None,
     }
 }
@@ -96,6 +99,11 @@ pub fn shift(
         }
         ElementKind::Column(c) => {
             c.position += by;
+            vec![]
+        }
+        // up or down: what stands on it follows through its level
+        ElementKind::Level(l) => {
+            l.elevation += by.y;
             vec![]
         }
         ElementKind::Grid(g) => {

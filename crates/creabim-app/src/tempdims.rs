@@ -54,6 +54,47 @@ pub struct TempDim {
 pub struct TempState {
     pub editing: Option<(ElementId, ElementId, usize)>,
     pub typed: crate::tracker::Tracker,
+    /// Where the pane was last clicked (drawing units): a dimension between
+    /// two levels moves the level at the end nearer it (A5-2).
+    pub click: Option<DVec2>,
+}
+
+/// A placed dimension whose two ends are on levels (in a section or
+/// elevation): each end's level and its point in the drawing.
+pub fn dim_levels(model: &Model, id: ElementId) -> Option<[(ElementId, DVec2); 2]> {
+    let ElementKind::Dimension(d) = &model.get(id)?.kind else {
+        return None;
+    };
+    let end = |p: &creabim_core::HostPoint| {
+        let h = p.host?;
+        let ElementKind::Level(l) = &model.get(h)?.kind else {
+            return None;
+        };
+        Some((h, DVec2::new(p.local.x, l.elevation + p.local.y)))
+    };
+    let (a, b) = (end(&d.a)?, end(&d.b)?);
+    (a.0 != b.0).then_some([a, b])
+}
+
+/// The value box of a placed dimension between two levels: typing moves
+/// the level at the end nearer `click`, the other stays (A5-2).
+fn dim_level_temp(model: &Model, id: ElementId, click: DVec2) -> Option<TempDim> {
+    let [p, q] = dim_levels(model, id)?;
+    let (mine, other) = if p.1.distance(click) <= q.1.distance(click) { (p, q) } else { (q, p) };
+    let z = |l: ElementId| model.level(l).map_or(0.0, |l| l.elevation);
+    let (zm, zo) = (z(mine.0), z(other.0));
+    Some(TempDim {
+        owner: mine.0,
+        other: Some(other.0),
+        a: mine.1,
+        b: other.1,
+        value: (zm - zo).abs(),
+        how: How::Spacing {
+            n: DVec2::new(0.0, if zm >= zo { 1.0 } else { -1.0 }),
+        },
+        held: matches!(&model.get(id)?.kind, ElementKind::Dimension(d) if d.held.is_some()).then_some(id),
+        to: name_of(model, other.0),
+    })
 }
 
 fn name_of(model: &Model, id: ElementId) -> String {
@@ -103,6 +144,38 @@ pub fn find(model: &Model, level: ElementId, id: ElementId, near: DVec2) -> Vec<
     let Some(e) = model.get(id) else {
         return vec![];
     };
+    // a level in a section or elevation (A5-2): its height above the level
+    // below and below the level above, at the middle of the pane
+    if let ElementKind::Level(l) = &e.kind {
+        let z = l.elevation;
+        let others: Vec<(ElementId, f64)> = model
+            .iter()
+            .filter(|o| o.id != id)
+            .filter_map(|o| match &o.kind {
+                ElementKind::Level(m) => Some((o.id, m.elevation)),
+                _ => None,
+            })
+            .collect();
+        let below = others.iter().filter(|o| o.1 < z - 1e-9).max_by(|a, b| a.1.total_cmp(&b.1));
+        let above = others.iter().filter(|o| o.1 > z + 1e-9).min_by(|a, b| a.1.total_cmp(&b.1));
+        return [below, above]
+            .into_iter()
+            .flatten()
+            .map(|&(o, oz)| TempDim {
+                owner: id,
+                other: Some(o),
+                a: DVec2::new(near.x, z),
+                b: DVec2::new(near.x, oz),
+                value: (z - oz).abs(),
+                // from the neighbour toward the level
+                how: How::Spacing {
+                    n: DVec2::new(0.0, if z > oz { 1.0 } else { -1.0 }),
+                },
+                held: holds::holding(model, id, o),
+                to: name_of(model, o),
+            })
+            .collect();
+    }
     // a grid line is in every plan; the rest must be on this level
     if !matches!(e.kind, ElementKind::Grid(_)) && level_of(model, id) != Some(level) {
         return vec![];
@@ -403,8 +476,38 @@ pub fn padlock(model: &Model, view: ElementId, d: &TempDim) -> Option<(Transacti
     let ElementKind::View(v) = &model.get(view)?.kind else {
         return None;
     };
-    if !matches!(v.kind, ViewKind::Plan { .. }) {
+    // levels are locked in a section or elevation, the rest in plans
+    let level = matches!(model.get(d.owner)?.kind, ElementKind::Level(_));
+    if level != matches!(v.kind, ViewKind::Section { .. }) {
         return None;
+    }
+    // a dimension already placed between two levels here holds itself
+    // rather than gaining a twin (A5-2)
+    if level {
+        let placed = model.iter().find(|e| match &e.kind {
+            ElementKind::Dimension(dim) => {
+                dim.view == view
+                    && dim_levels(model, e.id).is_some_and(|[p, q]| {
+                        (p.0 == d.owner && q.0 == other) || (p.0 == other && q.0 == d.owner)
+                    })
+            }
+            _ => false,
+        });
+        if let Some(e) = placed {
+            let mut now = e.clone();
+            if let ElementKind::Dimension(dim) = &mut now.kind {
+                dim.held = Some(d.value);
+            }
+            return Some((
+                Transaction::new("Lock dimension").replace(e.clone(), now),
+                format!(
+                    "Locked: {} keeps {} from {}. Moving either moves the other.",
+                    name_of(model, d.owner),
+                    crate::units::len(d.value),
+                    d.to
+                ),
+            ));
+        }
     }
     let a = creabim_geom::annotate::attach(model, v, Some(d.owner), d.a);
     let b = creabim_geom::annotate::attach(model, v, Some(other), d.b);
@@ -562,7 +665,10 @@ pub fn interact(
         }
     };
     let near = xf.to_world(painter.clip_rect().center());
-    let dims = find(doc.model(), level, id, near);
+    let mut dims = find(doc.model(), level, id, near);
+    if dims.is_empty() {
+        dims.extend(dim_level_temp(doc.model(), id, temp.click.unwrap_or(near)));
+    }
     let editing = temp
         .editing
         .filter(|(v, o, i)| *v == view && *o == id && *i < dims.len());
@@ -929,5 +1035,88 @@ mod tests {
             .find(|d| d.how == How::Along { start_side: true })
             .unwrap();
         assert!(set(doc.model(), start, 9.0).is_err());
+    }
+}
+
+#[cfg(test)]
+mod level_tests {
+    use super::*;
+    use creabim_core::{Dimension, Document, HostPoint, Level};
+
+    fn levels() -> (Document, [ElementId; 3]) {
+        crate::units::set(creabim_core::Units::metric());
+        let mk = |n: &str, z: f64| Element::new(n, ElementKind::Level(Level { elevation: z, height: 3.0 }));
+        let (a, b, c) = (mk("Ground", 0.0), mk("First", 3.0), mk("Roof", 6.0));
+        let ids = [a.id, b.id, c.id];
+        let mut doc = Document::new();
+        doc.commit(Transaction::new("levels").insert(a).insert(b).insert(c)).unwrap();
+        (doc, ids)
+    }
+
+    #[test]
+    fn a_level_measures_to_the_levels_below_and_above_and_typing_moves_it() {
+        let (mut doc, [g, f, r]) = levels();
+        let dims = find(doc.model(), ElementId::new(), f, DVec2::new(5.0, 0.0));
+        assert_eq!(dims.len(), 2);
+        assert_eq!(dims[0].other, Some(g));
+        assert_eq!(dims[1].other, Some(r));
+        assert!((dims[0].value - 3.0).abs() < 1e-9 && (dims[1].value - 3.0).abs() < 1e-9);
+        // 2.5 m below the roof: the first floor goes up half a metre
+        let (tx, _) = set(doc.model(), &dims[1], 2.5).unwrap();
+        doc.commit(tx).unwrap();
+        assert!((doc.model().level(f).unwrap().elevation - 3.5).abs() < 1e-9);
+        assert!((doc.model().level(r).unwrap().elevation - 6.0).abs() < 1e-9);
+        assert!((doc.model().level(g).unwrap().elevation).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_dimension_between_two_levels_moves_the_level_nearer_the_click() {
+        let (mut doc, [g, f, _]) = levels();
+        let v = Element::new(
+            "Section A",
+            ElementKind::View(creabim_core::View::section(DVec2::ZERO, DVec2::new(10.0, 0.0), 5.0, true)),
+        );
+        let view = v.id;
+        doc.commit(Transaction::new("view").insert(v)).unwrap();
+        let on = |h: ElementId, x: f64| HostPoint {
+            host: Some(h),
+            local: DVec2::new(x, 0.0),
+            from_end: false,
+            body: None,
+        };
+        let dim = Element::new("Dimension", ElementKind::Dimension(Dimension::linear(view, on(g, 2.0), on(f, 2.0), 0.5)));
+        let id = dim.id;
+        doc.commit(Transaction::new("dim").insert(dim)).unwrap();
+        // clicked near its top end: the first floor moves, the ground stays
+        let d = dim_level_temp(doc.model(), id, DVec2::new(2.0, 2.8)).unwrap();
+        assert_eq!(d.owner, f);
+        let (tx, _) = set(doc.model(), &d, 2.7).unwrap();
+        doc.commit(tx).unwrap();
+        assert!((doc.model().level(f).unwrap().elevation - 2.7).abs() < 1e-9);
+        assert!(doc.model().level(g).unwrap().elevation.abs() < 1e-9);
+        // clicked near the bottom: the ground moves instead
+        let d = dim_level_temp(doc.model(), id, DVec2::new(2.0, 0.1)).unwrap();
+        assert_eq!(d.owner, g);
+    }
+
+    #[test]
+    fn a_locked_level_spacing_carries_the_level_above() {
+        let (mut doc, [g, f, r]) = levels();
+        let v = Element::new(
+            "Section A",
+            ElementKind::View(creabim_core::View::section(DVec2::ZERO, DVec2::new(10.0, 0.0), 5.0, true)),
+        );
+        let view = v.id;
+        doc.commit(Transaction::new("view").insert(v)).unwrap();
+        // lock First to Roof, then type First 3.4 m above the ground
+        let dims = find(doc.model(), view, f, DVec2::new(5.0, 0.0));
+        let (tx, _) = padlock(doc.model(), view, &dims[1]).unwrap();
+        doc.commit(tx).unwrap();
+        let dims = find(doc.model(), view, f, DVec2::new(5.0, 0.0));
+        assert_eq!(dims[0].other, Some(g));
+        let (tx, _) = set(doc.model(), &dims[0], 3.4).unwrap();
+        doc.commit(tx).unwrap();
+        assert!((doc.model().level(f).unwrap().elevation - 3.4).abs() < 1e-9);
+        assert!((doc.model().level(r).unwrap().elevation - 6.4).abs() < 1e-9, "the roof keeps 3 m above");
     }
 }
