@@ -186,7 +186,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             egui::ComboBox::from_id_salt("mat_category")
                 .icon(crate::props::combo_icon)
                 .selected_text(library::category_label(&m.category))
-                .width(170.0)
+                .width(ui.available_width().min(170.0)).truncate()
                 .show_ui(ui, |ui| {
                     if ui
                         .selectable_label(m.category.is_empty(), "Uncategorised")
@@ -228,7 +228,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             egui::ComboBox::from_id_salt("mat_hatch")
                 .icon(crate::props::combo_icon)
                 .selected_text(m.hatch.label())
-                .width(170.0)
+                .width(ui.available_width().min(170.0)).truncate()
                 .show_ui(ui, |ui| {
                     for h in Hatch::ALL {
                         if ui.selectable_value(&mut m.hatch, h, h.label()).changed() {

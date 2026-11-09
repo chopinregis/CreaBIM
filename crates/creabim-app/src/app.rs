@@ -863,6 +863,46 @@ impl CreaBimApp {
     /// The references in 3D (MU32): each where its views show it, on the
     /// plan's level or standing on the section's plane, faint as in the
     /// views. A picture shows its frame.
+    /// Where Divide will cut, while its window is open (MU36): a mark at
+    /// each division on the selected element's length or height.
+    fn draw_divide_preview(&self, painter: &egui::Painter, project: &dyn Fn(DVec3) -> Option<egui::Pos2>) {
+        use creabim_core::divide::{self, Dir, Make};
+        if !self.divide.open {
+            return;
+        }
+        let model = self.doc.model();
+        let Some(h) = self.selection.all().first().copied() else { return };
+        let Some(s) = divide::span(model, h) else { return };
+        let d = &self.divide;
+        let lift = s.level.and_then(|l| model.level(l)).map_or(0.0, |l| l.elevation);
+        let total = match d.dir {
+            Dir::Along => s.len,
+            Dir::Up => s.z1 - s.z0,
+        };
+        let gap = if d.make == Make::Cuts { d.gap } else { 0.0 };
+        let Some(parts) = divide::parts(total, d.parts, gap) else { return };
+        let accent = Color32::from_rgb(230, 120, 30);
+        let stroke = egui::Stroke::new(2.0, accent);
+        let mid = s.o + s.v * (s.width / 2.0);
+        for (t, size) in &parts[1..] {
+            let t = *t - gap / 2.0;
+            let _ = size;
+            let (a, b) = match d.dir {
+                Dir::Along => {
+                    let p = mid + s.u * t;
+                    (p.extend(lift + s.z0), p.extend(lift + s.z1.max(s.z0 + 0.3)))
+                }
+                Dir::Up => {
+                    let z = lift + s.z0 + t;
+                    (mid.extend(z), (mid + s.u * s.len).extend(z))
+                }
+            };
+            if let (Some(pa), Some(pb)) = (project(a), project(b)) {
+                painter.line_segment([pa, pb], stroke);
+            }
+        }
+    }
+
     /// The references shown in 3D: not hidden, and not kept to their views.
     fn refs_in_3d(&self) -> Vec<(ElementId, creabim_core::Reference)> {
         self.doc
@@ -2330,6 +2370,7 @@ impl CreaBimApp {
         };
         let hover = response.hover_pos();
         self.draw_references_3d(&painter, &project);
+        self.draw_divide_preview(&painter, &project);
         self.draw_sketches(&painter, &project);
         self.draw_grid_bubbles(&painter, &project);
         self.draw_crop_frames(&painter, &project);
@@ -4963,7 +5004,7 @@ impl CreaBimApp {
         egui::ComboBox::from_id_salt("workplane")
             .icon(crate::props::combo_icon)
             .selected_text(text)
-            .width(150.0)
+            .width(ui.available_width().min(150.0)).truncate()
             .show_ui(ui, |ui| {
                 if ui
                     .selectable_label(self.workplane.is_none(), "Level (follows the plan)")
@@ -5021,7 +5062,7 @@ impl CreaBimApp {
             );
             egui::ComboBox::from_id_salt("pivot").icon(crate::props::combo_icon)
                 .selected_text(self.plan.pivot.label())
-                .width(150.0)
+                .width(ui.available_width().min(150.0)).truncate()
                 .show_ui(ui, |ui| {
                     for p in crate::modal::Pivot::ALL {
                         ui.selectable_value(&mut self.plan.pivot, p, p.label());
@@ -5047,7 +5088,7 @@ impl CreaBimApp {
             };
             egui::ComboBox::from_id_salt("view").icon(crate::props::combo_icon)
                 .selected_text(current)
-                .width(190.0)
+                .width(ui.available_width().min(190.0)).truncate()
                 .show_ui(ui, |ui| {
                     for (id, name, _) in views {
                         ui.selectable_value(&mut self.active_view, Some(id), name);
@@ -5151,7 +5192,7 @@ impl CreaBimApp {
         egui::ComboBox::from_id_salt("place_view")
             .icon(crate::props::combo_icon)
             .selected_text("Place view…")
-            .width(150.0)
+            .width(ui.available_width().min(150.0)).truncate()
             .show_ui(ui, |ui| {
                 for (id, name, _) in self.views() {
                     let label = if placed.contains(&id) {
@@ -6675,6 +6716,13 @@ impl CreaBimApp {
         if creabim_core::types::TypeCategory::of(&e.kind).is_some() {
             self.type_picker(ui, id);
         }
+        // a sweep's profile from the library; any shape made a profile (MU36)
+        self.sweep_profile_rows(ui, id);
+        if creabim_core::profiles::from_shape(self.doc.model(), id).is_some()
+            && crate::props::action(ui, "Profile", "Make a profile", "Its shape (a sketch on any plane, open or closed; a slab; an extrusion) kept in the project's profile library, to sweep or place", true).clicked()
+        {
+            self.profile_from_selection();
+        }
         // even parts of its length (MU34 B2)
         if creabim_core::divide::span(self.doc.model(), id).is_some()
             && crate::props::action(ui, "Divide", "Into even parts…", "Cut it into parts, put guides at the divisions, or copy something into each part", true).clicked()
@@ -8094,6 +8142,7 @@ impl CreaBimApp {
         let Some(e) = self.doc.model().get(id).cloned() else {
             return;
         };
+        let mut multi: Option<String> = None;
         if self.selection.len() > 1 {
             // how many of each kind, then the active element below
             let mut kinds: Vec<(&str, usize)> = Vec::new();
@@ -8113,18 +8162,9 @@ impl CreaBimApp {
                 .iter()
                 .map(|(k, n)| format!("{n} {}", plural(k, *n)))
                 .collect();
-            ui.label(format!(
-                "{} selected: {}.",
-                self.selection.len(),
-                list.join(", ")
-            ));
-            ui.label(
-                egui::RichText::new(
-                    "G, R, S, Shift+D, Delete, Ctrl+C and H act on all of them. Below is the last one picked; Shift+click picks another.",
-                )
-                .weak(),
-            );
-            ui.separator();
+            // one quiet line under the header rows, its help on hover
+            // (MU36: a block above the name)
+            multi = Some(format!("{} selected: {}", self.selection.len(), list.join(", ")));
         }
         // an object is what its type says: a basin an IfcSanitaryTerminal
         let class = creabim_core::objects::type_of(self.doc.model(), &e)
@@ -8151,17 +8191,25 @@ impl CreaBimApp {
             }
         }
         crate::props::head_row(ui, "IFC class", |ui| {
-            crate::props::flow(ui, |ui| {
+            // the ? at the row's end, the class cut to what is left (MU36:
+            // the ? fell to the next line)
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                ui.add(egui::Label::new(egui::RichText::new(class.clone()).color(pal.accent)).truncate());
-                // what this kind of element is, and its page in the guide
                 let page = crate::help::element_page(&e.kind);
                 let title = crate::help::text(page.split('#').next().unwrap_or(page))
                     .map(crate::help::title)
                     .unwrap_or("This element");
                 self.quick_help_button(ui, page, title);
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(egui::Label::new(egui::RichText::new(class.clone()).color(pal.accent)).truncate())
+                        .on_hover_text(class.clone());
+                });
             })
         });
+        if let Some(m) = multi.take() {
+            ui.add(egui::Label::new(egui::RichText::new(m).weak().small()).truncate())
+                .on_hover_text("G, R, S, Shift+D, Delete, Ctrl+C and H act on all of them. Below is the last one picked; Shift+click picks another.");
+        }
         if marksui::markable(&e.kind) {
             crate::props::head_row(ui, "Mark", |ui| {
                 let w = ui.available_width();

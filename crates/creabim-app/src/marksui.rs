@@ -344,7 +344,7 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
                 egui::ComboBox::from_id_salt(("mark_order", class))
                     .icon(crate::props::combo_icon)
                     .selected_text(r.order.label())
-                    .width(150.0)
+                    .width(ui.available_width().min(150.0)).truncate()
                     .show_ui(ui, |ui| {
                         for o in MarkOrder::ALL {
                             ui.selectable_value(&mut r.order, o, o.label());

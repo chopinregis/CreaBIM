@@ -393,6 +393,7 @@ impl CreaBimApp {
             "menu:CreaBIM" => self.app_menu(),
             "units.menu" => self.unit_items(),
             "sweep.library" => self.sweep_library_items(),
+            "extrusion.library" => self.extrusion_library_items(),
             "menu:File" => self.file_menu(),
             "menu:Edit" => self.edit_menu(),
             "menu:View" => self.view_menu(),

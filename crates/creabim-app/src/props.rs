@@ -9,13 +9,13 @@ use eframe::egui::{self, Color32, Response, Sense, Ui, Vec2};
 /// The label column's width for a row `width` wide: wide enough for most
 /// labels, never more than 40% of the row.
 pub fn label_width(width: f32) -> f32 {
-    (width * 0.4).clamp(72.0, 160.0)
+    (width * 0.38).clamp(44.0, 160.0)
 }
 
 /// Narrower than this, a row stacks: its label above, its control the
 /// full width below (A4-1). As Blender, rows keep one line down to a
 /// narrow panel and cut their labels instead (MU22).
-pub const STACK_BELOW: f32 = 170.0;
+pub const STACK_BELOW: f32 = 110.0;
 
 /// A section open on this layer: where its box starts, filled once the
 /// next section starts or [`close_box`] is called (MU22, as Blender's
@@ -244,7 +244,9 @@ pub fn fill(ui: &mut Ui, w: impl egui::Widget) -> Response {
 /// "+ Picture" broke onto two lines).
 pub fn flow<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
     ui.horizontal_wrapped(|ui| {
-        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        // cut with … rather than growing: Extend let one long label widen
+        // the whole panel and push every field past its edge (MU36)
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
         add(ui)
     })
 }
@@ -784,11 +786,12 @@ mod tests {
 
     #[test]
     fn the_label_column_is_two_fifths_of_the_row_and_narrow_rows_stack() {
-        // A4-1: about 40 %, never under 96 px, and no wider than 180
-        assert_eq!(label_width(300.0), 120.0);
+        // about 38 %, never under 44 px, no wider than 160 (MU36: a narrow
+        // panel keeps one value a line, the field stretching)
+        assert!((label_width(300.0) - 114.0).abs() < 1e-3);
         assert_eq!(label_width(1000.0), 160.0);
-        assert_eq!(label_width(150.0), 72.0);
-        // only below 170 px does the label go above its control (MU22)
-        assert_eq!(STACK_BELOW, 170.0);
+        assert_eq!(label_width(100.0), 44.0);
+        // only below 110 px does the label go above its control
+        assert_eq!(STACK_BELOW, 110.0);
     }
 }

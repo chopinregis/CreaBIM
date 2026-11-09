@@ -738,6 +738,9 @@ pub struct Railing {
     pub stair: Option<StairSide>,
     #[serde(default)]
     pub material: Option<ElementId>,
+    /// The top rail's profile from the library (MU36); none: a square bar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rail_profile: Option<String>,
 }
 
 /// Rail and post section sizes.
@@ -753,6 +756,7 @@ impl Railing {
             post_spacing: 1.2,
             stair: None,
             material: None,
+            rail_profile: None,
         }
     }
 

@@ -31,10 +31,22 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
             stair_mesh(s, s.base(model), s.rise(model)),
             [0.82, 0.80, 0.76],
         ),
-        ElementKind::Railing(r) => (
-            railing_mesh(&r.path_in(model), r.height, r.post_spacing),
-            [0.32, 0.34, 0.38],
-        ),
+        ElementKind::Railing(r) => {
+            let path = r.path_in(model);
+            let rail = r.rail_profile.as_deref().and_then(|n| creabim_core::profiles::find(model, n));
+            let m = match rail {
+                // the posts and bottom bar as usual, the top rail the
+                // profile swept along the path, its insertion point on top
+                Some(p) => {
+                    let mut m = railing_mesh(&path, r.height - RAIL_SIZE, r.post_spacing);
+                    let top: Vec<DVec3> = path.iter().map(|q| *q + DVec3::Z * (r.height - RAIL_SIZE)).collect();
+                    m.append(&crate::parts::sweep_mesh(&p, &top, false));
+                    m
+                }
+                None => railing_mesh(&path, r.height, r.post_spacing),
+            };
+            (m, [0.32, 0.34, 0.38])
+        }
         ElementKind::Footing(f) => {
             let top = f.top(model);
             let mut m = TriMesh::default();

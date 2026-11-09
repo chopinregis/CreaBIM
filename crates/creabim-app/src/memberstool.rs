@@ -872,15 +872,33 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             if num(ui, "Post spacing", &mut r.post_spacing, 0.1, 5.0) {
                 label = "Railing posts"
             }
+            // its top rail from the profile library (MU36)
+            crate::props::row(ui, "Top rail", |ui| {
+                let w = ui.available_width();
+                let mut names: Vec<String> = creabim_core::profiles::project_profiles(model).into_iter().map(|p| p.name).collect();
+                names.extend(["Handrail", "Tube", "Bar"].iter().map(|s| s.to_string()));
+                egui::ComboBox::from_id_salt("rail.profile")
+                    .icon(crate::props::combo_icon)
+                    .width(w)
+                    .truncate()
+                    .selected_text(r.rail_profile.clone().unwrap_or_else(|| "Square bar".into()))
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(r.rail_profile.is_none(), "Square bar").clicked() {
+                            r.rail_profile = None;
+                            label = "Railing top rail";
+                        }
+                        for n in &names {
+                            if ui.selectable_label(r.rail_profile.as_deref() == Some(n.as_str()), n).clicked() {
+                                r.rail_profile = Some(n.clone());
+                                label = "Railing top rail";
+                            }
+                        }
+                    });
+            });
             if let Some(side) = &mut r.stair {
-                crate::props::flow(ui, |ui| {
-                    ui.label("Side");
-                    let a = ui.selectable_value(&mut side.left, true, "Left");
-                    let b = ui.selectable_value(&mut side.left, false, "Right");
-                    if a.changed() || b.changed() {
-                        label = "Railing side";
-                    }
-                });
+                if crate::props::choice(ui, "Side", &mut side.left, &[(true, "Left", ""), (false, "Right", "")]) {
+                    label = "Railing side";
+                }
                 weak(ui, "Follows its stair.".into());
             }
             weak(

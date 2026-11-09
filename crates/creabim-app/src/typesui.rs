@@ -175,7 +175,7 @@ fn material_pick(
         egui::ComboBox::from_id_salt(("type_material", salt))
             .icon(crate::props::combo_icon)
             .selected_text(shown)
-            .width(150.0)
+            .width(ui.available_width().min(150.0)).truncate()
             .show_ui(ui, |ui| {
                 changed |= ui.selectable_value(current, None, "By type").changed();
                 for (id, n) in &materials {
@@ -206,7 +206,7 @@ fn assembly_pick(
         egui::ComboBox::from_id_salt("type_assembly")
             .icon(crate::props::combo_icon)
             .selected_text(shown)
-            .width(170.0)
+            .width(ui.available_width().min(170.0)).truncate()
             .show_ui(ui, |ui| {
                 changed |= ui
                     .selectable_value(current, None, "None (single material)")

@@ -227,7 +227,7 @@ fn limit_ui(
             .map_or(none.to_string(), |x| x.1.clone());
         egui::ComboBox::from_id_salt(salt)
             .icon(crate::props::combo_icon)
-            .width(130.0)
+            .width(ui.available_width().min(130.0)).truncate()
             .selected_text(current)
             .show_ui(ui, |ui| {
                 if ui.selectable_label(l.is_none(), none).clicked() {

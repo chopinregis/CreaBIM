@@ -15,6 +15,51 @@ use std::f64::consts::PI;
 pub struct NamedProfile {
     pub name: String,
     pub points: Vec<DVec2>,
+    /// An open line, not an outline (MU36: an open sketch was closed by
+    /// force): swept, it is thickened to `thickness` on its left.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub open: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thickness: Option<f64>,
+}
+
+/// How thick an open profile is swept when it says nothing: 20 mm.
+pub const OPEN_THICKNESS: f64 = 0.02;
+
+impl NamedProfile {
+    /// The outline a sweep takes: itself, or an open line thickened.
+    pub fn outline(&self) -> Vec<DVec2> {
+        if self.open {
+            thicken(&self.points, self.thickness.unwrap_or(OPEN_THICKNESS))
+        } else {
+            self.points.clone()
+        }
+    }
+}
+
+/// An open line as a thin closed outline: the line, then the line again
+/// `t` to its left, back.
+pub fn thicken(line: &[DVec2], t: f64) -> Vec<DVec2> {
+    let n = line.len();
+    if n < 2 {
+        return line.to_vec();
+    }
+    let normal = |i: usize| -> DVec2 {
+        let d = |a: usize, b: usize| (line[b] - line[a]).normalize_or_zero().perp();
+        match i {
+            0 => d(0, 1),
+            i if i == n - 1 => d(n - 2, n - 1),
+            i => {
+                let m = (d(i - 1, i) + d(i, i + 1)).normalize_or_zero();
+                // as far out as keeps the thickness square to both sides
+                let c = m.dot(d(i, i + 1)).max(0.3);
+                m / c
+            }
+        }
+    };
+    let mut out = line.to_vec();
+    out.extend((0..n).rev().map(|i| line[i] + normal(i) * t));
+    out
 }
 
 /// The built-in presets, by name, in the order the picker lists them.
@@ -103,7 +148,7 @@ pub fn find(model: &Model, name: &str) -> Option<Vec<DVec2>> {
     project_profiles(model)
         .into_iter()
         .find(|p| p.name == name)
-        .map(|p| p.points)
+        .map(|p| p.outline())
         .or_else(|| preset(name))
 }
 
@@ -113,6 +158,29 @@ pub fn set_profiles(model: &Model, profiles: Vec<NamedProfile>, label: &str) -> 
     info.profiles = profiles;
     let mut tx = crate::project::set_project(model, info);
     tx.label = label.into();
+    tx
+}
+
+/// The parts made with library profile `name`, set to `outline`: what
+/// editing a profile adds to its undo step (MU36).
+pub fn follow(model: &Model, name: &str, outline: &[DVec2], tx: crate::Transaction) -> crate::Transaction {
+    let mut tx = tx;
+    for e in model.iter() {
+        let ElementKind::Part(p) = &e.kind else { continue };
+        if p.profile.as_deref() != Some(name) {
+            continue;
+        }
+        let mut now = e.clone();
+        if let ElementKind::Part(q) = &mut now.kind {
+            if let crate::parts::Form::Sweep { profile, .. } = &mut q.form {
+                if profile.as_slice() == outline {
+                    continue;
+                }
+                *profile = outline.to_vec();
+            }
+        }
+        tx = tx.replace(e.clone(), now);
+    }
     tx
 }
 
@@ -128,30 +196,25 @@ pub fn free_name(model: &Model, base: &str) -> String {
 /// The outline of a shape to take a profile from: a closed sketch, a
 /// slab's, a part's (pulled up from an outline) or a roof's. Moved so its
 /// insertion point (the middle of its bottom edge) is the origin.
-pub fn from_shape(model: &Model, id: crate::ElementId) -> Option<Vec<DVec2>> {
+pub fn from_shape(model: &Model, id: crate::ElementId) -> Option<(Vec<DVec2>, bool)> {
     let e = model.get(id)?;
-    let pts: Vec<DVec2> = match &e.kind {
-        ElementKind::Slab(s) => s.boundary.clone(),
+    let (pts, open): (Vec<DVec2>, bool) = match &e.kind {
+        ElementKind::Slab(s) => (s.boundary.clone(), false),
         ElementKind::Part(p) => match &p.form {
-            crate::parts::Form::Extrusion { outline, .. } => outline.clone(),
-            crate::parts::Form::Sweep { profile, .. } => profile.clone(),
+            crate::parts::Form::Extrusion { outline, .. } => (outline.clone(), false),
+            crate::parts::Form::Sweep { profile, .. } => (profile.clone(), false),
         },
-        ElementKind::Sketch(s) => {
-            let pts = s.points.clone();
-            if pts.len() < 3 {
-                return None;
-            }
-            pts
-        }
+        // a sketch in its own plane, open or closed as drawn
+        ElementKind::Sketch(s) => (s.points.clone(), !s.closed),
         _ => return None,
     };
-    if pts.len() < 3 {
+    if pts.len() < if open { 2 } else { 3 } {
         return None;
     }
     let lo = pts.iter().fold(DVec2::splat(f64::MAX), |a, p| a.min(*p));
     let hi = pts.iter().fold(DVec2::splat(f64::MIN), |a, p| a.max(*p));
     let o = DVec2::new((lo.x + hi.x) / 2.0, lo.y);
-    Some(pts.into_iter().map(|p| p - o).collect())
+    Some((pts.into_iter().map(|p| p - o).collect(), open))
 }
 
 #[cfg(test)]
@@ -170,9 +233,13 @@ mod tests {
     #[test]
     fn project_profiles_are_kept_with_the_project_and_found_by_name() {
         let mut doc = crate::Document::new();
-        let p = NamedProfile { name: "Sill".into(), points: crate::parts::rectangle(0.2, 0.05) };
+        let p = NamedProfile { name: "Sill".into(), points: crate::parts::rectangle(0.2, 0.05), ..Default::default() };
         doc.commit(set_profiles(doc.model(), vec![p.clone()], "Add profile")).unwrap();
         assert_eq!(find(doc.model(), "Sill"), Some(p.points));
+        // an open line sweeps as a thin outline
+        let t = thicken(&[DVec2::ZERO, DVec2::new(0.1, 0.0), DVec2::new(0.1, 0.1)], 0.02);
+        assert_eq!(t.len(), 6);
+        assert!(crate::polygon::signed_area2(&t).abs() > 1e-6);
         assert!(find(doc.model(), "Cornice").is_some());
         assert_eq!(free_name(doc.model(), "Sill"), "Sill 2");
         doc.undo();

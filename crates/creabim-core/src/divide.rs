@@ -222,6 +222,7 @@ mod tests {
                 void: false,
                 material: None,
                 ifc_class: "IfcBuildingElementProxy".into(),
+                profile: None,
             }),
         );
         let id = p.id;

@@ -963,7 +963,18 @@ pub fn plan_view_with(
             ElementKind::Slab(s) => s.level == level,
             // an imported mesh with no level of its own is on the level its
             // base stands on (MU33: a Blender import showed in no plan)
-            ElementKind::FreeMesh(f) => f.level.or_else(|| level_under(model, f.origin.z)) == Some(level),
+            ElementKind::FreeMesh(f) => match f.level {
+                Some(l) => l == level,
+                // no level of its own (an import): in every plan whose cut
+                // or range below it reaches it (MU36: it was on only one)
+                None => {
+                    let z0 = model.level(level).map_or(0.0, |l| l.elevation);
+                    let zs = f.mesh.vertices.iter().map(|v| f.to_model(*v).z + f.origin.z);
+                    let (lo, hi) = zs.fold((f64::MAX, f64::MIN), |(a, b), z| (a.min(z), b.max(z)));
+                    // under the cut and not wholly below the floor's slab
+                    lo < z0 + cut_height && hi > z0 - 0.5
+                }
+            },
             ElementKind::Footing(f) => f.plan_level(model) == level,
             k => creabim_core::members::level_of(k) == Some(level),
         };
@@ -1196,6 +1207,27 @@ pub fn plan_view_with(
             }
             k if on_level && creabim_core::members::is_member(k) => {
                 items.extend(crate::members::member_plan(model, e, cut_height));
+                // a mass or sweep below the cut: its top seen tinted, in
+                // its material under the colour styles (MU36: they read as
+                // wireframe)
+                if let ElementKind::Part(p) = k {
+                    if !p.void {
+                        if let Some(mesh) = crate::parts::part_mesh(model, p) {
+                            let color = creabim_core::material_of(model, e).map_or([0.78, 0.76, 0.72], |(_, m)| m.color);
+                            let item = crate::scene::SceneItem {
+                                id: e.id,
+                                mesh,
+                                color,
+                                surface: crate::scene::PLAIN_SURFACE,
+                                ghost: false,
+                                layer: None,
+                                finish: None,
+                            };
+                            let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
+                            shades.extend(mesh_shade(&item, z, graphics));
+                        }
+                    }
+                }
             }
             // a column standing on a level below, running up through this one
             ElementKind::Column(c) if c.crosses(model, level, cut_height) => {

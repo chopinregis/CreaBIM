@@ -359,6 +359,9 @@ impl CreaBimApp {
                 Shows::Notes => {
                     ui.push_id(("area", i), |ui| self.notes_area(ui, body));
                 }
+                Shows::Profiles => {
+                    ui.push_id(("area", i), |ui| self.profiles_area(ui, body));
+                }
                 _ => {
                     let p = self.shell.theme.palette();
                     ui.painter().rect_filled(body, 0.0, p.panel2);
@@ -612,7 +615,8 @@ impl CreaBimApp {
             // (perspective / orthographic is the last button of the view's
             // own column, beside the cube: not twice, MU20)
             json!({"kind": "button", "id": "crop.add", "icon": "crop-box", "label": "Section box",
-                   "hint": "Add a crop box to the 3D view: it crops everything outside it"}),
+                   "badge": self.doc.model().iter().filter(|e| matches!(&e.kind, ElementKind::CropBox(c) if c.view.is_none())).count(),
+                   "hint": format!("Add a crop box to the 3D view: it crops everything outside it. {} in the 3D view now; they are listed in the browser and the 3D view's Properties", self.doc.model().iter().filter(|e| matches!(&e.kind, ElementKind::CropBox(c) if c.view.is_none())).count())}),
             json!({"kind": "menu", "key": "vis3d", "icon": if self.vis3d.is_empty() { "eye" } else { "eye-off" },
                    "label": "Show", "hint": "What the 3D view shows: grids, annotation, guides, sketches and every category"}),
             // (Frame all and Frame the selection are in the view's own
@@ -673,6 +677,7 @@ impl CreaBimApp {
                 (icon, group, e.map_or(String::new(), |e| e.name.clone()))
             }
             Shows::Notes => ("sticky-note", "Notes", "Notepad".to_string()),
+            Shows::Profiles => ("profile", "Profiles", "Profile library".to_string()),
             _ => ("box", "3D view", "Model".to_string()),
         };
         let mut asks: Vec<Ask> = vec![];
@@ -702,7 +707,7 @@ impl CreaBimApp {
         ));
         if r.clicked() {
             asks.push(Ask::Popup(
-                if shows == Shows::Model || shows == Shows::Notes {
+                if matches!(shows, Shows::Model | Shows::Notes | Shows::Profiles) {
                     "area.kind".into()
                 } else {
                     "area.views".into()
@@ -880,6 +885,12 @@ impl CreaBimApp {
                         .icon("sticky-note")
                         .checked(here == Shows::Notes)
                         .hint("The project's notepad, or the selected note's text, large: as Blender's text editor"),
+                );
+                items.push(
+                    Item::new("area.show:profiles", "Profiles")
+                        .icon("profile")
+                        .checked(here == Shows::Profiles)
+                        .hint("The profile library and its editor, large: pick, draw and edit profiles"),
                 );
                 items
             }
@@ -1081,6 +1092,8 @@ impl CreaBimApp {
                     Shows::Model
                 } else if arg == "notes" {
                     Shows::Notes
+                } else if arg == "profiles" {
+                    Shows::Profiles
                 } else {
                     match self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
                         Some(e) => Shows::View(e.id),
@@ -1271,6 +1284,17 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
                 p,
             )
             .on_hover_text(tip);
+            // a small count at the corner: how many there are (MU36: section
+            // boxes added without a sign)
+            if let Some(n) = c["badge"].as_u64().filter(|n| *n > 0) {
+                let at = r.rect.right_bottom() - egui::vec2(4.0, 4.0);
+                let text = n.to_string();
+                let g = ui.painter().layout_no_wrap(text, egui::FontId::proportional(9.5), egui::Color32::WHITE);
+                let w = (g.size().x + 6.0).max(13.0);
+                let pill = egui::Rect::from_center_size(at, egui::vec2(w, 13.0));
+                ui.painter().rect(pill, 6.5, p.accent, egui::Stroke::new(1.5, p.panel), egui::StrokeKind::Outside);
+                ui.painter().galley(pill.center() - g.size() / 2.0, g, egui::Color32::WHITE);
+            }
             r.clicked()
                 .then(|| Ask::Run(c["id"].as_str().unwrap_or("").into()))
         }
@@ -1288,8 +1312,9 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
             let mut v = c["value"].as_f64().unwrap_or(0.0);
             let unit = c["unit"].as_str().unwrap_or("");
             let mut changed = false;
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.set_width(126.0);
+            // as wide as its label and field, no wider (MU36: "Depth" left a
+            // gap where "Cut height" fitted)
+            ui.horizontal(|ui| {
                 // a field the header's height allows, its text the label's
                 // size and on its line, with even room above and below (MU22)
                 ui.spacing_mut().interact_size.y = 20.0;

@@ -1270,6 +1270,7 @@ fn railing(c: &mut Ctx, r: &f::Railing, at: &Path) {
         post_spacing: c.l(r.post_spacing),
         stair,
         material,
+        rail_profile: None,
     };
     c.insert(
         &r.id,

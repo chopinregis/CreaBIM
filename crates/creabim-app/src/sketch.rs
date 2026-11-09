@@ -755,80 +755,82 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
         form.kind = 6;
     }
     let two = matches!(form.kind, 3..=5);
-    crate::props::flow(ui, |ui| {
-        if sk.circle.is_none() {
-            egui::ComboBox::from_id_salt("constraint_kind")
-                .icon(crate::props::combo_icon)
-                .selected_text(KINDS[form.kind])
-                .show_ui(ui, |ui| {
-                    for (k, name) in KINDS.iter().enumerate() {
-                        ui.selectable_value(&mut form.kind, k, *name);
-                    }
-                });
-        }
-        let picker = |ui: &mut egui::Ui, salt: &str, v: &mut usize, corners_only: bool| {
-            let n = if corners_only { corners } else { count };
-            *v = (*v).min(n.saturating_sub(1));
-            let name = |i: usize| {
-                if corners_only {
-                    format!("Corner {}", i + 1)
-                } else {
-                    segment_label(sk, i)
-                }
-            };
+    // Blender's rows (MU36): each choice a label/field row filling the
+    // field column, Add a button there; nothing runs past the panel
+    let picker = |ui: &mut egui::Ui, label: &str, salt: &str, v: &mut usize, corners_only: bool| {
+        let n = if corners_only { corners } else { count };
+        *v = (*v).min(n.saturating_sub(1));
+        let name = |i: usize| {
+            if corners_only {
+                format!("Corner {}", i + 1)
+            } else {
+                segment_label(sk, i)
+            }
+        };
+        crate::props::row(ui, label, |ui| {
+            let w = ui.available_width();
             egui::ComboBox::from_id_salt(salt)
                 .icon(crate::props::combo_icon)
+                .width(w)
+                .truncate()
                 .selected_text(name(*v))
                 .show_ui(ui, |ui| {
                     for i in 0..n {
                         ui.selectable_value(v, i, name(i));
                     }
                 });
+        });
+    };
+    if sk.circle.is_none() {
+        crate::props::row(ui, "Add", |ui| {
+            let w = ui.available_width();
+            egui::ComboBox::from_id_salt("constraint_kind")
+                .icon(crate::props::combo_icon)
+                .width(w)
+                .truncate()
+                .selected_text(KINDS[form.kind])
+                .show_ui(ui, |ui| {
+                    for (k, name) in KINDS.iter().enumerate() {
+                        ui.selectable_value(&mut form.kind, k, *name);
+                    }
+                });
+        });
+        let corner = form.kind == 7;
+        picker(ui, if two || corner { "First" } else { "Of" }, "constraint_a", &mut form.a, corner);
+        if two || corner {
+            picker(ui, "Second", "constraint_b", &mut form.b, corner);
+        }
+    }
+    if crate::props::action(ui, "", "Add constraint", "The sketch moves to meet it", true).clicked() {
+        let (a, b) = (form.a, form.b);
+        let mut c = match form.kind {
+            0 => Constraint::Length {
+                segment: a,
+                value: 0.0,
+            },
+            1 => Constraint::Horizontal { segment: a },
+            2 => Constraint::Vertical { segment: a },
+            3 => Constraint::Perpendicular { a, b },
+            4 => Constraint::Parallel { a, b },
+            5 => Constraint::Equal { a, b },
+            6 => Constraint::Radius {
+                segment: if sk.circle.is_some() { 0 } else { a },
+                value: 0.0,
+            },
+            _ => Constraint::Coincident { a, b },
         };
-        if sk.circle.is_none() {
-            let corner = form.kind == 7;
-            picker(ui, "constraint_a", &mut form.a, corner);
-            if two || corner {
-                ui.label("and");
-                picker(ui, "constraint_b", &mut form.b, corner);
-            }
+        // a new dimension starts at the size the sketch has now
+        if let (Some(m), Some(v)) = (c.measure(sk), c.value_mut()) {
+            *v = m;
         }
-        if ui.button("Add").clicked() {
-            let (a, b) = (form.a, form.b);
-            let mut c = match form.kind {
-                0 => Constraint::Length {
-                    segment: a,
-                    value: 0.0,
-                },
-                1 => Constraint::Horizontal { segment: a },
-                2 => Constraint::Vertical { segment: a },
-                3 => Constraint::Perpendicular { a, b },
-                4 => Constraint::Parallel { a, b },
-                5 => Constraint::Equal { a, b },
-                6 => Constraint::Radius {
-                    segment: if sk.circle.is_some() { 0 } else { a },
-                    value: 0.0,
-                },
-                _ => Constraint::Coincident { a, b },
-            };
-            // a new dimension starts at the size the sketch has now
-            if let (Some(m), Some(v)) = (c.measure(sk), c.value_mut()) {
-                *v = m;
-            }
-            match sk.constrain(c) {
-                Ok(()) => edit = Edit::Done("Add constraint"),
-                Err(e) => edit = Edit::Refused(format!("Couldn't add that: {e}")),
-            }
+        match sk.constrain(c) {
+            Ok(()) => edit = Edit::Done("Add constraint"),
+            Err(e) => edit = Edit::Refused(format!("Couldn't add that: {e}")),
         }
-    });
+    }
     ui.data_mut(|d| d.insert_temp(id, form));
     if !sk.constraints.is_empty() {
-        ui.label(
-            egui::RichText::new(
-                "Drag a value or type it; the sketch follows. Its first corner stays put.",
-            )
-            .weak(),
-        );
+        crate::props::note(ui, "Drag a value or type it; the sketch follows. Its first corner stays put.");
     }
     edit
 }

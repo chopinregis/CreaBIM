@@ -349,7 +349,7 @@ fn part_material(
     egui::ComboBox::from_id_salt(("part_material", salt))
         .icon(crate::props::combo_icon)
         .selected_text(shown)
-        .width(170.0)
+        .width(ui.available_width().min(170.0)).truncate()
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(current, None, "None").changed();
             for e in model

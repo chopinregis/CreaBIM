@@ -37,7 +37,7 @@
     "Elevation": "<path d=\"M2 22V10l7-6 7 6v12z\"></path><path d=\"M6.5 22v-6h5v6\"></path><path d=\"M23 13h-4\"></path><path d=\"M21 11l2 2-2 2\"></path>",
     "Crop box": "<path d=\"M12 3l8 4.5v9L12 21l-8-4.5v-9z\" stroke-dasharray=\"2 2\"></path><path d=\"M4 7.5L12 12l8-4.5M12 12v9\"></path><path d=\"M1 5V1h4M23 5V1h-4M1 19v4h4M23 19v4h-4\"></path>",
     "Frame all": "<path d=\"M3 7V3h4\"></path><path d=\"M17 3h4v4\"></path><path d=\"M21 17v4h-4\"></path><path d=\"M7 21H3v-4\"></path><path d=\"M8 8h8v8H8z\"></path>",
-    "Hidden elements": "<rect x=\"2\" y=\"3.25\" width=\"20\" height=\"17.5\" rx=\"2.5\" stroke-dasharray=\"2 2.5\"></rect><path d=\"M6.375 12s2.125 -3.75 5.625 -3.75s5.625 3.75 5.625 3.75s-2.125 3.75 -5.625 3.75s-5.625 -3.75 -5.625 -3.75z\"></path><circle cx=\"12\" cy=\"12\" r=\"1.375\"></circle>",
+    "Hidden elements": "<rect x=\"2\" y=\"3.25\" width=\"20\" height=\"17.5\" rx=\"2.5\"></rect><path d=\"M6.375 12s2.125 -3.75 5.625 -3.75s5.625 3.75 5.625 3.75s-2.125 3.75 -5.625 3.75s-5.625 -3.75 -5.625 -3.75z\"></path><circle cx=\"12\" cy=\"12\" r=\"1.375\"></circle>",
     "X-ray": "<path d=\"M8 8V4.5A1.5 1.5 0 0 1 9.5 3h10A1.5 1.5 0 0 1 21 4.5v10a1.5 1.5 0 0 1-1.5 1.5H16\"></path><rect x=\"3\" y=\"8\" width=\"13\" height=\"13\" rx=\"1.5\"></rect><circle cx=\"7\" cy=\"12\" r=\".6\"></circle><circle cx=\"10\" cy=\"15\" r=\".6\"></circle><circle cx=\"12.5\" cy=\"17.5\" r=\".6\"></circle><circle cx=\"7.5\" cy=\"17\" r=\".6\"></circle>"
   },
   "ANNOTATE": {

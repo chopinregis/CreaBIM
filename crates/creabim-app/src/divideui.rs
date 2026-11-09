@@ -65,16 +65,21 @@ impl CreaBimApp {
                 crate::props::row(ui, "Parts", |ui| {
                     crate::props::fill(ui, egui::DragValue::new(&mut d.parts).range(2..=200).speed(0.1));
                 });
-                crate::props::choice(
-                    ui,
-                    "Make",
-                    &mut d.make,
-                    &[
-                        (Make::Cuts, "Cuts", "The element itself cut into the parts (a part only)"),
-                        (Make::Guides, "Guides", "A guide at each division, to snap to"),
-                        (Make::Copies, "Copies", "What you Shift+clicked, one in each part"),
-                    ],
-                );
+                // only what applies (MU36: guides going up ran off endlessly,
+                // a wall can't be cut into parts)
+                let part = matches!(model.get(h).map(|e| &e.kind), Some(ElementKind::Part(_)));
+                let mut opts: Vec<(Make, &str, &str)> = vec![];
+                if part {
+                    opts.push((Make::Cuts, "Cuts", "The element itself cut into the parts"));
+                }
+                if d.dir == Dir::Along {
+                    opts.push((Make::Guides, "Guides", "A guide across it at each division, to snap to"));
+                }
+                opts.push((Make::Copies, "Copies", "What you Shift+clicked, one in each part"));
+                if !opts.iter().any(|o| o.0 == d.make) {
+                    d.make = opts[0].0;
+                }
+                crate::props::choice(ui, "Make", &mut d.make, &opts);
                 if d.make == Make::Cuts {
                     crate::props::row(ui, "Gap", |ui| {
                         crate::props::fill(ui, crate::units::drag(&mut d.gap).range(0.0..=1.0));
@@ -82,10 +87,13 @@ impl CreaBimApp {
                 }
                 let gap = if d.make == Make::Cuts { d.gap } else { 0.0 };
                 let size = (total - gap * (d.parts as f64 - 1.0)) / d.parts as f64;
-                crate::props::note(
+                ui.add_space(4.0);
+                // the sum, plain and readable, in the field column
+                crate::props::row(
                     ui,
-                    format!(
-                        "{} ÷ {} = {} each{}",
+                    "Each",
+                    |ui| ui.label(egui::RichText::new(format!(
+                        "{} ÷ {} = {}{}",
                         crate::units::len(total),
                         d.parts,
                         crate::units::len(size.max(0.0)),
@@ -94,8 +102,9 @@ impl CreaBimApp {
                             (Make::Copies, None) => " · Shift+click what to copy".into(),
                             _ => String::new(),
                         }
-                    ),
+                    )).strong()),
                 );
+                crate::props::note(ui, "The orange marks in the 3D view show where the divisions fall.");
                 if crate::props::action(ui, "", "Divide", "One undo step", true).clicked() {
                     go = true;
                 }

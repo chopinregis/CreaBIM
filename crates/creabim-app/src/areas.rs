@@ -25,6 +25,8 @@ pub enum Shows {
     /// The project's notepad, as a view of its own (MU28, as Blender's text
     /// editor in an area).
     Notes,
+    /// The profile library and its editor (MU36: a profile as its own view).
+    Profiles,
 }
 
 /// A layout of areas: one area, or two side by side (`across`) or one

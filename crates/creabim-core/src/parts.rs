@@ -37,6 +37,10 @@ pub struct Part {
     /// The IFC class it exports as (a void is always an IfcOpeningElement).
     #[serde(default = "proxy", skip_serializing_if = "is_proxy")]
     pub ifc_class: String,
+    /// The library profile it was made with (MU36): editing that profile
+    /// updates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -142,6 +146,7 @@ impl Part {
             void: false,
             material: None,
             ifc_class: proxy(),
+            profile: None,
         }
     }
 
@@ -153,6 +158,7 @@ impl Part {
             void: false,
             material: None,
             ifc_class: proxy(),
+            profile: None,
         }
     }
 

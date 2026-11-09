@@ -181,6 +181,8 @@ pub struct PartSettings {
     /// A profile from the library (a preset or the project's own) new
     /// sweeps take instead of `profile` (MU27 block 5).
     pub library: Option<String>,
+    /// A library profile the Extrusion tool places, pulled up (MU36).
+    pub extrusion_library: Option<String>,
 }
 
 impl PartSettings {
@@ -221,6 +223,7 @@ impl Default for PartSettings {
             canopy: 4.0,
             plant_height: 6.0,
             library: None,
+            extrusion_library: None,
         }
     }
 }
@@ -386,7 +389,7 @@ pub fn click(
                         return Ok(());
                     };
                     let (profile, name) = s.sweep_profile(doc.model(), w.thickness);
-                    let part = Part::sweep(
+                    let mut part = Part::sweep(
                         level,
                         profile,
                         Path::Wall {
@@ -396,6 +399,7 @@ pub fn click(
                             extend: [0.0, 0.0],
                         },
                     );
+                    part.profile = s.library.clone();
                     state.status = Some(format!(
                         "{name} added along the wall's {}: it follows the wall. Click another wall for the next one.",
                         s.sweep_edge().label().to_lowercase()
@@ -417,7 +421,7 @@ pub fn click(
                     return Ok(());
                 }
                 let (profile, name) = s.sweep_profile(doc.model(), 0.2);
-                let part = Part::sweep(
+                let mut part = Part::sweep(
                     level,
                     profile,
                     Path::Points {
@@ -426,6 +430,7 @@ pub fn click(
                         normal: None,
                     },
                 );
+                part.profile = s.library.clone();
                 state.status = Some(format!("{name} added."));
                 return add(
                     doc,
@@ -460,6 +465,11 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
     let opt = |id: String, label: &str, on: bool, hint: &str| json!({"id": id, "label": label, "on": on, "hint": hint});
     let mut out = match state.tool {
         Tool::Extrusion => vec![
+            json!({
+                "kind": "menu", "key": "extrusion.library", "label": "Profile",
+                "value": s.extrusion_library.clone().unwrap_or_else(|| "Draw".into()), "icon": "profile",
+                "hint": "Draw the outline, or place a profile from the library at a click, pulled up by the Height",
+            }),
             num(
                 "extrusion_base",
                 "Base",
@@ -777,20 +787,25 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
         }
     }
     if !p.void {
-        egui::ComboBox::from_id_salt("part_ifc_class")
-            .icon(crate::props::combo_icon)
-            .selected_text(p.ifc_class.clone())
-            .width(190.0)
-            .show_ui(ui, |ui| {
-                for c in IFC_CLASSES {
-                    if ui.selectable_label(p.ifc_class == *c, *c).clicked() {
-                        p.ifc_class = c.to_string();
-                        label = "IFC class";
+        // a row in the field column, cut to the panel (MU36: it ran past)
+        crate::props::row(ui, "Exports as", |ui| {
+            let w = ui.available_width();
+            egui::ComboBox::from_id_salt("part_ifc_class")
+                .icon(crate::props::combo_icon)
+                .selected_text(p.ifc_class.clone())
+                .width(w)
+                .truncate()
+                .show_ui(ui, |ui| {
+                    for c in IFC_CLASSES {
+                        if ui.selectable_label(p.ifc_class == *c, *c).clicked() {
+                            p.ifc_class = c.to_string();
+                            label = "IFC class";
+                        }
                     }
-                }
-            })
-            .response
-            .on_hover_text("The IFC class it is exported as");
+                })
+                .response
+                .on_hover_text(format!("The IFC class it is exported as: {}", p.ifc_class));
+        });
     }
     if let Some((lo, hi)) = p.bounds(model) {
         weak(
