@@ -244,7 +244,7 @@ impl CreaBimApp {
     fn levels_contents(&mut self, ui: &mut egui::Ui, asks: &mut Vec<Ask>) {
         let model = self.doc.model();
         let list = levels::sorted(model);
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .button("Add level above the top")
                 .on_hover_text("One storey above the highest level, as tall as it")
@@ -310,7 +310,7 @@ impl CreaBimApp {
                     match list.get(i + 1) {
                         Some((_, above, a)) => {
                             let gap = a.elevation - l.elevation;
-                            ui.horizontal_wrapped(|ui| {
+                            crate::props::flow(ui, |ui| {
                                 ui.label(crate::units::len(gap))
                                     .on_hover_text(format!("From here up to {above}"));
                                 if (gap - l.height).abs() > 1e-6
@@ -353,7 +353,7 @@ impl CreaBimApp {
                             }
                         }
                     }
-                    ui.horizontal_wrapped(|ui| {
+                    crate::props::flow(ui, |ui| {
                         ui.menu_button("Duplicate", |ui| {
                             if ui.button("The level only").clicked() {
                                 asks.push(Ask::Duplicate(*id, false));
@@ -453,7 +453,7 @@ impl CreaBimApp {
             }
             self.levels.delete = Some((del, target));
         }
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .button(egui::RichText::new("Delete level").color(Color32::from_rgb(190, 50, 40)))
                 .clicked()
@@ -779,7 +779,7 @@ pub(super) fn kind_format(ui: &mut egui::Ui, f: &mut creabim_core::NumberFormat,
         let mut lead = f.leading_zero.unwrap_or(true);
         let mut trail = f.trailing_zeros.unwrap_or(true);
         crate::props::row(ui, "Zeros", |ui| {
-            ui.horizontal_wrapped(|ui| {
+            crate::props::flow(ui, |ui| {
                 ui.spacing_mut().item_spacing.x = 1.0;
                 let h = ui.spacing().interact_size.y;
                 let w = ((ui.available_width() - 1.0) / 2.0).max(40.0);

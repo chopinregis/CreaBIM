@@ -48,7 +48,7 @@ pub(super) fn wall_fields(
     w: &mut Wall,
 ) -> &'static str {
     let mut label = "";
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         crate::app::helpui::combo(ui, "Location line")
             .selected_text(walls::location_label(model, w))
             .width(ui.available_width().min(130.0))
@@ -96,7 +96,7 @@ pub(super) fn wall_fields(
 
     ui.add_space(4.0);
     let lv = levels(model);
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         crate::app::helpui::combo(ui, "Base level")
             .selected_text(name_of(model, w.level))
             .width(ui.available_width().min(130.0))
@@ -115,7 +115,7 @@ pub(super) fn wall_fields(
         WallTop::Unconnected => "Unconnected".to_string(),
         WallTop::UpToLevel { level, .. } => format!("Up to {}", name_of(model, level)),
     };
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         crate::app::helpui::combo(ui, "Top")
             .selected_text(shown)
             .width(ui.available_width().min(130.0))
@@ -167,7 +167,7 @@ pub(super) fn wall_fields(
 
     ui.add_space(4.0);
     crate::props::row(ui, "Joins at", |ui| {
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 1.0;
             let h = ui.spacing().interact_size.y;
             let bw = ((ui.available_width() - 1.0) / 2.0).max(40.0);
@@ -234,7 +234,7 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
                 ui.label(creabim_geom::opening::door_hand(o, &host).to_lowercase())
                     .on_hover_text("The hinge side seen from the side it opens to, and whether it opens into the building or out of it.")
             });
-            crate::props::row(ui, "Flip", |ui| ui.horizontal_wrapped(|ui| {
+            crate::props::row(ui, "Flip", |ui| crate::props::flow(ui, |ui| {
                 let w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
                 if ui
                     .add_sized([w, 22.0], egui::Button::new("Hand"))

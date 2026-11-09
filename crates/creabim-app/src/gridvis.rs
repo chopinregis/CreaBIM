@@ -901,7 +901,7 @@ impl CreaBimApp {
                     )
                     .weak(),
                 );
-                ui.horizontal_wrapped(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label("Every");
                     let r = ui.add(egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center).desired_width(110.0));
                     if !r.has_focus() && !r.lost_focus() && ui.memory(|m| m.focused().is_none()) {
@@ -912,7 +912,7 @@ impl CreaBimApp {
                         done = true;
                     }
                 });
-                ui.horizontal_wrapped(|ui| {
+                crate::props::flow(ui, |ui| {
                     for s in GROUND_SPACINGS {
                         if ui.small_button(crate::units::len(s)).clicked() {
                             text = crate::units::len(s);
@@ -1080,7 +1080,7 @@ impl CreaBimApp {
                 if !groups.is_empty() {
                     if crate::props::subsection(ui, "vis.grids", "Grid systems", true) { ui.add_enabled_ui(!h.hides_category(Category::Grids), |ui| {
                         for (id, name, color) in groups {
-                            ui.horizontal_wrapped(|ui| {
+                            crate::props::flow(ui, |ui| {
                                 swatch(ui, color);
                                 let mut shown = !h.grid_groups.contains(&id);
                                 let w = ui.available_width();
@@ -1108,7 +1108,7 @@ impl CreaBimApp {
                 if !hidden.is_empty() {
                     crate::props::subsection(ui, "vis.hidden", "Hidden elements", true);
                     for (id, name) in hidden {
-                        ui.horizontal_wrapped(|ui| {
+                        crate::props::flow(ui, |ui| {
                             ui.label(name);
                             if ui.small_button("Unhide").clicked() {
                                 change = Some((
@@ -1178,7 +1178,7 @@ impl CreaBimApp {
         let mut pick = None;
         let mut edit = None;
         for (id, name, color, n) in rows {
-            ui.horizontal_wrapped(|ui| {
+            crate::props::flow(ui, |ui| {
                 if ui
                     .radio(active == id, "")
                     .on_hover_text("New grid lines go here")
@@ -1221,7 +1221,7 @@ impl CreaBimApp {
             )
             .weak(),
         );
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Prefix");
             if ui
                 .add(egui::TextEdit::singleline(&mut g.prefix).vertical_align(egui::Align::Center).desired_width(60.0))
@@ -1246,7 +1246,7 @@ impl CreaBimApp {
         {
             label = "Grid label style";
         }
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Colour");
             // the picker works in 8-bit sRGB, as the colour is stored
             let mut c = g.color.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
@@ -1263,7 +1263,7 @@ impl CreaBimApp {
             g.prefix,
             g.horizontal.format(1)
         ));
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             let active = self.active_grid_group() == Some(id);
             if ui
                 .add_enabled(!active, egui::Button::new("Draw lines in it"))

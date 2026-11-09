@@ -239,6 +239,16 @@ pub fn fill(ui: &mut Ui, w: impl egui::Widget) -> Response {
     ui.add_sized([ui.available_width().max(40.0), h], w)
 }
 
+/// A row of controls that moves whole controls to the next line when the
+/// panel is narrow, never splitting a button's or a label's words (MU34:
+/// "+ Picture" broke onto two lines).
+pub fn flow<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    ui.horizontal_wrapped(|ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        add(ui)
+    })
+}
+
 /// A choice of a few as one row of equal joined buttons filling the field
 /// column, the chosen one lit: Blender's expanded list (MU31). Returns
 /// true when it changed.

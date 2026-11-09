@@ -1328,7 +1328,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             label = Some("Text size");
         }
     });
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         let mut own = s.color.is_some();
         if crate::props::switch(ui, &mut own, "Colour")
             .on_hover_text("Off: black on paper, blue on screen")
@@ -1346,7 +1346,7 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     // Blender's rows (MU31): toggles in the field column, then how the
     // lines line up
     crate::props::row(ui, "Emphasis", |ui| {
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 1.0;
             let h = ui.spacing().interact_size.y;
             let w = ((ui.available_width() - 1.0) / 2.0).max(30.0);
@@ -1413,7 +1413,7 @@ pub fn leader_ui(
     elbow: &mut Option<DVec2>,
 ) -> Option<&'static str> {
     let mut label = None;
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         if terminator_combo(ui, "leader_end_own", "Leader end", usual, end) {
             label = Some("Leader end");
         }
@@ -1433,7 +1433,7 @@ pub fn leader_ui(
 /// A style's line ends, tag shape and what it is for.
 pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     let mut label = None;
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         if terminator_combo(
             ui,
             "style_end",
@@ -1444,7 +1444,7 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             label = Some("Dimension ends");
         }
     });
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         if terminator_combo(
             ui,
             "style_leader",
@@ -1587,7 +1587,7 @@ pub fn note_ui(
     let mut label = None;
     // the field keeps its size and scrolls inside; the small button at its
     // corner opens the large editor (MU27)
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         ui.label("Text");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if crate::props::icon_button(ui, "maximise", "Edit in a larger window (or double-click the note)").clicked() {
@@ -1624,7 +1624,7 @@ pub fn note_ui(
     // a text box (MU26): wraps to a width, reads markdown
     let mut boxed = n.width.is_some();
     crate::props::row(ui, "Box", |ui| {
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .checkbox(&mut boxed, "Wrap at")
                 .on_hover_text("Lines wrap to this width on paper; off, each line runs as long as it is")

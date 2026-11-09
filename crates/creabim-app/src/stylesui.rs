@@ -220,7 +220,7 @@ fn limit_ui(
     l: &mut Option<RangeLimit>,
 ) -> bool {
     let mut changed = false;
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         ui.label(label);
         let current = l
             .and_then(|l| levels.iter().find(|x| x.0 == l.level))
@@ -277,7 +277,7 @@ pub(super) fn range_ui(
         Mode::Own
     };
     let mut pick = mode;
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         ui.radio_value(&mut pick, Mode::Own, "Its level")
             .on_hover_text("Only the elements of this plan's own level, as plans always drew");
         ui.radio_value(&mut pick, Mode::Range, "Levels in range")
@@ -504,7 +504,7 @@ pub(super) fn look_ui(
                 .map_or("(deleted element)".into(), |e| e.name.clone()),
         };
         ui.push_id(("override", i), |ui| {
-            ui.horizontal_wrapped(|ui| {
+            crate::props::flow(ui, |ui| {
                 ui.label(egui::RichText::new(name).strong());
                 if ui
                     .small_button("✕")
@@ -784,7 +784,7 @@ impl CreaBimApp {
                     )
                     .weak(),
                 );
-                ui.horizontal_wrapped(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label("Style pack");
                     egui::ComboBox::from_id_salt("pack_pick").icon(crate::props::combo_icon)
                         .selected_text(if id.is_some() {
@@ -825,7 +825,7 @@ impl CreaBimApp {
                     ui.label(egui::RichText::new(&pack.description).weak());
                 }
                 ui.separator();
-                ui.horizontal_wrapped(|ui| {
+                crate::props::flow(ui, |ui| {
                     for (p, text) in [
                         (Page::Objects, "Object styles"),
                         (Page::Pens, "Pens"),
@@ -999,13 +999,13 @@ fn objects_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
                 ui.label(k);
                 weight_combo(ui, (k, "proj"), &mut s.projection_weight);
                 weight_combo(ui, (k, "cut"), &mut s.cut_weight);
-                ui.horizontal_wrapped(|ui| colour_pick(ui, &mut s.colour, false, "A line colour of its own"));
+                crate::props::flow(ui, |ui| colour_pick(ui, &mut s.colour, false, "A line colour of its own"));
                 pattern_combo(ui, (k, "pattern"), &mut s.pattern);
-                ui.horizontal_wrapped(|ui| {
+                crate::props::flow(ui, |ui| {
                     colour_pick(ui, &mut s.cut_fill, true, "A fill colour behind its cut hatch")
                 });
                 name_combo(ui, (k, "cut_pattern"), &names, &mut s.cut_pattern, "Material's");
-                ui.horizontal_wrapped(|ui| {
+                crate::props::flow(ui, |ui| {
                     colour_pick(
                         ui,
                         &mut s.surface_fill,
@@ -1048,7 +1048,7 @@ fn pens_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
     let n = pack.pens.len();
     for (i, t) in pack.pens.iter_mut().enumerate() {
         ui.push_id(("pens", i), |ui| {
-            ui.horizontal_wrapped(|ui| {
+            crate::props::flow(ui, |ui| {
                 ui.label(egui::RichText::new("Up to 1:").strong());
                 changed |= ui
                     .add(egui::DragValue::new(&mut t.up_to).range(1.0..=100000.0))
@@ -1099,7 +1099,7 @@ fn pens_page(ui: &mut egui::Ui, pack: &mut StylePack) -> bool {
 /// The pack's hatch patterns. True when one changed.
 fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> bool {
     let mut changed = false;
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         if ui.button("New pattern").clicked() {
             let mut p = styles::builtin_pattern(creabim_core::Hatch::Diagonal);
             p.name = format!("Pattern {}", pack.patterns.len() + 1);
@@ -1144,12 +1144,12 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
         let ui = &mut cols[1];
         let mut delete = false;
         let p = &mut pack.patterns[*pick];
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Name");
             changed |= ui.text_edit_singleline(&mut p.name).changed();
             delete = ui.small_button("Delete").clicked();
         });
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Sizes");
             changed |= ui
                 .radio_value(&mut p.units, PatternUnits::Paper, "on paper (mm)")
@@ -1158,7 +1158,7 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
                 .radio_value(&mut p.units, PatternUnits::Model, "true size (m)")
                 .changed();
         });
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Background");
             changed |= colour_pick(
                 ui,
@@ -1170,7 +1170,7 @@ fn patterns_page(ui: &mut egui::Ui, pack: &mut StylePack, pick: &mut usize) -> b
         let mut remove = None;
         for (j, l) in p.lines.iter_mut().enumerate() {
             ui.push_id(("line", j), |ui| {
-                ui.horizontal_wrapped(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label("Angle");
                     changed |= ui
                         .add(egui::DragValue::new(&mut l.angle).speed(1.0).suffix("°"))
@@ -1292,12 +1292,12 @@ fn templates_page(
         let ui = &mut cols[1];
         let mut delete = false;
         let t = &mut pack.templates[*pick];
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Name");
             changed |= ui.text_edit_singleline(&mut t.name).changed();
             delete = ui.small_button("Delete").clicked();
         });
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             let mut on = t.scale.is_some();
             if ui.checkbox(&mut on, "Scale 1:").changed() {
                 t.scale = on.then_some(100.0);
@@ -1309,7 +1309,7 @@ fn templates_page(
                     .changed();
             }
         });
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             let mut on = t.style.is_some();
             if ui.checkbox(&mut on, "Style").changed() {
                 t.style = on.then_some(creabim_core::ViewStyle::HiddenLine);
@@ -1329,7 +1329,7 @@ fn templates_page(
         }
         if let Some(w) = &mut t.weights {
             for (name, v) in w.fields_mut() {
-                ui.horizontal_wrapped(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label(name);
                     changed |= ui
                         .add(
@@ -1343,7 +1343,7 @@ fn templates_page(
             }
         }
         ui.label(egui::RichText::new("Leaves out").strong());
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             for c in STYLED {
                 let mut on = t.hidden.contains(&c);
                 if ui.checkbox(&mut on, c.label()).changed() {
@@ -1356,7 +1356,7 @@ fn templates_page(
             }
         });
         let mut cues = t.cues.unwrap_or_default();
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Fade with distance");
             changed |= ui
                 .add(egui::Slider::new(&mut cues.fade, 0.0..=0.9))

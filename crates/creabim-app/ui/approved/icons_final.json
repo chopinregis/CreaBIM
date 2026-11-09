@@ -37,8 +37,8 @@
     "Elevation": "<path d=\"M2 22V10l7-6 7 6v12z\"></path><path d=\"M6.5 22v-6h5v6\"></path><path d=\"M23 13h-4\"></path><path d=\"M21 11l2 2-2 2\"></path>",
     "Crop box": "<path d=\"M12 3l8 4.5v9L12 21l-8-4.5v-9z\" stroke-dasharray=\"2 2\"></path><path d=\"M4 7.5L12 12l8-4.5M12 12v9\"></path><path d=\"M1 5V1h4M23 5V1h-4M1 19v4h4M23 19v4h-4\"></path>",
     "Frame all": "<path d=\"M3 7V3h4\"></path><path d=\"M17 3h4v4\"></path><path d=\"M21 17v4h-4\"></path><path d=\"M7 21H3v-4\"></path><path d=\"M8 8h8v8H8z\"></path>",
-    "Hidden elements": "<rect x=\"3.5\" y=\"3.5\" width=\"17\" height=\"17\" rx=\"2.5\"></rect><rect x=\"8\" y=\"8\" width=\"8\" height=\"8\" rx=\"1\" stroke-dasharray=\"2 1.7\"></rect>",
-    "X-ray": "<rect x=\"3.5\" y=\"3.5\" width=\"11\" height=\"11\" rx=\"2\"></rect><rect x=\"9.5\" y=\"9.5\" width=\"11\" height=\"11\" rx=\"2\" fill=\"currentColor\" fill-opacity=\".25\"></rect>"
+    "Hidden elements": "<path d=\"M3 6h18v12H3z\"></path><path d=\"M6.5 10.5h11v3h-11z\" stroke-dasharray=\"2 1.6\"></path>",
+    "X-ray": "<path d=\"M10 10h10v10H10z\"></path><path d=\"M14 10V4H4v10h6\"></path><path d=\"M14 10v4h-4\" stroke-dasharray=\"1.6 1.6\"></path>"
   },
   "ANNOTATE": {
     "Dimension": "<path d=\"M2 5.75v12.5\"></path><path d=\"M22 5.75v12.5\"></path><path d=\"M2 12h20\"></path><path d=\"M5.75 9.5l-3.75 2.5l3.75 2.5\"></path><path d=\"M18.25 9.5l3.75 2.5l-3.75 2.5\"></path>",

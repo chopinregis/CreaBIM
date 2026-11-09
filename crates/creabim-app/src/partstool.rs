@@ -713,7 +713,7 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
                 } => {
                     let name = model.get(*wall).map_or("?", |e| e.name.as_str());
                     weak(ui, format!("Follows wall {name}."));
-                    ui.horizontal_wrapped(|ui| {
+                    crate::props::flow(ui, |ui| {
                         ui.label("Along its");
                         for e in [WallEdge::Top, WallEdge::Base] {
                             if ui.selectable_value(edge, e, e.label()).changed() {
@@ -800,7 +800,7 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
             let mut remove = None;
             for (i, q) in points.iter_mut().enumerate() {
                 crate::props::row(ui, &format!("Spot {}", i + 1), |ui| {
-                    ui.horizontal_wrapped(|ui| {
+                    crate::props::flow(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         let h = ui.spacing().interact_size.y;
                         let w = ((ui.available_width() - 26.0) / 3.0).max(30.0);
