@@ -274,6 +274,27 @@ pub fn place_labels(items: &mut Vec<PlanItem>, mm: f64) {
             None => {}
         }
     }
+    // a tag written as several lines (a room's name, area, number) moves
+    // as one block: line by line, one line was nudged off its column
+    // (MU31: KITCHEN stood right of its area)
+    let mut groups: Vec<(Vec<usize>, TextBox)> = Vec::new();
+    for (k, b) in movable {
+        let block = matches!(items[k], PlanItem::Annotation { .. });
+        let same = groups.iter_mut().find(|(ks, _)| {
+            block && matches!(items[ks[0]], PlanItem::Annotation { .. }) && items[ks[0]].id() == items[k].id()
+        });
+        match same {
+            Some((ks, g)) => {
+                ks.push(k);
+                *g = TextBox {
+                    lo: g.lo.min(b.lo),
+                    hi: g.hi.max(b.hi),
+                };
+            }
+            None => groups.push((vec![k], b)),
+        }
+    }
+    let mut movable = groups;
     // the bigger texts first (room names, notes), tags after
     movable.sort_by(|a, b| {
         let area = |t: &TextBox| (t.hi - t.lo).x * (t.hi - t.lo).y;
@@ -281,7 +302,8 @@ pub fn place_labels(items: &mut Vec<PlanItem>, mm: f64) {
     });
     let pad = 0.4 * mm;
     let mut leaders: Vec<PlanItem> = Vec::new();
-    for (k, b) in movable {
+    for (ks, b) in movable {
+        let k = ks[0];
         let own = items[k].id();
         // only what is near matters
         let reach = REACH * mm + (b.hi - b.lo).length();
@@ -292,7 +314,7 @@ pub fn place_labels(items: &mut Vec<PlanItem>, mm: f64) {
         let local: Vec<(DVec2, DVec2, f64)> = segs
             .iter()
             .filter(|(p, q, _, i)| {
-                *i != k
+                !ks.contains(i)
                     && !(own == items[*i].id() && is_own_mark(&items[k]))
                     && near.crossed_by(*p, *q)
             })
@@ -339,7 +361,10 @@ pub fn place_labels(items: &mut Vec<PlanItem>, mm: f64) {
         }
         let nb = b.moved(d);
         let far = d.length() > LEADER_PAST * mm;
-        shift(&mut items[k], d, b.centre(), far, &mut leaders, nb);
+        // one leader for the block, from its first line
+        for (n, &j) in ks.iter().enumerate() {
+            shift(&mut items[j], d, b.centre(), far && n == 0, &mut leaders, nb);
+        }
         taken.push((nb, k));
     }
     items.extend(leaders);

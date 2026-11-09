@@ -121,6 +121,8 @@ pub struct CreaBimApp {
     looks: HashMap<ElementId, (u64, std::sync::Arc<creabim_geom::looks::Looks>)>,
     /// The same for views seen in X-ray, which their sheets don't follow.
     xray_drawings: HashMap<ElementId, (u64, Drawing)>,
+    /// The theme the 3D view's wires were last drawn for (MU31).
+    dark_3d: bool,
     camera: OrbitCamera,
     cube: crate::viewcube::ViewCube,
     /// Aspect ratio of the 3D view as last drawn, for framing.
@@ -320,6 +322,7 @@ impl CreaBimApp {
             builds: Default::default(),
             looks: HashMap::new(),
             xray_drawings: HashMap::new(),
+            dark_3d: true,
             camera: OrbitCamera::default(),
             cube: Default::default(),
             aspect: 0.65,
@@ -1699,7 +1702,13 @@ impl CreaBimApp {
         let mut on_top: Vec<(DVec3, DVec3, [f32; 3])> = Vec::new();
         let xray = self.shell.settings.xray;
         let mode = self.shell.settings.render_3d;
-        let edge_colour = [0.10, 0.10, 0.11];
+        // wireframe on a dark theme: light wires, as Blender's (MU31: dark
+        // wires on the dark ground all but vanished)
+        let edge_colour = if mode == crate::render3d::RenderMode::Wireframe && self.dark_3d {
+            [0.72, 0.74, 0.78]
+        } else {
+            [0.10, 0.10, 0.11]
+        };
         // a type shown in the model: its instances lit as if selected, the
         // rest see-through when asked
         let spot = &self.plan.spotlight;
@@ -1734,7 +1743,10 @@ impl CreaBimApp {
                 continue;
             }
             // a selected element is outlined whatever the shading shows
-            if (mode.edges() || selected) && !xrayed {
+            // wireframe draws every wire, X-ray or not, as Blender's (MU31:
+            // X-ray left only the framing standing)
+            let wire = mode == crate::render3d::RenderMode::Wireframe;
+            if (mode.edges() || selected) && (!xrayed || wire) {
                 let c = if selected { highlight } else { edge_colour };
                 for &(a, b) in snaps::feature_edges_cached(&item.mesh).iter() {
                     ghost_lines.push((a, b, c));
@@ -2132,6 +2144,12 @@ impl CreaBimApp {
         let aspect = rect.width() / rect.height().max(1.0);
         self.aspect = aspect;
 
+        // wires in the theme's ink: a new theme draws them again
+        let dark = ui.visuals().dark_mode;
+        if dark != self.dark_3d {
+            self.dark_3d = dark;
+            self.geometry_key = None;
+        }
         self.rebuild_geometry(rs);
         let ppp = ui.ctx().pixels_per_point();
         let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
@@ -4278,9 +4296,14 @@ impl CreaBimApp {
         if !mine && response.clicked() {
             self.plan.sketch = None;
         }
-        let draft = self.plan.sketch.as_mut().filter(|d| d.pane.is_none());
-        if let Some(hint) = crate::sketch::shape_controls(ui, response.rect, None, draft) {
-            self.status = hint;
+        // the Sketch tool's own Line / Arc / Circle; an outline tool has its
+        // bar's (MU31: both set the shape each frame, so an arc's end was
+        // dropped as soon as it was clicked)
+        if self.plan.tool == Tool::Sketch {
+            let draft = self.plan.sketch.as_mut().filter(|d| d.pane.is_none());
+            if let Some(hint) = crate::sketch::shape_controls(ui, response.rect, None, draft) {
+                self.status = hint;
+            }
         }
         // a slab, roof or other outline tool drawn on a face: its own bar's
         // Line / Arc choice, not the Sketch tool's (MU27: Arc did nothing)
@@ -4408,7 +4431,8 @@ impl CreaBimApp {
             _ => None,
         };
         let accent = Color32::from_rgb(230, 120, 30);
-        let rect_preview = crate::partstool::on_face(&self.plan).is_some()
+        // a slab, roof or shaft's Rectangle too, not only a face's (MU31)
+        let rect_preview = (crate::partstool::on_face(&self.plan).is_some() || self.plan.tool.draws_outline())
             && self.plan.slab_mode == crate::slabtool::SlabMode::Rectangle;
         match self.plan.sketch.as_ref().filter(|_| mine) {
             // a rectangle on a face shows whole as the corner follows (MU24)
@@ -4564,7 +4588,7 @@ impl CreaBimApp {
         if !response.clicked() {
             return;
         }
-        let rect_on_face = crate::partstool::on_face(&self.plan).is_some()
+        let rect_on_face = (crate::partstool::on_face(&self.plan).is_some() || self.plan.tool.draws_outline())
             && self.plan.slab_mode == crate::slabtool::SlabMode::Rectangle;
         match &mut self.plan.sketch {
             None => {
@@ -4573,11 +4597,19 @@ impl CreaBimApp {
                     if let Some(s) = snapped {
                         plane.origin = plane.to_model(plane.to_plane(s.p));
                     }
-                    let draft = SketchDraft::new(plane, None);
-                    let shape = crate::sketch::shape(ui.ctx());
+                    let mut draft = SketchDraft::new(plane, None);
+                    // an outline tool's own Line / Arc from the first click
+                    // (MU31: the hint and first segment read the Sketch tool's)
+                    let shape = match (self.plan.tool, self.plan.slab_arc) {
+                        (Tool::Sketch, _) => crate::sketch::shape(ui.ctx()),
+                        (_, true) => crate::sketch::Shape::Arc,
+                        (_, false) => crate::sketch::Shape::Line,
+                    };
+                    draft.shape = shape;
                     // what each outline mode does on a face (MU24)
                     let on_face = crate::partstool::on_face(&self.plan).is_some();
-                    self.status = match (on_face, self.plan.slab_mode) {
+                    let outline = on_face || self.plan.tool.draws_outline();
+                    self.status = match (outline, self.plan.slab_mode) {
                         (true, crate::slabtool::SlabMode::Rectangle) => {
                             "Workplane set. Click the opposite corner of the rectangle.".into()
                         }
@@ -6644,33 +6676,32 @@ impl CreaBimApp {
                         s.set_thickness(thickness, self.plan.slab_keep_bottom);
                         label = "Slab thickness"
                     }
-                    let keep = &mut self.plan.slab_keep_bottom;
-                    ui.horizontal(|ui| {
-                        ui.label("Keep");
-                        ui.selectable_value(keep, false, "Top").on_hover_text(
-                            "A new thickness moves the underside; the top stays put.",
-                        );
-                        ui.selectable_value(keep, true, "Bottom").on_hover_text(
-                            "A new thickness moves the top; the underside stays put.",
-                        );
-                    });
+                    crate::props::choice(
+                        ui,
+                        "Keep",
+                        &mut self.plan.slab_keep_bottom,
+                        &[
+                            (false, "Top", "A new thickness moves the underside; the top stays put."),
+                            (true, "Bottom", "A new thickness moves the top; the underside stays put."),
+                        ],
+                    );
                     if num(ui, "Top offset", &mut s.top_offset, -100.0, 100.0) {
                         label = "Slab top offset"
                     }
                     let level = self.doc.model().level(s.level).map_or(0.0, |l| l.elevation);
-                    ui.label(
-                    egui::RichText::new(format!(
-                        "Top at {}, underside at {}. The top handle moves the top, the underside handle the underside.",
-                        crate::units::elevation(s.top(level)),
-                        crate::units::elevation(s.top(level) - s.thickness)
-                    ))
-                    .weak(),
-                );
+                    crate::props::note(
+                        ui,
+                        format!(
+                            "Top at {}, underside at {}.",
+                            crate::units::elevation(s.top(level)),
+                            crate::units::elevation(s.top(level) - s.thickness)
+                        ),
+                    );
                     if !layered && self.material_combo(ui, &mut s.material) {
                         label = "Slab material"
                     }
                     let arcs = s.bulges.iter().filter(|b| b.abs() > 1e-9).count();
-                    ui.label(match arcs {
+                    let said = match arcs {
                         0 => format!(
                             "{} corners, {}",
                             s.boundary.len(),
@@ -6682,16 +6713,21 @@ impl CreaBimApp {
                             if n == 1 { "" } else { "s" },
                             crate::units::area(s.area())
                         ),
-                    });
-                    if ui
-                        .button("Redraw outline")
-                        .on_hover_text(
-                            "Click a new outline for this slab, in a plan or the 3D view.",
-                        )
-                        .clicked()
+                    };
+                    // as Blender: the operator in the field column, what it
+                    // works on said under it (MU31)
+                    if crate::props::action(
+                        ui,
+                        "Outline",
+                        "Redraw",
+                        "Click a new outline for this slab, in a plan or the 3D view.",
+                        true,
+                    )
+                    .clicked()
                     {
                         redraw = true;
                     }
+                    crate::props::note(ui, said);
                     let shafts = creabim_core::slab::holes_of(self.doc.model(), &e)
                         .len()
                         .saturating_sub(s.holes.len());
@@ -7548,59 +7584,49 @@ impl CreaBimApp {
                         m.mesh.vertices.len(),
                         m.mesh.faces.len()
                     ));
-                    ui.separator();
-                    ui.label(egui::RichText::new("Mesh edit").strong());
-                    if !m.modifiers.is_empty() {
-                        ui.label(
-                            egui::RichText::new("Edits change the mesh under the modifiers.")
-                                .weak(),
+                    // a folding sub-section of label/field rows, its
+                    // operators in the field column, as Blender's (MU31)
+                    if crate::props::subsection(ui, "mesh.edit", "Mesh edit", true) {
+                        let on = self.face.is_some();
+                        crate::props::row(ui, "Face", |ui| match self.face {
+                            Some(f) => ui.label(format!("{f}")),
+                            None => ui.label(egui::RichText::new("click one in the 3D view").weak()),
+                        });
+                        crate::props::row(ui, "Distance", |ui| {
+                            crate::props::fill(ui, crate::units::drag(&mut self.extrude_distance))
+                        });
+                        let (ex, mv) = crate::props::actions2(
+                            ui,
+                            "Face",
+                            ("Extrude", "Push the face out by the distance, with new sides (E)", on),
+                            ("Move", "Move the face along its normal by the distance", on),
                         );
-                    }
-                    match self.face {
-                        Some(f) => ui.label(format!("Face {f} selected (click a face in 3D)")),
-                        None => ui.label("Click a face in the 3D view to edit it."),
-                    };
-                    ui.horizontal(|ui| {
-                        ui.label("Distance");
-                        ui.add(crate::units::drag(&mut self.extrude_distance));
-                    });
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(self.face.is_some(), egui::Button::new("Extrude (E)"))
-                            .clicked()
-                        {
-                            if let Some(f) = self.face {
-                                m.mesh.extrude_face(f, self.extrude_distance);
-                                label = "Extrude face";
-                            }
+                        if let (true, Some(f)) = (ex, self.face) {
+                            m.mesh.extrude_face(f, self.extrude_distance);
+                            label = "Extrude face";
                         }
-                        if ui
-                            .add_enabled(self.face.is_some(), egui::Button::new("Taper"))
-                            .on_hover_text("Scale the face to 80%")
-                            .clicked()
-                        {
+                        if let (true, Some(f)) = (mv, self.face) {
+                            let n = m.mesh.face_normal(f) * self.extrude_distance;
+                            let verts = m.mesh.faces[f].clone();
+                            m.mesh.translate_vertices(&verts, n);
+                            label = "Move face";
+                        }
+                        if crate::props::action(ui, "", "Taper", "Scale the face to 80%", on).clicked() {
                             if let Some(f) = self.face {
                                 m.mesh.scale_face(f, 0.8);
                                 label = "Taper face";
                             }
                         }
-                        if ui
-                            .add_enabled(self.face.is_some(), egui::Button::new("Move"))
-                            .on_hover_text("Move the face along its normal by the distance")
+                        if crate::props::action(ui, "Mesh", "Subdivide", "Catmull-Clark: every face split in four, the shape smoothed", true)
                             .clicked()
                         {
-                            if let Some(f) = self.face {
-                                let n = m.mesh.face_normal(f) * self.extrude_distance;
-                                let verts = m.mesh.faces[f].clone();
-                                m.mesh.translate_vertices(&verts, n);
-                                label = "Move face";
-                            }
+                            m.mesh = m.mesh.subdivide();
+                            self.face = None;
+                            label = "Subdivide mesh";
                         }
-                    });
-                    if ui.button("Subdivide (Catmull-Clark)").clicked() {
-                        m.mesh = m.mesh.subdivide();
-                        self.face = None;
-                        label = "Subdivide mesh";
+                        if !m.modifiers.is_empty() {
+                            crate::props::note(ui, "Edits change the mesh under the modifiers.");
+                        }
                     }
                 }
                 ElementKind::Cut(c) => {
@@ -7688,10 +7714,14 @@ impl CreaBimApp {
                         }
                     }
                     if matches!(k, ElementKind::Stair(_))
-                        && ui
-                            .button("Add railings")
-                            .on_hover_text("A railing along each side; they follow the stair.")
-                            .clicked()
+                        && crate::props::action(
+                            ui,
+                            "Railings",
+                            "Add on both sides",
+                            "A railing along each side; they follow the stair.",
+                            true,
+                        )
+                        .clicked()
                     {
                         let mut sel = self.selection.clone();
                         let h = self.plan.members.railing_height;

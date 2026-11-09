@@ -380,7 +380,9 @@ pub fn room_tag_text(model: &Model, id: ElementId, fields: &[RoomField]) -> Stri
 pub fn room_tag_item(id: ElementId, text: String, at: DVec2, look: TextLook, mm: f64) -> PlanItem {
     // its lines centred by their real widths (MU29)
     let mut look = look;
-    look.centred = true;
+    if look.align == creabim_core::TextAlign::Usual {
+        look.align = creabim_core::TextAlign::Centre;
+    }
     let lines: Vec<&str> = text.split('\n').collect();
     let width = lines.iter().map(|l| look.width(l)).fold(0.0, f64::max) * mm;
     let step = look.size * 1.5 * mm;
@@ -464,8 +466,16 @@ pub fn room_tag_items(
             let total: f64 = steps.iter().sum::<f64>() - steps.last().copied().unwrap_or(0.0);
             let mut y = at.y + total / 2.0;
             let mut items = vec![];
+            // left or right aligned: every line against the block's edge
+            let block = lines.iter().map(|(t, l)| l.width(t) * mm).fold(0.0, f64::max);
             for ((text, l), step) in lines.into_iter().zip(steps) {
-                items.push(room_tag_item(id, text, DVec2::new(at.x, y), l, mm));
+                let w = l.width(&text) * mm;
+                let x = match look.align {
+                    creabim_core::TextAlign::Left => at.x - block / 2.0 + w / 2.0,
+                    creabim_core::TextAlign::Right => at.x + block / 2.0 - w / 2.0,
+                    _ => at.x,
+                };
+                items.push(room_tag_item(id, text, DVec2::new(x, y), l, mm));
                 y -= step;
             }
             items

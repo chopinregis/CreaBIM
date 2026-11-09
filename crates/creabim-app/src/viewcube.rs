@@ -35,6 +35,8 @@ pub struct ViewCube {
     grab: Option<Nav>,
     /// Where the cube and its buttons were last drawn.
     area: Option<Rect>,
+    /// The parts that take the pointer: the cube's disc and the buttons.
+    hot: Option<(Pos2, f32, Rect)>,
 }
 
 /// A drag on the cube or its buttons, by this frame's pointer movement.
@@ -371,7 +373,8 @@ impl ViewCube {
     /// Whether `p` is on the cube or its buttons, so a click there is the
     /// cube's and not a pick in the view.
     pub fn covers(&self, p: Pos2) -> bool {
-        self.area.is_some_and(|a| a.contains(p))
+        self.hot
+            .is_some_and(|(c, r, col)| p.distance(c) < r || col.expand(2.0).contains(p))
     }
 
     /// Start turning the camera to `to`.
@@ -422,10 +425,22 @@ impl ViewCube {
         );
         if !rect.contains_rect(area) {
             self.area = None;
+            self.hot = None;
             return (None, None);
         }
         self.area = Some(area);
-        let response = ui.interact(area, ui.id().with("viewcube"), Sense::click_and_drag());
+        // only the cube's disc and the button column take the pointer: the
+        // empty corners of the box pan and pick as the rest of the view
+        // does (MU31: a pan beside the cube orbited instead)
+        let column = Rect::from_min_size(
+            Pos2::new(col_x - 17.0, rect.top() + 7.0),
+            Vec2::new(34.0, 8.0 * 28.0 + 6.0),
+        );
+        self.hot = Some((c, 2.05 * s + 8.0, column));
+        let hot = move |p: Pos2| p.distance(c) < 2.05 * s + 8.0 || column.expand(2.0).contains(p);
+        let over = ui.input(|i| i.pointer.hover_pos()).is_some_and(hot);
+        let sense = if over || self.grab.is_some() { Sense::click_and_drag() } else { Sense::hover() };
+        let response = ui.interact(area, ui.id().with("viewcube"), sense);
         let mut painter = ui.painter_at(rect);
         let hover = response.hover_pos();
         // the theme's colours, light or dark (MU20)
@@ -436,13 +451,8 @@ impl ViewCube {
             .is_some_and(|h| area.expand(40.0).contains(h))
             || self.grab.is_some();
         painter.multiply_opacity(if near { 1.0 } else { 0.45 });
-        // the buttons' box
-        // the same box, gap and pitch as the drawing areas' column (MU21):
-        // 28 px buttons, 10 px under the header, 34 px wide
-        let column = Rect::from_min_size(
-            Pos2::new(col_x - 17.0, rect.top() + 7.0),
-            Vec2::new(34.0, 8.0 * 28.0 + 6.0),
-        );
+        // the buttons' box: the same box, gap and pitch as the drawing
+        // areas' column (MU21), 28 px buttons, 10 px under the header
         painter.rect(
             column,
             8.0,
@@ -630,7 +640,7 @@ impl ViewCube {
         });
         let press = if pressed {
             ui.input(|i| i.pointer.press_origin())
-                .filter(|p| area.contains(*p))
+                .filter(|p| area.contains(*p) && hot(*p))
         } else {
             None
         };

@@ -406,7 +406,12 @@ pub(super) fn look_ui(
         let gap = ui.spacing().item_spacing.x;
         ui.add_sized(
             [(w - 28.0 - gap).max(40.0), 22.0],
-            egui::Button::new(egui::RichText::new(pack.name.clone())).frame(true).sense(egui::Sense::hover()),
+            // the fill of the fields and lists beside it, in every theme
+            // (MU31: a hover-only button took the theme's darkest fill)
+            egui::Button::new(egui::RichText::new(pack.name.clone()))
+                .fill(ui.visuals().widgets.inactive.weak_bg_fill)
+                .stroke(ui.visuals().widgets.inactive.bg_stroke)
+                .sense(egui::Sense::hover()),
         )
         .on_hover_text("A named bundle of scale, style, hidden categories, pens, overrides and cues from the project's style pack. Change the template and every view using it changes.");
         if crate::props::icon_button(ui, "pencil", "Edit the style pack")

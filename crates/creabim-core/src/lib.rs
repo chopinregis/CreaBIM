@@ -55,7 +55,7 @@ pub mod visibility;
 pub mod walls;
 
 pub use annotation::{
-    text_style, DimAxis, DimensionKind, Font, Note, StyleUse, TagShape, Terminator, TextStyle,
+    text_style, DimAxis, TextAlign, DimensionKind, Font, Note, StyleUse, TagShape, Terminator, TextStyle,
 };
 pub use assembly::{assembly_of, Assembly, AssemblyUse, Layer, LayerFunction};
 pub use constraint::{Constraint, SolveError};

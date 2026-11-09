@@ -350,21 +350,15 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
             }
         }
         TypeParams::Column(c) => {
-            let round = matches!(c.profile, creabim_core::Profile::Round { .. });
-            ui.horizontal(|ui| {
-                ui.label("Profile");
-                if ui.selectable_label(!round, "Rectangle").clicked() && round {
-                    c.profile = creabim_core::Profile::Rectangle {
-                        width: 0.3,
-                        depth: 0.3,
-                    };
-                    label = "Type profile";
-                }
-                if ui.selectable_label(round, "Round").clicked() && !round {
-                    c.profile = creabim_core::Profile::Round { diameter: 0.3 };
-                    label = "Type profile";
-                }
-            });
+            let mut round = matches!(c.profile, creabim_core::Profile::Round { .. });
+            if crate::props::choice(ui, "Profile", &mut round, &[(false, "Rectangular", ""), (true, "Round", "")]) {
+                c.profile = if round {
+                    creabim_core::Profile::Round { diameter: 0.3 }
+                } else {
+                    creabim_core::Profile::Rectangle { width: 0.3, depth: 0.3 }
+                };
+                label = "Type profile";
+            }
             match &mut c.profile {
                 creabim_core::Profile::Rectangle { width, depth } => {
                     if len_field(ui, "Width", width, 0.05, 5.0)
@@ -431,30 +425,30 @@ pub(super) fn holes_fields(
 ) -> (&'static str, bool) {
     let mut label = "";
     let mut draw = false;
-    ui.separator();
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Holes").strong());
-        if ui
-            .button("Draw a hole")
-            .on_hover_text("Click the hole's corners in a plan, then the first again or Enter")
-            .clicked()
-        {
-            draw = true;
-        }
-    });
+    // Blender's rows (MU31): the operator in the field column
+    if crate::props::action(
+        ui,
+        "Holes",
+        "Draw a hole",
+        "Click the hole's corners in a plan, then the first again or Enter",
+        true,
+    )
+    .clicked()
+    {
+        draw = true;
+    }
     let mut remove = None;
     for (i, h) in holes.iter().enumerate() {
-        ui.horizontal(|ui| {
-            let area = creabim_core::polygon::signed_area2(h).abs() / 2.0;
-            ui.label(format!(
-                "Hole {}: {} corners, {}",
-                i + 1,
-                h.len(),
-                crate::units::area(area)
-            ));
-            if ui.small_button("Remove").clicked() {
-                remove = Some(i);
-            }
+        let area = creabim_core::polygon::signed_area2(h).abs() / 2.0;
+        crate::props::row(ui, &format!("Hole {}", i + 1), |ui| {
+            ui.horizontal(|ui| {
+                ui.label(format!("{} corners, {}", h.len(), crate::units::area(area)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if crate::props::icon_button(ui, "x", "Remove this hole").clicked() {
+                        remove = Some(i);
+                    }
+                });
+            })
         });
     }
     if let Some(i) = remove {
@@ -462,12 +456,9 @@ pub(super) fn holes_fields(
         label = "Remove hole";
     }
     if holes.is_empty() && shafts == 0 {
-        ui.label(egui::RichText::new("None. Draw one, or a shaft through several floors.").weak());
+        crate::props::note(ui, "None yet. Draw one, or a shaft through several floors.");
     } else if !holes.is_empty() {
-        ui.label(
-            egui::RichText::new("Edit (Enter) shows each hole's corners and edges to reshape it.")
-                .weak(),
-        );
+        crate::props::note(ui, "Edit (Enter) shows each hole's corners and edges to reshape it.");
     }
     if shafts > 0 {
         ui.label(
@@ -671,13 +662,18 @@ impl CreaBimApp {
     /// element it fits), what it overrides, and buttons to reset, update
     /// the type, make a type of it and select the type's instances.
     pub(super) fn type_picker(&mut self, ui: &mut egui::Ui, id: ElementId) {
+        if self.doc.model().get(id).and_then(|e| TypeCategory::of(&e.kind)).is_none() {
+            return;
+        }
+        // a folding header as every other section's (MU31: a bare title)
+        if !self.prop_header(ui, "type", "Type", true, None) {
+            return;
+        }
         let model = self.doc.model();
         let Some(e) = model.get(id) else { return };
         let Some(cat) = TypeCategory::of(&e.kind) else {
             return;
         };
-        // its own box, as on the board (MU22)
-        crate::props::section(ui, "Type");
         let choices: Vec<(ElementId, String, bool)> = types::types_for(model, &e.kind)
             .into_iter()
             .map(|(id, n, t)| (id, n.to_string(), t.is_curtain()))
@@ -836,10 +832,14 @@ impl CreaBimApp {
                 });
             }
         } else if cat != TypeCategory::Object
-            && ui
-                .small_button("Make a type of it")
-                .on_hover_text("A new type with its values, which it becomes an instance of")
-                .clicked()
+            && crate::props::action(
+                ui,
+                "",
+                "Make a type of it",
+                "A new type with its values, which it becomes an instance of",
+                true,
+            )
+            .clicked()
         {
             asks.push(TypeAsk::FromElement(id));
         }

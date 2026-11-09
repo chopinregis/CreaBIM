@@ -239,6 +239,88 @@ pub fn fill(ui: &mut Ui, w: impl egui::Widget) -> Response {
     ui.add_sized([ui.available_width().max(40.0), h], w)
 }
 
+/// A choice of a few as one row of equal joined buttons filling the field
+/// column, the chosen one lit: Blender's expanded list (MU31). Returns
+/// true when it changed.
+pub fn choice<T: PartialEq + Copy>(ui: &mut Ui, label: &str, value: &mut T, options: &[(T, &str, &str)]) -> bool {
+    let mut changed = false;
+    row(ui, label, |ui| {
+        ui.spacing_mut().item_spacing.x = 1.0;
+        let n = options.len().max(1) as f32;
+        let w = ((ui.available_width() - (n - 1.0)) / n).max(24.0);
+        let h = ui.spacing().interact_size.y;
+        for (i, (v, text, tip)) in options.iter().enumerate() {
+            let on = *value == *v;
+            let (first, last) = (i == 0, i + 1 == options.len());
+            let r = egui::CornerRadius {
+                nw: if first { 4 } else { 0 },
+                sw: if first { 4 } else { 0 },
+                ne: if last { 4 } else { 0 },
+                se: if last { 4 } else { 0 },
+            };
+            let mut b = egui::Button::selectable(on, *text).corner_radius(r);
+            if !on {
+                b = b.fill(box_fill(ui.visuals()));
+            }
+            let mut resp = ui.add_sized([w, h], b);
+            if !tip.is_empty() {
+                resp = resp.on_hover_text(*tip);
+            }
+            if resp.clicked() && !on {
+                *value = *v;
+                changed = true;
+            }
+        }
+    });
+    changed
+}
+
+/// A button filling the field column after `label` (MU31: buttons stood
+/// at the left, under the labels).
+pub fn action(ui: &mut Ui, label: &str, text: &str, tip: &str, enabled: bool) -> Response {
+    row(ui, label, |ui| {
+        let h = ui.spacing().interact_size.y;
+        let w = ui.available_width().max(40.0);
+        let r = ui.add_enabled_ui(enabled, |ui| ui.add_sized([w, h], egui::Button::new(text))).inner;
+        if tip.is_empty() {
+            r
+        } else {
+            r.on_hover_text(tip)
+        }
+    })
+}
+
+/// Two buttons sharing the field column, as Blender's paired operators.
+/// Each is (text, tip, enabled); returns which was clicked.
+pub fn actions2(ui: &mut Ui, label: &str, a: (&str, &str, bool), b: (&str, &str, bool)) -> (bool, bool) {
+    row(ui, label, |ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let h = ui.spacing().interact_size.y;
+        let w = ((ui.available_width() - 4.0) / 2.0).max(30.0);
+        let go = |ui: &mut Ui, (t, tip, on): (&str, &str, bool)| {
+            let r = ui.add_enabled_ui(on, |ui| ui.add_sized([w, h], egui::Button::new(t))).inner;
+            if tip.is_empty() {
+                r.clicked()
+            } else {
+                r.on_hover_text(tip).clicked()
+            }
+        };
+        let x = go(ui, a);
+        (x, go(ui, b))
+    })
+}
+
+/// A quiet line of explanation, starting in the field column under the
+/// controls it explains (MU31).
+pub fn note(ui: &mut Ui, text: impl Into<String>) {
+    let w = ui.available_width() - inset(ui);
+    let lw = if w < STACK_BELOW { 0.0 } else { label_width(w) };
+    ui.horizontal(|ui| {
+        ui.add_space(lw);
+        ui.add(egui::Label::new(egui::RichText::new(text.into()).weak().small()).wrap());
+    });
+}
+
 /// A drop-down list entry with a small picture before its label, painted
 /// by `paint` in a square of the text's height.
 pub fn picture_option(

@@ -295,6 +295,9 @@ pub struct Draft {
     /// A note was just placed: Properties should put the cursor in its text.
     pub focus_text: bool,
     pub grab: Option<Grab>,
+    /// The area whose drag took `grab`: another area, not dragged, must
+    /// not let it go (MU31: a sheet note moved one frame, then stopped).
+    pub grab_by: Option<egui::Id>,
     /// The styles new dimensions, notes and tags get (none: the default).
     pub dim_style: Option<ElementId>,
     pub note_style: Option<ElementId>,
@@ -312,6 +315,7 @@ impl Default for Draft {
             leader: true,
             focus_text: false,
             grab: None,
+            grab_by: None,
             dim_style: None,
             note_style: None,
             tag_style: None,
@@ -932,10 +936,15 @@ pub fn drag(
             ) => selection.only(id),
             None => {}
         }
+        d.grab_by = d.grab.map(|_| response.id);
+    }
+    if d.grab.is_some() && d.grab_by.is_some_and(|o| o != response.id) {
+        return None;
     }
     let grab = d.grab?;
     if response.drag_stopped() || !response.dragged() {
         d.grab = None;
+        d.grab_by = None;
         return Some(None);
     }
     let p = xf.to_world(response.interact_pointer_pos()?);
@@ -1329,14 +1338,37 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             }
         }
     });
-    ui.horizontal(|ui| {
-        if ui.checkbox(&mut s.bold, "Bold").changed() {
-            label = Some("Bold text");
-        }
-        if ui.checkbox(&mut s.italic, "Italic").changed() {
-            label = Some("Italic text");
-        }
+    // Blender's rows (MU31): toggles in the field column, then how the
+    // lines line up
+    crate::props::row(ui, "Emphasis", |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 1.0;
+            let h = ui.spacing().interact_size.y;
+            let w = ((ui.available_width() - 1.0) / 2.0).max(30.0);
+            if ui.add_sized([w, h], egui::Button::selectable(s.bold, "Bold")).clicked() {
+                s.bold = !s.bold;
+                label = Some("Bold text");
+            }
+            if ui.add_sized([w, h], egui::Button::selectable(s.italic, "Italic")).clicked() {
+                s.italic = !s.italic;
+                label = Some("Italic text");
+            }
+        })
     });
+    use creabim_core::TextAlign;
+    if crate::props::choice(
+        ui,
+        "Align",
+        &mut s.align,
+        &[
+            (TextAlign::Usual, "Usual", "Each kind's own: notes from the left, room tags centred"),
+            (TextAlign::Left, "Left", "Every line from the block's left edge"),
+            (TextAlign::Centre, "Centre", "Every line on the block's middle"),
+            (TextAlign::Right, "Right", "Every line against the block's right edge"),
+        ],
+    ) {
+        label = Some("Text alignment");
+    }
     if let Some(l) = ends_ui(ui, s) {
         label = Some(l);
     }

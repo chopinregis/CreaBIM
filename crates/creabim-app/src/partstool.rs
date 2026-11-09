@@ -601,7 +601,7 @@ fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
 }
 
 fn weak(ui: &mut egui::Ui, t: impl Into<String>) {
-    ui.label(egui::RichText::new(t.into()).weak().small());
+    crate::props::note(ui, t);
 }
 
 /// The Properties fields of a part or a site element. Returns the undo
@@ -795,32 +795,42 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
             if num(ui, "Contours every", contour, 0.0, 50.0) {
                 label = "Contour interval";
             }
-            ui.label("Spot heights");
+            // Blender's rows (MU31): each spot a labelled row of X, Y, Z
+            // filling the field column, the operator under them
             let mut remove = None;
             for (i, q) in points.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    let mut changed = ui.add(crate::units::drag(&mut q.x)).changed();
-                    changed |= ui.add(crate::units::drag(&mut q.y)).changed();
-                    changed |= ui
-                        .add(crate::units::drag(&mut q.z))
-                        .on_hover_text("Height above the level")
-                        .changed();
-                    if changed {
-                        label = "Spot height";
-                    }
-                    if ui.small_button("✕").clicked() {
-                        remove = Some(i);
-                    }
+                crate::props::row(ui, &format!("Spot {}", i + 1), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        let h = ui.spacing().interact_size.y;
+                        let w = ((ui.available_width() - 26.0) / 3.0).max(30.0);
+                        let mut changed = ui.add_sized([w, h], crate::units::drag(&mut q.x)).on_hover_text("X").changed();
+                        changed |= ui.add_sized([w, h], crate::units::drag(&mut q.y)).on_hover_text("Y").changed();
+                        changed |= ui
+                            .add_sized([w, h], crate::units::drag(&mut q.z))
+                            .on_hover_text("Height above the level")
+                            .changed();
+                        if changed {
+                            label = "Spot height";
+                        }
+                        if crate::props::icon_button(ui, "x", "Remove this spot height").clicked() {
+                            remove = Some(i);
+                        }
+                    })
                 });
             }
             if let Some(i) = remove {
                 points.remove(i);
                 label = "Remove spot height";
             }
-            if ui
-                .button("Add spot height")
-                .on_hover_text("A new spot height in the middle; type where it is and how high")
-                .clicked()
+            if crate::props::action(
+                ui,
+                "Spot heights",
+                "Add",
+                "A new spot height in the middle; type where it is and how high",
+                true,
+            )
+            .clicked()
             {
                 let n = boundary.len().max(1) as f64;
                 let c = boundary.iter().copied().sum::<DVec2>() / n;

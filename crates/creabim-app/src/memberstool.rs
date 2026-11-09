@@ -625,20 +625,14 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             .changed()
         })
     };
-    let weak = |ui: &mut egui::Ui, t: String| {
-        ui.label(egui::RichText::new(t).weak());
-    };
+    // under the fields, in their column, as Blender's notes (MU31)
+    let weak = |ui: &mut egui::Ui, t: String| crate::props::note(ui, t);
     match kind {
         ElementKind::Column(c) => {
             let mut round = matches!(c.profile, Profile::Round { .. });
-            ui.horizontal(|ui| {
-                ui.label("Profile");
-                let a = ui.selectable_value(&mut round, false, "Rectangular");
-                let b = ui.selectable_value(&mut round, true, "Round");
-                if a.changed() || b.changed() {
-                    label = "Column profile";
-                }
-            });
+            if crate::props::choice(ui, "Profile", &mut round, &[(false, "Rectangular", ""), (true, "Round", "")]) {
+                label = "Column profile";
+            }
             if label == "Column profile" {
                 c.profile = match (round, c.profile) {
                     (true, Profile::Rectangle { width, .. }) => Profile::Round { diameter: width },
@@ -761,17 +755,22 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             }
             let n = r.boundary.len();
             if matches!(r.shape, RoofShape::Shed | RoofShape::Gable) && n > 0 {
-                ui.horizontal(|ui| {
-                    ui.label(if r.shape == RoofShape::Shed {
-                        "Low edge"
-                    } else {
-                        "Eave edge"
-                    });
-                    if ui.button("Next edge").clicked() {
-                        r.edge = (r.edge + 1) % n;
-                        label = "Roof edge";
-                    }
-                    ui.label(format!("{} of {n}", r.edge % n + 1));
+                let what = if r.shape == RoofShape::Shed { "Low edge" } else { "Eave edge" };
+                crate::props::row(ui, what, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 1.0;
+                        let h = ui.spacing().interact_size.y;
+                        let w = ((ui.available_width() - 2.0) / 3.0).max(24.0);
+                        if ui.add_sized([w, h], egui::Button::new("‹")).on_hover_text("The edge before").clicked() {
+                            r.edge = (r.edge + n - 1) % n;
+                            label = "Roof edge";
+                        }
+                        ui.add_sized([w, h], egui::Label::new(format!("{} of {n}", r.edge % n + 1)));
+                        if ui.add_sized([w, h], egui::Button::new("›")).on_hover_text("The next edge").clicked() {
+                            r.edge = (r.edge + 1) % n;
+                            label = "Roof edge";
+                        }
+                    })
                 });
             }
             if r.effective_shape() != r.shape {
@@ -829,27 +828,18 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 label = "Stair landing";
             }
             if let Some(l) = &mut s.landing {
-                ui.horizontal(|ui| {
-                    ui.label("Landing after");
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut l.after)
-                                .range(1..=n.saturating_sub(1).max(1))
-                                .suffix(" risers"),
-                        )
-                        .changed()
-                    {
+                // full rows in the label and field columns (MU31)
+                crate::props::row(ui, "Landing after", |ui| {
+                    let d = egui::DragValue::new(&mut l.after)
+                        .range(1..=n.saturating_sub(1).max(1))
+                        .suffix(" risers");
+                    if crate::props::fill(ui, d).changed() {
                         label = "Stair landing";
                     }
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Turns");
-                    let a = ui.selectable_value(&mut l.left, true, "Left");
-                    let b = ui.selectable_value(&mut l.left, false, "Right");
-                    if a.changed() || b.changed() {
-                        label = "Stair turn";
-                    }
-                });
+                if crate::props::choice(ui, "Turns", &mut l.left, &[(true, "Left", ""), (false, "Right", "")]) {
+                    label = "Stair turn";
+                }
             }
             let lay = s.layout(rise);
             let going: f64 = lay.flights.iter().map(|f| f.run(s.tread)).sum();
@@ -970,9 +960,8 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
             crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
         })
     };
-    let weak = |ui: &mut egui::Ui, t: String| {
-        ui.label(egui::RichText::new(t).weak());
-    };
+    // under the fields, in their column, as Blender's notes (MU31)
+    let weak = |ui: &mut egui::Ui, t: String| crate::props::note(ui, t);
     if num(ui, "Width", &mut f.width, 0.1, 10.0) {
         label = "Footing width";
     }

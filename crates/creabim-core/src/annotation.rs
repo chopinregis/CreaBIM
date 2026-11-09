@@ -335,6 +335,26 @@ pub struct TextStyle {
     /// sits across them.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub break_at_tags: bool,
+    /// How a note's or tag's lines line up (MU31).
+    #[serde(default, skip_serializing_if = "TextAlign::is_usual")]
+    pub align: TextAlign,
+}
+
+/// How the lines of a note or tag line up: Usual is each kind's own
+/// (notes from the left, room tags centred).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TextAlign {
+    #[default]
+    Usual,
+    Left,
+    Centre,
+    Right,
+}
+
+impl TextAlign {
+    pub fn is_usual(&self) -> bool {
+        *self == TextAlign::Usual
+    }
 }
 
 /// Letter height of dimensions, tags and notes without a style, paper mm.
@@ -354,6 +374,7 @@ impl Default for TextStyle {
             tag_shape: TagShape::Auto,
             purpose: StyleUse::Any,
             break_at_tags: false,
+            align: TextAlign::Usual,
         }
     }
 }
