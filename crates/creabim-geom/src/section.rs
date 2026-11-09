@@ -801,17 +801,36 @@ pub fn apply_drawing_style(
 ) {
     use creabim_core::graphics::DrawingStyle as S;
     match style {
-        S::Technical => {}
+        // only Colour and hatch keeps the materials' colours under hatches
+        S::Technical => {
+            for it in items.iter_mut() {
+                if let PlanItem::Fill { rgb, .. } = it {
+                    *rgb = None;
+                }
+            }
+        }
+        S::ColourHatch => {
+            for it in items.iter_mut() {
+                if let PlanItem::Fill { rgb: Some(c), .. } = it {
+                    // a touch lighter, so the hatch reads over it
+                    *c = c.map(|v| v + (1.0 - v) * 0.2);
+                }
+            }
+        }
         S::Clean => items.retain(|it| !matches!(it, PlanItem::Fill { .. })),
         S::Poche | S::MaterialColour | S::ColourWash | S::GreyWash => {
             for it in items.iter_mut() {
-                let PlanItem::Fill { id, points, .. } = it else {
+                let PlanItem::Fill { id, points, rgb: own, .. } = it else {
                     continue;
                 };
+                let own = *own;
                 let wash = |c: [f32; 3]| c.map(|v| v + (1.0 - v) * 0.55);
                 let rgb = match style {
                     S::Poche => [0.12, 0.12, 0.13],
                     S::GreyWash => [0.86, 0.86, 0.85],
+                    // the layer's own material first (MU32: a layered wall
+                    // took its core's colour throughout)
+                    _ if own.is_some() => own.unwrap_or_default(),
                     _ => model
                         .get(*id)
                         .and_then(|e| {

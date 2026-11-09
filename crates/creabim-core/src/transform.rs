@@ -439,11 +439,41 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             }
             _ => return None,
         },
+        // a dimension moves on its drawing (MU32: Move skipped them): its
+        // free ends go with it, and a line measuring between things slides
+        // square to itself, as a dragged dimension line does
+        ElementKind::Dimension(dim) => {
+            let Xform::Move(d) = t else { return None };
+            let frame = crate::DrawingFrame::of(model, dim.view)?;
+            let o = frame.to_model(DVec2::ZERO);
+            let dd = frame.to_drawing(o + *d) - frame.to_drawing(o);
+            let (a, b) = (drawn_at(model, &dim.a), drawn_at(model, &dim.b));
+            let mut moved = false;
+            for p in [&mut dim.a, &mut dim.b] {
+                if p.host.is_none() {
+                    p.local += dd;
+                    moved = true;
+                }
+            }
+            if let Some(c) = &mut dim.center {
+                if c.host.is_none() {
+                    c.local += dd;
+                    moved = true;
+                }
+            }
+            if !moved || dim.kind == crate::DimensionKind::Linear {
+                if let (Some(a), Some(b)) = (a, b) {
+                    let n = (b - a).normalize_or_zero().perp();
+                    if dim.a.host.is_some() && dim.b.host.is_some() {
+                        dim.offset += dd.dot(n);
+                    }
+                }
+            }
+        }
         ElementKind::Sheet(_)
         | ElementKind::Viewport(_)
         | ElementKind::Material(_)
         | ElementKind::Assembly(_)
-        | ElementKind::Dimension(_)
         | ElementKind::Tag(_)
         | ElementKind::TextStyle(_)
         | ElementKind::SheetTemplate(_)
@@ -577,8 +607,36 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
             let frame = crate::DrawingFrame::of(model, d.view)?;
             frame.to_model(mean(&d.points))
         }
+        ElementKind::Dimension(d) => {
+            let frame = crate::DrawingFrame::of(model, d.view)?;
+            let (a, b) = (drawn_at(model, &d.a)?, drawn_at(model, &d.b)?);
+            frame.to_model((a + b) / 2.0)
+        }
         _ => return crate::members::pivot(model, e),
     })
+}
+
+/// Where a dimension's point sits on its drawing, as near as the model
+/// says without drawing it: free, on a level line, on a wall, or where it
+/// was put on a body.
+fn drawn_at(model: &Model, p: &crate::HostPoint) -> Option<DVec2> {
+    let Some(h) = p.host else { return Some(p.local) };
+    match &model.get(h)?.kind {
+        ElementKind::Level(l) => Some(DVec2::new(p.local.x, l.elevation + p.local.y)),
+        ElementKind::Wall(w) => {
+            let d = w.direction();
+            let u = if p.from_end { w.length() + p.local.x } else { p.local.x };
+            Some(w.start + d * u + d.perp() * p.local.y)
+        }
+        ElementKind::Opening(o) => match &model.get(o.host)?.kind {
+            ElementKind::Wall(w) => {
+                let d = w.direction();
+                Some(w.start + d * (o.offset + p.local.x) + d.perp() * p.local.y)
+            }
+            _ => None,
+        },
+        _ => Some(p.local),
+    }
 }
 
 /// Copies of an element with fresh ids, ready to insert: a wall comes with

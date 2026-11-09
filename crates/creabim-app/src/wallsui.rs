@@ -78,17 +78,21 @@ pub(super) fn wall_fields(
                 "The line the wall is drawn and dimensioned on. It stays put when the wall gets thicker, changes its layers or is flipped.",
             );
     });
-    ui.horizontal(|ui| {
-        if ui
-            .button("Flip")
-            .on_hover_text("Swap the wall's exterior and interior faces, about its location line (Space). Its doors and windows turn with it.")
-            .clicked()
-        {
-            walls::flip_wall(w);
-            label = "Flip wall"
-        }
-        ui.label(egui::RichText::new(exterior_side(w)).weak());
-    });
+    // Blender's rows (MU32): the operator in the field column, what it
+    // did said under it
+    if crate::props::action(
+        ui,
+        "Faces",
+        "Flip inside / outside",
+        "Swap the wall's exterior and interior faces, about its location line (Space). Its doors and windows turn with it.",
+        true,
+    )
+    .clicked()
+    {
+        walls::flip_wall(w);
+        label = "Flip wall"
+    }
+    crate::props::note(ui, exterior_side(w));
 
     ui.add_space(4.0);
     let lv = levels(model);
@@ -162,58 +166,46 @@ pub(super) fn wall_fields(
     }
 
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.label("Joins at");
-        for (i, end) in ["start", "end"].into_iter().enumerate() {
-            let mut on = !w.disallow_join[i];
-            if ui
-                .checkbox(&mut on, end)
-                .on_hover_text("Off: this end stays square and free, and is not pulled along when the wall it touches moves. Right-click the end in plan to switch it too.")
-                .changed()
-            {
-                w.disallow_join[i] = !on;
-                label = if on {
-                    "Allow wall join"
-                } else {
-                    "Disallow wall join"
+    crate::props::row(ui, "Joins at", |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 1.0;
+            let h = ui.spacing().interact_size.y;
+            let bw = ((ui.available_width() - 1.0) / 2.0).max(40.0);
+            for (i, end) in ["Start", "End"].into_iter().enumerate() {
+                let on = !w.disallow_join[i];
+                if ui
+                    .add_sized([bw, h], egui::Button::selectable(on, end))
+                    .on_hover_text("Off: this end stays square and free, and is not pulled along when the wall it touches moves. Right-click the end in plan to switch it too.")
+                    .clicked()
+                {
+                    w.disallow_join[i] = on;
+                    label = if on { "Disallow wall join" } else { "Allow wall join" }
                 }
             }
-        }
+        })
     });
 
     if w.attach_top.is_empty() {
         let found = walls::attach_candidates(model, id);
-        if ui
-            .add_enabled(
-                !found.is_empty(),
-                egui::Button::new("Attach top to roof/slab"),
-            )
-            .on_hover_text(
-                "The top follows the underside of the roof or slab above, cut to its slope.",
-            )
-            .on_disabled_hover_text("There is no roof or slab above this wall.")
-            .clicked()
-        {
+        let tip = if found.is_empty() {
+            "There is no roof or slab above this wall."
+        } else {
+            "The top follows the underside of the roof or slab above, cut to its slope."
+        };
+        if crate::props::action(ui, "Top", "Attach to roof / slab", tip, !found.is_empty()).clicked() {
             w.attach_top = found;
             label = "Attach wall top"
         }
     } else {
         let names: Vec<String> = w.attach_top.iter().map(|a| name_of(model, *a)).collect();
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(format!("Top attached to {}", names.join(", "))).weak());
-            if ui
-                .button("Detach")
-                .on_hover_text("The top goes back to the wall's own height.")
-                .clicked()
-            {
-                w.attach_top.clear();
-                label = "Detach wall top"
-            }
-        });
+        if crate::props::action(ui, "Top", "Detach", "The top goes back to the wall's own height.", true).clicked() {
+            w.attach_top.clear();
+            label = "Detach wall top"
+        }
+        crate::props::note(ui, format!("Attached to {}", names.join(", ")));
     }
 
-    ui.add_space(4.0);
-    ui.label(format!("Length {}", crate::units::len(w.length())));
+    crate::props::row(ui, "Length", |ui| ui.label(crate::units::len(w.length())));
     let (mut a, mut b) = walls::location_line(model, w);
     let moved_a = num(ui, "Start X", &mut a.x, -1e4, 1e4) | num(ui, "Start Y", &mut a.y, -1e4, 1e4);
     let moved_b = num(ui, "End X", &mut b.x, -1e4, 1e4) | num(ui, "End Y", &mut b.y, -1e4, 1e4);

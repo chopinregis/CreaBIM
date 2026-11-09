@@ -762,6 +762,46 @@ fn elevation(model: &Model, level: Option<ElementId>) -> f64 {
 }
 
 /// The handles of element `id`. `face` is the selected face of a mass.
+/// The section a reference is shown in, as its line's start and direction;
+/// none when it is shown in plans (its coordinates are then the plan's).
+fn ref_plane(model: &Model, r: &creabim_core::Reference) -> Option<(DVec2, DVec2)> {
+    let v = r.shown_in.first()?;
+    match &model.get(*v)?.kind {
+        ElementKind::View(creabim_core::View {
+            kind: creabim_core::ViewKind::Section { start, end, .. },
+            ..
+        }) => Some((*start, (*end - *start).normalize_or_zero())),
+        _ => None,
+    }
+}
+
+/// A reference's point (its views' coordinates) in the model: on a plan's
+/// ground, or standing on its section's plane.
+pub fn ref_world(model: &Model, r: &creabim_core::Reference, p: DVec2) -> DVec3 {
+    match ref_plane(model, r) {
+        Some((s, d)) => (s + d * p.x).extend(p.y),
+        // on the level of the plan it is shown in, so 3D shows it there
+        None => {
+            let z = r.shown_in.first().and_then(|v| match &model.get(*v)?.kind {
+                ElementKind::View(creabim_core::View {
+                    kind: creabim_core::ViewKind::Plan { level, .. },
+                    ..
+                }) => model.level(*level).map(|l| l.elevation),
+                _ => None,
+            });
+            p.extend(z.unwrap_or(0.0))
+        }
+    }
+}
+
+/// The other way: a model point in the reference's views' coordinates.
+fn ref_local(model: &Model, r: &creabim_core::Reference, w: DVec3) -> DVec2 {
+    match ref_plane(model, r) {
+        Some((s, d)) => DVec2::new((w.truncate() - s).dot(d), w.z),
+        None => w.truncate(),
+    }
+}
+
 pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle> {
     let Some(e) = model.get(id) else {
         return vec![];
@@ -906,16 +946,22 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
         // a reference: its middle moves it, its corners scale it, the
         // turn grip above its top turns it; none when it is locked
         ElementKind::Reference(r) if !r.locked => {
+            // in a section the grips stand on its plane (MU32: they lay
+            // on the ground at the section's numbers)
+            let w = |p: DVec2| ref_world(model, r, p);
             let Some(c) = r.outline() else {
-                return vec![flat(HandleKind::RefMove, r.at.extend(0.0))];
+                return vec![flat(HandleKind::RefMove, w(r.at))];
             };
             let mut out: Vec<Handle> = (0..4)
-                .map(|i| flat(HandleKind::RefScale(i), c[i].extend(0.0)))
+                .map(|i| flat(HandleKind::RefScale(i), w(c[i])))
                 .collect();
-            out.push(flat(HandleKind::RefMove, r.at.extend(0.0)));
-            let top = (c[2] + c[3]) / 2.0;
-            let up = (top - r.at).normalize_or_zero();
-            out.push(flat(HandleKind::Rotate, (top + up * 0.6).extend(0.0)));
+            out.push(flat(HandleKind::RefMove, w(r.at)));
+            // turning is in plan only; a section's is typed in Properties
+            if ref_plane(model, r).is_none() {
+                let top = (c[2] + c[3]) / 2.0;
+                let up = (top - r.at).normalize_or_zero();
+                out.push(flat(HandleKind::Rotate, (top + up * 0.6).extend(0.0)));
+            }
             out
         }
         ElementKind::Site(s) => match s.form {
@@ -1549,12 +1595,13 @@ pub fn apply(
             c.set_face(i, round(at[axis] + d[axis], step));
         }
         (ElementKind::Reference(r), HandleKind::RefMove) => {
-            r.at = DVec2::new(round(r.at.x + d.x, step), round(r.at.y + d.y, step));
+            let dl = ref_local(model, r, now) - ref_local(model, r, grab);
+            r.at = DVec2::new(round(r.at.x + dl.x, step), round(r.at.y + dl.y, step));
         }
         (ElementKind::Reference(r), HandleKind::RefScale(_)) => {
             let (g, n) = (
-                grab.truncate().distance(r.at),
-                now.truncate().distance(r.at),
+                ref_local(model, r, grab).distance(r.at),
+                ref_local(model, r, now).distance(r.at),
             );
             if g < 1e-6 || n < 1e-3 {
                 return Err("too close to its middle".into());

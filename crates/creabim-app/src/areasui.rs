@@ -34,6 +34,10 @@ pub(super) struct AreaState {
     pub naming: Option<String>,
     /// The last drawing (not a sheet) worked in, for workspaces.
     pub drawing: Option<ElementId>,
+    /// The area whose header menu is open: what it picks goes there, not
+    /// to the area with focus (MU32: switching one area's plan switched
+    /// the other's).
+    pub menu_area: Option<usize>,
 }
 
 impl Default for AreaState {
@@ -53,6 +57,7 @@ impl Default for AreaState {
             hovered: None,
             naming: None,
             drawing: None,
+            menu_area: None,
         }
     }
 }
@@ -807,7 +812,10 @@ impl CreaBimApp {
         for a in asks {
             match a {
                 Ask::Run(id) => self.run_action(&ctx, &id),
-                Ask::Popup(key, r) => self.toggle_popup(&key, r),
+                Ask::Popup(key, r) => {
+                    self.areas.menu_area = Some(i);
+                    self.toggle_popup(&key, r)
+                }
                 Ask::Number(v) => self.set_view_number(v),
             }
         }
@@ -826,7 +834,7 @@ impl CreaBimApp {
 
     /// The menus of an area's header, by key.
     pub(super) fn area_menu(&self, key: &str) -> Option<Vec<Item>> {
-        let i = self.areas.focus;
+        let i = self.areas.menu_area.unwrap_or(self.areas.focus);
         let shows = self.areas.root.areas();
         let here = shows.get(i).copied().unwrap_or(Shows::Model);
         Some(match key {
@@ -1064,7 +1072,8 @@ impl CreaBimApp {
                 }
             }
             "area.show" => {
-                let i = self.areas.focus;
+                let i = self.areas.menu_area.take().unwrap_or(self.areas.focus);
+                self.areas.focus = i;
                 let new = if arg == "model" {
                     Shows::Model
                 } else if arg == "notes" {
@@ -1404,7 +1413,15 @@ fn mode_button(ui: &mut egui::Ui, editing: bool, compact: bool, p: &crate::theme
         p.raise2
     };
     ui.painter().rect_filled(rect, 6.0, fill);
-    let ink = if editing { p.accent } else { p.text };
+    // muted until hovered, as the header's other buttons (MU32: the
+    // white cube outshone them)
+    let ink = if editing {
+        p.accent
+    } else if resp.hovered() {
+        p.text
+    } else {
+        p.muted
+    };
     if compact {
         let ir = Rect::from_min_size(rect.min + egui::vec2(5.0, 4.0), egui::vec2(18.0, 18.0));
         crate::svgicon::paint(ui.painter(), ir, if editing { "pick-vertex" } else { "box" }, ink);

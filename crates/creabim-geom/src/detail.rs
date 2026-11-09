@@ -162,6 +162,7 @@ pub fn detail_items(id: ElementId, d: &DetailItem, mm: f64, look: MembraneLook) 
                         id,
                         points: pts.clone(),
                         hatch,
+                        rgb: None,
                     });
                 }
                 for i in 0..pts.len() {

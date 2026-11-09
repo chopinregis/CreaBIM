@@ -735,7 +735,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(ids.len(), 7, "six units and Rounding: {ids:?}");
+        assert_eq!(ids.len(), 12, "six units, five number formats and the window: {ids:?}");
         let ctx = egui::Context::default();
         app.run_action(&ctx, "units.set:3");
         assert_eq!(app.doc.model().units().length, LengthUnit::FeetInches);

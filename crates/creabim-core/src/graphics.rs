@@ -217,12 +217,15 @@ pub enum DrawingStyle {
     ColourWash,
     /// What is cut in an even light grey, no hatch (MU21).
     GreyWash,
+    /// Each cut material in its own colour with its hatch over it (MU32).
+    ColourHatch,
 }
 
 impl DrawingStyle {
-    pub const ALL: [DrawingStyle; 6] = [
+    pub const ALL: [DrawingStyle; 7] = [
         DrawingStyle::Technical,
         DrawingStyle::Poche,
+        DrawingStyle::ColourHatch,
         DrawingStyle::MaterialColour,
         DrawingStyle::ColourWash,
         DrawingStyle::GreyWash,
@@ -241,6 +244,7 @@ impl DrawingStyle {
             DrawingStyle::Clean => "Clean",
             DrawingStyle::ColourWash => "Colour wash",
             DrawingStyle::GreyWash => "Grey wash",
+            DrawingStyle::ColourHatch => "Colour and hatch",
         }
     }
 
@@ -248,12 +252,15 @@ impl DrawingStyle {
         match self {
             DrawingStyle::Technical => "Cut materials hatched, as the graphic styles set them",
             DrawingStyle::Poche => "Cut walls and slabs solid ink, no hatch",
-            DrawingStyle::MaterialColour => "Cut materials in their own colours",
+            DrawingStyle::MaterialColour => "Cut materials in their own colours, layer by layer, no hatch",
             DrawingStyle::Clean => "Outlines only: no hatches or fills",
             DrawingStyle::ColourWash => {
                 "Cut materials in a soft wash of their colours, for presentation"
             }
             DrawingStyle::GreyWash => "Cut materials in an even light grey, no hatch",
+            DrawingStyle::ColourHatch => {
+                "Each cut material in its own colour, layer by layer, with its hatch over it: brick red, insulation yellow"
+            }
         }
     }
 }

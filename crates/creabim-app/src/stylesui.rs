@@ -626,7 +626,19 @@ impl CreaBimApp {
                 .into_iter()
                 .map(|(id, name, _)| (id, name))
                 .collect();
-            label = range_ui(ui, &levels, &mut v.graphics.range);
+            // the cut, as in the header (MU32: only the header had it)
+            if let ViewKind::Plan { cut_height, .. } = &mut v.kind {
+                crate::props::row(ui, "Cut height", |ui| {
+                    let r = crate::props::fill(ui, crate::units::drag(cut_height).range(0.0..=100.0))
+                        .on_hover_text("How high above its level the plan is cut");
+                    if r.changed() {
+                        label = Some("Cut height");
+                    }
+                });
+            }
+            if let Some(l) = range_ui(ui, &levels, &mut v.graphics.range) {
+                label = Some(l);
+            }
         }
         if self.prop_header(
             ui,

@@ -257,6 +257,26 @@ impl CutPiece {
         }
     }
 
+    /// The colour of the material this piece cuts: its layer's, else the
+    /// element's own (or its core layer's); none for an air gap.
+    fn colour(&self, model: &Model) -> Option<[f32; 3]> {
+        let mat = |id: ElementId| match &model.get(id)?.kind {
+            ElementKind::Material(m) => Some(m.color),
+            _ => None,
+        };
+        match self.layer {
+            Some(l) => l.material.and_then(mat),
+            None => {
+                let e = model.get(self.id)?;
+                creabim_core::material_of(model, e).map(|(_, m)| m.color).or_else(|| {
+                    let (_, a) = creabim_core::assembly::assembly_of(model, e)?;
+                    let i = (0..a.layers.len()).find(|i| a.is_core(*i))?;
+                    mat(a.layers[i].material?)
+                })
+            }
+        }
+    }
+
     fn hatch(&self, model: &Model) -> Hatch {
         match self.layer {
             None => hatch_of(model, self.id),
@@ -459,6 +479,7 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
             id: p.id,
             points: p.points.clone(),
             hatch: p.hatch(model),
+            rgb: p.colour(model),
         });
     }
     let edges = |pts: &Vec<DVec2>| -> Vec<(DVec2, DVec2)> {
@@ -574,6 +595,9 @@ pub enum PlanItem {
         id: ElementId,
         points: Vec<DVec2>,
         hatch: Hatch,
+        /// The colour of the material cut here (its layer's, for layered
+        /// elements), for the colour drawing styles (MU32).
+        rgb: Option<[f32; 3]>,
     },
     Line {
         id: ElementId,
@@ -2044,16 +2068,16 @@ pub(crate) fn sliced_plan_creased(
                 b: lp[(i + 1) % n],
             });
         }
-        let hatch = CutPiece {
+        let piece = CutPiece {
             id: item.id,
             points: vec![],
             layer: item.layer,
-        }
-        .hatch(model);
+        };
         items.push(PlanItem::Fill {
             id: item.id,
             points: lp,
-            hatch,
+            hatch: piece.hatch(model),
+            rgb: piece.colour(model),
         });
     }
     for (a, b) in crate::section::feature_edges_over(item, crease) {

@@ -345,6 +345,10 @@ pub struct PlanState {
     tag_host: Option<ElementId>,
     /// Tag or dimension being dragged: where the drag began and its offset then.
     anno_drag: Option<(ElementId, DVec2, DVec2)>,
+    /// The area whose drag holds `anno_drag`, `level_drag` or `drag`:
+    /// another area, not dragged, must not end it (MU32: a dimension moved
+    /// a step per drag).
+    drag_owner: Option<egui::Id>,
     /// Angles, radii, arc lengths and notes being placed or dragged.
     pub anno: crate::annotate::Draft,
     /// A keyboard move, rotate or scale, in whichever pane started it.
@@ -561,6 +565,7 @@ impl Default for PlanState {
             dim: vec![],
             tag_host: None,
             anno_drag: None,
+            drag_owner: None,
             anno: Default::default(),
             modal: None,
             sketch: None,
@@ -2570,7 +2575,11 @@ fn drag_level(
         let id = hit_test(&plan.items, w, 6.0 / xf.scale as f64, mm)?;
         let l = doc.model().level(id)?;
         state.level_drag = Some((id, l.elevation - w.y));
+        state.drag_owner = Some(response.id);
         selection.only(id);
+    }
+    if state.level_drag.is_some() && state.drag_owner != Some(response.id) {
+        return None;
     }
     let (id, off) = state.level_drag?;
     if response.drag_stopped() || !response.dragged() {
@@ -3958,14 +3967,37 @@ fn refresh_snaps(
         .get(&view)
         .is_some_and(|(r, ex, _)| ex == exclude && (*r == revision || dragging));
     if !fresh {
-        state.snaps.insert(
-            view,
-            (revision, exclude.to_vec(), {
-                let mut s = Snapper::from_drawing(&plan.items, exclude);
-                s.add_underlay_centres(model, view);
-                s
-            }),
-        );
+        let mut s = Snapper::from_drawing(&plan.items, exclude);
+        s.add_underlay_centres(model, view);
+        add_reference_snaps(&mut s, state, model, view);
+        state.snaps.insert(view, (revision, exclude.to_vec(), s));
+    }
+}
+
+/// The lines of the references shown in `view` (another view's linework,
+/// a DXF drawing) snap as an underlay's do: ends, middles and along them
+/// (MU32). A picture has no lines to snap to.
+fn add_reference_snaps(s: &mut Snapper, state: &mut PlanState, model: &creabim_core::Model, view: ElementId) {
+    // a huge drawing is cut short rather than slowing every snap
+    const MOST: usize = 20_000;
+    let mut n = 0;
+    for e in model.iter() {
+        let ElementKind::Reference(r) = &e.kind else { continue };
+        if r.hidden || !r.shown_in.contains(&view) {
+            continue;
+        }
+        let crate::trace::Shown::Lines(lines) = state.ref_cache.get(model, e.id, r) else {
+            continue;
+        };
+        for l in lines.iter() {
+            for w in l.windows(2) {
+                if n >= MOST {
+                    return;
+                }
+                s.add_segment(r.place(w[0]).extend(0.0), r.place(w[1]).extend(0.0), crate::snaps::Source::Underlay, Some(e.id));
+                n += 1;
+            }
+        }
     }
 }
 
@@ -4021,6 +4053,10 @@ fn drag_section_line(
             .iter()
             .find(|(_, q)| xf.to_screen(*q).distance(p) < 10.0)
             .map(|(h, _)| (*h, xf.to_world(p), start, end));
+        state.drag_owner = Some(response.id);
+    }
+    if state.drag.is_some() && state.drag_owner != Some(response.id) {
+        return None;
     }
     let (h, grab, s0, e0) = state.drag?;
     if response.drag_stopped() || !response.dragged() {
@@ -4459,13 +4495,15 @@ pub fn draw_item_with(painter: &egui::Painter, xf: &Xf, item: &PlanItem, selecte
         PlanItem::Fill {
             points,
             hatch: pattern,
+            rgb,
             ..
         } => {
             let gray = (paper::hatch_fill(*pattern) * 255.0) as u8;
-            let fill = if selected {
-                Color32::from_rgb(250, 205, 160)
-            } else {
-                Color32::from_gray(gray)
+            let fill = match (selected, rgb) {
+                (true, _) => Color32::from_rgb(250, 205, 160),
+                // Colour and hatch: the material's colour under it (MU32)
+                (false, Some([r, g, b])) => Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8),
+                (false, None) => Color32::from_gray(gray),
             };
             fill_polygon(painter, xf, points, fill);
             // skip hatching once it would be too dense to read, or when
@@ -5629,7 +5667,11 @@ fn drag_annotation(
         });
         if let Some((id, ..)) = state.anno_drag {
             selection.only(id);
+            state.drag_owner = Some(response.id);
         }
+    }
+    if state.anno_drag.is_some() && state.drag_owner != Some(response.id) {
+        return None;
     }
     let (id, grab, start) = state.anno_drag?;
     if response.drag_stopped() || !response.dragged() {

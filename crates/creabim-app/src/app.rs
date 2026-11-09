@@ -849,6 +849,49 @@ impl CreaBimApp {
     /// The view cube in the 3D view's corner: a click turns the view, a
     /// drag on it orbits, and a drag on its zoom or pan button zooms or
     /// pans.
+    /// The references in 3D (MU32): each where its views show it, on the
+    /// plan's level or standing on the section's plane, faint as in the
+    /// views. A picture shows its frame.
+    fn draw_references_3d(&mut self, painter: &egui::Painter, project: &dyn Fn(DVec3) -> Option<egui::Pos2>) {
+        let refs: Vec<(ElementId, creabim_core::Reference)> = self
+            .doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Reference(r) if !r.hidden && !self.hidden.contains(&e.id) => Some((e.id, r.clone())),
+                _ => None,
+            })
+            .collect();
+        // a huge drawing is cut short rather than slowing the 3D view
+        let mut budget = 30_000usize;
+        for (id, r) in refs {
+            let model = self.doc.model();
+            let world = |p: DVec2| crate::handles::ref_world(model, &r, p);
+            let ink = crate::trace::colour(&r).unwrap_or(Color32::from_gray(150)).gamma_multiply(r.opacity.clamp(0.15, 1.0));
+            let stroke = egui::Stroke::new(1.0, ink);
+            match self.plan.ref_cache.get(model, id, &r) {
+                crate::trace::Shown::Lines(lines) => {
+                    for l in lines.iter() {
+                        if budget == 0 {
+                            return;
+                        }
+                        let pts: Vec<egui::Pos2> = l.iter().filter_map(|p| project(world(r.place(*p)))).collect();
+                        budget = budget.saturating_sub(pts.len());
+                        if pts.len() >= 2 {
+                            painter.add(egui::Shape::line(pts, stroke));
+                        }
+                    }
+                }
+                _ => {
+                    if let Some(c) = r.outline() {
+                        let pts: Vec<egui::Pos2> = c.iter().chain(c.first()).filter_map(|p| project(world(*p))).collect();
+                        painter.add(egui::Shape::line(pts, egui::Stroke::new(1.0, ink)));
+                    }
+                }
+            }
+        }
+    }
+
     fn view_cube(&mut self, ui: &mut egui::Ui, rect: Rect) {
         use crate::viewcube::{said, target_of, Nav};
         let accent = crate::theme::Palette::of(ui.ctx()).accent;
@@ -2205,6 +2248,7 @@ impl CreaBimApp {
             (o.as_dvec3(), d.as_dvec3())
         };
         let hover = response.hover_pos();
+        self.draw_references_3d(&painter, &project);
         self.draw_sketches(&painter, &project);
         self.draw_grid_bubbles(&painter, &project);
         self.draw_crop_frames(&painter, &project);
@@ -6500,23 +6544,21 @@ impl CreaBimApp {
         let Some(e) = self.doc.model().get(id).cloned() else {
             return;
         };
-        if self.plan.edit == Some(id) {
-            // Edit outline in the action bar opened it
-            ui.label(
-                egui::RichText::new("Editing")
-                    .strong()
-                    .color(ui.visuals().selection.bg_fill),
-            );
-            ui.label(egui::RichText::new(editmode::panel_hint(&e.kind)).weak());
-            // the layers' grips, without having to know Tab (MU18)
+        // its own folding panel, as Type and Geometry are (MU32)
+        if self.plan.edit == Some(id) && self.prop_header(ui, "editing", "Editing", true, None) {
+            // the layers' grips, without having to know Tab (MU18), as a
+            // choice in the field column
             if handles::has_layers(self.doc.model(), id) {
                 let mut on = handles::layers();
-                let text = if on {
-                    "Back to the element's grips (Tab)"
-                } else {
-                    "Edit its layers in the views (Tab)"
-                };
-                if ui.toggle_value(&mut on, text).clicked() {
+                if crate::props::choice(
+                    ui,
+                    "Grips",
+                    &mut on,
+                    &[
+                        (false, "Element", "The element's own grips (Tab)"),
+                        (true, "Layers", "A grip at each layer's ends (Tab)"),
+                    ],
+                ) {
                     handles::set_layers(on);
                     self.status = if on {
                         "Layers: a grip at each layer's ends (and, on walls, its bottom and top). Drag one to run that layer on or hold it back; right-click to reset.".into()
@@ -6525,6 +6567,7 @@ impl CreaBimApp {
                     };
                 }
             }
+            crate::props::note(ui, editmode::panel_hint(&e.kind));
             ui.add_space(4.0);
         }
 
@@ -6648,13 +6691,17 @@ impl CreaBimApp {
                     if !l.is_empty() {
                         label = l;
                     }
-                    if ui
-                    .button("Redraw path")
-                    .on_hover_text("Click a new path for this wall, in a plan or the 3D view. More corners make more walls like it.")
+                    if crate::props::action(
+                        ui,
+                        "Path",
+                        "Redraw",
+                        "Click a new path for this wall, in a plan or the 3D view. More corners make more walls like it.",
+                        true,
+                    )
                     .clicked()
-                {
-                    redraw = true;
-                }
+                    {
+                        redraw = true;
+                    }
                 }
                 ElementKind::Slab(s) => {
                     if self.assembly_combo(ui, creabim_core::AssemblyUse::Floor, &mut s.assembly) {

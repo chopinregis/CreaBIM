@@ -387,11 +387,13 @@ impl Looks {
         id: ElementId,
         points: &[DVec2],
         hatch: Hatch,
+        rgb: Option<[f32; 3]>,
         map: &PaperMap,
     ) {
         let (fill, pattern) = self.cut_pattern(id, hatch);
         let pts: Vec<DVec2> = points.iter().map(|p| map.to_paper(*p)).collect();
-        canvas.fill_rgb(&pts, fill.unwrap_or([1.0; 3]));
+        // Colour and hatch: the material's colour under its hatch (MU32)
+        canvas.fill_rgb(&pts, rgb.or(fill).unwrap_or([1.0; 3]));
         if let Some(p) = pattern {
             let fade = self.look(id).map_or(0.0, |l| l.fade);
             let s = Stroke {
