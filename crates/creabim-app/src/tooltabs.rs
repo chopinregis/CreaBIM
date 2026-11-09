@@ -186,6 +186,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Wall, curtain wall, door, window, slab, roof, column, beam and object types",
             ),
             act(
+                "profiles.browser",
+                "Profiles",
+                "profile",
+                "The profile library: presets and the project's own, for sweeps",
+            ),
+            act(
                 "mat.browser",
                 "Materials",
                 "palette",

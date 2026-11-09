@@ -142,7 +142,7 @@ pub fn controls(
             .order(egui::Order::Foreground)
             .show(&ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    crate::props::flow(ui, |ui| {
                         if modes {
                             for m in SlabMode::ALL {
                                 if ui.selectable_label(mode == m, m.label()).clicked() {

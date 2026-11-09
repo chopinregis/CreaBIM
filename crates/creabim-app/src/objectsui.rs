@@ -758,7 +758,7 @@ impl CreaBimApp {
                         }
                     });
                 ui.separator();
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui
                         .button("Import from Blender, FreeCAD or glTF…")
                         .on_hover_text("A .blend, .FCStd, .gltf or .glb file becomes one object of your catalogue, each mesh a part in its material")
@@ -774,7 +774,7 @@ impl CreaBimApp {
                         asks.push(CatAsk::Reveal);
                     }
                 });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut cat.save_name).vertical_align(egui::Align::Center)
                             .hint_text("Name")

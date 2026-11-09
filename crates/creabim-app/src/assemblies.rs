@@ -286,7 +286,7 @@ pub(super) fn layer_table(
                     l.thickness = t.max(assembly::MIN_LAYER);
                     label = "Layer thickness";
                 }
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     if ui
                         .add_enabled(i > 0, GlyphButton(Glyph::Up))
@@ -326,7 +326,7 @@ pub(super) fn layer_table(
         edited.layers.remove(i);
         label = "Remove layer";
     }
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         if ui
             .button("Add layer")
             .on_hover_text("A new layer on the inner (or lower) side")
@@ -439,7 +439,7 @@ impl CreaBimApp {
         let mut changed = false;
         let mut create = false;
         let mut edit = false;
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             crate::app::helpui::combo(ui, "Assembly")
                 .selected_text(shown)
                 .width(ui.available_width().min(150.0))
@@ -611,7 +611,7 @@ impl CreaBimApp {
                             );
                         }
                     });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui
                         .button("Add starters")
                         .on_hover_text("A cavity wall, a partition, a floor and a pitched roof")
@@ -702,7 +702,7 @@ impl CreaBimApp {
                 );
                 ui.add_space(6.0);
                 let users = assembly::users(model, id);
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label(match users.len() {
                         0 => "Not used yet.".to_string(),
                         n => format!("Used by {n} element{}.", if n == 1 { "" } else { "s" }),

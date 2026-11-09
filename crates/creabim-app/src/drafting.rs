@@ -324,7 +324,7 @@ impl CreaBimApp {
         {
             self.drafting.style = list.first().map(|l| l.0);
         }
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             crate::app::helpui::combo(ui, "Show")
                 .selected_text(self.drafting.filter.label())
                 .show_ui(ui, |ui| {
@@ -406,7 +406,7 @@ impl CreaBimApp {
             return;
         };
         let mut name = e.name.clone();
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Name");
             if ui.text_edit_singleline(&mut name).changed() && !name.trim().is_empty() {
                 let r = self
@@ -424,7 +424,7 @@ impl CreaBimApp {
         ui.add_space(4.0);
         style_preview(ui, &s);
         let users = crate::annotate::style_users(self.doc.model(), id);
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .add_enabled(
                     users > 0,
@@ -468,7 +468,7 @@ impl CreaBimApp {
                 self.report(r, format!("{} now use {}.", picked.len(), e.name));
             }
         });
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("New ones get it:");
             let anno = &mut self.plan.anno;
             for (slot, text) in [
@@ -557,7 +557,7 @@ impl CreaBimApp {
             )
             .weak(),
         );
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .button("Copy of the built-in block")
                 .on_hover_text("Start from the usual title block and change it")
@@ -600,7 +600,7 @@ impl CreaBimApp {
                 }
             }
         });
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("From a path");
             ui.add(
                 egui::TextEdit::singleline(&mut self.drafting.path).vertical_align(egui::Align::Center)
@@ -656,7 +656,7 @@ impl CreaBimApp {
         };
         let mut label = None;
         let mut name = e.name.clone();
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Name");
             if ui.text_edit_singleline(&mut name).changed() && !name.trim().is_empty() {
                 let r = self
@@ -687,7 +687,7 @@ impl CreaBimApp {
         );
         let mut remove = None;
         for (i, (k, v)) in t.fields.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 ui.add(egui::TextEdit::singleline(k).vertical_align(egui::Align::Center).desired_width(110.0));
                 if ui
                     .add(egui::TextEdit::singleline(v).vertical_align(egui::Align::Center).desired_width(200.0))
@@ -725,7 +725,7 @@ impl CreaBimApp {
             .show(ui, |ui| {
                 for item in t.items.iter_mut() {
                     if let TitleItem::Text { text, size, .. } = item {
-                        ui.horizontal(|ui| {
+                        crate::props::flow(ui, |ui| {
                             if ui
                                 .add(egui::TextEdit::singleline(text).vertical_align(egui::Align::Center).desired_width(260.0))
                                 .changed()
@@ -758,7 +758,7 @@ impl CreaBimApp {
             }
         }
         ui.separator();
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             let sheet = self.active_view.filter(|v| self.is_sheet(*v));
             if ui
                 .add_enabled(sheet.is_some(), egui::Button::new("Use on this sheet"))
@@ -931,7 +931,7 @@ impl CreaBimApp {
             })
             .unwrap_or_default();
         for (k, default) in fields {
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 ui.label(&k);
                 let mut v = sh.fields.get(&k).cloned().unwrap_or_default();
                 if ui

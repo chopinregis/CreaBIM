@@ -128,7 +128,7 @@ impl CreaBimApp {
                         });
                 }
                 ui.add_space(6.0);
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     copy = ui
                         .button("Copy report")
                         .on_hover_text("Copy the whole report as text")

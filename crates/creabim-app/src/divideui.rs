@@ -42,7 +42,11 @@ impl CreaBimApp {
             .show(ctx, |ui| {
                 ui.set_width(330.0);
                 let Some(h) = host else {
-                    crate::props::note(ui, "Select a wall, a beam, a guide or a part drawn from a plan outline to divide. For Copies, then Shift+click what goes in each part.");
+                    // full size, with the panel's own text (MU35: small and squeezed)
+                    ui.set_min_width(320.0);
+                    ui.label("Select what to divide: a wall, a beam, a guide, or an extrusion drawn from a plan outline.");
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("For Copies, then Shift+click what goes in each part. A sketch? Extrude it first, or draw a guide along it.").weak());
                     return;
                 };
                 let s = divide::span(model, h).expect("has a span");

@@ -303,7 +303,7 @@ impl CreaBimApp {
         }
         let mut act: Option<(&str, ElementId)> = None;
         for (id, name, on, shown) in &rows {
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 let mut v = *on;
                 if ui
                     .checkbox(&mut v, "")
@@ -344,7 +344,7 @@ impl CreaBimApp {
                 self.crop_action(what, &id.0.to_string());
             }
         }
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui.button("Add crop box").clicked() {
                 self.add_crop_box(false, false);
             }
@@ -421,7 +421,7 @@ impl CreaBimApp {
             self.start_crop_pick(id);
         }
         if only {
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 if self.crop_pick == Some(id) {
                     if ui.button("Done picking").clicked() {
                         self.end_crop_pick();
@@ -477,7 +477,7 @@ impl CreaBimApp {
             ))
             .weak(),
         );
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             let fit = |me: &Self, c: &mut CropBox| -> bool {
                 let only = match &c.scope {
                     CropScope::Only(ids) if !ids.is_empty() => Some(ids.clone()),
@@ -815,7 +815,7 @@ impl CreaBimApp {
             .order(egui::Order::Foreground)
             .show(ui.ctx(), |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    crate::props::flow(ui, |ui| {
                         let n = outside.len();
                         let text = if n == 1 {
                             format!("Outside {name}")

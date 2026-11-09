@@ -33,6 +33,8 @@ mod areasui;
 mod assemblies;
 #[path = "divideui.rs"]
 mod divideui;
+#[path = "profilesui.rs"]
+mod profilesui;
 #[path = "cropui.rs"]
 mod cropui;
 #[path = "drafting.rs"]
@@ -127,6 +129,8 @@ pub struct CreaBimApp {
     dark_3d: bool,
     /// The Divide window (MU34 B2).
     divide: divideui::DivideUi,
+    /// The profile library window (MU27 block 5).
+    profiles: profilesui::ProfilesUi,
     camera: OrbitCamera,
     cube: crate::viewcube::ViewCube,
     /// Aspect ratio of the 3D view as last drawn, for framing.
@@ -328,6 +332,7 @@ impl CreaBimApp {
             xray_drawings: HashMap::new(),
             dark_3d: true,
             divide: Default::default(),
+            profiles: Default::default(),
             camera: OrbitCamera::default(),
             cube: Default::default(),
             aspect: 0.65,
@@ -4625,7 +4630,8 @@ impl CreaBimApp {
                 return;
             }
             // a sweep along a path drawn on a face
-            if let Some((profile, name)) = crate::partstool::face_sweep(&app.plan) {
+            if let Some((profile, name)) = crate::partstool::face_sweep(&app.plan, app.doc.model()) {
+                let name = name.as_str();
                 match d.finish_sweep(&mut app.doc, profile, name, closed) {
                     Ok(Some(id)) => {
                         app.selection.only(id);
@@ -7688,40 +7694,32 @@ impl CreaBimApp {
                         label = "Move sketch"
                     }
                     let n = sk.plane.normal();
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "Its plane faces ({:.2}, {:.2}, {:.2}).",
-                            n.x, n.y, n.z
-                        ))
-                        .weak(),
-                    );
-                    crate::props::flow(ui, |ui| {
-                        ui.label("Extrude by");
-                        ui.add(crate::units::drag(&mut self.extrude_distance));
+                    crate::props::note(ui, format!("Its plane faces ({:.2}, {:.2}, {:.2}).", n.x, n.y, n.z));
+                    crate::props::row(ui, "Extrude by", |ui| {
+                        crate::props::fill(ui, crate::units::drag(&mut self.extrude_distance))
                     });
                     // a closed outline that crosses itself has no inside
                     let crossed =
                         sk.closed && creabim_core::polygon::self_intersects(&sk.outline(), true);
-                    ui.label(
-                        egui::RichText::new(if crossed {
+                    let extrude = crate::props::action(
+                        ui,
+                        "",
+                        if sk.closed { "Extrude into a mass (E)" } else { "Extrude into a surface (E)" },
+                        "",
+                        !crossed,
+                    )
+                    .clicked();
+                    crate::props::note(
+                        ui,
+                        if crossed {
                             "Closed, but it crosses itself: not a face. Move a point so no lines cross."
                         } else if sk.closed {
                             "Closed: a face. Extruding it makes a solid."
                         } else {
                             "Open: a wire. Extruding it makes a surface."
-                        })
-                        .weak(),
+                        },
                     );
-                    if ui
-                        .add_enabled(
-                            !crossed,
-                            egui::Button::new(if sk.closed {
-                                "Extrude into a mass (E)"
-                            } else {
-                                "Extrude into a surface (E)"
-                            }),
-                        )
-                        .clicked()
+                    if extrude
                     {
                         extrude_sketch = true;
                     }
@@ -8943,6 +8941,7 @@ impl eframe::App for CreaBimApp {
         self.templates_window(&ctx);
         self.units_window(&ctx);
         self.divide_window(&ctx);
+        self.profiles_window(&ctx);
         self.settings_window(&ctx);
         // the paper follows the setting and the theme; a change redraws
         // the 3D view's grid and background

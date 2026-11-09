@@ -392,6 +392,7 @@ impl CreaBimApp {
         match key {
             "menu:CreaBIM" => self.app_menu(),
             "units.menu" => self.unit_items(),
+            "sweep.library" => self.sweep_library_items(),
             "menu:File" => self.file_menu(),
             "menu:Edit" => self.edit_menu(),
             "menu:View" => self.view_menu(),
@@ -1787,6 +1788,7 @@ impl CreaBimApp {
             }
             _ if self.join_action(head, arg) => {}
             _ if self.crop_action(head, arg) => {}
+            _ if self.profiles_action(head, arg) => {}
             _ if self.similar_action(head, arg) => {}
             _ if self.app_action(ctx, head, arg) => {}
             _ if self.help_action(head, arg) => {}
@@ -3056,6 +3058,7 @@ impl CreaBimApp {
             })
             .collect();
         out.extend(groups);
+        out.push(self.profiles_group());
         let groups = out;
         json!({
             "theme": self.theme(),
@@ -3399,6 +3402,12 @@ impl CreaBimApp {
             }
             "pick" => {
                 let want = b["id"].as_str().unwrap_or("");
+                // a profile of the browser's Profiles group (MU27 block 5)
+                if let Some(name) = want.strip_prefix("profile:") {
+                    let name = name.to_string();
+                    self.profiles_action("profiles.open", &name);
+                    return;
+                }
                 let Some(e) = self.doc.model().iter().find(|e| e.id.0.to_string() == want) else {
                     return;
                 };
@@ -3891,6 +3900,11 @@ pub(super) fn style(ctx: &egui::Context, theme: Theme) {
         s.spacing.interact_size.y = 24.0;
         // a slider's track thick enough to read as one
         s.spacing.slider_rail_height = 6.0;
+        // soft corners on every menu, list and popup, as the web menus
+        // have (MU35: the app's own were square)
+        s.visuals.menu_corner_radius = egui::CornerRadius::same(10);
+        s.visuals.window_corner_radius = egui::CornerRadius::same(10);
+        s.spacing.menu_margin = egui::Margin::same(6);
         // thin floating scroll bars, like the web panels' (MU18)
         let mut scroll = egui::style::ScrollStyle::thin();
         scroll.foreground_color = false;

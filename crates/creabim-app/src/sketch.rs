@@ -658,7 +658,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
         }
         None => {
             let n = sk.segment_count();
-            ui.label(format!(
+            crate::props::note(ui, format!(
                 "{n} segment{}{}, {}",
                 if n == 1 { "" } else { "s" },
                 match arcs {
@@ -677,13 +677,9 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
     }
     if let Some(c) = sk.circle {
         let mut r = c.radius;
-        let changed = ui
-            .horizontal(|ui| {
-                ui.label("Radius");
-                ui.add(crate::units::drag(&mut r).range(0.001..=1e4))
-                    .changed()
-            })
-            .inner;
+        let changed = crate::props::row(ui, "Radius", |ui| {
+            crate::props::fill(ui, crate::units::drag(&mut r).range(0.001..=1e4)).changed()
+        });
         if changed {
             let fixed = sk
                 .constraints
@@ -704,46 +700,45 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
         }
     }
 
+    // each constraint a label/field row, its value filling the field
+    // column, a remove icon at its end (MU35)
     ui.add_space(4.0);
-    ui.label(egui::RichText::new("Constraints").strong());
+    crate::props::row(ui, "Constraints", |ui| ui.label(format!("{}", sk.constraints.len())));
     if sk.constraints.is_empty() {
-        ui.label(
-            egui::RichText::new("None yet. Add one below; the sketch moves to meet it.").weak(),
-        );
+        crate::props::note(ui, "None yet. Add one below; the sketch moves to meet it.");
     }
     let mut remove = None;
     for i in 0..sk.constraints.len() {
         let c = sk.constraints[i];
-        ui.horizontal(|ui| {
-            let mark = match c {
-                Constraint::Length { .. } => "↔",
-                c => c.glyph(),
-            };
-            ui.label(egui::RichText::new(mark).monospace().strong());
-            match c.value() {
-                Some(v) => {
-                    let what = match c {
-                        Constraint::Radius { .. } if sk.circle.is_some() => "Radius".to_string(),
-                        Constraint::Radius { segment, .. } => format!("Radius of {}", segment + 1),
-                        _ => format!("Length of {}", c.segments()[0] + 1),
-                    };
-                    ui.label(what);
-                    let mut value = v;
-                    let r = ui.add(crate::units::drag(&mut value).range(0.001..=1e4));
-                    if r.changed() {
-                        match sk.set_dimension(i, value) {
-                            Ok(()) => edit = Edit::Done("Dimension"),
-                            Err(e) => edit = Edit::Refused(format!("Couldn't change that: {e}")),
+        let what = match (c, c.value()) {
+            (Constraint::Radius { .. }, Some(_)) if sk.circle.is_some() => "Radius".to_string(),
+            (Constraint::Radius { segment, .. }, Some(_)) => format!("Radius {}", segment + 1),
+            (_, Some(_)) => format!("Length {}", c.segments()[0] + 1),
+            (c, None) => c.glyph().to_string(),
+        };
+        crate::props::row(ui, &what, |ui| {
+            ui.horizontal(|ui| {
+                let w = (ui.available_width() - 24.0).max(40.0);
+                let h = ui.spacing().interact_size.y;
+                match c.value() {
+                    Some(v) => {
+                        let mut value = v;
+                        let r = ui.add_sized([w, h], crate::units::drag(&mut value).range(0.001..=1e4));
+                        if r.changed() {
+                            match sk.set_dimension(i, value) {
+                                Ok(()) => edit = Edit::Done("Dimension"),
+                                Err(e) => edit = Edit::Refused(format!("Couldn't change that: {e}")),
+                            }
                         }
                     }
+                    None => {
+                        ui.add_sized([w, h], egui::Label::new(c.describe()).truncate());
+                    }
                 }
-                None => {
-                    ui.label(c.describe());
+                if crate::props::icon_button(ui, "x", "Remove this constraint").clicked() {
+                    remove = Some(i);
                 }
-            }
-            if ui.small_button("✕").on_hover_text("Remove").clicked() {
-                remove = Some(i);
-            }
+            })
         });
     }
     if let Some(i) = remove {
@@ -760,7 +755,7 @@ pub fn properties(ui: &mut egui::Ui, sk: &mut Sketch) -> Edit {
         form.kind = 6;
     }
     let two = matches!(form.kind, 3..=5);
-    ui.horizontal_wrapped(|ui| {
+    crate::props::flow(ui, |ui| {
         if sk.circle.is_none() {
             egui::ComboBox::from_id_salt("constraint_kind")
                 .icon(crate::props::combo_icon)

@@ -269,7 +269,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             ui.end_row();
 
             ui.label("Rate");
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 let per = m.rate.map_or(RateUnit::Area, |r| r.per);
                 let mut amount = m.rate.map_or(0.0, |r| r.amount);
                 if ui
@@ -566,7 +566,7 @@ impl CreaBimApp {
             .min_width(640.0)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.selectable_value(&mut self.mat.tab, MatTab::Project, "In this project");
                     ui.selectable_value(&mut self.mat.tab, MatTab::Library, "Library");
                     ui.separator();
@@ -647,7 +647,7 @@ impl CreaBimApp {
                             );
                             for (id, name, m) in rows {
                                 let users = library::users(model, *id).len();
-                                ui.horizontal(|ui| {
+                                crate::props::flow(ui, |ui| {
                                     if swatch(ui, m, 16.0).clicked() {
                                         asks.push(Ask::Pick(*id));
                                     }
@@ -678,7 +678,7 @@ impl CreaBimApp {
                             );
                         }
                     });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui.button("New").clicked() {
                         asks.push(Ask::New);
                     }
@@ -702,7 +702,7 @@ impl CreaBimApp {
                 let ElementKind::Material(m) = &e.kind else {
                     return;
                 };
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     preview(ui, m, 96.0);
                     ui.vertical(|ui| {
                         let mut name = e.name.clone();
@@ -724,7 +724,7 @@ impl CreaBimApp {
                             .weak(),
                         );
                         let users = library::users(model, id);
-                        ui.horizontal(|ui| {
+                        crate::props::flow(ui, |ui| {
                             ui.label(match users.len() {
                                 0 => "Not used yet.".to_string(),
                                 n => format!("Used by {n} element{}.", plural_s(n)),
@@ -781,7 +781,7 @@ impl CreaBimApp {
                         if choice != replacement {
                             asks.push(Ask::Replacement(del, choice));
                         }
-                        ui.horizontal(|ui| {
+                        crate::props::flow(ui, |ui| {
                             if ui.button("Delete and reassign").clicked() {
                                 asks.push(Ask::ConfirmDelete(del, choice));
                             }

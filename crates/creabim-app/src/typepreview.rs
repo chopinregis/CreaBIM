@@ -436,7 +436,7 @@ impl CreaBimApp {
                             turn = r.drag_delta();
                         }
                         ui.add_space(4.0);
-                        ui.horizontal(|ui| {
+                        crate::props::flow(ui, |ui| {
                             let half = Vec2::new((w - 8.0) / 2.0, h * 0.44 - 10.0);
                             pane(ui, half, &s.plan, "Plan", Sense::hover());
                             pane(ui, half, &s.section, "Section across it", Sense::hover());

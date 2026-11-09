@@ -35,6 +35,7 @@ pub mod offset;
 pub mod ops;
 pub mod parts;
 pub mod polygon;
+pub mod profiles;
 pub mod project;
 pub mod papermark;
 pub mod reference;

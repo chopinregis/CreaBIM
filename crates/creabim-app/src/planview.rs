@@ -530,6 +530,8 @@ pub struct PlanState {
     /// A plan's range line being dragged in a section: the plan, its cut
     /// (else its view depth), its level's height.
     range_drag: Option<(ElementId, bool, f64)>,
+    /// The plan whose range a section reads out last (MU35).
+    range_focus: Option<ElementId>,
     pub host_pick: Option<ElementId>,
     pub host_cycle: usize,
     /// A footing was just placed on a host: the status bar offers the
@@ -644,6 +646,7 @@ impl Default for PlanState {
             temp_dims_off: false,
             plan_ranges: false,
             range_drag: None,
+            range_focus: None,
             host_pick: None,
             host_cycle: 0,
             footing_placed: false,
@@ -4056,21 +4059,55 @@ fn plan_ranges(
     let r = painter.clip_rect();
     let (x0, x1) = (r.left() + 8.0, r.right() - 46.0);
     let pointer = response.hover_pos();
+    let y_of = |z: f64| xf.to_screen(DVec2::new(0.0, z)).y;
+    // one plan read at a time (MU35: overlapping bands were hard to read):
+    // the one dragged, else selected, else the one whose cut line or band
+    // the pointer is on; the others are a thin cut line and its name
+    let dragged = state.range_drag.map(|d| d.0);
+    let near_line = pointer.and_then(|p| {
+        ranges
+            .iter()
+            .map(|r| (r.0, (y_of(r.2) - p.y).abs()))
+            .filter(|(_, d)| *d < 8.0)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(id, _)| id)
+    });
+    let focus = dragged
+        .or_else(|| ranges.iter().find(|r| selection.contains(r.0)).map(|r| r.0))
+        .or(near_line)
+        .or(state.range_focus);
+    state.range_focus = focus;
     let mut over = None;
-    for (id, z, cut, deep, name) in &ranges {
-        let lit = selection.contains(*id);
-        let (yc, yd) = (xf.to_screen(DVec2::new(0.0, *cut)).y, xf.to_screen(DVec2::new(0.0, *deep)).y);
-        let band = Rect::from_min_max(egui::pos2(x0, yc.min(yd)), egui::pos2(x1, yc.max(yd)));
-        painter.rect_filled(band, 0.0, accent.gamma_multiply(if lit { 0.16 } else { 0.07 }));
-        let w = if lit { 1.6 } else { 1.0 };
-        painter.line_segment([egui::pos2(x0, yc), egui::pos2(x1, yc)], Stroke::new(w, accent));
-        painter.add(egui::Shape::dashed_line(&[egui::pos2(x0, yd), egui::pos2(x1, yd)], Stroke::new(w * 0.8, accent), 5.0, 3.0));
-        painter.text(egui::pos2(x0 + 4.0, yc - 3.0), egui::Align2::LEFT_BOTTOM, format!("{name} · cut {}", crate::units::len(cut - z)), egui::FontId::proportional(10.5), accent);
+    let mut last_label: Option<f32> = None;
+    // the focused plan last, over the others
+    let mut order: Vec<&(ElementId, f64, f64, f64, String)> = ranges.iter().collect();
+    order.sort_by_key(|r| Some(r.0) == focus);
+    for (id, z, cut, deep, name) in order {
+        let on = Some(*id) == focus;
+        let (yc, yd) = (y_of(*cut), y_of(*deep));
+        if on {
+            let band = Rect::from_min_max(egui::pos2(x0, yc.min(yd)), egui::pos2(x1, yc.max(yd)));
+            painter.rect_filled(band, 0.0, accent.gamma_multiply(0.13));
+            painter.add(egui::Shape::dashed_line(&[egui::pos2(x0, yd), egui::pos2(x1, yd)], Stroke::new(1.2, accent), 5.0, 3.0));
+            painter.text(egui::pos2(x1 - 10.0, yd + 3.0), egui::Align2::RIGHT_TOP, format!("view depth {}", crate::units::len(z - deep)), egui::FontId::proportional(10.5), accent);
+        }
+        let ink = if on { accent } else { accent.gamma_multiply(0.55) };
+        painter.line_segment([egui::pos2(x0, yc), egui::pos2(x1, yc)], Stroke::new(if on { 1.8 } else { 1.0 }, ink));
+        // its name at the right, by its grip; nudged below its line when
+        // another name is just above
+        let below = last_label.is_some_and(|l| (l - yc).abs() < 14.0) && !on;
+        let (ty, align) = if below { (yc + 3.0, egui::Align2::RIGHT_TOP) } else { (yc - 3.0, egui::Align2::RIGHT_BOTTOM) };
+        painter.text(egui::pos2(x1 - 10.0, ty), align, format!("{name} · cut {}", crate::units::len(cut - z)), egui::FontId::proportional(if on { 11.0 } else { 10.0 }), ink);
+        last_label = Some(yc);
         if grips {
-            for (y, is_cut) in [(yc, true), (yd, false)] {
+            let mut gs = vec![(yc, true)];
+            if on {
+                gs.push((yd, false));
+            }
+            for (y, is_cut) in gs {
                 let g = egui::pos2(x1, y);
                 let hot = pointer.is_some_and(|p| p.distance(g) < 7.0);
-                painter.circle(g, if hot { 5.5 } else { 4.5 }, Color32::WHITE, Stroke::new(1.5, accent));
+                painter.circle(g, if hot { 5.5 } else if on { 4.5 } else { 3.5 }, Color32::WHITE, Stroke::new(1.5, ink));
                 if hot {
                     over = Some((*id, is_cut, *z));
                 }

@@ -178,6 +178,29 @@ pub struct PartSettings {
     pub plant: PlantForm,
     pub canopy: f64,
     pub plant_height: f64,
+    /// A profile from the library (a preset or the project's own) new
+    /// sweeps take instead of `profile` (MU27 block 5).
+    pub library: Option<String>,
+}
+
+impl PartSettings {
+    /// The profile new sweeps take, for a wall `wall` thick, and its name.
+    pub fn sweep_profile(&self, model: &Model, wall: f64) -> (Vec<DVec2>, String) {
+        if let Some(p) = self.library.as_deref().and_then(|n| creabim_core::profiles::find(model, n)) {
+            return (p, self.library.clone().unwrap_or_default());
+        }
+        let (a, b) = self.size;
+        (self.profile.profile(wall, a, b, self.steps), self.profile.label().to_string())
+    }
+
+    /// The wall edge new sweeps follow: a library profile the top.
+    fn sweep_edge(&self) -> WallEdge {
+        if self.library.is_some() {
+            WallEdge::Top
+        } else {
+            self.profile.edge()
+        }
+    }
 }
 
 impl Default for PartSettings {
@@ -197,6 +220,7 @@ impl Default for PartSettings {
             plant: PlantForm::Tree,
             canopy: 4.0,
             plant_height: 6.0,
+            library: None,
         }
     }
 }
@@ -244,12 +268,8 @@ pub fn on_face(state: &PlanState) -> Option<(f64, f64, bool)> {
 }
 
 /// The profile and name of a sweep drawn now on a face in the 3D view.
-pub fn face_sweep(state: &PlanState) -> Option<(Vec<DVec2>, &'static str)> {
-    let s = &state.parts;
-    (state.tool == Tool::Sweep).then(|| {
-        let (a, b) = s.size;
-        (s.profile.profile(0.2, a, b, s.steps), s.profile.label())
-    })
+pub fn face_sweep(state: &PlanState, model: &Model) -> Option<(Vec<DVec2>, String)> {
+    (state.tool == Tool::Sweep).then(|| state.parts.sweep_profile(model, 0.2))
 }
 
 /// The new element (and any library material it needs, first) for an
@@ -359,31 +379,31 @@ pub fn click(
         }
         Tool::Sweep => {
             let (a, b) = s.size;
-            if s.path.is_empty() && s.profile != SweepProfile::Steps {
+            let _ = (a, b);
+            if s.path.is_empty() && (s.library.is_some() || s.profile != SweepProfile::Steps) {
                 if let Some(wall) = crate::memberstool::wall_at(doc.model(), level, p) {
                     let Some(ElementKind::Wall(w)) = doc.model().get(wall).map(|e| &e.kind) else {
                         return Ok(());
                     };
-                    let profile = s.profile.profile(w.thickness, a, b, s.steps);
+                    let (profile, name) = s.sweep_profile(doc.model(), w.thickness);
                     let part = Part::sweep(
                         level,
                         profile,
                         Path::Wall {
                             wall,
-                            edge: s.profile.edge(),
+                            edge: s.sweep_edge(),
                             offset: 0.0,
                             extend: [0.0, 0.0],
                         },
                     );
                     state.status = Some(format!(
-                        "{} added along the wall's {}: it follows the wall. Click another wall for the next one.",
-                        s.profile.label(),
-                        s.profile.edge().label().to_lowercase()
+                        "{name} added along the wall's {}: it follows the wall. Click another wall for the next one.",
+                        s.sweep_edge().label().to_lowercase()
                     ));
                     return add(
                         doc,
                         selection,
-                        Element::new(s.profile.label(), ElementKind::Part(part)),
+                        Element::new(name, ElementKind::Part(part)),
                         "Sweep along wall",
                     );
                 }
@@ -396,7 +416,7 @@ pub fn click(
                 if pts.len() < 2 {
                     return Ok(());
                 }
-                let profile = s.profile.profile(0.2, a, b, s.steps);
+                let (profile, name) = s.sweep_profile(doc.model(), 0.2);
                 let part = Part::sweep(
                     level,
                     profile,
@@ -406,11 +426,11 @@ pub fn click(
                         normal: None,
                     },
                 );
-                state.status = Some(format!("{} added.", s.profile.label()));
+                state.status = Some(format!("{name} added."));
                 return add(
                     doc,
                     selection,
-                    Element::new(s.profile.label(), ElementKind::Part(part)),
+                    Element::new(name, ElementKind::Part(part)),
                     "Draw sweep",
                 );
             }
@@ -481,14 +501,23 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                     opt(
                         format!("part:profile.{}", p.label()),
                         p.label(),
-                        s.profile == *p,
+                        s.library.is_none() && s.profile == *p,
                         "The profile new sweeps start from",
                     )
                 })
                 .collect())];
-            v.push(num("size_a", la, s.size.0, "A size of the profile"));
-            v.push(num("size_b", lb, s.size.1, "A size of the profile"));
-            if s.profile == SweepProfile::Steps {
+            // the profile library: presets, the project's own, and ways to
+            // make one (MU27 block 5)
+            v.push(json!({
+                "kind": "menu", "key": "sweep.library", "label": "Profile",
+                "value": s.library.clone().unwrap_or_else(|| "Library".into()), "icon": "profile",
+                "hint": "Pick a profile from the library: presets and the project's own; or make one from a shape",
+            }));
+            if s.library.is_none() {
+                v.push(num("size_a", la, s.size.0, "A size of the profile"));
+                v.push(num("size_b", lb, s.size.1, "A size of the profile"));
+            }
+            if s.library.is_none() && s.profile == SweepProfile::Steps {
                 v.push(json!({
                     "kind": "number", "key": "part.steps", "label": "Steps", "value": s.steps,
                     "unit": "", "step": 1, "min": 1, "max": 40, "hint": "Number of steps",
@@ -572,6 +601,7 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
     let s = &mut state.parts;
     if let Some(p) = what.strip_prefix("profile.") {
         if let Some(p) = SweepProfile::ALL.into_iter().find(|x| x.label() == p) {
+            s.library = None;
             if p != s.profile {
                 s.profile = p;
                 s.size = p.defaults();

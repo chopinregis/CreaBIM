@@ -42,6 +42,9 @@ pub struct ProjectInfo {
     /// a view.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pad: Vec<PadItem>,
+    /// The project's own profiles (MU27 block 5), for sweeps.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<crate::profiles::NamedProfile>,
 }
 
 /// One item of the project's notepad.

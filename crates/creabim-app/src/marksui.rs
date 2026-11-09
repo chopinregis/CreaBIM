@@ -152,13 +152,13 @@ impl CreaBimApp {
                 );
                 ui.add_space(6.0);
                 rules_grid(ui, &mut rules);
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label("Ground level number").on_hover_text(
                         "The number of the lowest level at or above ±0, for level-based marks; levels above count up, those below count down",
                     );
                     ui.add(egui::DragValue::new(&mut rules.ground_number).range(-9..=99));
                 });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui
                         .button("D01, W01")
                         .on_hover_text("Doors and windows counted through the building, lowest level first")
@@ -182,7 +182,7 @@ impl CreaBimApp {
                 });
                 ui.separator();
                 ui.label(egui::RichText::new("Apply").strong());
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     egui::ComboBox::from_id_salt("renumber_only").icon(crate::props::combo_icon)
                         .selected_text(self.marks.only.map_or("Every kind", |c| c.label()))
                         .show_ui(ui, |ui| {
@@ -193,7 +193,7 @@ impl CreaBimApp {
                         });
                     crate::props::switch(ui, &mut self.marks.replace, "Replace typed marks too");
                 });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui
                         .button("Renumber")
                         .on_hover_text(
@@ -264,7 +264,7 @@ impl CreaBimApp {
             .max_height(160.0)
             .show(ui, |ui| {
                 for (m, ids) in dups {
-                    ui.horizontal(|ui| {
+                    crate::props::flow(ui, |ui| {
                         let names: Vec<String> = ids
                             .iter()
                             .filter_map(|i| self.doc.model().get(*i).map(|e| e.name.clone()))
@@ -381,7 +381,7 @@ impl CreaBimApp {
         let mut shown = !head.hidden;
         let mut edited = head;
         ui.add_space(4.0);
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if crate::props::switch(ui, &mut shown, format!("Head in {name}"))
                 .on_hover_text(
                     "Show this level's name and elevation in this view; its line stays either way",
