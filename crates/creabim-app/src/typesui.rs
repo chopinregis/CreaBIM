@@ -80,12 +80,13 @@ fn len_field(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bo
 
 fn rule_field(ui: &mut egui::Ui, text: &str, salt: &str, r: &mut GridRule) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         ui.label(text);
         let spacing = matches!(r, GridRule::Spacing(_));
         egui::ComboBox::from_id_salt(("curtain_rule", salt))
+            .icon(crate::props::combo_icon)
             .selected_text(r.label())
-            .width(80.0)
+            .width(ui.available_width().min(80.0))
             .show_ui(ui, |ui| {
                 if ui.selectable_label(spacing, "Spacing").clicked() && !spacing {
                     *r = GridRule::Spacing(1.5);
@@ -130,7 +131,7 @@ pub(super) fn curtain_fields(ui: &mut egui::Ui, c: &mut CurtainGrid) -> &'static
     if len_field(ui, "Mullion depth", &mut c.mullion_depth, 0.02, 1.0) {
         label = "Mullion size";
     }
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         ui.label("Panels");
         for k in PanelKind::ALL {
             if ui.selectable_value(&mut c.panel, k, k.label()).changed() {
@@ -142,7 +143,7 @@ pub(super) fn curtain_fields(ui: &mut egui::Ui, c: &mut CurtainGrid) -> &'static
         label = "Panel thickness";
     }
     if !c.swapped.is_empty() {
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label(format!("{} panels swapped", c.swapped.len()));
             if ui.small_button("Reset").clicked() {
                 c.swapped.clear();
@@ -169,11 +170,13 @@ fn material_pick(
         .map_or("By type", |m| m.1.as_str())
         .to_string();
     let mut changed = false;
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         ui.label("Material");
         egui::ComboBox::from_id_salt(("type_material", salt))
+            .icon(crate::props::combo_icon)
             .selected_text(shown)
-            .width(150.0)
+            .width(ui.available_width().min(150.0))
+            .truncate()
             .show_ui(ui, |ui| {
                 changed |= ui.selectable_value(current, None, "By type").changed();
                 for (id, n) in &materials {
@@ -199,11 +202,13 @@ fn assembly_pick(
         .and_then(|c| choices.iter().find(|x| x.0 == c))
         .map_or("None (single material)".to_string(), |x| x.1.clone());
     let mut changed = false;
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         ui.label("Assembly");
         egui::ComboBox::from_id_salt("type_assembly")
+            .icon(crate::props::combo_icon)
             .selected_text(shown)
-            .width(170.0)
+            .width(ui.available_width().min(170.0))
+            .truncate()
             .show_ui(ui, |ui| {
                 changed |= ui
                     .selectable_value(current, None, "None (single material)")
@@ -263,9 +268,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                         }
                     }
                 }
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label("Location line");
                     egui::ComboBox::from_id_salt("type_location")
+                        .icon(crate::props::combo_icon)
                         .selected_text(w.location.label())
                         .show_ui(ui, |ui| {
                             for l in creabim_core::LocationLine::ALL {
@@ -276,7 +282,7 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
                         });
                 });
             }
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 let mut own = w.height.is_some();
                 if crate::props::switch(ui, &mut own, "Default height")
                     .on_hover_text("New walls of this type are drawn this high; otherwise as high as their level")
@@ -346,21 +352,23 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, t: &mut ElementType)
             }
         }
         TypeParams::Column(c) => {
-            let round = matches!(c.profile, creabim_core::Profile::Round { .. });
-            ui.horizontal(|ui| {
-                ui.label("Profile");
-                if ui.selectable_label(!round, "Rectangle").clicked() && round {
-                    c.profile = creabim_core::Profile::Rectangle {
+            let mut round = matches!(c.profile, creabim_core::Profile::Round { .. });
+            if crate::props::choice(
+                ui,
+                "Profile",
+                &mut round,
+                &[(false, "Rectangular", ""), (true, "Round", "")],
+            ) {
+                c.profile = if round {
+                    creabim_core::Profile::Round { diameter: 0.3 }
+                } else {
+                    creabim_core::Profile::Rectangle {
                         width: 0.3,
                         depth: 0.3,
-                    };
-                    label = "Type profile";
-                }
-                if ui.selectable_label(round, "Round").clicked() && !round {
-                    c.profile = creabim_core::Profile::Round { diameter: 0.3 };
-                    label = "Type profile";
-                }
-            });
+                    }
+                };
+                label = "Type profile";
+            }
             match &mut c.profile {
                 creabim_core::Profile::Rectangle { width, depth } => {
                     if len_field(ui, "Width", width, 0.05, 5.0)
@@ -427,30 +435,30 @@ pub(super) fn holes_fields(
 ) -> (&'static str, bool) {
     let mut label = "";
     let mut draw = false;
-    ui.separator();
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Holes").strong());
-        if ui
-            .button("Draw a hole")
-            .on_hover_text("Click the hole's corners in a plan, then the first again or Enter")
-            .clicked()
-        {
-            draw = true;
-        }
-    });
+    // Blender's rows (MU31): the operator in the field column
+    if crate::props::action(
+        ui,
+        "Holes",
+        "Draw a hole",
+        "Click the hole's corners in a plan, then the first again or Enter",
+        true,
+    )
+    .clicked()
+    {
+        draw = true;
+    }
     let mut remove = None;
     for (i, h) in holes.iter().enumerate() {
-        ui.horizontal(|ui| {
-            let area = creabim_core::polygon::signed_area2(h).abs() / 2.0;
-            ui.label(format!(
-                "Hole {}: {} corners, {}",
-                i + 1,
-                h.len(),
-                crate::units::area(area)
-            ));
-            if ui.small_button("Remove").clicked() {
-                remove = Some(i);
-            }
+        let area = creabim_core::polygon::signed_area2(h).abs() / 2.0;
+        crate::props::row(ui, &format!("Hole {}", i + 1), |ui| {
+            crate::props::flow(ui, |ui| {
+                ui.label(format!("{} corners, {}", h.len(), crate::units::area(area)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if crate::props::icon_button(ui, "x", "Remove this hole").clicked() {
+                        remove = Some(i);
+                    }
+                });
+            })
         });
     }
     if let Some(i) = remove {
@@ -458,11 +466,11 @@ pub(super) fn holes_fields(
         label = "Remove hole";
     }
     if holes.is_empty() && shafts == 0 {
-        ui.label(egui::RichText::new("None. Draw one, or a shaft through several floors.").weak());
+        crate::props::note(ui, "None yet. Draw one, or a shaft through several floors.");
     } else if !holes.is_empty() {
-        ui.label(
-            egui::RichText::new("Edit (Enter) shows each hole's corners and edges to reshape it.")
-                .weak(),
+        crate::props::note(
+            ui,
+            "Edit (Enter) shows each hole's corners and edges to reshape it.",
         );
     }
     if shafts > 0 {
@@ -667,6 +675,19 @@ impl CreaBimApp {
     /// element it fits), what it overrides, and buttons to reset, update
     /// the type, make a type of it and select the type's instances.
     pub(super) fn type_picker(&mut self, ui: &mut egui::Ui, id: ElementId) {
+        if self
+            .doc
+            .model()
+            .get(id)
+            .and_then(|e| TypeCategory::of(&e.kind))
+            .is_none()
+        {
+            return;
+        }
+        // a folding header as every other section's (MU31: a bare title)
+        if !self.prop_header(ui, "type", "Type", true, None) {
+            return;
+        }
         let model = self.doc.model();
         let Some(e) = model.get(id) else { return };
         let Some(cat) = TypeCategory::of(&e.kind) else {
@@ -697,7 +718,7 @@ impl CreaBimApp {
             .map_or("No type".to_string(), |x| x.1.clone());
         let mut asks = vec![];
         let mut chosen = current;
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             crate::app::helpui::combo(ui, "Type")
                 .selected_text(shown)
                 .width(ui.available_width().min(180.0))
@@ -740,58 +761,123 @@ impl CreaBimApp {
                 })
                 .unwrap_or_default();
             let n = types::instances(model, t).len();
-            ui.label(egui::RichText::new(format!("{summary} · {}", plural(n, "instance"))).weak());
-            if overrides.is_empty() {
-                ui.label(egui::RichText::new("Everything from its type").weak());
-            } else {
-                let list: Vec<&str> = overrides.iter().map(|p| p.label()).collect();
-                ui.label(
-                    egui::RichText::new(format!("Overrides: {}", list.join(", ")))
-                        .color(Color32::from_rgb(220, 130, 40)),
-                )
-                .on_hover_text(
-                    "What this element sets for itself: a change to its type leaves these alone",
+            // one line, as Blender packs it (MU22): how many, then the
+            // type's actions as links; what it is on hover
+            let ink = ui.visuals().strong_text_color();
+            let link = |ui: &mut egui::Ui, text: &str| {
+                let r = ui.add(
+                    egui::Button::new(egui::RichText::new(text).color(ink))
+                        .frame(false)
+                        .small(),
                 );
-            }
-            ui.horizontal_wrapped(|ui| {
-                if !overrides.is_empty() {
+                if r.hovered() {
+                    let b = r.rect;
+                    ui.painter()
+                        .hline(b.x_range(), b.bottom() - 2.0, egui::Stroke::new(1.0, ink));
+                }
+                r
+            };
+            // as Blender's rows (MU29): the count, then real buttons the
+            // width of the field column, side by side
+            let _ = &link;
+            crate::props::row(ui, "Instances", |ui| {
+                crate::props::flow(ui, |ui| {
+                    ui.label(n.to_string()).on_hover_text(summary.clone());
+                    let w = ui.available_width();
                     if ui
-                        .small_button("Reset to type")
-                        .on_hover_text("Drop its overrides: take every value from its type")
+                        .add_sized([w, 22.0], egui::Button::new("Select all"))
+                        .on_hover_text("Select every element of this type")
                         .clicked()
                     {
-                        asks.push(TypeAsk::Reset(id));
+                        asks.push(TypeAsk::SelectInstances(t));
                     }
-                    if ui
-                        .small_button("Update type")
-                        .on_hover_text("Make its values the type's: every other instance follows")
-                        .clicked()
-                    {
-                        asks.push(TypeAsk::SaveToType(id));
-                    }
-                }
-                if ui
-                    .small_button("Select all instances")
-                    .on_hover_text("Select every element of this type")
-                    .clicked()
-                {
-                    asks.push(TypeAsk::SelectInstances(t));
-                }
-                if ui.small_button("Edit type…").clicked() {
-                    self.types.open = true;
-                    self.types.current = Some(t);
-                }
+                })
             });
-        }
-        if cat != TypeCategory::Object
-            && ui
-                .small_button("Make a type of it")
-                .on_hover_text("A new type with its values, which it becomes an instance of")
-                .clicked()
+            crate::props::row(ui, "", |ui| {
+                crate::props::flow(ui, |ui| {
+                    let two = cat != TypeCategory::Object;
+                    let gap = ui.spacing().item_spacing.x;
+                    let w = if two {
+                        (ui.available_width() - gap) / 2.0
+                    } else {
+                        ui.available_width()
+                    };
+                    if ui
+                        .add_sized([w, 22.0], egui::Button::new("Edit\u{2026}"))
+                        .on_hover_text(format!(
+                            "Edit the type \u{201c}{}\u{201d}: every instance follows",
+                            self.doc
+                                .model()
+                                .get(t)
+                                .map_or(String::new(), |e| e.name.clone())
+                        ))
+                        .clicked()
+                    {
+                        self.types.open = true;
+                        self.types.current = Some(t);
+                    }
+                    if two
+                        && ui
+                            .add_sized([w, 22.0], egui::Button::new("New"))
+                            .on_hover_text(
+                                "A new type with its values, which it becomes an instance of",
+                            )
+                            .clicked()
+                    {
+                        asks.push(TypeAsk::FromElement(id));
+                    }
+                })
+            });
+            if !overrides.is_empty() {
+                let list: Vec<&str> = overrides.iter().map(|p| p.label()).collect();
+                crate::props::row(ui, "Overrides", |ui| {
+                    crate::props::flow(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(list.join(", "))
+                                    .color(Color32::from_rgb(220, 130, 40)),
+                            )
+                            .truncate(),
+                        )
+                        .on_hover_text(
+                            "What this element sets for itself: a change to its type leaves these alone",
+                        );
+                    })
+                });
+                crate::props::row(ui, "", |ui| {
+                    crate::props::flow(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        if link(ui, "Reset to type")
+                            .on_hover_text("Drop its overrides: take every value from its type")
+                            .clicked()
+                        {
+                            asks.push(TypeAsk::Reset(id));
+                        }
+                        ui.label(egui::RichText::new("·").weak());
+                        if link(ui, "Update type")
+                            .on_hover_text(
+                                "Make its values the type's: every other instance follows",
+                            )
+                            .clicked()
+                        {
+                            asks.push(TypeAsk::SaveToType(id));
+                        }
+                    })
+                });
+            }
+        } else if cat != TypeCategory::Object
+            && crate::props::action(
+                ui,
+                "",
+                "Make a type of it",
+                "A new type with its values, which it becomes an instance of",
+                true,
+            )
+            .clicked()
         {
             asks.push(TypeAsk::FromElement(id));
         }
-        ui.separator();
         for a in asks {
             self.run_types(a);
         }
@@ -808,7 +894,7 @@ impl CreaBimApp {
         let label = type_fields(ui, model, &mut t);
         let n = types::instances(model, id).len();
         let mut asks = vec![];
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label(match n {
                 0 => "No instances yet.".to_string(),
                 n => format!("{}.", plural(n, "instance")),
@@ -818,7 +904,7 @@ impl CreaBimApp {
             }
         });
         self.show_in_model_ui(ui, id);
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .button("Open preview")
                 .on_hover_text("The type on its own, in 3D, plan and section, beside its values (or double-click it in the project browser)")
@@ -846,7 +932,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Types")
+        crate::app::shell::window("Types")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(36.0, 36.0))
             .constrain_to(area)
@@ -917,7 +1003,7 @@ impl CreaBimApp {
                             ui.add_space(6.0);
                         }
                     });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui
                         .button("Add starters")
                         .on_hover_text("Walls, curtain walls, doors, windows, slabs, roofs, columns and beams, with the starter assemblies they are built of")
@@ -964,7 +1050,7 @@ impl CreaBimApp {
                 let mut name = e.name.clone();
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut name)
+                        egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center)
                             .font(egui::TextStyle::Heading)
                             .desired_width(320.0),
                     )
@@ -979,7 +1065,7 @@ impl CreaBimApp {
                 let mut description = t.description.clone();
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut description)
+                        egui::TextEdit::singleline(&mut description).vertical_align(egui::Align::Center)
                             .hint_text("Description")
                             .desired_width(420.0),
                     )
@@ -997,7 +1083,7 @@ impl CreaBimApp {
                 }
                 ui.add_space(8.0);
                 let users = types::instances(model, id);
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label(match users.len() {
                         0 => "No instances yet.".to_string(),
                         n => format!("{}. Changing the type changes them all, but for what each overrides.", plural(n, "instance")),

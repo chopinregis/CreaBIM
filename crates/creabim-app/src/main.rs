@@ -1,5 +1,6 @@
 //! CreaBIM desktop app.
 
+mod actlog;
 mod align3d;
 mod aligntool;
 mod annotate;
@@ -16,6 +17,7 @@ mod detailtool;
 mod editmode;
 mod files;
 mod fillpreview;
+mod ghost;
 mod handles;
 mod help;
 mod hoverpick;
@@ -43,6 +45,7 @@ mod tempdims;
 mod textures;
 mod theme;
 mod tooltabs;
+mod trace;
 mod tracker;
 mod ui_model;
 mod units;

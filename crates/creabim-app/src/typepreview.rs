@@ -359,7 +359,7 @@ impl CreaBimApp {
         let mut asks = vec![];
         let mut turn = egui::Vec2::ZERO;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new(format!("Type: {name}"))
+        crate::app::shell::window(format!("Type: {name}"))
             .id(egui::Id::new("type_preview"))
             .open(&mut open)
             .default_pos(area.min + Vec2::new(60.0, 40.0))
@@ -377,7 +377,7 @@ impl CreaBimApp {
                                 let model = self.doc.model();
                                 let mut n = name.clone();
                                 if ui
-                                    .add(egui::TextEdit::singleline(&mut n).font(egui::TextStyle::Heading))
+                                    .add(egui::TextEdit::singleline(&mut n).vertical_align(egui::Align::Center).font(egui::TextStyle::Heading))
                                     .changed()
                                 {
                                     asks.push(TypeAsk::Rename(id, n));
@@ -436,7 +436,7 @@ impl CreaBimApp {
                             turn = r.drag_delta();
                         }
                         ui.add_space(4.0);
-                        ui.horizontal(|ui| {
+                        crate::props::flow(ui, |ui| {
                             let half = Vec2::new((w - 8.0) / 2.0, h * 0.44 - 10.0);
                             pane(ui, half, &s.plan, "Plan", Sense::hover());
                             pane(ui, half, &s.section, "Section across it", Sense::hover());

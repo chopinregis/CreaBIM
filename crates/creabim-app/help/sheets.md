@@ -36,4 +36,19 @@ Any `{name}` in the template's text becomes a field. `{sheet}`, `{number}`, `{pr
 
 ## Printing
 
-*File › Sheets as PDF* writes every sheet to one PDF. *File › This view or sheet as SVG* writes the open sheet. See [PDF, SVG and DXF](dxf-svg).
+*File › Export › Sheets as PDF* opens **Export sheets** (below): all sheets, chosen ones or this one, as one PDF or a PDF each. *File › This view or sheet as SVG* writes the open sheet. See [PDF, SVG and DXF](dxf-svg).
+
+## Text, north arrow and scale bar
+
+What belongs to the paper, not to a view, goes on the sheet itself, from the sheet's header:
+
+- **Text** (`N`): click where it starts, then type. It is a note on the sheet.
+- **North arrow**: placed above the title block, turned to the project's true north (*Project information*). Give it an angle of its own in *Properties*.
+- **Scale bar**: placed above the title block at the scale of the sheet's views. Set its scale, length, parts and thickness in *Properties*.
+
+Drag either one to where it goes; `Delete` removes it. Dimensions, tags and notes about the building stay in the views, so they show on every sheet a view is placed on.
+
+## Exporting sheets
+
+- **Ctrl+P**, or the PDF button in the sheet's header: the sheet in front, as a PDF named by its number and name.
+- **Ctrl+Shift+P**, or *File › Export › Sheets as PDF*: the **Export sheets** window. Choose **All**, **Chosen** (the sheets selected in the project browser, or ticked in the list) or **This one**, and **One PDF** or **A PDF each** (into a folder, each named by number and name). Sheets print on white at their own sizes.

@@ -318,6 +318,7 @@ pub fn preview(
 pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
     let mut label = "";
     egui::ComboBox::from_id_salt("detail.kind")
+        .icon(crate::props::combo_icon)
         .selected_text(d.kind.label())
         .show_ui(ui, |ui| {
             for k in DetailKind::ALL {
@@ -334,7 +335,7 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
         d.kind,
         DetailKind::Membrane | DetailKind::Region { .. } | DetailKind::BreakLine
     ) {
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Width");
             if ui
                 .add(crate::units::drag(&mut d.width).range(0.0..=5.0))
@@ -353,7 +354,7 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
     }
     match &mut d.kind {
         DetailKind::Repeat { module, joint } => {
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 ui.label("Unit");
                 if ui
                     .add(crate::units::drag(module).range(0.005..=5.0))
@@ -369,6 +370,7 @@ pub fn detail_fields(ui: &mut egui::Ui, d: &mut DetailItem) -> &'static str {
         }
         DetailKind::Region { hatch } => {
             egui::ComboBox::from_id_salt("detail.hatch")
+                .icon(crate::props::combo_icon)
                 .selected_text(hatch.label())
                 .show_ui(ui, |ui| {
                     for h in Hatch::ALL {

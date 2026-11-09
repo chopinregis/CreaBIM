@@ -109,7 +109,13 @@ impl Element {
             // a missing style falls back to the default look, like materials
             ElementKind::TextStyle(_) => vec![],
             ElementKind::SheetTemplate(_) => vec![],
-            ElementKind::Units(_) | ElementKind::MarkRules(_) | ElementKind::StylePack(_) => vec![],
+            // a reference's view is soft: without it, it shows nothing
+            ElementKind::Reference(_) => vec![],
+            ElementKind::PaperMark(m) => vec![m.sheet],
+            ElementKind::Units(_)
+            | ElementKind::Project(_)
+            | ElementKind::MarkRules(_)
+            | ElementKind::StylePack(_) => vec![],
             // types are soft too: an element whose type is gone keeps its values
             ElementKind::ElementType(_) => vec![],
             // a shaft's top level is soft: without it the shaft stops at
@@ -170,6 +176,9 @@ impl Element {
             ElementKind::TextStyle(_) => "TextStyle",
             ElementKind::SheetTemplate(_) => "SheetTemplate",
             ElementKind::Units(_) => "ProjectUnits",
+            ElementKind::Project(_) => "ProjectInfo",
+            ElementKind::Reference(_) => "Reference",
+            ElementKind::PaperMark(_) => "IfcAnnotation",
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
@@ -339,7 +348,25 @@ impl Element {
             ElementKind::Note(n) => n.validate(),
             ElementKind::TextStyle(s) => s.validate(),
             ElementKind::SheetTemplate(t) => t.validate(),
-            ElementKind::Units(_) => Ok(()),
+            ElementKind::Units(_) | ElementKind::Project(_) => Ok(()),
+            ElementKind::PaperMark(m) => {
+                if m.at.is_finite() && m.size > 0.0 {
+                    Ok(())
+                } else {
+                    Err("a paper mark needs a place and a size".into())
+                }
+            }
+            ElementKind::Reference(r) => {
+                if r.scale.is_finite()
+                    && r.scale > 0.0
+                    && r.at.is_finite()
+                    && r.rotation.is_finite()
+                {
+                    Ok(())
+                } else {
+                    Err("a reference needs a finite place and a scale above zero".into())
+                }
+            }
             ElementKind::MarkRules(r) => r.validate(),
             ElementKind::StylePack(p) => p.validate(),
             ElementKind::CropBox(c) => c.validate(),
@@ -416,6 +443,12 @@ pub enum ElementKind {
     Assembly(crate::assembly::Assembly),
     /// The project's units: one per project, read through [`crate::Model::units`].
     Units(crate::units::Units),
+    /// The project's own information (at most one).
+    Project(crate::project::ProjectInfo),
+    /// Something traced over in views (Trace & Reference v2, MU19).
+    Reference(crate::reference::Reference),
+    /// A north arrow or scale bar on a sheet (MU22).
+    PaperMark(crate::papermark::PaperMark),
     /// The project's mark numbering rules: at most one per project, read
     /// through [`crate::marks::rules`].
     MarkRules(crate::marks::MarkRules),
@@ -483,6 +516,14 @@ impl ElementKind {
             ElementKind::GridGroup(_) => "GridGroup",
             ElementKind::Assembly(_) => "Assembly",
             ElementKind::Units(_) => "Units",
+            ElementKind::Project(_) => "Project information",
+            ElementKind::Reference(_) => "Reference",
+            ElementKind::PaperMark(m) => match m.kind {
+                crate::papermark::PaperMarkKind::NorthArrow { .. } => "North arrow",
+                crate::papermark::PaperMarkKind::ScaleBar { .. } => "Scale bar",
+                crate::papermark::PaperMarkKind::Cloud { .. } => "Revision cloud",
+                crate::papermark::PaperMarkKind::RevisionTable => "Revisions table",
+            },
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
             ElementKind::CropBox(_) => "CropBox",
@@ -730,6 +771,9 @@ pub struct Dimension {
     /// two hosts. Moving one moves the other (see [`crate::holds`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<f64>,
+    /// Its own number format over its kind's in the style pack (A5-2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<crate::units::NumberFormat>,
 }
 
 impl Dimension {
@@ -747,6 +791,7 @@ impl Dimension {
             axis: DimAxis::Aligned,
             pattern: None,
             held: None,
+            format: None,
         }
     }
 
@@ -801,6 +846,11 @@ pub struct Tag {
     /// or a plain line when the style sets none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader_end: Option<Terminator>,
+    /// A material tag (Annotate step 5): it reads its host's material, or
+    /// its layers' build-up one line each, outside to inside, instead of
+    /// its mark.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub material: bool,
 }
 
 impl Tag {
@@ -815,6 +865,7 @@ impl Tag {
             elbow: None,
             end: None,
             leader_end: None,
+            material: false,
         }
     }
 }
@@ -899,11 +950,24 @@ pub struct LayerEnd {
     pub start: f64,
     #[serde(default)]
     pub end: f64,
+    /// How far it runs down past the wall's base (A7-10): the outer leaf
+    /// and insulation down past a slab's edge. Negative stops it short.
+    #[serde(default, skip_serializing_if = "is_zero_f")]
+    pub bottom: f64,
+    /// How far it runs up past the wall's top.
+    #[serde(default, skip_serializing_if = "is_zero_f")]
+    pub top: f64,
+}
+
+fn is_zero_f(v: &f64) -> bool {
+    *v == 0.0
 }
 
 impl LayerEnd {
     pub fn is_zero(&self) -> bool {
-        self.start.abs() < 1e-9 && self.end.abs() < 1e-9
+        [self.start, self.end, self.bottom, self.top]
+            .iter()
+            .all(|v| v.abs() < 1e-9)
     }
 }
 
@@ -1057,6 +1121,38 @@ impl Wall {
                 layer,
                 start: if end { 0.0 } else { by },
                 end: if end { by } else { 0.0 },
+                ..Default::default()
+            }),
+        }
+        self.layer_ends.retain(|l| !l.is_zero());
+        self.layer_ends.sort_by_key(|l| l.layer);
+    }
+
+    /// How far layer `layer` runs past the wall's base and top, as edited
+    /// by hand: `[bottom, top]`, zero when untouched (A7-10).
+    pub fn layer_vext(&self, layer: usize) -> [f64; 2] {
+        self.layer_ends
+            .iter()
+            .find(|l| l.layer == layer)
+            .map_or([0.0; 2], |l| [l.bottom, l.top])
+    }
+
+    /// Set how far layer `layer` runs past the top (`top`) or below the
+    /// base; an edit back at zero is dropped.
+    pub fn set_layer_vext(&mut self, layer: usize, top: bool, by: f64) {
+        match self.layer_ends.iter_mut().find(|l| l.layer == layer) {
+            Some(l) => {
+                if top {
+                    l.top = by
+                } else {
+                    l.bottom = by
+                }
+            }
+            None => self.layer_ends.push(LayerEnd {
+                layer,
+                bottom: if top { 0.0 } else { by },
+                top: if top { by } else { 0.0 },
+                ..Default::default()
             }),
         }
         self.layer_ends.retain(|l| !l.is_zero());
@@ -1355,6 +1451,12 @@ pub struct FreeMesh {
     /// Turn about the vertical axis through `origin`, in degrees.
     #[serde(default)]
     pub rotation: f64,
+    /// Turns about the x and y axes through `origin`, in degrees, applied
+    /// before `rotation`: XYZ Euler, as Blender's (MU24).
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub rot_x: f64,
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub rot_y: f64,
     /// Uniform size factor about `origin`.
     #[serde(default = "one")]
     pub scale: f64,
@@ -1362,6 +1464,10 @@ pub struct FreeMesh {
 
 fn one() -> f64 {
     1.0
+}
+
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
 }
 
 impl FreeMesh {
@@ -1375,28 +1481,37 @@ impl FreeMesh {
             material: None,
             modifiers: vec![],
             rotation: 0.0,
+            rot_x: 0.0,
+            rot_y: 0.0,
             scale: 1.0,
         }
     }
 
+    /// Its turn as a rotation: about x, then y, then z (XYZ Euler).
+    pub fn turn(&self) -> glam::DQuat {
+        glam::DQuat::from_euler(
+            glam::EulerRot::ZYX,
+            self.rotation.to_radians(),
+            self.rot_y.to_radians(),
+            self.rot_x.to_radians(),
+        )
+    }
+
     /// From the mesh's own axes to the model's, about `origin`.
     pub fn to_model(&self, v: DVec3) -> DVec3 {
-        let (s, c) = self.rotation.to_radians().sin_cos();
-        let v = v * self.scale;
-        DVec3::new(v.x * c - v.y * s, v.x * s + v.y * c, v.z)
+        self.turn() * (v * self.scale)
     }
 
     /// A model-axes offset in the mesh's own axes (for moving vertices).
     pub fn to_local(&self, d: DVec3) -> DVec3 {
-        let (s, c) = (-self.rotation).to_radians().sin_cos();
-        DVec3::new(d.x * c - d.y * s, d.x * s + d.y * c, d.z) / self.scale
+        (self.turn().inverse() * d) / self.scale
     }
 
     /// The shape as shown: modifiers applied, turned and scaled, relative to
     /// `origin`. `source` gives each face's face in `mesh`, for editing.
     pub fn evaluated(&self) -> Evaluated {
         let mut e = crate::modifiers::evaluate(&self.mesh, &self.modifiers);
-        if self.rotation != 0.0 || self.scale != 1.0 {
+        if self.rotation != 0.0 || self.rot_x != 0.0 || self.rot_y != 0.0 || self.scale != 1.0 {
             for v in &mut e.mesh.vertices {
                 *v = self.to_model(*v);
             }
@@ -1518,6 +1633,13 @@ pub struct View {
     /// that view inside the callout's box, at its own scale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callout: Option<Callout>,
+    /// Draw room tags in this view: unset, on except in detail and callout
+    /// views, where a tag at 1:10 is a scribble (A5-7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room_tags: Option<bool>,
+    /// How its title reads where it is placed on a sheet (MU27).
+    #[serde(default, skip_serializing_if = "boxed_title_is_default")]
+    pub sheet_title: Box<SheetTitle>,
     /// How a section or elevation shows each level's head: turned off, or
     /// dragged away from where it would sit. Levels not listed show their
     /// heads where the automatic layout puts them.
@@ -1757,6 +1879,8 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            room_tags: None,
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1781,6 +1905,8 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            room_tags: None,
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1802,6 +1928,8 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            room_tags: None,
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1824,6 +1952,8 @@ impl View {
             ceiling_plan: false,
             graphics: Default::default(),
             callout: None,
+            room_tags: None,
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1831,6 +1961,12 @@ impl View {
 
     /// A detail view of the box `a`..`b` on `parent` (a plan or a
     /// section), at `scale`: a copy of the parent's view, cropped.
+    /// Whether room tags draw here (A5-7): off by default in a detail or
+    /// callout view, else on.
+    pub fn shows_room_tags(&self) -> bool {
+        self.room_tags.unwrap_or(self.callout.is_none())
+    }
+
     pub fn callout(parent_id: ElementId, parent: &View, a: DVec2, b: DVec2, scale: f64) -> Self {
         Self {
             kind: parent.kind.clone(),
@@ -1845,6 +1981,8 @@ impl View {
             ceiling_plan: parent.ceiling_plan,
             graphics: parent.graphics.clone(),
             callout: Some(Callout::new(parent_id, a, b)),
+            room_tags: None,
+            sheet_title: Box::default(),
             level_heads: BTreeMap::new(),
             look: Default::default(),
         }
@@ -1874,6 +2012,11 @@ pub struct Sheet {
     /// Values for its template's own fields, by name.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub fields: std::collections::BTreeMap<String, String>,
+    /// Guide lines to place things by, as Inkscape's (MU26): never
+    /// printed. `true` for an up-and-down guide at that many mm across,
+    /// `false` for one across at that many mm up.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub guides: Vec<(bool, f64)>,
 }
 
 impl Sheet {
@@ -1898,6 +2041,7 @@ impl Sheet {
             height,
             template: None,
             fields: Default::default(),
+            guides: vec![],
         }
     }
 
@@ -1925,6 +2069,52 @@ pub struct Viewport {
     /// coordinates, lower-left and upper-right) is shown.
     #[serde(default)]
     pub crop: Option<[DVec2; 2]>,
+}
+
+/// A view's title on a sheet: shown or not, its scale shown or not, moved
+/// from where it sits under the drawing, its size.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SheetTitle {
+    pub hidden: bool,
+    pub show_scale: bool,
+    pub show_number: bool,
+    /// From its place under the drawing's lower left, paper mm.
+    pub offset: DVec2,
+    /// The title's letter height, paper mm.
+    pub size: f64,
+    /// Its own words; empty, the view's name.
+    pub text: String,
+    /// The text style its words take (font, weight, colour); none, plain
+    /// sans (MU28). Its size stays `size`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub style: Option<crate::ElementId>,
+}
+
+impl Default for SheetTitle {
+    fn default() -> Self {
+        Self {
+            hidden: false,
+            show_scale: true,
+            show_number: true,
+            offset: DVec2::ZERO,
+            size: 3.5,
+            text: String::new(),
+            style: None,
+        }
+    }
+}
+
+impl SheetTitle {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// For serde: a view's title settings are left out while they are the default.
+#[allow(clippy::borrowed_box)]
+fn boxed_title_is_default(t: &Box<SheetTitle>) -> bool {
+    t.is_default()
 }
 
 /// IFC classes a free mesh may be classified as.
@@ -2044,6 +2234,17 @@ mod tests {
     }
 
     #[test]
+    fn room_tags_are_off_by_default_only_in_callouts() {
+        let plan = View::schedule(ScheduleCategory::ALL[0]);
+        assert!(plan.shows_room_tags());
+        let mut detail = plan.clone();
+        detail.callout = Some(Callout::new(ElementId::new(), DVec2::ZERO, DVec2::ONE));
+        assert!(!detail.shows_room_tags());
+        detail.room_tags = Some(true);
+        assert!(detail.shows_room_tags());
+    }
+
+    #[test]
     fn views_layers_and_junctions_from_older_files_still_read() {
         // a view saved before callouts reads as no callout, and writes none
         let v = View::schedule(ScheduleCategory::ALL[0]);
@@ -2065,5 +2266,25 @@ mod tests {
         let r: crate::joins::JoinRule = serde_json::from_str(&text).unwrap();
         assert_eq!(r, crate::joins::JoinRule::new(a, b));
         assert!(r.cleanup && r.is_default());
+    }
+}
+
+#[cfg(test)]
+mod mesh_turn_tests {
+    use super::*;
+
+    #[test]
+    fn a_mesh_turns_about_x_then_y_then_z_and_back() {
+        // MU24: Blender's XYZ Euler, so a shape drawn on a wall can turn
+        // about the wall's own axes
+        let mut m = FreeMesh::new(None, DVec3::ZERO, crate::editmesh::EditMesh::default());
+        m.rot_x = 90.0;
+        let up = m.to_model(DVec3::Z);
+        assert!(up.distance(DVec3::new(0.0, -1.0, 0.0)) < 1e-9, "{up}");
+        m.rot_y = 30.0;
+        m.rotation = 45.0;
+        m.scale = 2.0;
+        let v = DVec3::new(0.3, -1.2, 0.7);
+        assert!(m.to_local(m.to_model(v)).distance(v) < 1e-9);
     }
 }

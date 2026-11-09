@@ -9,7 +9,9 @@ use serde_json::{json, Value};
 use shell::icon_name;
 
 /// The height of an area's header, in points.
-pub(super) const HEADER: f32 = 30.0;
+/// A view area's header height (A4-2): 26 px controls with 4 px above and
+/// below.
+pub(super) const HEADER: f32 = 38.0;
 
 /// The areas as they are now.
 #[derive(Clone, Debug)]
@@ -32,6 +34,10 @@ pub(super) struct AreaState {
     pub naming: Option<String>,
     /// The last drawing (not a sheet) worked in, for workspaces.
     pub drawing: Option<ElementId>,
+    /// The area whose header menu is open: what it picks goes there, not
+    /// to the area with focus (MU32: switching one area's plan switched
+    /// the other's).
+    pub menu_area: Option<usize>,
 }
 
 impl Default for AreaState {
@@ -51,6 +57,7 @@ impl Default for AreaState {
             hovered: None,
             naming: None,
             drawing: None,
+            menu_area: None,
         }
     }
 }
@@ -151,7 +158,7 @@ impl CreaBimApp {
             .or(self.active_view)
     }
 
-    fn store_areas(&mut self) {
+    pub(super) fn store_areas(&mut self) {
         self.shell.settings.areas = Some(self.areas.root.clone());
         self.shell.settings.store();
     }
@@ -204,6 +211,85 @@ impl CreaBimApp {
     }
 
     /// The window body: its areas, each with its header, and the dividers.
+    /// An area showing notes (MU28): the selected note's text, large, when
+    /// a note is selected, else the project's notepad, as Blender's text
+    /// editor in an area of its own.
+    fn notes_area(&mut self, ui: &mut egui::Ui, body: Rect) {
+        let p = self.shell.theme.palette();
+        ui.painter().rect_filled(body, 0.0, p.panel);
+        let inner = body.shrink2(egui::vec2(18.0, 12.0));
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(inner)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        child.set_clip_rect(body);
+        let note = self.selection.active.filter(|id| {
+            matches!(
+                self.doc.model().get(*id).map(|e| &e.kind),
+                Some(ElementKind::Note(_))
+            )
+        });
+        egui::ScrollArea::vertical()
+            .id_salt("notes.area")
+            .show(&mut child, |ui| {
+                ui.set_max_width(inner.width().min(760.0));
+                match note {
+                    Some(id) => {
+                        let Some(ElementKind::Note(n)) =
+                            self.doc.model().get(id).map(|e| e.kind.clone())
+                        else {
+                            return;
+                        };
+                        let mut n = n;
+                        let name = self
+                            .doc
+                            .model()
+                            .get(id)
+                            .map_or(String::new(), |e| e.name.clone());
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("{name}: its text")).strong());
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.checkbox(&mut n.markdown, "Lists and headings")
+                                        .on_hover_text(
+                                        "- bullets, 1. numbers, # headings drawn as such on paper",
+                                    );
+                                },
+                            );
+                        });
+                        let h = (inner.height() - 60.0).max(160.0);
+                        let r = ui.add_sized(
+                            [ui.available_width(), h],
+                            egui::TextEdit::multiline(&mut n.text).font(egui::TextStyle::Monospace),
+                        );
+                        let changed = r.changed()
+                            || self
+                                .doc
+                                .model()
+                                .get(id)
+                                .is_some_and(|e| e.kind != ElementKind::Note(n.clone()));
+                        if changed {
+                            let r = self.doc.edit_merged(id, "Note text", |e| {
+                                e.kind = ElementKind::Note(n.clone())
+                            });
+                            if let Err(e) = r {
+                                self.status = format!("Couldn't do that: {e}");
+                            }
+                        }
+                        ui.label(
+                            egui::RichText::new(
+                                "Select something else to see the project's notepad here.",
+                            )
+                            .weak(),
+                        );
+                    }
+                    None => self.notes_pad(ui),
+                }
+            });
+    }
+
     pub(super) fn show_areas(
         &mut self,
         ui: &mut egui::Ui,
@@ -237,7 +323,14 @@ impl CreaBimApp {
             self.dividers(ui, &dividers);
         }
         let pointer = ui.input(|i| i.pointer.hover_pos());
-        let pressed = ui.input(|i| i.pointer.any_pressed());
+        // a press on a window floating over the areas is the window's
+        // (MU18): it neither focuses nor reaches the area under it
+        let over_window = pointer.is_some_and(|p| {
+            ui.ctx()
+                .layer_id_at(p)
+                .is_some_and(|l| l.order != egui::Order::Background)
+        });
+        let pressed = ui.input(|i| i.pointer.any_pressed()) && !over_window;
         self.areas.hovered = pointer.and_then(|p| rects.iter().position(|r| r.contains(p)));
         if pressed {
             if let Some(h) = self.areas.hovered {
@@ -250,6 +343,11 @@ impl CreaBimApp {
         self.rect_2d = None;
         let mut bodies = vec![];
         let mut focus_rect = None;
+        // how long each area took, logged while something is dragged, to
+        // find what makes a drag slow (MU18)
+        let mut timings: Vec<String> = vec![];
+        // the first area showing a view has its shared camera; another
+        // showing it too has its own, unless linked (A4-4)
         for (i, (r, s)) in rects.iter().zip(&shows).enumerate() {
             if !r.is_positive() {
                 bodies.push(Rect::NOTHING);
@@ -260,13 +358,28 @@ impl CreaBimApp {
             bodies.push(body);
             match s {
                 Shows::Model if model_area == Some(i) => {
+                    let t = std::time::Instant::now();
                     self.show_3d(ui, body, frame);
+                    timings.push(format!("3D {:.1}", t.elapsed().as_secs_f64() * 1000.0));
                 }
                 Shows::View(v) => {
                     self.active_view = Some(*v);
                     let keep = self.rect_2d;
                     // two areas may show the same drawing
+                    let t = std::time::Instant::now();
+                    // every area keeps its own camera, so one switching its
+                    // view never moves another's (MU34: the second area
+                    // showing a plan took the first's camera when the
+                    // first switched away); linked areas share one
+                    let own = !self.plan.linked_areas.contains(&i);
+                    self.plan.area = own.then_some(i);
+                    self.area_now = i;
                     ui.push_id(("area", i), |ui| self.show_plan(ui, body, background));
+                    self.plan.area = None;
+                    timings.push(format!(
+                        "area {i} {:.1}",
+                        t.elapsed().as_secs_f64() * 1000.0
+                    ));
                     // the pane tools act in: the focused one, else the last
                     if i != self.areas.focus && keep.is_some() {
                         self.rect_2d = keep;
@@ -274,6 +387,12 @@ impl CreaBimApp {
                     if i == self.areas.focus {
                         focus_rect = Some(body);
                     }
+                }
+                Shows::Notes => {
+                    ui.push_id(("area", i), |ui| self.notes_area(ui, body));
+                }
+                Shows::Profiles => {
+                    ui.push_id(("area", i), |ui| self.profiles_area(ui, body));
                 }
                 _ => {
                     let p = self.shell.theme.palette();
@@ -291,6 +410,9 @@ impl CreaBimApp {
         }
         if let Some(r) = focus_rect {
             self.rect_2d = Some(r);
+        }
+        if self.handle_drag.is_some() || self.plan.modal.is_some() {
+            crate::actlog::line(format!("areas: {}", timings.join(" | ")));
         }
         if self.areas.max.is_none() {
             self.corners(ui, &rects);
@@ -522,17 +644,15 @@ impl CreaBimApp {
         vec![
             json!({"kind": "menu", "key": "render3d", "icon": s.render_3d.icon(), "label": "Shading",
                    "hint": format!("How the 3D view draws: {}. Shaded, with edges, hidden line or wireframe", s.render_3d.label())}),
-            json!({"kind": "toggle", "id": "nav.ortho", "icon": if self.camera.ortho { "box" } else { "cuboid" },
-                   "label": "Projection", "on": self.camera.ortho,
-                   "hint": if self.camera.ortho { "Orthographic: click for perspective" } else { "Perspective: click for orthographic" }}),
+            // (perspective / orthographic is the last button of the view's
+            // own column, beside the cube: not twice, MU20)
             json!({"kind": "button", "id": "crop.add", "icon": "crop-box", "label": "Section box",
-                   "hint": "Add a crop box to the 3D view: it crops everything outside it"}),
+                   "badge": self.doc.model().iter().filter(|e| matches!(&e.kind, ElementKind::CropBox(c) if c.view.is_none())).count(),
+                   "hint": format!("Add a crop box to the 3D view: it crops everything outside it. {} in the 3D view now; they are listed in the browser and the 3D view's Properties", self.doc.model().iter().filter(|e| matches!(&e.kind, ElementKind::CropBox(c) if c.view.is_none())).count())}),
             json!({"kind": "menu", "key": "vis3d", "icon": if self.vis3d.is_empty() { "eye" } else { "eye-off" },
                    "label": "Show", "hint": "What the 3D view shows: grids, annotation, guides, sketches and every category"}),
-            json!({"kind": "button", "id": "frame", "icon": "frame-all", "label": "Frame all", "shortcut": "Home",
-                   "hint": "Frame everything"}),
-            json!({"kind": "button", "id": "nav.fitsel", "icon": "scan", "label": "Frame the selection", "shortcut": ".",
-                   "hint": "Zoom to what is selected", "off": self.selection.is_empty()}),
+            // (Frame all and Frame the selection are in the view's own
+            // column now, with zoom and pan: MU24)
             json!({"kind": "toggle", "id": "xray", "icon": "xray", "label": "X-ray", "on": s.xray, "shortcut": "Alt+Z",
                    "hint": "See through walls, slabs and roofs to what is inside them"}),
             json!({"kind": "menu", "key": "look", "icon": "rotate-3d", "label": "Look from",
@@ -549,11 +669,19 @@ impl CreaBimApp {
     /// used first.
     fn area_header(&mut self, ui: &mut egui::Ui, i: usize, head: Rect, shows: Shows) {
         let p = self.shell.theme.palette();
-        ui.painter().rect_filled(head, 0.0, p.panel);
+        ui.painter().rect_filled(head, 0.0, p.header());
         ui.painter().line_segment(
             [head.left_bottom(), head.right_bottom()],
             egui::Stroke::new(1.0, p.border),
         );
+        // a linked area shows a small link by its right end (A4-4)
+        if self.plan.linked_areas.contains(&i) && self.shows_twice(i) {
+            let r = Rect::from_center_size(
+                egui::pos2(head.right() - 92.0, head.center().y),
+                egui::vec2(14.0, 14.0),
+            );
+            crate::svgicon::paint(ui.painter(), r, "link", p.accent);
+        }
         let focused = i == self.areas.focus && self.areas.root.len() > 1;
         if focused {
             ui.painter().line_segment(
@@ -571,6 +699,7 @@ impl CreaBimApp {
                 .into_iter()
                 .filter(|c| c["kind"] != "sep")
                 .collect(),
+            Shows::Profiles => self.profile_controls(),
             _ => vec![],
         };
         let (kind_icon, kind_label, name) = match shows {
@@ -580,6 +709,16 @@ impl CreaBimApp {
                 let group = self.group_title(v);
                 (icon, group, e.map_or(String::new(), |e| e.name.clone()))
             }
+            Shows::Notes => ("sticky-note", "Notes", "Notepad".to_string()),
+            // the name is the profile shown; it lists the project's (MU37)
+            Shows::Profiles => (
+                "profile",
+                "Profiles",
+                self.profiles
+                    .current
+                    .clone()
+                    .unwrap_or_else(|| "Pick a profile".to_string()),
+            ),
             _ => ("box", "3D view", "Model".to_string()),
         };
         let mut asks: Vec<Ask> = vec![];
@@ -587,12 +726,13 @@ impl CreaBimApp {
             egui::UiBuilder::new()
                 .id_salt(("area-head", i))
                 .max_rect(Rect::from_min_max(
-                    head.min + egui::vec2(14.0, 3.0),
-                    head.max - egui::vec2(6.0, 3.0),
+                    head.min + egui::vec2(14.0, 4.0),
+                    head.max - egui::vec2(6.0, 4.0),
                 ))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         child.spacing_mut().item_spacing.x = 2.0;
+        child.spacing_mut().interact_size.y = 26.0;
         let room = head.width() - 20.0;
         // what shows: the kind, then which one
         let r = pill(&mut child, kind_icon, "", true, &p).on_hover_text(format!(
@@ -601,14 +741,21 @@ impl CreaBimApp {
         if r.clicked() {
             asks.push(Ask::Popup("area.kind".into(), r.rect));
         }
-        let name_w = (room * 0.32).clamp(70.0, 220.0);
+        // a profile's name is short, and its own field follows (MU37)
+        let name_w = if matches!(shows, Shows::Profiles) {
+            (room * 0.16).clamp(80.0, 130.0)
+        } else {
+            (room * 0.32).clamp(70.0, 220.0)
+        };
         let r = name_button(&mut child, &name, name_w, &p).on_hover_text(format!(
             "{name}: click to show another of the {}",
             kind_label.to_lowercase()
         ));
         if r.clicked() {
             asks.push(Ask::Popup(
-                if shows == Shows::Model {
+                if matches!(shows, Shows::Profiles) {
+                    "prof.pick".into()
+                } else if matches!(shows, Shows::Model | Shows::Notes) {
                     "area.kind".into()
                 } else {
                     "area.views".into()
@@ -616,9 +763,72 @@ impl CreaBimApp {
                 r.rect,
             ));
         }
+        // what to do with profiles, beside the list of them (MU37): new,
+        // from the selection, duplicate, delete
+        let mut plus_w = 0.0;
+        if matches!(shows, Shows::Profiles) {
+            for (k, (id, icon, tip, on)) in self.profile_buttons().into_iter().enumerate() {
+                let r = icon_btn(&mut child, icon, false, on, &p).on_hover_text(tip);
+                if r.clicked() && on {
+                    asks.push(Ask::Run(id.into()));
+                }
+                plus_w += 28.0;
+                // its name to type, right after +
+                if k == 0 && room > 560.0 {
+                    child.add_space(4.0);
+                    self.profile_name_field(&mut child, &p);
+                    child.add_space(4.0);
+                    plus_w += 136.0;
+                }
+            }
+        }
+        // the mode after what it shows, as Blender's (MU27): Object or Edit,
+        // then in Edit mode what a click picks; sheets and schedules have
+        // no Edit mode, so no menu
+        let modal_view = match shows {
+            Shows::Model => true,
+            Shows::View(v) => {
+                !self.is_sheet(v)
+                    && !matches!(
+                        self.view(v).map(|v| &v.kind),
+                        Some(ViewKind::Schedule { .. })
+                    )
+            }
+            _ => false,
+        };
+        let mut mode_w = 0.0;
+        if modal_view {
+            child.add_space(4.0);
+            let editing = self.plan.edit.is_some();
+            // narrow, it shrinks to its icon, as Blender's (MU30)
+            let compact = room < 600.0;
+            let r = mode_button(&mut child, editing, compact, &p).on_hover_text(
+                "Object mode works on whole elements; Edit mode on one element's points, edges and faces. Tab switches",
+            );
+            if r.clicked() {
+                asks.push(Ask::Popup("area.mode".into(), r.rect));
+            }
+            mode_w += if compact { 44.0 } else { 110.0 };
+            if editing {
+                for (k, icon, tip) in [
+                    (1u8, "pick-vertex", "Points (1): corners, ends, vertices"),
+                    (2, "pick-edge", "Edges (2): sides, edges, jambs"),
+                    (3, "pick-face", "Faces (3): faces, tops, undersides"),
+                ] {
+                    let on = handles::pick() == k;
+                    if icon_btn(&mut child, icon, on, true, &p)
+                        .on_hover_text(tip)
+                        .clicked()
+                    {
+                        handles::set_pick(if on { 0 } else { k });
+                    }
+                }
+                mode_w += 3.0 * 28.0;
+            }
+        }
         child.add_space(6.0);
         // its controls, as many as fit before More and maximise
-        let used = 34.0 + name_w + 10.0 + 2.0 * 26.0 + 8.0;
+        let used = 34.0 + name_w + 10.0 + 2.0 * 26.0 + 8.0 + mode_w + plus_w;
         let mut left = room - used;
         let mut over = vec![];
         for c in &controls {
@@ -685,7 +895,10 @@ impl CreaBimApp {
         for a in asks {
             match a {
                 Ask::Run(id) => self.run_action(&ctx, &id),
-                Ask::Popup(key, r) => self.toggle_popup(&key, r),
+                Ask::Popup(key, r) => {
+                    self.areas.menu_area = Some(i);
+                    self.toggle_popup(&key, r)
+                }
                 Ask::Number(v) => self.set_view_number(v),
             }
         }
@@ -704,7 +917,10 @@ impl CreaBimApp {
 
     /// The menus of an area's header, by key.
     pub(super) fn area_menu(&self, key: &str) -> Option<Vec<Item>> {
-        let i = self.areas.focus;
+        if let Some(items) = self.profile_menu(key) {
+            return Some(items);
+        }
+        let i = self.areas.menu_area.unwrap_or(self.areas.focus);
         let shows = self.areas.root.areas();
         let here = shows.get(i).copied().unwrap_or(Shows::Model);
         Some(match key {
@@ -742,6 +958,18 @@ impl CreaBimApp {
                             .icon("file-text"),
                     );
                 }
+                items.push(
+                    Item::new("area.show:notes", "Notes")
+                        .icon("sticky-note")
+                        .checked(here == Shows::Notes)
+                        .hint("The project's notepad, or the selected note's text, large: as Blender's text editor"),
+                );
+                items.push(
+                    Item::new("area.show:profiles", "Profiles")
+                        .icon("profile")
+                        .checked(here == Shows::Profiles)
+                        .hint("The profile library and its editor, large: pick, draw and edit profiles"),
+                );
                 items
             }
             "area.views" => {
@@ -765,6 +993,21 @@ impl CreaBimApp {
                         Item::new(format!("area.show:{}", id.0), name).checked(id == v)
                     })
                     .collect()
+            }
+            "area.mode" => {
+                let editing = self.plan.edit.is_some();
+                let can = self.selection.len() == 1;
+                vec![
+                    Item::new("mode.object", "Object mode")
+                        .checked(!editing)
+                        .hint("Whole elements: select, move, copy, array"),
+                    Item::new("mode.edit", "Edit mode")
+                        .checked(editing)
+                        .enabled(can || editing)
+                        .hint(
+                            "One element's points, edges and faces (select one element first). Tab",
+                        ),
+                ]
             }
             "area.more" => {
                 let mut items = vec![];
@@ -794,6 +1037,13 @@ impl CreaBimApp {
                         }
                         _ => {}
                     }
+                }
+                if self.active_view.is_some_and(|v| !self.is_sheet(v)) && self.rect_2d.is_some() {
+                    items.push(
+                        Item::new("view.zoomscale", "Zoom to scale")
+                            .icon(crate::svgicon::named("ruler"))
+                            .hint("Show the drawing at its scale: 1 mm on paper is 1 mm on screen"),
+                    );
                 }
                 if !items.is_empty() {
                     items.push(Item::Separator);
@@ -856,13 +1106,36 @@ impl CreaBimApp {
                 .key("Ctrl+Space")
                 .checked(self.areas.max == Some(i))
                 .icon("maximize-2"),
+            Item::new(format!("area.link:{i}"), "Pan and zoom with the other area of this view")
+                .checked(self.plan.linked_areas.contains(&i))
+                .icon("link")
+                .enabled(self.shows_twice(i))
+                .hint("Two areas showing the same view move apart by default (a detail close up, the whole beside it); linked, they move together"),
         ]
+    }
+
+    /// Does another area show the view area `i` shows?
+    fn shows_twice(&self, i: usize) -> bool {
+        let shows = self.areas.root.areas();
+        match shows.get(i) {
+            Some(Shows::View(v)) => shows
+                .iter()
+                .enumerate()
+                .any(|(j, s)| j != i && *s == Shows::View(*v)),
+            _ => false,
+        }
     }
 
     /// Run an area or workspace action; false when `head` is not one.
     pub(super) fn area_action(&mut self, head: &str, arg: &str) -> bool {
         let nums: Vec<usize> = arg.split(':').filter_map(|s| s.parse().ok()).collect();
         match head {
+            "area.link" => {
+                let i = nums.first().copied().unwrap_or(self.areas.focus);
+                if !self.plan.linked_areas.remove(&i) {
+                    self.plan.linked_areas.insert(i);
+                }
+            }
             "area.max" => {
                 let i = nums.first().copied().unwrap_or(self.areas.focus);
                 self.areas.max = if self.areas.max == Some(i) {
@@ -893,9 +1166,14 @@ impl CreaBimApp {
                 }
             }
             "area.show" => {
-                let i = self.areas.focus;
+                let i = self.areas.menu_area.take().unwrap_or(self.areas.focus);
+                self.areas.focus = i;
                 let new = if arg == "model" {
                     Shows::Model
+                } else if arg == "notes" {
+                    Shows::Notes
+                } else if arg == "profiles" {
+                    Shows::Profiles
                 } else {
                     match self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
                         Some(e) => Shows::View(e.id),
@@ -936,13 +1214,17 @@ impl CreaBimApp {
             return;
         };
         let (mut open, mut done) = (true, false);
-        egui::Window::new("Save current layout")
+        crate::app::shell::window("Save current layout")
             .collapsible(false)
             .resizable(false)
             .open(&mut open)
             .show(ctx, |ui| {
                 ui.label("A name for these areas, to pick from Workspace at the top right:");
-                let r = ui.add(egui::TextEdit::singleline(&mut name).desired_width(220.0));
+                let r = ui.add(
+                    egui::TextEdit::singleline(&mut name)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(220.0),
+                );
                 r.request_focus();
                 done = ui.input(|i| i.key_pressed(egui::Key::Enter)) || ui.button("Save").clicked();
             });
@@ -1068,7 +1350,10 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
         tip += &format!(": {v}");
     }
     if let Some(h) = c["hint"].as_str() {
-        tip += &format!("\n{h}");
+        if !tip.is_empty() {
+            tip.push('\n');
+        }
+        tip += h;
     }
     let icon = c["icon"].as_str().unwrap_or("");
     match c["kind"].as_str()? {
@@ -1083,6 +1368,28 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
                 p,
             )
             .on_hover_text(tip);
+            // a small count at the corner: how many there are (MU36: section
+            // boxes added without a sign)
+            if let Some(n) = c["badge"].as_u64().filter(|n| *n > 0) {
+                let at = r.rect.right_bottom() - egui::vec2(4.0, 4.0);
+                let text = n.to_string();
+                let g = ui.painter().layout_no_wrap(
+                    text,
+                    egui::FontId::proportional(9.5),
+                    egui::Color32::WHITE,
+                );
+                let w = (g.size().x + 6.0).max(13.0);
+                let pill = egui::Rect::from_center_size(at, egui::vec2(w, 13.0));
+                ui.painter().rect(
+                    pill,
+                    6.5,
+                    p.accent,
+                    egui::Stroke::new(1.5, p.panel),
+                    egui::StrokeKind::Outside,
+                );
+                ui.painter()
+                    .galley(pill.center() - g.size() / 2.0, g, egui::Color32::WHITE);
+            }
             r.clicked()
                 .then(|| Ask::Run(c["id"].as_str().unwrap_or("").into()))
         }
@@ -1100,8 +1407,14 @@ fn header_control(ui: &mut egui::Ui, c: &Value, p: &crate::theme::Palette) -> Op
             let mut v = c["value"].as_f64().unwrap_or(0.0);
             let unit = c["unit"].as_str().unwrap_or("");
             let mut changed = false;
+            // as wide as its label and field, no wider (MU36: "Depth" left a
+            // gap where "Cut height" fitted)
             ui.horizontal(|ui| {
-                ui.set_width(126.0);
+                // a field the header's height allows, its text the label's
+                // size and on its line, with even room above and below (MU22)
+                ui.spacing_mut().interact_size.y = 20.0;
+                ui.spacing_mut().button_padding = egui::vec2(5.0, 1.0);
+                ui.style_mut().override_font_id = Some(egui::FontId::proportional(12.0));
                 ui.label(egui::RichText::new(label).size(12.0).color(p.muted))
                     .on_hover_text(&tip);
                 let w = if unit == "m" {
@@ -1129,8 +1442,10 @@ fn icon_btn(
     enabled: bool,
     p: &crate::theme::Palette,
 ) -> egui::Response {
+    // as Blender's header (MU29): a middle tone under every toggle, the
+    // accent when on, icons a step quieter than text until hovered
     let (r, resp) = ui.allocate_exact_size(
-        egui::vec2(24.0, 24.0),
+        egui::vec2(26.0, 26.0),
         if enabled {
             Sense::click()
         } else {
@@ -1138,18 +1453,24 @@ fn icon_btn(
         },
     );
     let fill = if on {
-        p.accent.gamma_multiply(0.22)
+        p.accent.gamma_multiply(0.14)
     } else if resp.hovered() && enabled {
-        p.raise
+        p.raise2
     } else {
-        Color32::TRANSPARENT
+        p.raise.gamma_multiply(0.55)
     };
-    ui.painter().rect_filled(r, 6.0, fill);
-    let mut c = if on { p.accent } else { p.text };
+    ui.painter().rect_filled(r, 5.0, fill);
+    let mut c = if on {
+        p.accent
+    } else if resp.hovered() {
+        p.text
+    } else {
+        p.muted
+    };
     if !enabled {
         c = c.gamma_multiply(0.35);
     }
-    crate::svgicon::paint(ui.painter(), r.shrink(4.0), icon, c);
+    crate::svgicon::paint(ui.painter(), r.shrink(5.0), icon, c);
     resp
 }
 
@@ -1161,17 +1482,23 @@ fn pill(
     strong: bool,
     p: &crate::theme::Palette,
 ) -> egui::Response {
-    let (r, resp) = ui.allocate_exact_size(egui::vec2(34.0, 24.0), Sense::click());
+    let (r, resp) = ui.allocate_exact_size(egui::vec2(34.0, 26.0), Sense::click());
+    // the view-type menu: the darker tone, as Blender's editor-type button
+    let _ = strong;
     let fill = if resp.hovered() {
-        p.raise2
-    } else if strong {
-        p.raise
+        p.raise2.gamma_multiply(1.1)
     } else {
-        Color32::TRANSPARENT
+        p.raise2
     };
     ui.painter().rect_filled(r, 6.0, fill);
-    let ir = Rect::from_min_size(r.min + egui::vec2(3.0, 3.0), egui::vec2(18.0, 18.0));
-    crate::svgicon::paint(ui.painter(), ir, icon, p.text);
+    let ir = Rect::from_min_size(r.min + egui::vec2(3.0, 4.0), egui::vec2(18.0, 18.0));
+    // the same quiet shade as the rail's icons until hovered (MU29)
+    crate::svgicon::paint(
+        ui.painter(),
+        ir,
+        icon,
+        if resp.hovered() { p.text } else { p.muted },
+    );
     let cr = Rect::from_min_size(
         egui::pos2(r.right() - 12.0, r.center().y - 4.0),
         egui::vec2(8.0, 8.0),
@@ -1187,10 +1514,9 @@ fn name_button(ui: &mut egui::Ui, name: &str, w: f32, p: &crate::theme::Palette)
         .painter()
         .layout_no_wrap(name.to_string(), font.clone(), p.text);
     let width = (galley.size().x + 26.0).min(w);
-    let (r, resp) = ui.allocate_exact_size(egui::vec2(width, 24.0), Sense::click());
-    if resp.hovered() {
-        ui.painter().rect_filled(r, 6.0, p.raise);
-    }
+    let (r, resp) = ui.allocate_exact_size(egui::vec2(width, 26.0), Sense::click());
+    ui.painter()
+        .rect_filled(r, 6.0, if resp.hovered() { p.raise2 } else { p.raise });
     let clip = Rect::from_min_max(r.min, egui::pos2(r.right() - 16.0, r.bottom()));
     ui.painter().with_clip_rect(clip).galley(
         egui::pos2(r.left() + 6.0, r.center().y - galley.size().y / 2.0),
@@ -1202,6 +1528,77 @@ fn name_button(ui: &mut egui::Ui, name: &str, w: f32, p: &crate::theme::Palette)
         egui::vec2(8.0, 8.0),
     );
     crate::svgicon::paint(ui.painter(), cr, "chevron-down", p.muted);
+    resp
+}
+
+/// The mode button of a view's header: "Object" or "Edit", in the accent
+/// colour while editing.
+fn mode_button(
+    ui: &mut egui::Ui,
+    editing: bool,
+    compact: bool,
+    p: &crate::theme::Palette,
+) -> egui::Response {
+    let text = if editing { "Edit mode" } else { "Object mode" };
+    // the theme's colours, the accent while editing (MU29: a fixed orange
+    // clashed with the themes)
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(if compact { 40.0 } else { 106.0 }, 26.0),
+        egui::Sense::click(),
+    );
+    let fill = if editing {
+        p.accent
+            .gamma_multiply(if resp.hovered() { 0.3 } else { 0.2 })
+    } else if resp.hovered() {
+        p.raise2.gamma_multiply(1.1)
+    } else {
+        p.raise2
+    };
+    ui.painter().rect_filled(rect, 6.0, fill);
+    // muted until hovered, as the header's other buttons (MU32: the
+    // white cube outshone them)
+    let ink = if editing {
+        p.accent
+    } else if resp.hovered() {
+        p.text
+    } else {
+        p.muted
+    };
+    if compact {
+        let ir = Rect::from_min_size(rect.min + egui::vec2(5.0, 4.0), egui::vec2(18.0, 18.0));
+        crate::svgicon::paint(
+            ui.painter(),
+            ir,
+            if editing { "pick-vertex" } else { "box" },
+            ink,
+        );
+        crate::props::combo_icon(
+            ui,
+            egui::Rect::from_center_size(
+                rect.right_center() - egui::vec2(8.0, 0.0),
+                egui::vec2(8.0, 8.0),
+            ),
+            &ui.visuals().widgets.inactive.clone(),
+            false,
+        );
+        return resp.on_hover_text(text);
+    }
+    ui.painter().text(
+        rect.left_center() + egui::vec2(8.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        text,
+        egui::FontId::proportional(12.0),
+        ink,
+    );
+    crate::props::combo_icon(
+        ui,
+        egui::Rect::from_center_size(
+            rect.right_center() - egui::vec2(10.0, 0.0),
+            egui::vec2(10.0, 10.0),
+        ),
+        &ui.visuals().widgets.inactive.clone(),
+        false,
+    );
     resp
 }
 
@@ -1253,5 +1650,15 @@ mod tests {
         assert_eq!(app.areas.workspace, "Drawing");
         app.step_workspace(-2);
         assert_eq!(app.areas.workspace, "Sheets");
+    }
+
+    #[test]
+    fn an_area_can_be_linked_and_unlinked() {
+        let mut app = crate::app::test_app();
+        assert!(app.plan.linked_areas.is_empty());
+        assert!(app.area_action("area.link", "1"));
+        assert!(app.plan.linked_areas.contains(&1));
+        assert!(app.area_action("area.link", "1"));
+        assert!(!app.plan.linked_areas.contains(&1));
     }
 }

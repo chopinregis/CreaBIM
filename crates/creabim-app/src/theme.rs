@@ -42,6 +42,21 @@ pub struct Palette {
     pub accent: Color32,
 }
 
+impl Palette {
+    /// A view area's header (A4-2): a step darker than the panels in a
+    /// light theme, a step lighter in a dark one, so headers read apart
+    /// from Properties.
+    pub fn header(&self) -> Color32 {
+        let (to, t) = if self.dark {
+            (255.0, 0.06)
+        } else {
+            (0.0, 0.035)
+        };
+        let m = |c: u8| (c as f32 + (to - c as f32) * t).round() as u8;
+        Color32::from_rgb(m(self.panel.r()), m(self.panel.g()), m(self.panel.b()))
+    }
+}
+
 const fn hex(v: u32) -> Color32 {
     Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
 }

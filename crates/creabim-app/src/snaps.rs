@@ -29,6 +29,8 @@ pub enum SnapKind {
     Intersection,
     Perpendicular,
     OnEdge,
+    /// On a face in 3D, where a grip sliding along a line meets it.
+    OnFace,
     Guide,
     /// On a grid line, or a level line in a section.
     OnGridLine,
@@ -53,6 +55,20 @@ pub enum SnapKind {
     /// No object snap: the point under the pointer, rounded to the
     /// increment when that is on.
     Grid,
+    /// An even division of an edge: its thirds, quarters… (MU34 B1).
+    Division,
+}
+
+static DIVISIONS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// The parts every edge snaps at, as ArchiCAD's special snaps: 0 off, else
+/// 3, 4, 5… (halves are the midpoint snap's).
+pub fn divisions() -> u8 {
+    DIVISIONS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn set_divisions(n: u8) {
+    DIVISIONS.store(n, std::sync::atomic::Ordering::Relaxed);
 }
 
 impl SnapKind {
@@ -65,6 +81,7 @@ impl SnapKind {
             SnapKind::Intersection => "Intersection",
             SnapKind::Perpendicular => "Perpendicular",
             SnapKind::OnEdge => "On edge",
+            SnapKind::OnFace => "On face",
             SnapKind::Guide => "On guide",
             SnapKind::OnGridLine => "On grid/level",
             SnapKind::AxisX => "On X axis",
@@ -76,6 +93,7 @@ impl SnapKind {
             SnapKind::UnderlayFace => "Underlay face",
             SnapKind::UnderlayCentre => "Underlay centreline",
             SnapKind::Grid => "",
+            SnapKind::Division => "Division",
         }
     }
 
@@ -86,6 +104,7 @@ impl SnapKind {
             self,
             SnapKind::Endpoint
                 | SnapKind::Midpoint
+                | SnapKind::Division
                 | SnapKind::Center
                 | SnapKind::Quadrant
                 | SnapKind::Intersection
@@ -118,10 +137,17 @@ pub struct SnapSettings {
     /// Temporary guide lines from points and edges the pointer rests on,
     /// and where they cross.
     pub references: bool,
-    /// Round free points, and grip drags, to the step.
+    /// Grid snap (Alt+S): points land on a grid of `step_um` in space, and
+    /// lengths along guide and axis lines round to it. Off by default, and
+    /// off whenever the app starts: drags and points are free unless you
+    /// ask (the owner's snapping review, after ArchiCAD).
     pub increment: bool,
-    /// The step, in micrometres (whole millimetres and eighth inches both
-    /// fit): 50 mm unless set in the Snap menu.
+    /// Distance marks while dragging: faint marks every `step_um` from
+    /// where a grip or an element was grabbed, which catch the drag only
+    /// when the pointer is near one. Off by default.
+    pub marks: bool,
+    /// The grid snap's spacing, and the distance marks', in micrometres
+    /// (whole millimetres and eighth inches both fit): 50 mm unless set.
     pub step_um: u32,
 }
 
@@ -130,7 +156,7 @@ pub const STEPS_METRIC: [u32; 3] = [10_000, 50_000, 100_000];
 pub const STEPS_IMPERIAL: [u32; 4] = [3_175, 12_700, 25_400, 152_400];
 
 thread_local! {
-    static STEP: std::cell::Cell<f64> = const { std::cell::Cell::new(0.05) };
+    static STEP: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
 }
 
 /// The step grip drags and free points round to this frame, metres (0
@@ -142,6 +168,21 @@ pub fn current_step() -> f64 {
 /// Use this step from now on (see [`current_step`]).
 pub fn set_current_step(step: f64) {
     STEP.with(|s| s.set(step));
+}
+
+thread_local! {
+    static MARKS: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+}
+
+/// How far apart distance marks are this frame, metres, 0 when off. The
+/// app sets it once a frame (see [`SnapSettings::marks_len`]).
+pub fn current_marks() -> f64 {
+    MARKS.with(|s| s.get())
+}
+
+/// Use these distance marks from now on (see [`current_marks`]).
+pub fn set_current_marks(every: f64) {
+    MARKS.with(|s| s.set(every));
 }
 
 impl Default for SnapSettings {
@@ -166,7 +207,8 @@ impl SnapSettings {
         axis: true,
         tracking: true,
         references: true,
-        increment: true,
+        increment: false,
+        marks: false,
         step_um: 50_000,
     };
 
@@ -191,6 +233,7 @@ impl SnapSettings {
             tracking: false,
             references: false,
             increment: false,
+            marks: false,
             ..self
         }
     }
@@ -201,13 +244,15 @@ impl SnapSettings {
             && match kind {
                 SnapKind::Endpoint => self.endpoint,
                 SnapKind::Midpoint => self.midpoint,
+                SnapKind::Division => divisions() > 2,
                 SnapKind::Center => self.center,
                 SnapKind::Quadrant => self.quadrant,
                 SnapKind::Intersection => self.intersection,
                 SnapKind::Perpendicular => self.perpendicular,
-                SnapKind::OnEdge | SnapKind::UnderlayFace | SnapKind::UnderlayCentre => {
-                    self.nearest
-                }
+                SnapKind::OnEdge
+                | SnapKind::OnFace
+                | SnapKind::UnderlayFace
+                | SnapKind::UnderlayCentre => self.nearest,
                 SnapKind::Guide => self.guides,
                 SnapKind::OnGridLine => self.grid_lines,
                 SnapKind::AxisX | SnapKind::AxisY => self.axis,
@@ -244,7 +289,7 @@ impl SnapSettings {
         }
     }
 
-    /// The step as the status bar says it: "50 mm", "1/2\"", "Off".
+    /// The grid snap as the status bar says it: "50 mm", "1/2\"", "Off".
     pub fn step_label(&self) -> String {
         if !self.increment || self.step_um == 0 {
             return "Off".into();
@@ -252,8 +297,23 @@ impl SnapSettings {
         crate::units::len(self.step_um as f64 / 1e6)
     }
 
+    /// The spacing, said in the project's units ("50 mm").
+    pub fn spacing_label(&self) -> String {
+        crate::units::len(self.step_um as f64 / 1e6)
+    }
+
+    /// How far apart distance marks are this frame, metres, or 0 when they
+    /// are off (or snapping is, or Alt is held).
+    pub fn marks_len(&self) -> f64 {
+        if self.on && self.marks {
+            self.step_um as f64 / 1e6
+        } else {
+            0.0
+        }
+    }
+
     /// Each switch with its label, in the order the snap bar lists them.
-    pub fn switches(&mut self) -> [(&'static str, &mut bool); 13] {
+    pub fn switches(&mut self) -> [(&'static str, &mut bool); 12] {
         [
             ("Endpoint", &mut self.endpoint),
             ("Midpoint", &mut self.midpoint),
@@ -266,7 +326,6 @@ impl SnapSettings {
             ("Guides", &mut self.guides),
             ("X/Y axis tracking", &mut self.axis),
             ("Alignment with the shape's points", &mut self.tracking),
-            ("Round to the step", &mut self.increment),
             (
                 "Guide lines from rested points and edges",
                 &mut self.references,
@@ -290,8 +349,9 @@ pub fn snap_bar(ui: &mut egui::Ui, s: &mut SnapSettings) {
     };
     ui.add_enabled_ui(s.on, |ui| {
         egui::ComboBox::from_id_salt("snap_kinds")
+            .icon(crate::props::combo_icon)
             .selected_text(text)
-            .width(80.0)
+            .width(ui.available_width().min(80.0))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show_ui(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -500,6 +560,17 @@ impl Snapper {
             self.point(a, SnapKind::Endpoint, src, host);
             self.point(b, SnapKind::Endpoint, src, host);
             self.point((a + b) / 2.0, SnapKind::Midpoint, src, host);
+            let n = divisions();
+            if n > 2 {
+                for k in 1..n {
+                    self.point(
+                        a + (b - a) * (k as f64 / n as f64),
+                        SnapKind::Division,
+                        src,
+                        host,
+                    );
+                }
+            }
         }
     }
 
@@ -874,6 +945,7 @@ impl Snapper {
             SnapKind::Endpoint => 0.0,
             SnapKind::Intersection => 0.5,
             SnapKind::Midpoint | SnapKind::Center | SnapKind::Quadrant => 1.0,
+            SnapKind::Division => 1.2,
             _ => 2.0,
         };
         let best_point = self
@@ -899,13 +971,17 @@ impl Snapper {
                 .iter()
                 .enumerate()
                 .filter_map(|(i, g)| {
-                    let d = g.shape.screen_distance(cursor, project)?;
+                    let d = g
+                        .shape
+                        .screen_distance(cursor, project, g.z.unwrap_or(0.0))?;
                     (d < TOLERANCE).then_some((d, i))
                 })
                 .collect()
         } else {
             vec![]
         };
+        // the guides lie on one plane: z = 0 in plans, a level's in 3D
+        let gz = guides.first().and_then(|g| g.z).unwrap_or(0.0);
         // the alignment lines the pointer is near: the axes through the
         // start of the line, then through each point of the shape
         let mut lines: Vec<(f32, Line)> = vec![];
@@ -948,7 +1024,7 @@ impl Snapper {
         if cfg.allows(SnapKind::GuideCross) && !near_guides.is_empty() {
             let mut best: Option<CrossPick> = None;
             let mut consider = |p: DVec2, used: Vec<usize>, l: Option<Line>, host| {
-                if let Some(d) = near(p.extend(0.0)) {
+                if let Some(d) = near(p.extend(gz)) {
                     if best.as_ref().is_none_or(|b| d < b.0) {
                         best = Some((d, p, used, l, host));
                     }
@@ -984,7 +1060,7 @@ impl Snapper {
                         d: (b - a).normalize_or_zero(),
                     };
                     for p in g.cross(&edge) {
-                        let on = closest_on_segment(s.a, s.b, p.extend(0.0)).truncate();
+                        let on = closest_on_segment(s.a, s.b, p.extend(gz)).truncate();
                         if on.distance(p) < 1e-6 {
                             consider(p, vec![i], None, s.host);
                         }
@@ -994,7 +1070,7 @@ impl Snapper {
             if let Some((_, p, used, l, host)) = best {
                 return Some(Guided {
                     snap: Snap {
-                        p: p.extend(0.0),
+                        p: p.extend(gz),
                         kind: SnapKind::GuideCross,
                         host,
                     },
@@ -1143,7 +1219,7 @@ impl Snapper {
                 };
                 return Some(Guided {
                     snap: Snap {
-                        p: p.extend(0.0),
+                        p: p.extend(gz),
                         kind: SnapKind::OnTempGuide,
                         host: None,
                     },
@@ -1461,10 +1537,11 @@ pub fn draw(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) {
 fn marker(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) -> Option<Color32> {
     let c = match snap.kind {
         SnapKind::Endpoint | SnapKind::Intersection => Color32::from_rgb(20, 150, 60),
-        SnapKind::Midpoint => Color32::from_rgb(20, 120, 200),
+        SnapKind::Midpoint | SnapKind::Division => Color32::from_rgb(20, 120, 200),
         SnapKind::Center | SnapKind::Quadrant => Color32::from_rgb(200, 120, 20),
         SnapKind::Perpendicular => Color32::from_rgb(160, 60, 180),
         SnapKind::OnEdge | SnapKind::Guide | SnapKind::OnGridLine => Color32::from_rgb(200, 40, 40),
+        SnapKind::OnFace => Color32::from_rgb(40, 110, 200),
         SnapKind::AxisX => Color32::from_rgb(220, 50, 50),
         SnapKind::AxisY => Color32::from_rgb(40, 160, 60),
         SnapKind::Aligned | SnapKind::AlignedCross => TRACK,
@@ -1482,6 +1559,10 @@ fn marker(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) -> Option
                 s,
                 egui::StrokeKind::Middle,
             );
+        }
+        SnapKind::Division => {
+            painter.line_segment([at + egui::vec2(0.0, -r), at + egui::vec2(0.0, r)], s);
+            painter.circle_stroke(at, r * 0.55, s);
         }
         SnapKind::Midpoint => {
             painter.add(egui::Shape::closed_line(
@@ -1520,6 +1601,15 @@ fn marker(painter: &Painter, snap: Snap, at: Pos2, from: Option<Pos2>) -> Option
         }
         SnapKind::OnEdge | SnapKind::Guide | SnapKind::OnGridLine => {
             painter.circle_stroke(at, r * 0.7, s);
+        }
+        // a small square lying in the face
+        SnapKind::OnFace => {
+            painter.rect_stroke(
+                egui::Rect::from_center_size(at, egui::vec2(r * 1.4, r * 1.4)),
+                1.0,
+                s,
+                egui::StrokeKind::Middle,
+            );
         }
         SnapKind::Aligned | SnapKind::OnTempGuide => {
             painter.circle_filled(at, 3.0, c);
@@ -1705,6 +1795,16 @@ pub struct TempGuide {
     pub kind: GuideKind,
     /// The point it runs from, marked where it is drawn.
     pub at: DVec2,
+    /// The height of the plane it lies on, when drawn in 3D (on a level);
+    /// None in plans and sections, at z = 0.
+    pub z: Option<f64>,
+}
+
+/// Lay `guides` on the plane at height `z`, to draw and snap to in 3D.
+pub fn lift(guides: &mut [TempGuide], z: f64) {
+    for g in guides {
+        g.z = Some(z);
+    }
 }
 
 impl GuideShape {
@@ -1721,17 +1821,18 @@ impl GuideShape {
         &self,
         cursor: Pos2,
         project: &dyn Fn(DVec3) -> Option<Pos2>,
+        z: f64,
     ) -> Option<f32> {
         match *self {
             GuideShape::Line { p, d } => {
-                let (a, b) = (project(p.extend(0.0))?, project((p + d).extend(0.0))?);
+                let (a, b) = (project(p.extend(z))?, project((p + d).extend(z))?);
                 let ab = b - a;
                 let len = ab.length();
                 (len > 1e-6).then(|| ((cursor - a).x * ab.y - (cursor - a).y * ab.x).abs() / len)
             }
             GuideShape::Circle { c, r } => {
-                let sc = project(c.extend(0.0))?;
-                let sr = (project((c + DVec2::X * r).extend(0.0))? - sc).length();
+                let sc = project(c.extend(z))?;
+                let sr = (project((c + DVec2::X * r).extend(z))? - sc).length();
                 Some(((cursor - sc).length() - sr).abs())
             }
         }
@@ -1818,6 +1919,7 @@ pub fn temp_guides(refs: &[Reference], from: Option<DVec3>, step: f64) -> Vec<Te
                 shape: GuideShape::Line { p, d },
                 kind,
                 at,
+                z: None,
             });
         }
     };
@@ -1834,6 +1936,7 @@ pub fn temp_guides(refs: &[Reference], from: Option<DVec3>, step: f64) -> Vec<Te
                 shape: GuideShape::Circle { c, r },
                 kind: GuideKind::Circle,
                 at,
+                z: None,
             });
         }
     };
@@ -1976,6 +2079,47 @@ pub fn draw_references(
     }
 }
 
+/// A dashed line through `pts`, cut to what the painter shows (MU37: a
+/// guide drawn ±10 km at a close zoom made millions of dashes a frame, the
+/// Profile view lagged, then ran out of memory).
+pub fn dashed_clipped(painter: &Painter, pts: &[Pos2], stroke: Stroke, dash: f32, gap: f32) {
+    let r = painter.clip_rect().expand(8.0);
+    for w in pts.windows(2) {
+        if let Some((a, b)) = clip_segment(w[0], w[1], r) {
+            painter.add(egui::Shape::dashed_line(&[a, b], stroke, dash, gap));
+        }
+    }
+}
+
+/// The part of `a`–`b` inside `r` (Liang–Barsky), if any.
+pub fn clip_segment(a: Pos2, b: Pos2, r: egui::Rect) -> Option<(Pos2, Pos2)> {
+    if !(a.x.is_finite() && a.y.is_finite() && b.x.is_finite() && b.y.is_finite()) {
+        return None;
+    }
+    let d = b - a;
+    let (mut t0, mut t1) = (0.0f32, 1.0f32);
+    for (p, q) in [
+        (-d.x, a.x - r.left()),
+        (d.x, r.right() - a.x),
+        (-d.y, a.y - r.top()),
+        (d.y, r.bottom() - a.y),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return None;
+            }
+        } else {
+            let t = q / p;
+            if p < 0.0 {
+                t0 = t0.max(t);
+            } else {
+                t1 = t1.min(t);
+            }
+        }
+    }
+    (t0 <= t1).then(|| (a + d * t0, a + d * t1))
+}
+
 /// Draw temporary guides dashed across the pane: faint, or stronger with
 /// their names for those in `active` (the ones the snap follows).
 pub fn draw_guides(
@@ -1993,10 +2137,21 @@ pub fn draw_guides(
         } else {
             Stroke::new(1.0, GUIDE.gamma_multiply(0.45))
         };
+        let z = g.z.unwrap_or(0.0);
         match g.shape {
+            // in 3D a guide runs to the horizon: along it, as far as it is
+            // seen in front of the camera
+            GuideShape::Line { p, d } if g.z.is_some() => {
+                let pts: Vec<Pos2> = (-400..=400)
+                    .filter_map(|k| project((p + d * (k as f64 * 0.5)).extend(z)))
+                    .filter(|s| s.x.is_finite() && s.y.is_finite())
+                    .collect();
+                if pts.len() >= 2 {
+                    dashed_clipped(painter, &pts, stroke, 6.0, 5.0);
+                }
+            }
             GuideShape::Line { p, d } => {
-                let (Some(a), Some(b)) = (project(p.extend(0.0)), project((p + d).extend(0.0)))
-                else {
+                let (Some(a), Some(b)) = (project(p.extend(z)), project((p + d).extend(z))) else {
                     continue;
                 };
                 let u = (b - a).normalized();
@@ -2014,14 +2169,14 @@ pub fn draw_guides(
                 let pts: Vec<Pos2> = (0..=96)
                     .filter_map(|k| {
                         let t = k as f64 / 96.0 * std::f64::consts::TAU;
-                        project((c + DVec2::from_angle(t) * r).extend(0.0))
+                        project((c + DVec2::from_angle(t) * r).extend(z))
                     })
                     .collect();
                 painter.add(egui::Shape::dashed_line(&pts, stroke, 6.0, 5.0));
             }
         }
         if on {
-            if let Some(s) = project(g.at.extend(0.0)) {
+            if let Some(s) = project(g.at.extend(z)) {
                 let k = 3.5;
                 painter.line_segment([s + egui::vec2(-k, -k), s + egui::vec2(k, k)], stroke);
                 painter.line_segment([s + egui::vec2(-k, k), s + egui::vec2(k, -k)], stroke);
@@ -2145,13 +2300,27 @@ mod tests {
         let s = Snapper::new();
         let from = DVec3::new(1.0, 1.0, 0.0);
         let free = DVec3::new(3.013, 1.03, 0.0);
+        // free by default: on the axis, at the length the pointer gives
         let hit = s
             .snap(&ALL, flat(free).unwrap(), &flat, Some(from), Some(free))
             .unwrap();
         assert_eq!(hit.kind, SnapKind::AxisX);
+        assert!((hit.p.y - 1.0).abs() < 1e-9 && (hit.p.x - 3.013).abs() < 1e-9);
+        // with grid snap on, the length rounds to its spacing
+        let grid = SnapSettings {
+            increment: true,
+            ..ALL
+        };
+        let hit = s
+            .snap(&grid, flat(free).unwrap(), &flat, Some(from), Some(free))
+            .unwrap();
+        assert_eq!(hit.kind, SnapKind::AxisX);
         assert!((hit.p.y - 1.0).abs() < 1e-9 && (hit.p.x - 3.0).abs() < 1e-9);
-        // without axis tracking it is the free point on the increment
-        let no_axis = SnapSettings { axis: false, ..ALL };
+        // without axis tracking it is the free point on the grid
+        let no_axis = SnapSettings {
+            axis: false,
+            ..grid
+        };
         let hit = s
             .snap(&no_axis, flat(free).unwrap(), &flat, Some(from), Some(free))
             .unwrap();

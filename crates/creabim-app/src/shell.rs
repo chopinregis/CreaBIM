@@ -10,8 +10,8 @@ use serde_json::{json, Value};
 
 /// Height of the top bar (menus, tools and the tool options strip) and the
 /// status bar, in points.
-pub(super) const TOP_H: f32 = 113.0;
-pub(super) const STATUS_H: f32 = 30.0;
+pub(super) const TOP_H: f32 = 105.0;
+pub(super) const STATUS_H: f32 = 26.0;
 /// Size of the 3D view's navigation buttons.
 const NAV_W: f32 = 420.0;
 const NAV_H: f32 = 34.0;
@@ -26,6 +26,9 @@ pub(super) struct Shell {
     /// The theme and panel widths, kept between sessions.
     pub settings: crate::files::Settings,
     popup: Option<Popup>,
+    /// A web row's hint to show as the app's own themed tooltip (MU26):
+    /// its text and the control it is for, in window points.
+    web_tip: Option<(String, egui::Rect)>,
     /// Keys pressed while a page had the keyboard, for the views.
     pub keys: Vec<egui::Event>,
     /// Ctrl, Shift or Alt came with the keys fed last frame, and are to
@@ -58,6 +61,7 @@ impl Default for Shell {
             theme: Theme::default(),
             settings: Default::default(),
             popup: None,
+            web_tip: None,
             keys: vec![],
             keys_held: false,
             menu_3d: false,
@@ -119,7 +123,7 @@ pub(super) fn view_style_icon(s: ViewStyle) -> &'static str {
     }
 }
 
-fn tool_icon(t: Tool) -> &'static str {
+pub(crate) fn tool_icon(t: Tool) -> &'static str {
     match t {
         Tool::Select => "mouse-pointer-2",
         Tool::Wall => "wall",
@@ -219,7 +223,7 @@ pub(super) fn icon_name(i: Icon) -> &'static str {
         Icon::Plan => "map",
         Icon::Section => "scissors-line-dashed",
         Icon::Elevation => "elevation",
-        Icon::View3d => "axis-3d",
+        Icon::View3d => "view-3d",
         Icon::Schedule => "table-2",
         Icon::Sheet => "file-text",
         Icon::Viewport => "frame",
@@ -341,10 +345,27 @@ impl CreaBimApp {
             }
             c => c.label().into(),
         };
+        let running = self
+            .plan
+            .modal
+            .as_ref()
+            .map(|m| m.mode)
+            .or(self.plan.armed.map(|a| a.0))
+            .is_some_and(|m| {
+                matches!(
+                    (m, c),
+                    (crate::modal::Mode::Move, Command::Move)
+                        | (crate::modal::Mode::Rotate, Command::Rotate)
+                        | (crate::modal::Mode::Scale, Command::Scale)
+                        | (crate::modal::Mode::Mirror, Command::Mirror)
+                        | (crate::modal::Mode::Offset, Command::Offset)
+                )
+            });
         Item::new(format!("cmd:{c:?}"), label)
             .key(c.shortcut())
             .enabled(enabled)
             .icon(command_icon(c))
+            .checked(running)
     }
 
     /// The items of a menu or dropdown, by its key.
@@ -352,9 +373,33 @@ impl CreaBimApp {
         if let Some(items) = self.area_menu(key) {
             return items;
         }
+        // a group of the folded browser's rail: its items, to pick (MU29)
+        if let Some(group) = key.strip_prefix("rail:") {
+            let state = self.left_state();
+            let Some(g) = state["groups"]
+                .as_array()
+                .and_then(|gs| gs.iter().find(|g| g["key"].as_str() == Some(group)))
+            else {
+                return vec![];
+            };
+            let mut items = vec![];
+            for r in g["rows"].as_array().into_iter().flatten().take(60) {
+                items.push(
+                    Item::new(
+                        format!("railpick:{}", r["id"].as_str().unwrap_or("")),
+                        r["name"].as_str().unwrap_or(""),
+                    )
+                    .icon(crate::svgicon::named(r["icon"].as_str().unwrap_or("")))
+                    .checked(r["sel"].as_bool().unwrap_or(false)),
+                );
+            }
+            return items;
+        }
         match key {
             "menu:CreaBIM" => self.app_menu(),
             "units.menu" => self.unit_items(),
+            "sweep.library" => self.sweep_library_items(),
+            "extrusion.library" => self.extrusion_library_items(),
             "menu:File" => self.file_menu(),
             "menu:Edit" => self.edit_menu(),
             "menu:View" => self.view_menu(),
@@ -378,7 +423,19 @@ impl CreaBimApp {
             "look" => crate::camera::Look::ALL
                 .iter()
                 .enumerate()
-                .map(|(i, l)| Item::new(format!("nav.look:{i}"), l.label()))
+                .map(|(i, l)| {
+                    // a cube with the face looked at filled (MU29)
+                    let icon = match l.label() {
+                        "Top" => "look-top",
+                        "Bottom" => "look-bottom",
+                        "Front" => "look-front",
+                        "Back" => "look-back",
+                        "Right" => "look-right",
+                        "Left" => "look-left",
+                        _ => "look-iso",
+                    };
+                    Item::new(format!("nav.look:{i}"), l.label()).icon(icon)
+                })
                 .collect(),
             "views" => {
                 let mut items = vec![];
@@ -544,10 +601,12 @@ impl CreaBimApp {
                 ];
                 if let Some((_, z)) = self.work_level() {
                     items.push(
-                        Item::new("wp.offset", "Level plane you can offset").hint(format!(
-                            "A plane at {} to slide up and down",
-                            crate::units::elevation(z)
-                        )),
+                        Item::new("wp.offset", "Level plane you can offset")
+                            .icon("level-offset")
+                            .hint(format!(
+                                "A plane at {} to slide up and down",
+                                crate::units::elevation(z)
+                            )),
                     );
                 }
                 items
@@ -591,8 +650,24 @@ impl CreaBimApp {
                 }
                 items.push(Item::Separator);
                 items.push(Item::sub(
-                    format!("Step: {}", self.plan.snap.step_label()),
+                    format!("Grid snap: {}", self.plan.snap.step_label()),
                     self.step_items(),
+                ));
+                // every edge at its even parts (MU34 B1)
+                let now = crate::snaps::divisions();
+                let mut div = vec![Item::new("snap.div:0", "Off").checked(now == 0)];
+                for n in [3u8, 4, 5, 6, 8, 10] {
+                    div.push(
+                        Item::new(format!("snap.div:{n}"), format!("{n} parts")).checked(now == n),
+                    );
+                }
+                items.push(Item::sub(
+                    if now == 0 {
+                        "Divisions: off".to_string()
+                    } else {
+                        format!("Divisions: {now}")
+                    },
+                    div,
                 ));
                 items
             }
@@ -1083,7 +1158,12 @@ impl CreaBimApp {
         } else {
             &crate::snaps::STEPS_METRIC
         };
-        let mut items = vec![Item::new("step.off", "Off").checked(!s.increment)];
+        let mut items = vec![
+            Item::Header("Grid snap (Alt+S)".into()),
+            Item::new("step.off", "Off: free")
+                .checked(!s.increment)
+                .hint("Points and drags go exactly where the pointer is; other snaps still catch them when near"),
+        ];
         for um in steps {
             items.push(
                 Item::new(format!("step:{um}"), crate::units::len(*um as f64 / 1e6))
@@ -1094,7 +1174,16 @@ impl CreaBimApp {
         items.push(
             Item::new("step.custom", "Custom…")
                 .checked(custom)
-                .hint("Type any step: 25 mm, 1/4\", 2 cm"),
+                .hint("Type any spacing: 25 mm, 1/4\", 2 cm"),
+        );
+        items.push(Item::Separator);
+        items.push(
+            Item::new(
+                "marks.toggle",
+                format!("Distance marks every {}", s.spacing_label()),
+            )
+            .checked(s.marks)
+            .hint("While dragging, faint marks from where you grabbed; a mark holds the drag only when the pointer is near it"),
         );
         items
     }
@@ -1186,6 +1275,13 @@ impl CreaBimApp {
                 }
             }
             "tool" => {
+                if let Some(why) = index
+                    .and_then(|i| Tool::ALL.get(i))
+                    .and_then(|t| self.tool_unusable(*t).map(|w| (t.label(), w)))
+                {
+                    self.status = format!("{}: not here, {}.", why.0, why.1);
+                    return;
+                }
                 if let Some(t) = index.and_then(|i| Tool::ALL.get(i)) {
                     // a detail path being drawn is kept, not dropped
                     crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
@@ -1276,7 +1372,22 @@ impl CreaBimApp {
             "snap.on" => self.plan.snap.on = !self.plan.snap.on,
             "step.off" => {
                 self.plan.snap.increment = false;
-                self.status = "Step off: free points and drags go where the pointer is.".into();
+                self.status =
+                    "Grid snap off: points and drags go exactly where the pointer is.".into();
+            }
+            "marks.toggle" => {
+                let s = &mut self.plan.snap;
+                s.marks = !s.marks;
+                self.status = if s.marks {
+                    format!(
+                        "Distance marks every {} while dragging: near one, the drag holds on it.",
+                        s.spacing_label()
+                    )
+                } else {
+                    "Distance marks off.".into()
+                };
+                self.shell.settings.distance_marks = s.marks;
+                self.shell.settings.store();
             }
             "step.custom" => {
                 self.plan.step_prompt =
@@ -1287,10 +1398,23 @@ impl CreaBimApp {
                     self.plan.snap.increment = true;
                     self.plan.snap.step_um = um;
                     self.status = format!(
-                        "Step {}: points and drags round to it. Alt ignores it for a move.",
+                        "Grid snap {}: points land on its grid. Alt+S turns it off; Alt frees one move.",
                         self.plan.snap.step_label()
                     );
+                    self.shell.settings.snap_spacing_um = um;
+                    self.shell.settings.store();
                 }
+            }
+            "snap.div" => {
+                let n = index.unwrap_or(0).min(20) as u8;
+                crate::snaps::set_divisions(n);
+                self.plan.forget_snaps();
+                self.snaps_3d = None;
+                self.status = if n == 0 {
+                    "Divisions off.".into()
+                } else {
+                    format!("Divisions: every edge snaps at its {n} even parts while you place or draw anything.")
+                };
             }
             "snap.all" | "snap.none" => {
                 let on = head == "snap.all";
@@ -1372,6 +1496,7 @@ impl CreaBimApp {
             "new.project" => self.open_new_project(ctx),
             "new.sheet" => self.new_sheet(),
             "levels" => self.open_levels(),
+            "project.info" => self.project_open = true,
             "level.add" => self.add_level_above(),
             "browser.sort" => {
                 if let Some(g) = crate::browser::ViewGroup::from_key(arg) {
@@ -1496,6 +1621,42 @@ impl CreaBimApp {
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
+            "sched.csv" => self.schedule_export = Some("csv".into()),
+            "sched.xlsx" => self.schedule_export = Some("xlsx".into()),
+            "railpick" => {
+                if let Some(e) = self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
+                    let (id, opens) = (e.id, matches!(e.kind, ElementKind::View(_) | ElementKind::Sheet(_)));
+                    self.selection.only(id);
+                    if opens {
+                        self.active_view = Some(id);
+                    }
+                    self.face = None;
+                }
+            }
+            "browser.fold" => {
+                self.shell.settings.left_folded = !self.shell.settings.left_folded;
+                self.shell.settings.store();
+            }
+            "props.fold" => {
+                self.shell.settings.right_folded = !self.shell.settings.right_folded;
+                self.shell.settings.store();
+            }
+            "mode.object" => {
+                if self.plan.edit.is_some() {
+                    self.toggle_edit_mode();
+                }
+            }
+            "mode.edit" => {
+                if self.plan.edit.is_none() {
+                    self.toggle_edit_mode();
+                }
+            }
+            "view.zoomscale" => {
+                if let Some(v) = self.active_view {
+                    self.plan.zoom_to_scale = Some(v);
+                    self.status = "At the drawing's scale: 1 mm on paper is 1 mm on screen.".into();
+                }
+            }
             "nav.orbitsel" => self.orbit_selection = !self.orbit_selection,
             "nav.ortho" => self.camera.ortho = !self.camera.ortho,
             "nav.zoomin" => self.camera.zoom(2.0),
@@ -1520,8 +1681,72 @@ impl CreaBimApp {
                 }
             }
             "view.shaded" | "view.tag" | "view.tagfixtures" | "view.reveal" | "view.colour"
-            | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" => {
+            | "view.xray" | "view.rooms" | "view.ceiling" | "view.tagrooms" | "view.roomtags"
+            // (these four were handled below but never routed here: MU22)
+            | "view.tempdims" | "view.ranges" | "view.reference" | "sheet.preview" | "sheet.text"
+            | "sheet.north" | "sheet.scalebar" | "sheet.pdf" | "export.sheets" | "sheet.cloud"
+            | "sheet.revtable" | "tag.all" | "sheet.keyplan" | "sheet.guides" => {
                 self.view_action(head)
+            }
+            "cleanup.stacked" => {
+                // copies left on their originals (MU24): one undo step
+                let ids = creabim_core::checks::stacked_copies(self.doc.model());
+                if ids.is_empty() {
+                    self.status = "No element sits on a copy of itself.".into();
+                } else {
+                    let n = ids.len();
+                    let tx = creabim_core::Transaction::new("Remove copies on their originals")
+                        .remove_all_cascade(self.doc.model(), &ids);
+                    let r = self.doc.commit(tx);
+                    self.selection.clear();
+                    self.report(r, format!("Removed {n} copies that sat exactly on their originals. Ctrl+Z brings them back."));
+                }
+            }
+            "cleanup.overlap" => {
+                // walls along each other (MU27): the first time it selects
+                // them; asked again with them selected, it merges each pair
+                let pairs = creabim_core::checks::overlapping_walls(self.doc.model());
+                if pairs.is_empty() {
+                    self.status = "No walls overlap along their length.".into();
+                    return;
+                }
+                let all: Vec<ElementId> = pairs.iter().flat_map(|(a, b)| [*a, *b]).collect();
+                let picked = all.iter().all(|id| self.selection.contains(*id));
+                if !picked {
+                    self.selection.extend(all.iter().copied(), false);
+                    self.status = format!(
+                        "{} pair(s) of walls overlap along their length (selected). Run Overlapping walls again to merge each pair into one wall covering both.",
+                        pairs.len()
+                    );
+                    return;
+                }
+                let model = self.doc.model();
+                let mut tx = creabim_core::Transaction::new("Merge overlapping walls");
+                let mut gone: Vec<ElementId> = vec![];
+                for (a, b) in &pairs {
+                    if gone.contains(a) || gone.contains(b) {
+                        continue;
+                    }
+                    let (Some(ea), Some(eb)) = (model.get(*a), model.get(*b)) else { continue };
+                    let (ElementKind::Wall(wa), ElementKind::Wall(wb)) = (&ea.kind, &eb.kind) else { continue };
+                    // the thicker one stays, stretched over both
+                    let (keep, k, other, o) = if wa.thickness >= wb.thickness { (ea, wa, eb, wb) } else { (eb, wb, ea, wa) };
+                    let d = k.direction();
+                    let along = |p: glam::DVec2| (p - k.start).dot(d);
+                    let lo = [0.0, along(o.start), along(o.end)].into_iter().fold(f64::MAX, f64::min);
+                    let hi = [k.length(), along(o.start), along(o.end)].into_iter().fold(f64::MIN, f64::max);
+                    let mut after = keep.clone();
+                    if let ElementKind::Wall(w) = &mut after.kind {
+                        w.start = k.start + d * lo;
+                        w.end = k.start + d * hi;
+                    }
+                    tx = tx.replace(keep.clone(), after);
+                    gone.push(other.id);
+                }
+                let tx = tx.remove_all_cascade(model, &gone);
+                let r = self.doc.commit(tx);
+                self.selection.clear();
+                self.report(r, format!("Merged {} pair(s) of overlapping walls. Ctrl+Z undoes it.", gone.len()));
             }
             "rooms.fromnotes" => {
                 self.status = crate::roomtool::rooms_from_notes(&mut self.doc);
@@ -1578,6 +1803,7 @@ impl CreaBimApp {
             }
             _ if self.join_action(head, arg) => {}
             _ if self.crop_action(head, arg) => {}
+            _ if self.profiles_action(head, arg) => {}
             _ if self.similar_action(head, arg) => {}
             _ if self.app_action(ctx, head, arg) => {}
             _ if self.help_action(head, arg) => {}
@@ -1589,6 +1815,116 @@ impl CreaBimApp {
                 }
             }
         }
+    }
+
+    /// Why `t` can't be used in the view in front, if it can't: the
+    /// annotation tools on a sheet, in 3D or a schedule (MU24).
+    pub(super) fn tool_unusable(&self, t: Tool) -> Option<&'static str> {
+        let front = self
+            .active_view
+            .and_then(|v| match self.doc.model().get(v).map(|e| &e.kind) {
+                Some(ElementKind::Sheet(_)) => Some("sheet"),
+                Some(ElementKind::View(view)) => Some(match view.kind {
+                    ViewKind::Plan { .. } | ViewKind::Section { .. } => "drawing",
+                    ViewKind::Axonometric { .. } => "3d",
+                    ViewKind::Schedule { .. } => "schedule",
+                }),
+                _ => None,
+            });
+        let measures = matches!(
+            t,
+            Tool::Dimension
+                | Tool::Angle
+                | Tool::Radius
+                | Tool::Diameter
+                | Tool::ArcLength
+                | Tool::SpotLevel
+                | Tool::Tag
+                | Tool::Detail
+        );
+        match front? {
+            "sheet" if measures => {
+                Some("on a sheet, double-click a view to dimension or tag inside it")
+            }
+            "3d" if measures || t == Tool::Note => {
+                Some("annotation goes in plans, sections and sheets, not the 3D view")
+            }
+            "schedule" if measures || t == Tool::Note => Some("a schedule takes no annotation"),
+            _ => None,
+        }
+    }
+
+    /// A key plan on `sheet` (Annotate step 5): the lowest floor plan
+    /// again as a view of its own at 1:500, its annotation hidden, placed
+    /// over the title block, all one undo step.
+    pub(super) fn add_key_plan(&mut self, sheet: ElementId) {
+        use creabim_core::visibility::Category;
+        let model = self.doc.model();
+        let plan = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::View(v)
+                    if matches!(v.kind, creabim_core::ViewKind::Plan { .. })
+                        && v.callout.is_none() =>
+                {
+                    let lvl = match v.kind {
+                        creabim_core::ViewKind::Plan { level, .. } => {
+                            creabim_core::members::elevation(model, level)
+                        }
+                        _ => 0.0,
+                    };
+                    Some((lvl, e.clone(), v.clone()))
+                }
+                _ => None,
+            })
+            .filter(|(z, ..)| *z >= -0.5)
+            .min_by(|a, b| a.0.total_cmp(&b.0));
+        let Some((_, from, mut v)) = plan else {
+            self.status = "A key plan needs a floor plan to draw from.".into();
+            return;
+        };
+        v.scale = 500.0;
+        v.browser_order = None;
+        for c in [
+            Category::Dimensions,
+            Category::Tags,
+            Category::Notes,
+            Category::Grids,
+            Category::SectionMarks,
+            Category::Objects,
+            Category::Guides,
+            Category::Sketches,
+        ] {
+            if !v.hidden.categories.contains(&c) {
+                v.hidden.categories.push(c);
+            }
+        }
+        let view = Element::new(format!("Key plan ({})", from.name), ElementKind::View(v));
+        let view_id = view.id;
+        let Some(s) = creabim_geom::sheet::sheet_of(model, sheet) else {
+            return;
+        };
+        let m = creabim_geom::sheet::MARGIN;
+        let top =
+            creabim_geom::sheet::title_block_box(model, sheet).map_or(m + 45.0, |(_, hi)| hi.y);
+        let at = glam::DVec2::new(s.width - m - 40.0, top + 30.0);
+        // the view first, then its viewport, made against the model with
+        // the view in it; one undo step
+        if let Err(e) = self
+            .doc
+            .commit(Transaction::new("Add key plan").insert(view))
+        {
+            self.status = format!("Couldn't do that: {e}");
+            return;
+        }
+        let vp = creabim_geom::sheet::new_viewport(self.doc.model(), sheet, view_id, at);
+        let e = Element::new("Key plan", ElementKind::Viewport(vp));
+        let id = e.id;
+        let r = self
+            .doc
+            .commit_merged(Transaction::new("Add key plan").insert(e));
+        self.selection.only(id);
+        self.report(r, "Key plan placed over the title block: the whole floor at 1:500. Drag it where it goes; it is a view of its own in the browser.");
     }
 
     pub(super) fn place_view(&mut self, sheet: ElementId, view: ElementId) {
@@ -1616,7 +1952,7 @@ impl CreaBimApp {
 
     /// Where to write an export: asked with the system's save window, which
     /// starts next to the project with `default`'s name.
-    fn export_to(&mut self, default: String) -> Option<String> {
+    pub(super) fn export_to(&mut self, default: String) -> Option<String> {
         let out = if cfg!(test) {
             Some(default)
         } else {
@@ -1682,17 +2018,8 @@ impl CreaBimApp {
                 let r = std::fs::write(&out, creabim_ifc::export_ifcx(self.doc.model()));
                 self.report(r, format!("Exported {out}"));
             }
-            "export.ifc4" => {
-                let Some(out) = self.export_to(with_extension(&self.path, "ifc")) else {
-                    return;
-                };
-                let opts = creabim_ifc::ExportOptions {
-                    project_name: stem(&self.path),
-                    ..Default::default()
-                };
-                let r = std::fs::write(&out, creabim_ifc::export_ifc4(self.doc.model(), &opts));
-                self.report(r, format!("Exported {out}"));
-            }
+            // first how walls and slabs go out (MU20), then where
+            "export.ifc4" => self.ifc_dialog = true,
             "export.xlsx" => {
                 let Some(out) = self.export_to(with_extension(&self.path, "xlsx")) else {
                     return;
@@ -1702,6 +2029,9 @@ impl CreaBimApp {
                 let r = creabim_geom::xlsx::schedules_xlsx(model, &stem(&self.path))
                     .and_then(|b| std::fs::write(&out, b).map_err(|e| e.to_string()));
                 self.report(r, format!("Exported {n} schedules and a summary to {out}"));
+            }
+            "export.pdf" if !cfg!(test) => {
+                self.sheets_export_open = true;
             }
             "export.pdf" => {
                 let Some(out) = self.export_to(with_extension(&self.path, "pdf")) else {
@@ -1930,6 +2260,24 @@ impl CreaBimApp {
                     .edit_merged(id, "Change view", |e| e.kind = ElementKind::View(v.clone()));
                 self.report(r, "View changed.");
             }
+            "view.roomtags" => {
+                let Some(mut v) = self.view(id).cloned() else {
+                    return;
+                };
+                let on = !v.shows_room_tags();
+                v.room_tags = Some(on);
+                let r = self
+                    .doc
+                    .edit_merged(id, "Change view", |e| e.kind = ElementKind::View(v.clone()));
+                self.report(
+                    r,
+                    if on {
+                        "Room tags shown in this view."
+                    } else {
+                        "Room tags hidden in this view."
+                    },
+                );
+            }
             "view.tagrooms" => {
                 self.status = match crate::roomtool::tag_rooms(&mut self.doc, id) {
                     Ok(0) => "Every room on this plan is tagged already.".into(),
@@ -1940,6 +2288,83 @@ impl CreaBimApp {
             "view.reveal" => self.toggle_hidden_elements(id),
             "view.colour" => self.toggle_hidden_colour(id),
             "view.xray" => self.toggle_view_xray(id),
+            "view.reference" => {
+                // the Trace tab of the view in the focused area (MU19)
+                if matches!(self.vis_target(false), Some(gridvis::VisTarget::View(_))) {
+                    self.selection.clear();
+                    self.prop_tab = PropTab::Trace;
+                    self.status = "Add a reference in Properties > Trace: another view, a picture or a DXF drawing.".into();
+                } else {
+                    self.status = "Open a plan or a section first: references show in them.".into();
+                }
+            }
+            "sheet.text" => {
+                self.plan.tool = Tool::Note;
+                self.plan.cancel();
+                self.status = "Text on the sheet: click where it starts, then type.".into();
+            }
+            "sheet.north" | "sheet.scalebar" => {
+                if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
+                    self.add_paper_mark(sheet, what == "sheet.north");
+                }
+            }
+            "sheet.pdf" => self.export_sheets_now(true),
+            "sheet.guides" => {
+                self.plan.sheet_guides = !self.plan.sheet_guides;
+                self.status = if self.plan.sheet_guides {
+                    "Guides on: drag one out of a ruler at the sheet's top or left edge.".into()
+                } else {
+                    "Guides hidden; they are kept with the sheet.".into()
+                };
+            }
+            "sheet.keyplan" => {
+                if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
+                    self.add_key_plan(sheet);
+                }
+            }
+            "sheet.cloud" | "sheet.revtable" => {
+                if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
+                    self.add_revision_mark(sheet, what == "sheet.revtable");
+                }
+            }
+            "tag.all" => {
+                // doors and windows, fixtures and rooms, at once (Annotate board)
+                let Some(view) = self.active_view else { return };
+                let a = planview::tag_openings(&mut self.doc, view).unwrap_or(0);
+                let b = planview::tag_fixtures(&mut self.doc, view).unwrap_or(0);
+                let c = crate::roomtool::tag_rooms(&mut self.doc, view).unwrap_or(0);
+                self.status = match a + b + c {
+                    0 => "Everything here is tagged already (tags go on plans and sections).".into(),
+                    _ => format!("Tagged {a} doors and windows, {b} fixtures, {c} rooms. Drag a tag to move it."),
+                };
+            }
+            "export.sheets" => self.sheets_export_open = true,
+            "sheet.preview" => {
+                self.print_preview = !self.print_preview;
+                self.status = if self.print_preview {
+                    "Print preview: the sheet as it prints, on white.".into()
+                } else {
+                    "Back to the working paper.".into()
+                };
+            }
+            "view.ranges" => {
+                self.plan.plan_ranges = !self.plan.plan_ranges;
+                self.status = if self.plan.plan_ranges {
+                    "Plan ranges: each floor plan's cut (solid) and view depth (dashed). Drag a grip at the right to change it.".into()
+                } else {
+                    "Plan ranges hidden.".into()
+                };
+            }
+            "view.tempdims" => {
+                self.plan.temp_dims_off = !self.plan.temp_dims_off;
+                self.shell.settings.temp_dims_off = self.plan.temp_dims_off;
+                self.shell.settings.store();
+                self.status = if self.plan.temp_dims_off {
+                    "Temporary dimensions off: none show by what you select. The button turns them back on.".into()
+                } else {
+                    "Temporary dimensions on.".into()
+                };
+            }
             "view.tag" => {
                 let r = planview::tag_openings(&mut self.doc, id);
                 self.status = match r {
@@ -1965,6 +2390,41 @@ impl CreaBimApp {
     /// The tool options strip: what the tool in use (or the running Move
     /// or Rotate) can be set to. It has its own row under the tools, so it
     /// never covers a view or its buttons.
+    /// A number set in the tool bar, or in Properties' "Next …" (MU18).
+    pub(super) fn set_tool_number(&mut self, key: &str, v: f64) {
+        match key {
+            "wall.thickness" => {
+                // a size of its own: new walls have no type
+                self.plan.types.remove(&creabim_core::TypeCategory::Wall);
+                self.plan.wall_thickness = v.clamp(0.05, 1.0)
+            }
+            k if k.starts_with("object.") => crate::objecttool::set_option(&mut self.plan, k, v),
+            k if k.starts_with("part.") => crate::partstool::set_option(&mut self.plan, k, v),
+            k if k.starts_with("member.") => {
+                if k.contains("column") {
+                    self.plan.types.remove(&creabim_core::TypeCategory::Column);
+                }
+                if k.contains("beam") {
+                    self.plan.types.remove(&creabim_core::TypeCategory::Beam);
+                }
+                if k.contains("door_") {
+                    self.plan.types.remove(&creabim_core::TypeCategory::Door);
+                }
+                if k.contains("window_") {
+                    self.plan.types.remove(&creabim_core::TypeCategory::Window);
+                }
+                crate::memberstool::set_option(&mut self.plan, k, v)
+            }
+            "view.number" => self.set_view_number(v),
+            "detail.width" => self.plan.details.width = v.clamp(0.0, 5.0),
+            "dim.spacing" => {
+                self.plan.dim_step_size = v.clamp(0.5, 100.0);
+                self.plan.dim_step_mm = self.plan.dim_step_size;
+            }
+            _ => {}
+        }
+    }
+
     pub(super) fn tool_strip(&self, ctx: &egui::Context) -> (Value, Vec<Value>) {
         let seg = |items: Vec<Value>| json!({"kind": "seg", "items": items});
         let opt = |id: String, label: &str, on: bool, hint: &str| json!({"id": id, "label": label, "on": on, "hint": hint});
@@ -1983,8 +2443,16 @@ impl CreaBimApp {
         }
         if let Some((m, _)) = self.plan.armed {
             let verb = format!("{m:?}");
+            let icon = match m {
+                crate::modal::Mode::Move => "move",
+                crate::modal::Mode::Rotate => "rotate-cw",
+                crate::modal::Mode::Scale => "scaling",
+                crate::modal::Mode::Mirror => "flip-horizontal-2",
+                crate::modal::Mode::Offset => "copy-plus",
+                crate::modal::Mode::Grip => "spline",
+            };
             return (
-                json!({"label": verb, "icon": "move", "hint": self.status}),
+                json!({"label": verb, "icon": icon, "hint": self.status}),
                 options,
             );
         }
@@ -2208,11 +2676,22 @@ impl CreaBimApp {
             .settings
             .tools_tab
             .min(crate::tooltabs::TABS.len() - 1);
+        let unusable = |t: Tool| self.tool_unusable(t);
         let tool = |t: Tool| {
             let i = Tool::ALL.iter().position(|x| *x == t).unwrap_or(0);
+            let off = unusable(t);
+            let hint = match off {
+                Some(why) => format!("{} (not here: {why})", t.hint()),
+                None => t.hint().to_string(),
+            };
             json!({
-                "kind": "tool", "id": format!("tool:{i}"), "label": t.label(), "hint": t.hint(),
-                "icon": tool_icon(t), "active": self.plan.tool == t,
+                "kind": "tool", "id": format!("tool:{i}"), "label": t.label(), "hint": hint,
+                "off": off.is_some(),
+                // while Move, Rotate and the rest wait or run, it is
+                // their button that is lit, not Select's (MU19)
+                "icon": tool_icon(t),
+                "active": self.plan.tool == t
+                    && !(t == Tool::Select && (self.plan.armed.is_some() || self.plan.modal.is_some())),
             })
         };
         let mut tools: Vec<Value> = crate::tooltabs::ALWAYS.iter().map(|t| tool(*t)).collect();
@@ -2323,6 +2802,13 @@ impl CreaBimApp {
                     v.kind,
                     ViewKind::Section { .. } | ViewKind::Axonometric { .. }
                 ) {
+                    if matches!(v.kind, ViewKind::Section { .. }) {
+                        options.push(json!({
+                            "kind": "toggle", "id": "view.ranges", "label": "Plan ranges",
+                            "icon": "view-range", "on": self.plan.plan_ranges,
+                            "hint": "Each floor plan's cut and view depth as a band: drag their grips to change them (MU34)",
+                        }));
+                    }
                     options.push(json!({
                         "kind": "menu", "key": "viewstyle", "label": "Style",
                         "value": v.style.label(), "icon": view_style_icon(v.style),
@@ -2347,6 +2833,13 @@ impl CreaBimApp {
                     }));
                 }
             }
+            if self.active_plan().is_some() {
+                options.push(json!({
+                    "kind": "toggle", "id": "view.tempdims", "label": "Temporary dimensions",
+                    "icon": "dimension", "on": !self.plan.temp_dims_off,
+                    "hint": "The blue dimensions by what you select: on, they show and can be typed into; off, none show (MU21)",
+                }));
+            }
             options.push(json!({
                 "kind": "button", "id": "view.tag", "label": "Tag openings", "icon": "tag",
                 "hint": "Tag every door and window in this view that has no tag yet",
@@ -2363,6 +2856,11 @@ impl CreaBimApp {
                 options.push(json!({
                     "kind": "button", "id": "view.tagrooms", "label": "Tag rooms", "icon": "room",
                     "hint": "Tag every room on this plan that has no tag here yet",
+                }));
+                options.push(json!({
+                    "kind": "toggle", "id": "view.roomtags", "label": "Show room tags",
+                    "on": shown.as_ref().is_some_and(|v| v.shows_room_tags()), "icon": "tag",
+                    "hint": "Draw this view's room tags. Off by default in detail and callout views, where they come out tiny",
                 }));
                 options.push(json!({
                     "kind": "toggle", "id": "view.ceiling", "label": "Ceiling plan",
@@ -2393,10 +2891,68 @@ impl CreaBimApp {
                 .into_iter()
                 .filter(|o| o["key"] != "gridgroups" && o["kind"] != "sep"),
         );
+        if self
+            .active_view
+            .and_then(|id| self.view(id))
+            .is_some_and(|v| matches!(v.kind, ViewKind::Schedule { .. }))
+        {
+            options.push(json!({
+                "kind": "button", "id": "sched.csv", "label": "Export CSV", "icon": "table-2",
+                "hint": "Save this table as a CSV file beside the project",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sched.xlsx", "label": "Export Excel", "icon": "sheet",
+                "hint": "Save every schedule as one Excel workbook beside the project: a summary, then a sheet for each",
+            }));
+        }
         if self.active_view.is_some_and(|id| self.is_sheet(id)) {
+            // compose
             options.push(json!({
                 "kind": "menu", "key": "placeview", "label": "", "value": "Place view…",
-                "icon": "frame", "hint": "Put a view on this sheet", "wide": true,
+                "icon": "place-view", "hint": "Put a view on this sheet", "wide": true,
+            }));
+            // paper marks: what belongs to the sheet, not to a view (MU22)
+            options.push(json!({"kind": "sep"}));
+            options.push(json!({
+                "kind": "button", "id": "sheet.text", "label": "Text", "icon": "text",
+                "hint": "Text on the sheet: click where it goes (N)",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.north", "label": "North arrow", "icon": "north-arrow",
+                "hint": "A north arrow, turned to the project's north; drag it where it goes",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.scalebar", "label": "Scale bar", "icon": "scale-bar",
+                "hint": "A scale bar at the sheet's drawing scale; drag it where it goes",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.cloud", "label": "Revision cloud", "icon": "revision-cloud",
+                "hint": "A revision cloud round a change, with the next revision letter",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.keyplan", "label": "Key plan", "icon": "map",
+                "hint": "A small plan of the whole building by the title block, at 1:500, without dimensions, tags or notes",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.revtable", "label": "Revisions table", "icon": "table-2",
+                "hint": "The sheet's revisions table: a row for each revision cloud on it",
+            }));
+            options.push(json!({
+                "kind": "toggle", "id": "sheet.guides", "label": "Guides", "icon": "guides",
+                "on": self.plan.sheet_guides,
+                "hint": "Rulers along the sheet's edges to drag guides out of; marks, notes and views snap to the guides. Off, they hide and nothing snaps to them",
+            }));
+            // output
+            options.push(json!({"kind": "sep"}));
+            options.push(json!({
+                "kind": "button", "id": "sheet.pdf", "label": "Sheet as PDF", "icon": "file-text",
+                "hint": "This sheet as a PDF (Ctrl+P); all or chosen sheets: File › Export › Sheets as PDF (Ctrl+Shift+P)",
+            }));
+            // the sheet as it prints, on white, while the paper is dark (MU21)
+            options.push(json!({
+                "kind": "toggle", "id": "sheet.preview", "label": "Print preview",
+                "icon": "print-preview", "on": self.print_preview,
+                "hint": "Show the sheet as it prints, on white paper; off, it follows the drawing paper (dark or light)",
             }));
         }
         options
@@ -2437,7 +2993,7 @@ impl CreaBimApp {
                 let manual = crate::browser::is_manual(model, g);
                 let icon = match g {
                     crate::browser::ViewGroup::Plans => "map",
-                    crate::browser::ViewGroup::Views3d => "axis-3d",
+                    crate::browser::ViewGroup::Views3d => "view-3d",
                     crate::browser::ViewGroup::Sections => "scissors-line-dashed",
                     crate::browser::ViewGroup::Elevations => "elevation",
                     crate::browser::ViewGroup::Details => "callout",
@@ -2521,10 +3077,29 @@ impl CreaBimApp {
                     ])),
                     _ => None,
                 };
+                // each group its own picture (MU29: many shared the cube)
+                let title = group_title(&class);
                 let icon = match class.as_str() {
                     "ElementType" => "element-types",
                     "IfcFurniture" => "sofa",
-                    c => icon_name(Icon::of_class(c)),
+                    _ => match title.to_lowercase().as_str() {
+                        t if t.contains("curtain") => "curtain-wall",
+                        t if t.contains("opening") || t.contains("shaft") => "shaft",
+                        t if t.contains("railing") => "railing",
+                        t if t.contains("footing") => "footing",
+                        t if t.contains("room") => "room",
+                        t if t.contains("ceiling") => "ceiling",
+                        t if t.contains("join") => "join",
+                        t if t.contains("stair") => "stair",
+                        t if t.contains("detail") => "callout",
+                        t if t.contains("note") => "sticky-note",
+                        t if t.contains("text style") => "anno-styles",
+                        t if t.contains("tag") => "tag",
+                        t if t.contains("template") => "sheet-template",
+                        t if t.contains("planting") || t.contains("tree") => "tree",
+                        t if t.contains("void") => "void",
+                        _ => icon_name(Icon::of_class(&class)),
+                    },
                 };
                 json!({
                     "key": class, "title": group_title(&class), "icon": icon,
@@ -2533,10 +3108,12 @@ impl CreaBimApp {
             })
             .collect();
         out.extend(groups);
+        out.push(self.profiles_group());
         let groups = out;
         json!({
             "theme": self.theme(),
             "count": format!("{} elements", self.element_count()),
+            "folded": self.shell.settings.left_folded,
             "groups": groups,
         })
     }
@@ -2564,8 +3141,8 @@ impl CreaBimApp {
                 {"kind": "toggle", "id": "snap.on", "label": "Snap", "on": self.plan.snap.on, "icon": "magnet",
                  "hint": "Object snaps on or off (F3). Hold Alt while picking to suspend them."},
                 {"kind": "menu", "key": "snaps", "label": "", "value": snaps, "hint": "Which snaps are on"},
-                {"kind": "menu", "key": "step", "label": "Step", "value": self.plan.snap.step_label(),
-                 "hint": "What points and drags round to. Alt while dragging ignores it for one move."},
+                {"kind": "menu", "key": "step", "label": "Grid snap", "value": self.plan.snap.step_label(),
+                 "hint": "Off: points and drags go exactly where the pointer is. On (Alt+S): they land on a grid in space. Also: distance marks while dragging."},
                 {"kind": "sep"},
                 {"kind": "menu", "key": "workplane", "label": "Workplane", "value": workplane, "icon": "square-dashed",
                  "hint": "Where sketches and guides drawn in 3D go"},
@@ -2813,6 +3390,22 @@ impl CreaBimApp {
                 }
                 self.run_action(ctx, &id);
             }
+            "tip" => {
+                // a web row's hint, drawn by the app in its theme (MU26)
+                let text = b["text"].as_str().unwrap_or("").trim().to_string();
+                self.shell.web_tip = match (&self.shell.web, text.is_empty()) {
+                    (Some(web), false) => {
+                        let o = web.rects[msg.pane as usize].min;
+                        let f = |k: &str| b[k].as_f64().unwrap_or(0.0) as f32;
+                        let r = egui::Rect::from_min_size(
+                            o + egui::vec2(f("x"), f("y")),
+                            egui::vec2(f("w"), f("h")),
+                        );
+                        Some((text, r))
+                    }
+                    _ => None,
+                };
+            }
             "popup" => {
                 let Some(web) = &self.shell.web else { return };
                 let origin = web.rects[msg.pane as usize].min;
@@ -2858,34 +3451,16 @@ impl CreaBimApp {
                     },
                     _ => return,
                 };
-                match b["key"].as_str().unwrap_or("") {
-                    "wall.thickness" => {
-                        // a size of its own: new walls have no type
-                        self.plan.types.remove(&creabim_core::TypeCategory::Wall);
-                        self.plan.wall_thickness = v.clamp(0.05, 1.0)
-                    }
-                    k if k.starts_with("object.") => {
-                        crate::objecttool::set_option(&mut self.plan, k, v)
-                    }
-                    k if k.starts_with("part.") => {
-                        crate::partstool::set_option(&mut self.plan, k, v)
-                    }
-                    k if k.starts_with("member.") => {
-                        if k.contains("column") {
-                            self.plan.types.remove(&creabim_core::TypeCategory::Column);
-                        }
-                        if k.contains("beam") {
-                            self.plan.types.remove(&creabim_core::TypeCategory::Beam);
-                        }
-                        crate::memberstool::set_option(&mut self.plan, k, v)
-                    }
-                    "view.number" => self.set_view_number(v),
-                    "detail.width" => self.plan.details.width = v.clamp(0.0, 5.0),
-                    _ => {}
-                }
+                self.set_tool_number(b["key"].as_str().unwrap_or(""), v);
             }
             "pick" => {
                 let want = b["id"].as_str().unwrap_or("");
+                // a profile of the browser's Profiles group (MU27 block 5)
+                if let Some(name) = want.strip_prefix("profile:") {
+                    let name = name.to_string();
+                    self.profiles_action("profiles.open", &name);
+                    return;
+                }
                 let Some(e) = self.doc.model().iter().find(|e| e.id.0.to_string() == want) else {
                     return;
                 };
@@ -2969,6 +3544,55 @@ impl CreaBimApp {
         for m in msgs {
             self.handle_web(&ctx, m);
         }
+        // what the app draws itself: below the bars, right of the browser,
+        // above the status bar
+        if let Some(web) = &self.shell.web {
+            use crate::webui::Pane;
+            let mut r = ctx.content_rect();
+            let top = web.rects[Pane::Top as usize];
+            let left = web.rects[Pane::Left as usize];
+            let status = web.rects[Pane::Status as usize];
+            if top.height() > 1.0 {
+                r.min.y = r.min.y.max(top.bottom());
+            }
+            if left.width() > 1.0 {
+                r.min.x = r.min.x.max(left.right());
+            }
+            if status.height() > 1.0 {
+                r.max.y = r.max.y.min(status.top());
+            }
+            NATIVE.with(|n| n.set(Some(r)));
+        }
+        // a web row's hint, as the app's own tooltips look (MU26)
+        if let Some((text, r)) = self
+            .shell
+            .web_tip
+            .clone()
+            .filter(|_| self.shell.popup.is_none())
+        {
+            let screen = ctx.content_rect();
+            let below = r.bottom() + 6.0;
+            // web panels paint over the app's own drawing, so the tip
+            // keeps to the right of the browser panel (MU27: it was cut)
+            let left_edge = self
+                .shell
+                .web
+                .as_ref()
+                .map(|w| w.rects[crate::webui::Pane::Left as usize])
+                .filter(|l| l.width() > 1.0 && l.top() < below + 40.0 && l.bottom() > below)
+                .map_or(screen.left(), |l| l.right());
+            let x = r.left().min(screen.right() - 380.0).max(left_edge + 4.0);
+            egui::Area::new(egui::Id::new("web-tip"))
+                .order(egui::Order::Tooltip)
+                .fixed_pos(egui::pos2(x, below))
+                .interactable(false)
+                .show(&ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_max_width(360.0);
+                        ui.label(text);
+                    });
+                });
+        }
         // a tool picked off the tab shown (by its key, a menu or the
         // palette) brings its own tab
         if self.shell.tab_tool != Some(self.plan.tool) {
@@ -3007,10 +3631,15 @@ impl CreaBimApp {
             .response
             .rect;
         // drag the browser's right edge to widen it
-        let left = egui::Panel::left("web_left")
-            .default_size(self.shell.settings.left_width)
-            .size_range(180.0..=520.0)
-            .resizable(true)
+        let folded = self.shell.settings.left_folded;
+        let left = egui::Panel::left(if folded { "web_left_rail" } else { "web_left" })
+            .default_size(if folded {
+                44.0
+            } else {
+                self.shell.settings.left_width
+            })
+            .size_range(if folded { 44.0..=44.0 } else { 180.0..=520.0 })
+            .resizable(!folded)
             .show_separator_line(true)
             .frame(egui::Frame::NONE.fill(ui.visuals().panel_fill))
             .show(ui, |ui| ui.allocate_space(ui.available_size()))
@@ -3018,8 +3647,25 @@ impl CreaBimApp {
             .rect;
         // the page sits just inside the edge so the edge stays grabbable
         let left = left.with_max_x(left.max.x - 3.0);
+        // the browser's fold handle on its right edge (MU29)
+        if crate::app::fold_handle(
+            &ctx,
+            "browser",
+            egui::pos2(left.right() + 3.0, left.center().y - 23.0),
+            folded,
+            false,
+            if folded {
+                "Open the project browser (Ctrl+[)"
+            } else {
+                "Fold the browser to a rail (Ctrl+[)"
+            },
+        ) {
+            self.shell.settings.left_folded = !folded;
+            self.shell.settings.store();
+        }
         let width = (left.width() + 3.0).round();
-        if (width - self.shell.settings.left_width).abs() >= 1.0
+        if !folded
+            && (width - self.shell.settings.left_width).abs() >= 1.0
             && !ctx.input(|i| i.pointer.any_down())
         {
             self.shell.settings.left_width = width;
@@ -3152,6 +3798,7 @@ impl CreaBimApp {
                 items.is_empty(),
             )
         });
+        let icons_extra = self.profile_thumbs();
         let Some(web) = &mut self.shell.web else {
             return false;
         };
@@ -3178,6 +3825,8 @@ impl CreaBimApp {
         match popup {
             Some((_, _, true)) => self.close_popup(),
             Some((rect, state, false)) => {
+                let mut state = state;
+                state["icons"] = serde_json::Value::Object(icons_extra);
                 web.send(Pane::Popup, &state);
                 web.show_popup(rect, ppp);
                 if std::mem::take(&mut self.shell.focus_popup) {
@@ -3258,7 +3907,11 @@ impl CreaBimApp {
             }
             ui.separator();
             ui.label("File:");
-            ui.add(egui::TextEdit::singleline(&mut self.path).desired_width(220.0));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.path)
+                    .vertical_align(egui::Align::Center)
+                    .desired_width(220.0),
+            );
         });
         if let Some(id) = picked {
             let ctx = ui.ctx().clone();
@@ -3320,6 +3973,15 @@ pub(super) fn style(ctx: &egui::Context, theme: Theme) {
         s.spacing.interact_size.y = 24.0;
         // a slider's track thick enough to read as one
         s.spacing.slider_rail_height = 6.0;
+        // soft corners on every menu, list and popup, as the web menus
+        // have (MU35: the app's own were square)
+        s.visuals.menu_corner_radius = egui::CornerRadius::same(10);
+        s.visuals.window_corner_radius = egui::CornerRadius::same(10);
+        s.spacing.menu_margin = egui::Margin::same(6);
+        // thin floating scroll bars, like the web panels' (MU18)
+        let mut scroll = egui::style::ScrollStyle::thin();
+        scroll.foreground_color = false;
+        s.spacing.scroll = scroll;
         s.text_styles
             .insert(TextStyle::Body, FontId::proportional(13.0));
         s.text_styles
@@ -3361,6 +4023,10 @@ pub(super) fn visuals(theme: Theme) -> egui::Visuals {
     v.selection.bg_fill = p.accent.gamma_multiply(if p.dark { 0.45 } else { 0.4 });
     v.selection.stroke = Stroke::new(1.0, p.accent);
     v.hyperlink_color = p.accent;
+    // a steady caret in the accent colour (MU27: the app repaints only on
+    // input, so a blinking one was often caught off and seemed missing)
+    v.text_cursor.stroke = Stroke::new(2.0, p.accent);
+    v.text_cursor.blink = false;
     v.weak_text_color = Some(p.muted);
     v.override_text_color = None;
     let w = &mut v.widgets;
@@ -3478,5 +4144,22 @@ mod tests {
             .find(|r| r["id"] == door.id.0.to_string())
             .unwrap();
         assert_eq!(row["mark"], mark.as_str());
+    }
+}
+
+thread_local! {
+    /// The part of the window the app draws itself, clear of the web panels
+    /// (the browser, the bars), set each frame.
+    static NATIVE: std::cell::Cell<Option<egui::Rect>> = const { std::cell::Cell::new(None) };
+}
+
+/// A window kept inside the part of the screen the app draws itself: web
+/// panels paint over anything under them (MU28: the note editor slid
+/// behind the browser).
+pub(crate) fn window(title: impl Into<egui::WidgetText>) -> egui::Window<'static> {
+    let w = egui::Window::new(title);
+    match NATIVE.with(|n| n.get()) {
+        Some(r) if r.width() > 200.0 && r.height() > 150.0 => w.constrain_to(r),
+        _ => w,
     }
 }

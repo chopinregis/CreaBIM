@@ -426,6 +426,11 @@ pub struct Modal {
     pub space: Space,
     /// The pane that runs it: a view, or `None` for the 3D view.
     pub pane: Option<ElementId>,
+    /// The area (its interaction id) that runs it, once one has taken it:
+    /// two areas can show the same view, and only one may run the move
+    /// and draw its bar, or the other moved the elements with its own
+    /// camera and no pointer, out of sight.
+    pub owner: Option<egui::Id>,
     pub flow: Flow,
     stage: Stage,
     /// The point things turn and scale about.
@@ -601,6 +606,7 @@ impl Modal {
             face: None,
             space,
             pane,
+            owner: None,
             flow: Flow::Keys,
             stage: Stage::Follow,
             pivot,
@@ -840,6 +846,11 @@ impl Modal {
         }
         Some(match self.stage {
             Stage::Base | Stage::Reference => vec![],
+            // a duplicate's copy lies on its original, drawn as one with
+            // it: leaving the copy out would leave the original's points
+            // out too. The snaps freeze as the copy starts to follow,
+            // still on the original, so nothing snaps to it moving (MU26)
+            Stage::Follow if self.duplicated => vec![],
             Stage::Follow => {
                 let mut ids = self.ids();
                 for id in self.ids() {
@@ -891,8 +902,28 @@ impl Modal {
         out
     }
 
-    /// One frame of the edit, without drawing.
+    /// One frame of the edit, without drawing. A Duplicate that ends
+    /// where it began (base point and target the same, often both snapped
+    /// to the original) would leave its copy unseen on the original: it
+    /// is taken away instead (MU24).
     pub fn step(&mut self, doc: &mut Document, ev: &Events, map: &PaneMap) -> Outcome {
+        let out = self.step_inner(doc, ev, map);
+        if let Outcome::Done(_) = &out {
+            if self.duplicated
+                && self.mode == Mode::Move
+                && self.placed == 0
+                && self.delta.length() < 1e-6
+            {
+                self.cancel(doc);
+                return Outcome::Cancelled(
+                    "The copy would sit exactly on its original, so it was taken away. Click a base point, then somewhere else.".into(),
+                );
+            }
+        }
+        out
+    }
+
+    fn step_inner(&mut self, doc: &mut Document, ev: &Events, map: &PaneMap) -> Outcome {
         if let Some(p) = ev.pointer {
             self.pointer = p;
         }
@@ -1537,7 +1568,7 @@ impl Modal {
                             Mode::Scale => "Factor",
                         });
                         ui.add(
-                            egui::TextEdit::singleline(&mut self.typed)
+                            egui::TextEdit::singleline(&mut self.typed).vertical_align(egui::Align::Center)
                                 .desired_width(60.0)
                                 .hint_text("type"),
                         );
@@ -1578,10 +1609,9 @@ impl Modal {
         self.axis = if self.axis == Some(a) { None } else { Some(a) };
     }
 
-    /// Undo whatever this edit has done. A duplicate's copy stays where
-    /// it was made: Esc leaves it in place (and selected), as it is meant
-    /// to be moved off its original by hand then.
-    pub fn cancel(&mut self, doc: &mut Document) {
+    /// Undo whatever this edit has done, keeping a duplicate's copy: for
+    /// the tool started again on a changed selection.
+    pub fn undo_edit(&mut self, doc: &mut Document) {
         self.edit.cancel(doc);
         if let Some(c) = &mut self.copies {
             c.cancel(doc);
@@ -1591,13 +1621,20 @@ impl Modal {
         }
     }
 
-    /// Undo everything, a duplicate's copy too: for an edit abandoned
-    /// before it began (another one replaces it).
-    pub fn discard(&mut self, doc: &mut Document) {
-        self.cancel(doc);
+    /// Undo everything, a duplicate's copy too (MU23): a copy cancelled
+    /// before it was placed would sit unseen on its original, and the
+    /// next Duplicate stacks another one on it.
+    pub fn cancel(&mut self, doc: &mut Document) {
+        self.undo_edit(doc);
         if self.duplicated && doc.undo_label().is_some_and(|l| l.starts_with("Duplicate")) {
             doc.discard_last();
+            self.duplicated = false;
         }
+    }
+
+    /// As [`Modal::cancel`]: an edit abandoned before it began.
+    pub fn discard(&mut self, doc: &mut Document) {
+        self.cancel(doc);
     }
 
     /// The turn axis for a rotate: about the pane's view in plans and
@@ -1801,6 +1838,9 @@ impl Modal {
                 out
             }
         };
+        // a duplicate's copy is joined to nothing yet: moving it drags
+        // nothing, the original least of all (it shares both its ends, MU25)
+        self.edit.free |= self.duplicated;
         self.edit.update(doc, changed).map_err(|e| e.to_string())
     }
 
@@ -1816,6 +1856,9 @@ impl Modal {
         for o in &originals {
             changed.push(f(doc.model(), o).ok_or_else(|| format!("{} can't take that", o.name))?);
         }
+        // a duplicate's copy is joined to nothing yet: moving it drags
+        // nothing, the original least of all (it shares both its ends, MU25)
+        self.edit.free |= self.duplicated;
         self.edit.update(doc, changed).map_err(|e| e.to_string())
     }
 
@@ -2674,20 +2717,140 @@ mod tests {
     }
 
     #[test]
-    fn esc_leaves_a_duplicate_in_place_and_discard_removes_it() {
+    fn cancelling_a_duplicate_takes_its_copy_away_and_keeps_the_rest() {
+        // MU23: a copy left on its original was invisible, and every
+        // Duplicate after stacked another wall on the same spot
+        let mut doc = Document::from_model(sample_house());
+        let (id, start) = first_wall(&doc);
+        let n = doc.model().len();
+        let steps = doc.undo_steps().len();
+        let copies = duplicate(&mut doc, &[id]).unwrap();
+        assert!(doc.model().len() > n);
+        let mut m = tool(&doc, Mode::Move, copies[0]);
+        m.duplicated = true;
+        m.cancel(&mut doc);
+        assert_eq!(doc.model().len(), n, "the copy is gone");
+        assert_eq!(doc.undo_steps().len(), steps, "and its undo step");
+        assert_eq!(wall_start(&doc, id), start, "the original is untouched");
+        // a second cancel takes nothing else away
+        m.cancel(&mut doc);
+        assert_eq!(doc.model().len(), n);
+    }
+
+    #[test]
+    fn a_duplicate_moved_away_leaves_one_wall_on_the_original() {
+        // MU25: after Duplicate, base point, target, a second wall still
+        // sat on the original (Tab cycled two)
+        let mut doc = Document::from_model(sample_house());
+        let (id, start) = first_wall(&doc);
+        let (end, level) = match &doc.model().get(id).unwrap().kind {
+            ElementKind::Wall(w) => (w.end, w.level),
+            _ => unreachable!(),
+        };
+        let walls = |doc: &Document| {
+            doc.model()
+                .iter()
+                .filter(|e| {
+                    matches!(&e.kind, ElementKind::Wall(w)
+                        if w.level == level && w.start.distance(start) < 1e-6 && w.end.distance(end) < 1e-6)
+                })
+                .count()
+        };
+        assert_eq!(walls(&doc), 1);
+        let n = doc.model().len();
+        let (mut m, copies) = crate::planview::start_modal(
+            &mut doc,
+            (Mode::Move, true),
+            &[id],
+            None,
+            Space::Plan,
+            None,
+            at(1.0, 1.0),
+            Pivot::Median,
+            None,
+            Flow::Tool,
+            Target::Object,
+            None,
+        )
+        .unwrap();
+        let n = n + copies.len();
+        let out = with_map(&[], |map| {
+            for p in [at(1.0, 1.0), at(1.5, 1.2), at(2.0, 2.0)] {
+                m.step(&mut doc, &pointer(p), map);
+            }
+            m.step(&mut doc, &click(at(2.0, 2.0)), map);
+            for p in [at(2.5, 2.0), at(3.0, 2.0), at(3.5, 2.0)] {
+                m.step(&mut doc, &pointer(p), map);
+            }
+            m.step(&mut doc, &click(at(3.5, 2.0)), map)
+        });
+        assert!(matches!(out, Outcome::Done(_)), "placed");
+        assert_eq!(doc.model().len(), n, "one copy made");
+        assert_eq!(walls(&doc), 1, "only the original on its spot");
+        let moved = wall_start(&doc, copies[0]);
+        assert!(
+            (moved - start - DVec2::new(1.5, 0.0)).length() < 1e-6,
+            "{moved} {start}"
+        );
+        assert_eq!(wall_start(&doc, id), start);
+    }
+
+    #[test]
+    fn a_move_leaving_a_copy_behind_does_not_drag_the_copy_along() {
+        // MU25: Ctrl while moving leaves a copy; nothing may end up lying
+        // on the original, nor the original dragged off by its copy
+        let mut doc = Document::from_model(sample_house());
+        let (id, start) = first_wall(&doc);
+        let (end, level) = match &doc.model().get(id).unwrap().kind {
+            ElementKind::Wall(w) => (w.end, w.level),
+            _ => unreachable!(),
+        };
+        let on_spot = |doc: &Document| {
+            doc.model()
+                .iter()
+                .filter(|e| {
+                    matches!(&e.kind, ElementKind::Wall(w)
+                        if w.level == level && w.start.distance(start) < 1e-6 && w.end.distance(end) < 1e-6)
+                })
+                .count()
+        };
+        let n = doc.model().len();
+        let mut m = tool(&doc, Mode::Move, id);
+        m.set_copy(&mut doc, true);
+        with_map(&[], |map| {
+            m.step(&mut doc, &click(at(2.0, 2.0)), map);
+            m.step(&mut doc, &pointer(at(3.0, 2.0)), map);
+            m.step(&mut doc, &click(at(3.5, 2.0)), map);
+            m.step(
+                &mut doc,
+                &Events {
+                    escape: true,
+                    ..Default::default()
+                },
+                map,
+            );
+        });
+        assert!(doc.model().len() > n, "a copy was placed");
+        assert_eq!(on_spot(&doc), 1, "one wall on the original spot");
+    }
+
+    #[test]
+    fn a_duplicate_placed_where_it_began_takes_its_copy_away() {
+        // MU24: base point and target snapped to the same spot left the
+        // copy on its original, unseen
         let mut doc = Document::from_model(sample_house());
         let (id, start) = first_wall(&doc);
         let n = doc.model().len();
         let copies = duplicate(&mut doc, &[id]).unwrap();
-        let made = doc.model().len();
-        assert!(made > n);
         let mut m = tool(&doc, Mode::Move, copies[0]);
         m.duplicated = true;
-        m.cancel(&mut doc);
-        assert_eq!(doc.model().len(), made, "the copy stays");
-        assert_eq!(wall_start(&doc, copies[0]), start);
-        m.discard(&mut doc);
-        assert_eq!(doc.model().len(), n, "discarded with the edit");
+        let out = with_map(&[], |map| {
+            m.step(&mut doc, &click(at(2.0, 2.0)), map);
+            m.step(&mut doc, &click(at(2.0, 2.0)), map)
+        });
+        assert!(matches!(out, Outcome::Cancelled(_)));
+        assert_eq!(doc.model().len(), n, "no copy left on the original");
+        assert_eq!(wall_start(&doc, id), start);
     }
 
     #[test]

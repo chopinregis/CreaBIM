@@ -533,7 +533,11 @@ pub fn marks_page(
         let mut save = false;
         let mut cancel = false;
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(name).desired_width(240.0));
+            ui.add(
+                egui::TextEdit::singleline(name)
+                    .vertical_align(egui::Align::Center)
+                    .desired_width(240.0),
+            );
             save = ui
                 .add_enabled(!name.trim().is_empty(), egui::Button::new("Save as style"))
                 .clicked();

@@ -95,6 +95,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             T(Tool::SpotLevel),
             Sep,
             T(Tool::Tag),
+            act(
+                "tag.all",
+                "Tag all",
+                "tags",
+                "Tag every door, window, fixture and room in the view that has no tag yet (Shift+T)",
+            ),
             T(Tool::Note),
             Sep,
             T(Tool::Detail),
@@ -109,11 +115,14 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             act(
                 "marks",
                 "Mark numbering",
-                "tag",
+                "hash",
                 "How doors, windows and other elements are numbered; renumber, and check for marks used twice",
             ),
         ],
         2 => vec![
+            // levels are what plans are cut from, so they sit with the
+            // views that come from them (MU20)
+            T(Tool::Level),
             T(Tool::Section),
             T(Tool::Elevation),
             T(Tool::Callout),
@@ -123,6 +132,12 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Crop box",
                 "crop-box",
                 "Add a crop box to the 3D view: it crops everything outside it",
+            ),
+            act(
+                "view.reference",
+                "Reference",
+                "underlay",
+                "Trace over another view, a picture or a DXF drawing: shown faintly under this view (Alt+F2 hides it)",
             ),
             act("new.sheet", "New sheet", "file-text", "A new drawing sheet"),
             Entry::Menu {
@@ -146,21 +161,35 @@ pub fn entries(tab: usize) -> Vec<Entry> {
             ),
         ],
         _ => vec![
-            T(Tool::Level),
-            T(Tool::Grid),
-            T(Tool::Guide),
-            Sep,
+            // the Levels manager is project set-up; the Level tool, which
+            // makes a level view, is on the View tab (MU21)
             act(
                 "levels",
                 "Levels",
                 "level",
                 "Add, duplicate, rename, move and delete levels",
             ),
+            T(Tool::Grid),
+            T(Tool::Guide),
+            Sep,
+            act(
+                "project.info",
+                "Project information",
+                "info",
+                "Name, client, address, site and building: they fill the title blocks and the IFC export",
+            ),
+
             act(
                 "types.browser",
                 "Types",
                 "element-types",
                 "Wall, curtain wall, door, window, slab, roof, column, beam and object types",
+            ),
+            act(
+                "profiles.browser",
+                "Profiles",
+                "profile",
+                "The profile library: presets and the project's own, for sweeps",
             ),
             act(
                 "mat.browser",
@@ -179,6 +208,18 @@ pub fn entries(tab: usize) -> Vec<Entry> {
                 "Project units",
                 "units",
                 "Metric or imperial: how lengths are shown and typed",
+            ),
+            act(
+                "cleanup.stacked",
+                "Copies on originals",
+                "copy",
+                "Find and remove elements sitting exactly on a copy of themselves (left by a Duplicate that never moved)",
+            ),
+            act(
+                "cleanup.overlap",
+                "Overlapping walls",
+                "walls-overlap",
+                "Find walls running along each other and overlapping: the plan merges them, but in 3D they stay two solids. Merge keeps one wall covering both",
             ),
             Sep,
             Entry::Menu {
@@ -204,6 +245,27 @@ pub fn home_of(tool: Tool) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_two_buttons_on_a_tab_share_an_icon() {
+        // A5-1: two buttons that look the same read as one
+        for (tab, tab_name) in TABS.iter().enumerate() {
+            let mut seen: Vec<(&str, String)> = vec![];
+            for e in entries(tab) {
+                let (icon, name) = match e {
+                    Entry::Tool(t) => (crate::app::shell::tool_icon(t), t.label().to_string()),
+                    Entry::Act { icon, label, .. } | Entry::Menu { icon, label, .. } => {
+                        (icon, label.to_string())
+                    }
+                    Entry::Sep => continue,
+                };
+                if let Some((_, other)) = seen.iter().find(|(i, _)| *i == icon) {
+                    panic!("{tab_name}: {name} and {other} both use the {icon} icon");
+                }
+                seen.push((icon, name));
+            }
+        }
+    }
 
     #[test]
     fn every_tool_is_on_a_tab() {

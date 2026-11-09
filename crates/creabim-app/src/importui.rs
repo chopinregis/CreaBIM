@@ -89,7 +89,7 @@ impl CreaBimApp {
         }
         let mut open = true;
         let mut copy = false;
-        egui::Window::new("Import report")
+        crate::app::shell::window("Import report")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(80.0, 70.0))
             .default_size(Vec2::new(640.0, 460.0))
@@ -128,7 +128,7 @@ impl CreaBimApp {
                         });
                 }
                 ui.add_space(6.0);
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     copy = ui
                         .button("Copy report")
                         .on_hover_text("Copy the whole report as text")

@@ -147,6 +147,60 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             g.start = t.point2(g.start);
             g.end = t.point2(g.end);
         }
+        // a reference moves, turns and scales about its centre with them
+        // a note moves across its view by the move as its view draws it;
+        // on a sheet, by the move itself (sheet millimetres)
+        ElementKind::Note(n) => match t {
+            Xform::Move(d) => {
+                let by = match crate::DrawingFrame::of(model, n.view) {
+                    Some(f) => {
+                        let p = f.to_model(n.at);
+                        f.to_drawing(p + *d) - f.to_drawing(p)
+                    }
+                    None => d.truncate(),
+                };
+                n.at += by;
+                if let Some(e) = &mut n.elbow {
+                    *e += by;
+                }
+            }
+            _ => return None,
+        },
+        // a paper mark only moves across its sheet
+        ElementKind::PaperMark(m) => match t {
+            Xform::Move(d) => m.at += d.truncate(),
+            _ => return None,
+        },
+        // a reference lives on its views' drawing: in a section that is
+        // the section's plane, so a move in the model is laid back onto it
+        // (MU33: Move read a section's up as the plan's Y)
+        ElementKind::Reference(r) => match ref_frame(model, r) {
+            Some(frame) => {
+                let on = |p: DVec3| frame.to_drawing(p);
+                match t {
+                    Xform::Move(_) | Xform::Scale { .. } => {
+                        let at = frame.to_model(r.at);
+                        r.at = on(t.point3(at));
+                        if let Xform::Scale { factor, .. } = t {
+                            r.scale *= factor;
+                        }
+                    }
+                    _ => return None,
+                }
+            }
+            None => match t {
+                Xform::Move(d) => r.at += d.truncate(),
+                Xform::Rotate { degrees, .. } => {
+                    r.at = t.point2(r.at);
+                    r.rotation = (r.rotation + degrees).rem_euclid(360.0);
+                }
+                Xform::Scale { factor, .. } => {
+                    r.at = t.point2(r.at);
+                    r.scale *= factor;
+                }
+                _ => return None,
+            },
+        },
         ElementKind::Wall(w) => {
             if !t.keeps_upright() {
                 return None;
@@ -215,6 +269,7 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             let max = (w.length() - o.width).max(0.0);
             o.offset = (o.offset + d.truncate().dot(w.direction())).clamp(0.0, max);
             o.sill = (o.sill + d.z).max(0.0);
+            crate::walls::clamp_opening(model, o);
         }
         ElementKind::FreeMesh(m) => {
             let z = DVec3::Z * elevation(m.level);
@@ -402,16 +457,46 @@ pub fn transformed(model: &Model, e: &Element, t: &Xform) -> Option<Element> {
             }
             _ => return None,
         },
+        // a dimension moves on its drawing (MU32: Move skipped them): its
+        // free ends go with it, and a line measuring between things slides
+        // square to itself, as a dragged dimension line does
+        ElementKind::Dimension(dim) => {
+            let Xform::Move(d) = t else { return None };
+            let frame = crate::DrawingFrame::of(model, dim.view)?;
+            let o = frame.to_model(DVec2::ZERO);
+            let dd = frame.to_drawing(o + *d) - frame.to_drawing(o);
+            let (a, b) = (drawn_at(model, &dim.a), drawn_at(model, &dim.b));
+            let mut moved = false;
+            for p in [&mut dim.a, &mut dim.b] {
+                if p.host.is_none() {
+                    p.local += dd;
+                    moved = true;
+                }
+            }
+            if let Some(c) = &mut dim.center {
+                if c.host.is_none() {
+                    c.local += dd;
+                    moved = true;
+                }
+            }
+            if !moved || dim.kind == crate::DimensionKind::Linear {
+                if let (Some(a), Some(b)) = (a, b) {
+                    let n = (b - a).normalize_or_zero().perp();
+                    if dim.a.host.is_some() && dim.b.host.is_some() {
+                        dim.offset += dd.dot(n);
+                    }
+                }
+            }
+        }
         ElementKind::Sheet(_)
         | ElementKind::Viewport(_)
         | ElementKind::Material(_)
         | ElementKind::Assembly(_)
-        | ElementKind::Dimension(_)
         | ElementKind::Tag(_)
-        | ElementKind::Note(_)
         | ElementKind::TextStyle(_)
         | ElementKind::SheetTemplate(_)
         | ElementKind::Units(_)
+        | ElementKind::Project(_)
         | ElementKind::MarkRules(_)
         | ElementKind::StylePack(_)
         | ElementKind::Cut(_)
@@ -524,6 +609,17 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
         },
         ElementKind::Guide(g) => (g.a + g.b) / 2.0 + DVec3::Z * elevation(g.level),
         ElementKind::CropBox(c) => c.center(),
+        // (MU23) a reference turns and scales about its middle; a paper
+        // mark and a note are where they are written
+        ElementKind::Reference(r) => match ref_frame(model, r) {
+            Some(f) => f.to_model(r.at),
+            None => r.at.extend(0.0),
+        },
+        ElementKind::PaperMark(m) => m.at.extend(0.0),
+        ElementKind::Note(n) => match crate::DrawingFrame::of(model, n.view) {
+            Some(f) => f.to_model(n.at),
+            None => n.at.extend(0.0),
+        },
         ElementKind::Shaft(s) => mean(&s.boundary).extend(s.span(model).0),
         ElementKind::Object(o) => o.position.extend(
             crate::objects::base_z(model, e).unwrap_or(elevation(Some(o.level)) + o.offset),
@@ -532,8 +628,51 @@ pub fn pivot(model: &Model, id: ElementId) -> Option<DVec3> {
             let frame = crate::DrawingFrame::of(model, d.view)?;
             frame.to_model(mean(&d.points))
         }
+        ElementKind::Dimension(d) => {
+            let frame = crate::DrawingFrame::of(model, d.view)?;
+            let (a, b) = (drawn_at(model, &d.a)?, drawn_at(model, &d.b)?);
+            frame.to_model((a + b) / 2.0)
+        }
         _ => return crate::members::pivot(model, e),
     })
+}
+
+/// The section a reference is shown in, as a drawing frame; none for a
+/// plan, whose coordinates are the model's own.
+pub fn ref_frame(model: &Model, r: &crate::Reference) -> Option<crate::DrawingFrame> {
+    match crate::DrawingFrame::of(model, *r.shown_in.first()?)? {
+        f @ crate::DrawingFrame::Section { .. } => Some(f),
+        _ => None,
+    }
+}
+
+/// Where a dimension's point sits on its drawing, as near as the model
+/// says without drawing it: free, on a level line, on a wall, or where it
+/// was put on a body.
+fn drawn_at(model: &Model, p: &crate::HostPoint) -> Option<DVec2> {
+    let Some(h) = p.host else {
+        return Some(p.local);
+    };
+    match &model.get(h)?.kind {
+        ElementKind::Level(l) => Some(DVec2::new(p.local.x, l.elevation + p.local.y)),
+        ElementKind::Wall(w) => {
+            let d = w.direction();
+            let u = if p.from_end {
+                w.length() + p.local.x
+            } else {
+                p.local.x
+            };
+            Some(w.start + d * u + d.perp() * p.local.y)
+        }
+        ElementKind::Opening(o) => match &model.get(o.host)?.kind {
+            ElementKind::Wall(w) => {
+                let d = w.direction();
+                Some(w.start + d * (o.offset + p.local.x) + d.perp() * p.local.y)
+            }
+            _ => None,
+        },
+        _ => Some(p.local),
+    }
 }
 
 /// Copies of an element with fresh ids, ready to insert: a wall comes with
@@ -908,7 +1047,16 @@ mod tests {
         let ElementKind::Opening(o) = transformed(&m, m.get(id).unwrap(), &t).unwrap().kind else {
             panic!()
         };
-        assert!((o.offset + o.width - wall_len).abs() < 1e-9);
+        // it stops at the end of the wall's clear stretch: at the wall
+        // joined at its corner, not inside it (MU23)
+        let (_, hi) = crate::walls::clear_span(&m, o.host);
+        assert!(hi <= wall_len + 1e-9);
+        assert!(
+            (o.offset + o.width - hi).abs() < 1e-9,
+            "{} {} {hi}",
+            o.offset,
+            o.width
+        );
         let turn = Xform::Rotate {
             center: DVec2::ZERO,
             degrees: 10.0,
@@ -1154,5 +1302,31 @@ mod tests {
         assert!(pts[0].distance(p(2.0, 0.5)) < 1e-9);
         // and a copy is a detail too
         assert_eq!(duplicate(&m, did).len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod reference_moves {
+    use super::*;
+    use crate::{Element, Model, RefSource, Reference, View};
+
+    #[test]
+    fn a_reference_in_a_section_moves_on_the_section_plane() {
+        // a section running along +Y
+        let v = Element::new(
+            "Section",
+            ElementKind::View(View::section(DVec2::ZERO, DVec2::new(0.0, 10.0), 5.0, true)),
+        );
+        let vid = v.id;
+        let model = Model::from_elements([v]).unwrap();
+        let mut r = Reference::new(RefSource::View(vid), vec![vid]);
+        r.at = DVec2::new(2.0, 1.0);
+        let e = Element::new("Ref", ElementKind::Reference(r));
+        // 1 m up and 3 m along the section line
+        let moved = transformed(&model, &e, &Xform::Move(DVec3::new(0.0, 3.0, 1.0))).unwrap();
+        let ElementKind::Reference(r) = moved.kind else {
+            panic!()
+        };
+        assert!((r.at - DVec2::new(5.0, 2.0)).length() < 1e-9, "{:?}", r.at);
     }
 }

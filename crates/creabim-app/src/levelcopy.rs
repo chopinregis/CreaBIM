@@ -287,7 +287,7 @@ impl CreaBimApp {
         let list = levels::sorted(self.doc.model());
         let from = self.selection_level();
         let n = self.level_set().len();
-        egui::Window::new(title)
+        crate::app::shell::window(title)
             .open(&mut open)
             .default_pos(area.min + Vec2::new(60.0, 80.0))
             .constrain_to(area)
@@ -336,7 +336,7 @@ impl CreaBimApp {
                 }
                 if ask == LevelAsk::Copy {
                     ui.separator();
-                    ui.horizontal(|ui| {
+                    crate::props::flow(ui, |ui| {
                         if ui.small_button("All above").clicked() {
                             let z = from.and_then(|f| list.iter().find(|l| l.0 == f)).map_or(f64::MIN, |l| l.2.elevation);
                             self.level_copy.targets =

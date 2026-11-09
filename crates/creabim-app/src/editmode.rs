@@ -232,6 +232,13 @@ pub fn outline_handles(model: &Model, id: ElementId, edit: bool) -> Vec<Handle> 
         return vec![];
     };
     let mut out = Vec::new();
+    // from the outline's height to the middle of the thickness: a slab's
+    // outline is its top, a roof's its base
+    let half = match &e.kind {
+        ElementKind::Slab(s) => -s.thickness / 2.0,
+        ElementKind::Roof(r) => r.thickness / 2.0,
+        _ => 0.0,
+    };
     for r in rings(model, e) {
         if !edit && r.ring != Ring::Outline {
             continue;
@@ -269,6 +276,10 @@ pub fn outline_handles(model: &Model, id: ElementId, edit: bool) -> Vec<Handle> 
                 let left = r.normal.cross(along);
                 let out_dir = if ccw { -left } else { left };
                 if out_dir != DVec3::ZERO {
+                    // a push bar sits half-way through the element's
+                    // thickness, not on its top or underside, so in a
+                    // section it is on the edge it pushes (MU25)
+                    let mid = mid + DVec3::Z * half;
                     out.push(Handle {
                         kind: HandleKind::Edge { ring: r.ring, i },
                         at: mid,
@@ -942,7 +953,7 @@ pub fn panel_hint(kind: &ElementKind) -> &'static str {
             "Click a corner and press Delete to remove it; drag corners to move them, a ◇ to add one. Right-click for more."
         }
         ElementKind::Wall(w) if w.assembly.is_some() => {
-            "Drag its grips in any view. Tab: Layers, a grip at each end of each layer; drag one to run that layer on past the join or hold it back (Tab while dragging types how far). A filled grip was moved; right-click it to reset it or every layer."
+            "Drag its grips in any view. Layers (the button below, or Tab): a grip at each end of each layer, and at its bottom and top; drag one to run that layer on or hold it back (Tab while dragging types how far). A filled grip was moved; right-click it to reset it or every layer."
         }
         _ => "Drag its grips in any view.",
     }

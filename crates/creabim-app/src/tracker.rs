@@ -266,6 +266,9 @@ mod tests {
     fn the_step_is_chosen_and_said() {
         crate::units::set(creabim_core::Units::metric());
         let mut s = crate::snaps::SnapSettings::ALL;
+        // grid snap starts off (the owner's snapping review)
+        assert_eq!(s.step_label(), "Off");
+        s.increment = true;
         assert_eq!(s.step_label(), "50 mm");
         assert!((s.step_len() - 0.05).abs() < 1e-12);
         s.step_um = 100_000;

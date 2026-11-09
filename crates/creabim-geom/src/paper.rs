@@ -224,7 +224,12 @@ pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, l
             | PlanItem::Arc {
                 pen: Pen::Underlay, ..
             } => {}
-            PlanItem::Fill { id, points, hatch } => looks.fill(canvas, *id, points, *hatch, map),
+            PlanItem::Fill {
+                id,
+                points,
+                hatch,
+                rgb,
+            } => looks.fill(canvas, *id, points, *hatch, *rgb, map),
             PlanItem::Tint { points, rgb, .. }
             | PlanItem::Room {
                 points,
@@ -238,7 +243,7 @@ pub fn draw_looks(canvas: &mut dyn Canvas, drawing: &PlanView, map: &PaperMap, l
             PlanItem::Shade { id, points, rgb } => looks.shade(canvas, *id, points, *rgb, map),
             PlanItem::Polygon { id, pen, points } => {
                 if *pen == Pen::Cut {
-                    looks.fill(canvas, *id, points, Hatch::Solid, map);
+                    looks.fill(canvas, *id, points, Hatch::Solid, None, map);
                 }
                 let mut pts: Vec<DVec2> = points.iter().map(|p| to(*p)).collect();
                 if let Some(first) = pts.first() {

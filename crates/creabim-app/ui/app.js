@@ -126,9 +126,9 @@
     const tools = S.tools.map((t) =>
       t.kind === "sep" ? `<span class="vsep"></span>` :
       t.kind === "menu" ? `<button class="tool ${t.open ? "on" : ""}" data-popup="${esc(t.key)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}${icon("chevron-down", "tchev")}</button>` :
-      `<button class="tool ${t.active ? "on" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}</button>`).join("");
+      `<button class="tool ${t.active ? "on" : ""} ${t.off ? "off" : ""}" data-act="${esc(t.id)}" title="${esc(t.label + ": " + t.hint)}">${icon(t.icon)}</button>`).join("");
     const html =
-      `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="About, updates, settings and exit"><span class="logo">${mark()}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
+      `<div class="bar1"><button class="brand menubtn ${S.popup === S.app.key ? "open" : ""}" data-popup="${esc(S.app.key)}" data-menubar="1" title="About, updates, settings and exit"><span class="logo">${mark(true)}</span><span class="name">${esc(S.app.label)}</span>${icon("chevron-down", "chev")}</button>${menus}<span class="vsep"></span>` +
       `<div class="quick">${quick}</div><span class="spacer"></span><div class="doc" title="${esc(S.doc.path)}${S.doc.unsaved === false ? "" : " · unsaved changes"}">${S.doc.unsaved === false ? "" : `<span class="dot"></span>`}${esc(S.doc.name)}</div>${S.right.map(control).join("")}</div>` +
       `<div class="bar2"><div class="ttabs">${tabs}</div><div class="tools">${tools}</div><span class="spacer"></span></div>` +
       // the tool options strip: the tool in use and what it can be set to,
@@ -223,8 +223,19 @@
   function drawLeft() {
     const f = local.filter.trim().toLowerCase();
     const anyOpen = S.groups.some((g) => (local.open[g.key] !== undefined ? local.open[g.key] : g.open));
+    // folded to a rail (MU27): one icon a group; a click opens the browser
+    // on that group
+    if (S.folded) {
+      // a click lists the group's items beside the rail, to pick one
+      // without opening the browser (MU29); the wheel scrolls the rail
+      let rail = `<div class="rail">`;
+      for (const g of S.groups) rail += `<button class="rail-btn" data-popup="rail:${esc(g.key)}" title="${esc(g.title)} (${g.rows.length})">${icon(g.icon)}</button>`;
+      root.innerHTML = rail + `</div>`;
+      return;
+    }
     let html = `<div class="browser"><div class="browser-head"><div class="title">${icon("layout-dashboard")}Project<span class="count">${esc(S.count)}</span>` +
-      `<button class="gact fold" data-fold="${anyOpen ? 0 : 1}" title="${anyOpen ? "Collapse every group" : "Expand every group"}">${icon(anyOpen ? "chevrons-down-up" : "chevrons-up-down")}</button></div>` +
+      `<button class="gact fold" data-fold="${anyOpen ? 0 : 1}" title="${anyOpen ? "Collapse every group" : "Expand every group"}">${icon(anyOpen ? "chevrons-down-up" : "chevrons-up-down")}</button>` +
+      `</div>` +
       `<label class="search">${icon("search")}<input data-key="filter" data-live="1" placeholder="Find views and elements" value="${esc(local.filter)}"></label></div><div class="tree">`;
     let any = false;
     for (const g of S.groups) {
@@ -770,8 +781,9 @@
       const i = pages.indexOf(page);
       const prev = pages[i - 1], next = pages[i + 1];
       body = `<div class="crumb"><a data-act="help:contents">Contents</a> › ${esc(page.section)}</div><article class="hdoc">${markdown(page.md)}</article>` +
-        `<div class="pn">${prev ? `<a data-act="help:${esc(prev.id)}">← ${esc(prev.title)}</a>` : "<span></span>"}` +
-        `${next ? `<a data-act="help:${esc(next.id)}">${esc(next.title)} →</a>` : ""}</div>`;
+        // two equal cards, a small label over the page's title (MU30)
+        `<div class="pn">${prev ? `<a class="pn-card" data-act="help:${esc(prev.id)}"><small>← Previous</small><span>${esc(prev.title)}</span></a>` : "<span></span>"}` +
+        `${next ? `<a class="pn-card next" data-act="help:${esc(next.id)}"><small>Next →</small><span>${esc(next.title)}</span></a>` : "<span></span>"}</div>`;
     }
     const where = (q.trim() ? "?" : "") + S.page + "#" + (S.anchor || "");
     const scroller = root.querySelector(".help-body");
@@ -817,6 +829,8 @@
 
   window.CB = {
     state(s) {
+      // profile pictures for the lists, drawn as icons (MU37)
+      if (s.icons) Object.assign(window.ICONS, s.icons);
       S = s;
       if (s.theme) document.documentElement.dataset.theme = s.theme;
       keepFocus(draw);
@@ -854,6 +868,8 @@
     if (local.dragged) return;
     const fig = e.target.closest("figure.zoomable");
     if (fig) { fig.classList.toggle("big"); return; }
+    const rg = e.target.closest("[data-railgroup]");
+    if (rg) local.open[rg.dataset.railgroup] = true;
     const fold = e.target.closest("[data-fold]");
     if (fold && S && S.groups) {
       for (const g of S.groups) local.open[g.key] = fold.dataset.fold === "1";
@@ -1013,6 +1029,37 @@
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
   }
+
+  // Hints shown by the app in its theme (MU26): the system's black
+  // tooltip is kept from showing, the text goes to the app instead.
+  (function () {
+    let timer = null, shown = null;
+    function hide() {
+      clearTimeout(timer);
+      timer = null;
+      if (shown) { shown = null; post({ t: "tip", text: "" }); }
+    }
+    document.addEventListener("mouseover", (e) => {
+      const el = e.target.closest && e.target.closest("[title], [data-tip]");
+      if (!el) { hide(); return; }
+      if (el.hasAttribute("title")) {
+        el.dataset.tip = el.getAttribute("title");
+        el.removeAttribute("title");
+      }
+      if (el === shown) return;
+      hide();
+      const text = el.dataset.tip || "";
+      if (!text) return;
+      timer = setTimeout(() => {
+        const r = el.getBoundingClientRect();
+        shown = el;
+        post({ t: "tip", text, x: r.left, y: r.top, w: r.width, h: r.height });
+      }, 450);
+    });
+    document.addEventListener("mouseleave", hide);
+    document.addEventListener("mousedown", hide, true);
+    document.addEventListener("wheel", hide, { passive: true });
+  })();
 
   document.addEventListener("contextmenu", (e) => e.preventDefault());
   post({ t: "ready" });

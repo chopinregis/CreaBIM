@@ -4,7 +4,7 @@ Everything you see in CreaBIM is drawn from the model. You never draw a section 
 
 ## Turn around in 3D
 
-In the 3D view, drag with the left mouse button to orbit, drag with the right button to pan, and roll the wheel to zoom. `Home` frames the whole model. See [Moving around the views](navigate).
+In the 3D view, drag with the middle mouse button to orbit (or `Alt` + left drag), drag with the right button to pan, and roll the wheel to zoom; a left drag selects with a box. `Home` frames the whole model. See [Moving around the views](navigate).
 
 ## Cut a section
 

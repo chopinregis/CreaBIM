@@ -21,6 +21,8 @@ pub(super) struct LevelsUi {
     /// are deleted with it).
     delete: Option<(ElementId, Option<ElementId>)>,
     pub units_open: bool,
+    /// The kind shown in the Number formats window; none: the project's.
+    pub units_kind: Option<creabim_core::NumberKind>,
 }
 
 impl Default for LevelsUi {
@@ -32,6 +34,7 @@ impl Default for LevelsUi {
             names: HashMap::new(),
             delete: None,
             units_open: false,
+            units_kind: None,
         }
     }
 }
@@ -118,7 +121,9 @@ impl CreaBimApp {
         let r = crate::props::row(ui, "Name", |ui| {
             crate::props::fill(
                 ui,
-                egui::TextEdit::singleline(draft).id_salt(("level-name", id)),
+                egui::TextEdit::singleline(draft)
+                    .vertical_align(egui::Align::Center)
+                    .id_salt(("level-name", id)),
             )
         });
         if r.lost_focus() && draft.trim() != name && !draft.trim().is_empty() {
@@ -221,7 +226,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Levels")
+        crate::app::shell::window("Levels")
             .open(&mut open)
             // below the 3D view's navigation buttons, which draw on top
             .default_pos(area.min + Vec2::new(16.0, 56.0))
@@ -241,7 +246,7 @@ impl CreaBimApp {
     fn levels_contents(&mut self, ui: &mut egui::Ui, asks: &mut Vec<Ask>) {
         let model = self.doc.model();
         let list = levels::sorted(model);
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .button("Add level above the top")
                 .on_hover_text("One storey above the highest level, as tall as it")
@@ -291,7 +296,10 @@ impl CreaBimApp {
                 ui.end_row();
                 for (i, (id, name, l)) in list.iter().enumerate().rev() {
                     let draft = self.levels.names.entry(*id).or_insert_with(|| name.clone());
-                    let r = ui.add_sized([150.0, 20.0], egui::TextEdit::singleline(draft));
+                    let r = ui.add_sized(
+                        [150.0, 20.0],
+                        egui::TextEdit::singleline(draft).vertical_align(egui::Align::Center),
+                    );
                     if r.lost_focus() && draft.trim() != name && !draft.trim().is_empty() {
                         asks.push(Ask::Rename(*id, draft.trim().to_string()));
                     } else if !r.has_focus() && *draft != *name {
@@ -307,7 +315,7 @@ impl CreaBimApp {
                     match list.get(i + 1) {
                         Some((_, above, a)) => {
                             let gap = a.elevation - l.elevation;
-                            ui.horizontal(|ui| {
+                            crate::props::flow(ui, |ui| {
                                 ui.label(crate::units::len(gap))
                                     .on_hover_text(format!("From here up to {above}"));
                                 if (gap - l.height).abs() > 1e-6
@@ -350,7 +358,7 @@ impl CreaBimApp {
                             }
                         }
                     }
-                    ui.horizontal(|ui| {
+                    crate::props::flow(ui, |ui| {
                         ui.menu_button("Duplicate", |ui| {
                             if ui.button("The level only").clicked() {
                                 asks.push(Ask::Duplicate(*id, false));
@@ -433,6 +441,7 @@ impl CreaBimApp {
                     .map_or("Pick a level", |(_, n, _)| n.as_str());
                 ui.indent("to", |ui| {
                     egui::ComboBox::from_id_salt("move-to")
+                        .icon(crate::props::combo_icon)
                         .selected_text(current)
                         .show_ui(ui, |ui| {
                             for (id, n, _) in &others {
@@ -449,7 +458,7 @@ impl CreaBimApp {
             }
             self.levels.delete = Some((del, target));
         }
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .button(egui::RichText::new("Delete level").color(Color32::from_rgb(190, 50, 40)))
                 .clicked()
@@ -588,6 +597,9 @@ impl CreaBimApp {
     }
 
     /// The Project units dialog, when open.
+    /// The project's units and the style pack's number formats, per kind of
+    /// annotation (A5-2): the status bar's Units menu and a dimension's
+    /// "Number formats…" open it.
     pub(super) fn units_window(&mut self, ctx: &egui::Context) {
         if !self.levels.units_open {
             return;
@@ -595,96 +607,329 @@ impl CreaBimApp {
         let mut open = true;
         let mut units = self.doc.model().units();
         let before = units;
+        let (pack_id, pack) = self.edited_pack();
+        let mut formats = pack.number_formats;
+        let formats_before = formats;
+        let mut kind = self.levels.units_kind;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Project units")
+        crate::app::shell::window("Number formats")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
             .constrain_to(area)
             .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.label(
-                    egui::RichText::new(
-                        "How lengths are shown and typed everywhere: properties, readouts, dimensions, tags, schedules and sheets. The model keeps metres, so switching is lossless.",
-                    )
-                    .weak(),
-                );
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(!units.is_imperial(), "Metric")
-                        .clicked()
-                        && units.is_imperial()
-                    {
-                        units = Units::metric();
-                    }
-                    if ui
-                        .selectable_label(units.is_imperial(), "Imperial")
-                        .clicked()
-                        && !units.is_imperial()
-                    {
-                        units = Units::imperial();
-                    }
-                });
-                egui::Grid::new("units").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-                    ui.label("Length");
-                    egui::ComboBox::from_id_salt("unit")
-                        .selected_text(units.length.label())
-                        .width(260.0)
-                        .show_ui(ui, |ui| {
-                            for u in LengthUnit::ALL {
-                                if ui.selectable_label(units.length == u, u.label()).clicked() {
-                                    units = Units::of(u);
-                                }
+                ui.horizontal_top(|ui| {
+                    // the kinds, the project's units first
+                    ui.vertical(|ui| {
+                        ui.set_width(170.0);
+                        let row = |ui: &mut egui::Ui, on: bool, name: &str, said: String| {
+                            let r = ui.add_sized(
+                                [170.0, 26.0],
+                                egui::Button::selectable(on, format!("{name}   {said}")),
+                            );
+                            r.clicked()
+                        };
+                        let project = format!(
+                            "{} · {}",
+                            crate::app::appmenu::unit_short(units.length),
+                            units.precision
+                        );
+                        if row(ui, kind.is_none(), "Project", project) {
+                            kind = None;
+                        }
+                        ui.separator();
+                        for k in creabim_core::NumberKind::ALL {
+                            let f = formats.get(k);
+                            let said = if f.is_default() {
+                                "project".to_string()
+                            } else {
+                                format_summary(&f, &units, k)
+                            };
+                            if row(ui, kind == Some(k), k.label(), said) {
+                                kind = Some(k);
                             }
-                        });
-                    ui.end_row();
-                    ui.label(if units.length.is_fractional() {
-                        "Rounding"
-                    } else {
-                        "Decimals"
+                        }
                     });
-                    let current = units
-                        .precisions()
-                        .into_iter()
-                        .find(|(p, _)| *p == units.precision)
-                        .map(|(_, l)| l)
-                        .unwrap_or_default();
-                    egui::ComboBox::from_id_salt("precision")
-                        .selected_text(current)
-                        .show_ui(ui, |ui| {
-                            for (p, l) in units.precisions() {
-                                ui.selectable_value(&mut units.precision, p, l);
-                            }
-                        });
-                    ui.end_row();
-                    ui.label("Looks like");
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{}   ·   {}   ·   {}",
-                            units.length(1.0668),
-                            units.length(0.2032),
-                            units.area(12.5)
-                        ))
-                        .monospace(),
-                    );
-                    ui.end_row();
+                    ui.separator();
+                    ui.vertical(|ui| {
+                        ui.set_width(400.0);
+                        match kind {
+                            None => project_units(ui, &mut units),
+                            Some(k) => kind_format(ui, formats.get_mut(k), &units, k),
+                        }
+                    });
                 });
-                ui.add_space(6.0);
-                ui.label(
-                    egui::RichText::new(
-                        "Any unit can be typed in a field: 3'-6 1/2\", 3 6, 1067 mm, 1.2 m. Sheet sizes stay in millimetres.",
-                    )
-                    .weak(),
-                );
             });
         self.levels.units_open = open;
+        self.levels.units_kind = kind;
         if units != before {
             let tx = set_units(self.doc.model(), units);
             let r = self.doc.commit(tx);
             crate::units::set(units);
             self.report(r, format!("Units: {}.", units.length.label()));
         }
+        if formats != formats_before {
+            let mut pack = pack;
+            pack.number_formats = formats;
+            self.commit_pack(pack_id, pack, "Number format");
+        }
+    }
+}
+
+/// "m · 3 · ±" for the kinds' list.
+fn format_summary(
+    f: &creabim_core::NumberFormat,
+    project: &Units,
+    k: creabim_core::NumberKind,
+) -> String {
+    let u = f.units(project);
+    let p = u
+        .precisions()
+        .into_iter()
+        .find(|(p, _)| *p == u.precision)
+        .map_or(String::new(), |(_, l)| l);
+    let mut s = format!("{} · {p}", crate::app::appmenu::unit_short(u.length));
+    if k.is_level() && f.sign.unwrap_or(true) {
+        s.push_str(" ±");
+    }
+    s
+}
+
+/// The project's own units: what every kind uses unless it says otherwise.
+fn project_units(ui: &mut egui::Ui, units: &mut Units) {
+    crate::props::note(ui, "How lengths are shown and typed everywhere. The model keeps metres, so switching is lossless.");
+    let mut imperial = units.is_imperial();
+    if crate::props::choice(
+        ui,
+        "System",
+        &mut imperial,
+        &[(false, "Metric", ""), (true, "Imperial", "")],
+    ) {
+        *units = if imperial {
+            Units::imperial()
+        } else {
+            Units::metric()
+        };
+    }
+    crate::props::row(ui, "Length", |ui| {
+        let w = ui.available_width();
+        egui::ComboBox::from_id_salt("unit")
+            .icon(crate::props::combo_icon)
+            .selected_text(units.length.label())
+            .width(w)
+            .show_ui(ui, |ui| {
+                for u in LengthUnit::ALL {
+                    if ui.selectable_label(units.length == u, u.label()).clicked() {
+                        *units = Units::of(u);
+                    }
+                }
+            });
+    });
+    let label = if units.length.is_fractional() {
+        "Rounding"
+    } else {
+        "Decimals"
+    };
+    precision_row(ui, label, units, None);
+    crate::props::row(ui, "Looks like", |ui| {
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(format!(
+                    "{}  ·  {}  ·  {}",
+                    units.length(1.0668),
+                    units.length(0.2032),
+                    units.area(12.5)
+                ))
+                .monospace(),
+            )
+            .wrap(),
+        )
+    });
+    crate::props::note(
+        ui,
+        "Any unit can be typed in a field: 3'-6 1/2\", 3 6, 1067 mm, 1.2 m.",
+    );
+}
+
+/// A precision row: the unit's choices, with "Project" first when `of` is
+/// a kind's format.
+fn precision_row(ui: &mut egui::Ui, label: &str, units: &mut Units, of: Option<&mut Option<u8>>) {
+    // decimals as their count, so five buttons fit (MU32: "0.…" cut short)
+    let list: Vec<(u8, String)> = if units.length.is_fractional() {
+        units.precisions()
+    } else {
+        units
+            .precisions()
+            .into_iter()
+            .map(|(p, _)| (p, p.to_string()))
+            .collect()
+    };
+    match of {
+        None => {
+            if list.len() <= 5 {
+                let opts: Vec<(u8, &str, &str)> =
+                    list.iter().map(|(p, l)| (*p, l.as_str(), "")).collect();
+                crate::props::choice(ui, label, &mut units.precision, &opts);
+            } else {
+                combo_row(
+                    ui,
+                    label,
+                    &mut units.precision,
+                    &list
+                        .iter()
+                        .map(|(p, l)| (*p, l.clone()))
+                        .collect::<Vec<_>>(),
+                );
+            }
+        }
+        Some(own) => {
+            let mut opts: Vec<(Option<u8>, String)> = vec![(None, "Project".into())];
+            opts.extend(list.iter().map(|(p, l)| (Some(*p), l.clone())));
+            if opts.len() <= 6 {
+                let o: Vec<(Option<u8>, &str, &str)> =
+                    opts.iter().map(|(p, l)| (*p, l.as_str(), "")).collect();
+                crate::props::choice(ui, label, own, &o);
+            } else {
+                combo_row(ui, label, own, &opts);
+            }
+        }
+    }
+}
+
+fn combo_row<T: PartialEq + Copy>(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut T,
+    opts: &[(T, String)],
+) {
+    crate::props::row(ui, label, |ui| {
+        let now = opts
+            .iter()
+            .find(|o| o.0 == *value)
+            .map(|o| o.1.clone())
+            .unwrap_or_default();
+        let w = ui.available_width();
+        egui::ComboBox::from_id_salt(("nf", label))
+            .icon(crate::props::combo_icon)
+            .selected_text(now)
+            .width(w)
+            .show_ui(ui, |ui| {
+                for (v, l) in opts {
+                    ui.selectable_value(value, *v, l);
+                }
+            });
+    });
+}
+
+/// One kind's format: every field "Project" until chosen.
+pub(super) fn kind_format(
+    ui: &mut egui::Ui,
+    f: &mut creabim_core::NumberFormat,
+    project: &Units,
+    k: creabim_core::NumberKind,
+) {
+    let mut unit_opts: Vec<(Option<LengthUnit>, String)> = vec![(None, "Use the project's".into())];
+    unit_opts.extend(
+        LengthUnit::ALL
+            .iter()
+            .map(|u| (Some(*u), u.label().to_string())),
+    );
+    let unit_was = f.unit;
+    combo_row(ui, "Unit", &mut f.unit, &unit_opts);
+    if f.unit != unit_was {
+        // a precision for the old unit may not read in the new one
+        f.precision = None;
+    }
+    let mut u = f.units(project);
+    let label = if u.length.is_fractional() {
+        "Rounding"
+    } else {
+        "Decimals"
+    };
+    precision_row(ui, label, &mut u, Some(&mut f.precision));
+    if u.length.is_fractional() {
+        crate::props::note(
+            ui,
+            "Feet and inches keep their marks and round to a fraction.",
+        );
+    } else {
+        crate::props::choice(
+            ui,
+            "Unit symbol",
+            &mut f.symbol,
+            &[
+                (
+                    None,
+                    "Project",
+                    "As the unit writes it: metric bare, decimal feet with '",
+                ),
+                (Some(true), "Show", ""),
+                (Some(false), "Hide", ""),
+            ],
+        );
+        let mut lead = f.leading_zero.unwrap_or(true);
+        let mut trail = f.trailing_zeros.unwrap_or(true);
+        crate::props::row(ui, "Zeros", |ui| {
+            crate::props::flow(ui, |ui| {
+                ui.spacing_mut().item_spacing.x = 1.0;
+                let h = ui.spacing().interact_size.y;
+                let w = ((ui.available_width() - 1.0) / 2.0).max(40.0);
+                if ui
+                    .add_sized([w, h], egui::Button::selectable(lead, "Leading 0.450"))
+                    .on_hover_text("Off: .450")
+                    .clicked()
+                {
+                    lead = !lead;
+                }
+                if ui
+                    .add_sized([w, h], egui::Button::selectable(trail, "Trailing 3.000"))
+                    .on_hover_text("Off: 3")
+                    .clicked()
+                {
+                    trail = !trail;
+                }
+            })
+        });
+        if lead != f.leading_zero.unwrap_or(true) {
+            f.leading_zero = Some(lead);
+        }
+        if trail != f.trailing_zeros.unwrap_or(true) {
+            f.trailing_zeros = Some(trail);
+        }
+    }
+    if k.is_level() {
+        crate::props::choice(
+            ui,
+            "Sign",
+            &mut f.sign,
+            &[
+                (None, "Project", "+ above zero, ± at zero"),
+                (Some(false), "None", ""),
+                (Some(true), "+3 · ±0", ""),
+            ],
+        );
+    }
+    let samples: [f64; 3] = if k.is_level() {
+        [3.0, 0.0, -0.45]
+    } else {
+        [3.0, 1.0668, 0.45]
+    };
+    crate::props::row(ui, "Looks like", |ui| {
+        let t: Vec<String> = samples.iter().map(|m| f.write(project, k, *m)).collect();
+        ui.add(egui::Label::new(egui::RichText::new(t.join("  ·  ")).monospace()).wrap())
+    });
+    if !f.is_default()
+        && crate::props::action(
+            ui,
+            "",
+            "Reset to the project's",
+            "Every field back to the project's",
+            true,
+        )
+        .clicked()
+    {
+        *f = Default::default();
     }
 }
 

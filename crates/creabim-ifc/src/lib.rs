@@ -17,6 +17,6 @@ mod step;
 pub mod step_read;
 mod tess;
 
-pub use export::{export_ifc4, ExportOptions};
+pub use export::{export_ifc4, ExportOptions, IfcBody};
 pub use ifcx::{export_ifcx, import_ifcx};
 pub use import::{import_ifc, import_ifc_materials, ImportError, ImportResult};

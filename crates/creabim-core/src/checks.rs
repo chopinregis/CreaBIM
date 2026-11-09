@@ -132,6 +132,81 @@ fn footprint(model: &Model, o: &Object, t: &ObjectType) -> (Vec<DVec2>, (f64, f6
     (objects::hull(&pts), (z0 + lo.z, z0 + hi.z))
 }
 
+/// Elements sitting exactly on another of the same kind and shape (a
+/// copy left on its original): every one but the first of each set
+/// (MU24). Levels, views, sheets, types and other project settings are
+/// Pairs of walls on one level that run along each other and overlap
+/// (MU25): parallel, their centre lines closer than half their
+/// thicknesses together, and sharing some length. The plan merges their
+/// cut fills, so they look clean there, but they stay two solids in 3D.
+pub fn overlapping_walls(model: &Model) -> Vec<(crate::ElementId, crate::ElementId)> {
+    use crate::ElementKind as K;
+    let walls: Vec<(crate::ElementId, &crate::Wall)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            K::Wall(w) if w.length() > 1e-6 => Some((e.id, w)),
+            _ => None,
+        })
+        .collect();
+    let mut out = vec![];
+    for (i, (a, wa)) in walls.iter().enumerate() {
+        let d = wa.direction();
+        for (b, wb) in &walls[i + 1..] {
+            if wa.level != wb.level || d.perp_dot(wb.direction()).abs() > 1e-3 {
+                continue;
+            }
+            let off = (wb.start - wa.start).perp_dot(d).abs();
+            if off >= (wa.thickness + wb.thickness) / 2.0 - 1e-6 {
+                continue;
+            }
+            let (s0, s1) = ((wb.start - wa.start).dot(d), (wb.end - wa.start).dot(d));
+            let (lo, hi) = (s0.min(s1), s0.max(s1));
+            let shared = hi.min(wa.length()) - lo.max(0.0);
+            if shared > 0.05 {
+                out.push((*a, *b));
+            }
+        }
+    }
+    out
+}
+
+/// never counted.
+pub fn stacked_copies(model: &Model) -> Vec<crate::ElementId> {
+    use crate::ElementKind as K;
+    let mut seen: std::collections::HashMap<String, crate::ElementId> = Default::default();
+    let mut out = vec![];
+    for e in model.iter() {
+        let physical = matches!(
+            e.kind,
+            K::Wall(_)
+                | K::Slab(_)
+                | K::Roof(_)
+                | K::Column(_)
+                | K::Beam(_)
+                | K::Footing(_)
+                | K::Opening(_)
+                | K::Object(_)
+                | K::FreeMesh(_)
+                | K::Sketch(_)
+                | K::Stair(_)
+                | K::Railing(_)
+                | K::Shaft(_)
+        );
+        if !physical {
+            continue;
+        }
+        let Ok(key) = serde_json::to_string(&e.kind) else {
+            continue;
+        };
+        if let std::collections::hash_map::Entry::Vacant(v) = seen.entry(key) {
+            v.insert(e.id);
+        } else {
+            out.push(e.id);
+        }
+    }
+    out
+}
+
 /// Every object in the way of a door or window on its level.
 pub fn objects_in_openings(model: &Model) -> Vec<Clash> {
     let mut openings: Vec<(ElementId, ElementId, Zones)> = vec![];
@@ -355,6 +430,29 @@ pub fn clear_spot(u: f64, span: (f64, f64), blocked: &[(f64, f64)], len: f64) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn walls_lying_along_each_other_are_found_and_neighbours_are_not() {
+        // MU25: a copy run inside its thickened original
+        let mut m = crate::sample::sample_house();
+        let (id, w) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                crate::ElementKind::Wall(w) => Some((e.id, w.clone())),
+                _ => None,
+            })
+            .unwrap();
+        let before = overlapping_walls(&m).len();
+        let mut copy = w.clone();
+        let n = copy.direction().perp();
+        copy.start += n * 0.05 + copy.direction() * 0.5;
+        copy.end += n * 0.05;
+        m.insert(crate::Element::new("Copy", crate::ElementKind::Wall(copy)))
+            .unwrap();
+        let pairs = overlapping_walls(&m);
+        assert_eq!(pairs.len(), before + 1);
+        assert!(pairs.iter().any(|(a, b)| *a == id || *b == id));
+    }
 
     #[test]
     fn a_spot_slides_off_a_door_to_the_nearer_side() {

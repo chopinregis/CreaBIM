@@ -238,6 +238,7 @@ pub(super) fn layer_table(
                     );
                 }
                 egui::ComboBox::from_id_salt(("fn", id, i))
+                    .icon(crate::props::combo_icon)
                     .width(if compact { 78.0 } else { 96.0 })
                     .selected_text(l.function.label())
                     .show_ui(ui, |ui| {
@@ -253,6 +254,7 @@ pub(super) fn layer_table(
                     .map_or("None", |x| x.1)
                     .to_string();
                 egui::ComboBox::from_id_salt(("mat", id, i))
+                    .icon(crate::props::combo_icon)
                     .width(if compact { 110.0 } else { 190.0 })
                     .selected_text(shown)
                     .show_ui(ui, |ui| {
@@ -284,7 +286,7 @@ pub(super) fn layer_table(
                     l.thickness = t.max(assembly::MIN_LAYER);
                     label = "Layer thickness";
                 }
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     if ui
                         .add_enabled(i > 0, GlyphButton(Glyph::Up))
@@ -324,7 +326,7 @@ pub(super) fn layer_table(
         edited.layers.remove(i);
         label = "Remove layer";
     }
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         if ui
             .button("Add layer")
             .on_hover_text("A new layer on the inner (or lower) side")
@@ -437,7 +439,7 @@ impl CreaBimApp {
         let mut changed = false;
         let mut create = false;
         let mut edit = false;
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             crate::app::helpui::combo(ui, "Assembly")
                 .selected_text(shown)
                 .width(ui.available_width().min(150.0))
@@ -526,7 +528,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Assemblies")
+        crate::app::shell::window("Assemblies")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(24.0, 24.0))
             .constrain_to(area)
@@ -559,12 +561,21 @@ impl CreaBimApp {
                     .show(ui, |ui| {
                         for usage in AssemblyUse::ALL {
                             let rows: Vec<_> = all.iter().filter(|a| a.2.usage == usage).collect();
-                            ui.label(
-                                egui::RichText::new(usage.label().to_uppercase())
-                                    .size(10.5)
-                                    .strong()
-                                    .color(ui.visuals().weak_text_color()),
-                            );
+                            // a bold heading that folds, so a long list stays
+                            // easy to scan (MU18)
+                            let head = egui::RichText::new(format!(
+                                "{}  ({})",
+                                usage.label(),
+                                rows.len()
+                            ))
+                            .size(13.0)
+                            .strong();
+                            let open = rows.iter().any(|(id, _, _)| current == Some(*id))
+                                || rows.len() <= 6;
+                            let fold = egui::CollapsingHeader::new(head)
+                                .id_salt(("asm_group", usage.label()))
+                                .default_open(open)
+                                .show(ui, |ui| {
                             for (id, name, a) in rows {
                                 let users = assembly::users(model, *id).len();
                                 let text = format!(
@@ -587,7 +598,9 @@ impl CreaBimApp {
                             if ui.small_button("+ New").clicked() {
                                 asks.push(AsmAsk::New(usage));
                             }
-                            ui.add_space(6.0);
+                                });
+                            let _ = fold;
+                            ui.separator();
                         }
                         if all.is_empty() {
                             ui.label(
@@ -598,7 +611,7 @@ impl CreaBimApp {
                             );
                         }
                     });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui
                         .button("Add starters")
                         .on_hover_text("A cavity wall, a partition, a floor and a pitched roof")
@@ -630,7 +643,7 @@ impl CreaBimApp {
                 let mut name = e.name.clone();
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut name)
+                        egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center)
                             .font(egui::TextStyle::Heading)
                             .desired_width(320.0),
                     )
@@ -649,7 +662,7 @@ impl CreaBimApp {
                 let mut description = a.description.clone();
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut description)
+                        egui::TextEdit::singleline(&mut description).vertical_align(egui::Align::Center)
                             .hint_text("Description")
                             .desired_width(420.0),
                     )
@@ -689,7 +702,7 @@ impl CreaBimApp {
                 );
                 ui.add_space(6.0);
                 let users = assembly::users(model, id);
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label(match users.len() {
                         0 => "Not used yet.".to_string(),
                         n => format!("Used by {n} element{}.", if n == 1 { "" } else { "s" }),

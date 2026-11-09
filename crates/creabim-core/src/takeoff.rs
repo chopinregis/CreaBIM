@@ -1,7 +1,8 @@
 //! Quantity take-off: what the model is made of, measured.
 //!
 //! Every wall, slab, roof, ceiling, column, beam and footing gives one
-//! line per material it is built of: a layered element one line for each
+//! line per material it is built of (and every door, window, object,
+//! stair, railing and mass one line, as pieces, lengths or volumes): a layered element one line for each
 //! layer of its assembly (air gaps left out), anything else one line for
 //! its own material. Each line has an area (a wall's face less its
 //! openings, a slab's or ceiling's plan area, a roof's slope area), a
@@ -88,7 +89,8 @@ impl Quantity {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Line {
     pub element: ElementId,
-    /// "Walls", "Slabs", "Roofs", "Ceilings", "Columns", "Beams", "Footings".
+    /// "Walls", "Slabs", "Roofs", "Ceilings", "Columns", "Beams", "Footings",
+    /// "Doors", "Windows", "Objects", "Stairs", "Railings", "Masses".
     pub category: &'static str,
     pub level: Option<ElementId>,
     pub material: Option<ElementId>,
@@ -104,8 +106,9 @@ pub struct Line {
 /// Every take-off line of the model, element by element in model order.
 pub fn lines(model: &Model) -> Vec<Line> {
     let mut out = Vec::new();
-    // strip footings as joined, worked out once
+    // strip footings and wall ends as joined, worked out once
     let strips = crate::footing::strip_outlines(model);
+    let joins = crate::wall_joins(model);
     for e in model.iter() {
         // the measure of the whole element and its thickness
         let (category, level, whole, thickness) = match &e.kind {
@@ -118,7 +121,14 @@ pub fn lines(model: &Model) -> Vec<Line> {
                         _ => None,
                     })
                     .sum();
-                let area = (w.length() * w.height - openings).max(0.0);
+                // measured on its joined footprint, so where two walls meet
+                // the corner is counted once (A7-13)
+                let along = joins
+                    .get(&e.id)
+                    .map(|ends| crate::polygon::signed_area2(&ends.footprint(w)).abs() / 2.0)
+                    .filter(|a| *a > 0.0 && w.thickness > 0.0)
+                    .map_or(w.length(), |a| a / w.thickness);
+                let area = (along * w.height - openings).max(0.0);
                 (
                     "Walls",
                     w.level,
@@ -237,6 +247,90 @@ pub fn lines(model: &Model) -> Vec<Line> {
                         count: 1,
                     },
                     f.thickness,
+                )
+            }
+            // doors and windows: pieces, with their size as area (A7-13)
+            ElementKind::Opening(o) if o.kind != crate::OpeningKind::Hole => {
+                let Some(ElementKind::Wall(host)) = model.get(o.host).map(|h| &h.kind) else {
+                    continue;
+                };
+                (
+                    if o.kind == crate::OpeningKind::Door {
+                        "Doors"
+                    } else {
+                        "Windows"
+                    },
+                    host.level,
+                    Quantity {
+                        area: o.width * o.height,
+                        volume: 0.0,
+                        length: 0.0,
+                        count: 1,
+                    },
+                    0.0,
+                )
+            }
+            // furniture and fixtures: pieces
+            ElementKind::Object(o) => (
+                "Objects",
+                o.level,
+                Quantity {
+                    count: 1,
+                    ..Default::default()
+                },
+                0.0,
+            ),
+            // a stair: its run along the flights and its concrete, the waist
+            // slab plus the steps' triangles (an estimate, as a builder's)
+            ElementKind::Stair(st) => {
+                let rise = st.rise(model);
+                let layout = st.layout(rise);
+                let n = layout.risers as f64;
+                let going = (n - 1.0).max(0.0) * st.tread;
+                let slope = (going * going + rise * rise).sqrt();
+                let volume = st.width * (st.waist * slope + 0.5 * layout.riser * st.tread * n);
+                (
+                    "Stairs",
+                    st.level,
+                    Quantity {
+                        area: st.width * going,
+                        volume,
+                        length: going,
+                        count: 1,
+                    },
+                    st.waist,
+                )
+            }
+            // a railing: its length
+            ElementKind::Railing(r) => {
+                let path = r.path_in(model);
+                let length: f64 = path.windows(2).map(|w| w[0].distance(w[1])).sum();
+                (
+                    "Railings",
+                    r.level,
+                    Quantity {
+                        length,
+                        count: 1,
+                        ..Default::default()
+                    },
+                    0.0,
+                )
+            }
+            // a mass: its volume as modelled, modifiers and scale included
+            ElementKind::FreeMesh(m) => {
+                let Some(level) = m.level else {
+                    continue;
+                };
+                let volume = m.evaluated().mesh.volume().abs() * m.scale.powi(3);
+                (
+                    "Masses",
+                    level,
+                    Quantity {
+                        volume,
+                        count: 1,
+                        ..Default::default()
+                    },
+                    0.0,
                 )
             }
             _ => continue,
@@ -491,5 +585,82 @@ mod tests {
         assert_eq!(serde_json::from_str::<Rate>(&text).unwrap(), r);
         let plain = serde_json::to_string(&crate::Material::default()).unwrap();
         assert!(!plain.contains("rate"));
+    }
+
+    /// Doors, windows, objects, the stair and the railings are in the
+    /// take-off now, each element once (A7-13).
+    #[test]
+    fn the_starter_house_counts_its_openings_objects_stair_and_railings() {
+        let model = crate::starter::starter_house();
+        let all = lines(&model);
+        let count = |cat: &str| all.iter().filter(|l| l.category == cat).count();
+        let kinds = |k: crate::OpeningKind| {
+            model
+                .iter()
+                .filter(|e| matches!(&e.kind, ElementKind::Opening(o) if o.kind == k))
+                .count()
+        };
+        assert_eq!(count("Doors"), kinds(crate::OpeningKind::Door));
+        assert_eq!(count("Windows"), kinds(crate::OpeningKind::Window));
+        assert!(count("Doors") > 0 && count("Windows") > 0);
+        assert_eq!(count("Stairs"), 1);
+        assert!(count("Railings") >= 1);
+        assert!(count("Objects") >= 100);
+        for l in all.iter().filter(|l| l.category == "Stairs") {
+            assert!(
+                l.quantity.volume > 0.5 && l.quantity.length > 2.0,
+                "{:?}",
+                l.quantity
+            );
+        }
+        for l in all.iter().filter(|l| l.category == "Railings") {
+            assert!(l.quantity.length > 0.5);
+        }
+    }
+
+    /// Two walls meeting at a corner: their volumes add up to the walls'
+    /// footprint, the corner counted once (it was counted twice, or not
+    /// at all, by centreline length times thickness).
+    #[test]
+    fn walls_meeting_at_a_corner_count_it_once() {
+        let mut doc = Document::from_model(sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let a = Element::new(
+            "A",
+            ElementKind::Wall(crate::Wall::new(
+                level,
+                glam::DVec2::new(50.0, 0.0),
+                glam::DVec2::new(54.0, 0.0),
+                0.3,
+                3.0,
+            )),
+        );
+        let b = Element::new(
+            "B",
+            ElementKind::Wall(crate::Wall::new(
+                level,
+                glam::DVec2::new(54.0, 0.0),
+                glam::DVec2::new(54.0, 3.0),
+                0.3,
+                3.0,
+            )),
+        );
+        let (ia, ib) = (a.id, b.id);
+        doc.commit(Transaction::new("corner").insert(a).insert(b))
+            .unwrap();
+        let all = lines(doc.model());
+        let vol: f64 = all
+            .iter()
+            .filter(|l| l.element == ia || l.element == ib)
+            .map(|l| l.quantity.volume)
+            .sum();
+        // the L's footprint: 4.15 x 0.3 along x, plus 3.15 x 0.3 up y, less
+        // the 0.3 x 0.3 square both would share
+        let footprint = 4.15 * 0.3 + 3.15 * 0.3 - 0.3 * 0.3;
+        assert!(
+            (vol - footprint * 3.0).abs() < 1e-6,
+            "walls {vol:.4} m3, footprint {:.4} m3",
+            footprint * 3.0
+        );
     }
 }

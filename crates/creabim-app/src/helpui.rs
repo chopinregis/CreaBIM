@@ -131,7 +131,10 @@ impl CreaBimApp {
             .copied()
             .unwrap_or(default_open);
         // a sub-section (a key with a dot, "view.pens") is set in
-        let indent = key.contains('.');
+        // (visibility and a view's range and template are sections of
+        // their own, boxed, not sub-sections: MU22)
+        let indent =
+            key.contains('.') && !key.starts_with("visibility.") && !key.starts_with("view.");
         let (resp, help_at) = crate::props::header(ui, title, open, indent);
         let resp = resp.on_hover_text(if open {
             "Click to fold this section"
@@ -145,7 +148,6 @@ impl CreaBimApp {
                 toggle = false;
             }
         }
-        ui.add_space(2.0);
         if toggle {
             let s = &mut self.shell.settings;
             if !open == default_open {
@@ -162,7 +164,13 @@ impl CreaBimApp {
     /// the page `link` and a link to read the rest in the Help panel.
     /// Returns whether it was clicked.
     pub(super) fn quick_help_button(&mut self, ui: &mut egui::Ui, link: &str, title: &str) -> bool {
-        let lines = help::quick(link);
+        // "say:…" is the text itself, not a page (MU33: the Editing hint
+        // as a ? rather than a block in the panel)
+        let page = !link.starts_with("say:");
+        let lines = match link.strip_prefix("say:") {
+            Some(t) => vec![t.to_string()],
+            None => help::quick(link),
+        };
         if lines.is_empty() {
             return false;
         }
@@ -179,6 +187,9 @@ impl CreaBimApp {
             ));
         let mut read = false;
         egui::Popup::from_toggle_button_response(&r)
+            // above the views' zoom columns, which sit on the foreground
+            // layer (MU22)
+            .kind(egui::PopupKind::Tooltip)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
                 ui.set_max_width(300.0);
@@ -188,7 +199,7 @@ impl CreaBimApp {
                     ui.label(help::plain(l));
                 }
                 ui.add_space(4.0);
-                if ui.link("Read more in the guide →").clicked() {
+                if page && ui.link("Read more in the guide →").clicked() {
                     read = true;
                     ui.close();
                 }
@@ -266,7 +277,7 @@ impl CreaBimApp {
         let page = self.shell.help.page.clone();
         let (id, _) = page.split_once('#').unwrap_or((&page, ""));
         let shortcuts = (id == "shortcuts").then(|| help::shortcuts_page(&self.help_menus()));
-        egui::Window::new("Help")
+        crate::app::shell::window("Help")
             .open(&mut open)
             .default_size([640.0, 520.0])
             .show(ctx, |ui| {

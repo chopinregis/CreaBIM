@@ -352,7 +352,7 @@ pub fn check_layers(model: &Model) -> (Vec<ElementId>, String) {
 
 /// A text field with its label; true when it changed.
 fn text(ui: &mut egui::Ui, label: &str, v: &mut String) -> bool {
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         ui.label(label);
         ui.text_edit_singleline(v).changed()
     })

@@ -184,8 +184,10 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
         .show(ui, |ui| {
             ui.label("Category");
             egui::ComboBox::from_id_salt("mat_category")
+                .icon(crate::props::combo_icon)
                 .selected_text(library::category_label(&m.category))
-                .width(170.0)
+                .width(ui.available_width().min(170.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     if ui
                         .selectable_label(m.category.is_empty(), "Uncategorised")
@@ -207,7 +209,11 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
 
             ui.label("Description");
             if ui
-                .add(egui::TextEdit::singleline(&mut m.description).desired_width(170.0))
+                .add(
+                    egui::TextEdit::singleline(&mut m.description)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(170.0),
+                )
                 .changed()
             {
                 label = "Material description";
@@ -225,8 +231,10 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
 
             ui.label("Cut hatch");
             egui::ComboBox::from_id_salt("mat_hatch")
+                .icon(crate::props::combo_icon)
                 .selected_text(m.hatch.label())
-                .width(170.0)
+                .width(ui.available_width().min(170.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     for h in Hatch::ALL {
                         if ui.selectable_value(&mut m.hatch, h, h.label()).changed() {
@@ -267,7 +275,7 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
             ui.end_row();
 
             ui.label("Rate");
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 let per = m.rate.map_or(RateUnit::Area, |r| r.per);
                 let mut amount = m.rate.map_or(0.0, |r| r.amount);
                 if ui
@@ -286,8 +294,9 @@ pub(super) fn material_fields(ui: &mut egui::Ui, m: &mut Material) -> &'static s
                     label = "Material rate";
                 }
                 egui::ComboBox::from_id_salt("mat_rate_per")
+                    .icon(crate::props::combo_icon)
                     .selected_text(per.label())
-                    .width(70.0)
+                    .width(ui.available_width().min(70.0))
                     .show_ui(ui, |ui| {
                         for u in RateUnit::ALL {
                             if ui.selectable_label(per == u, u.label()).clicked() {
@@ -555,7 +564,7 @@ impl CreaBimApp {
         let mut open = true;
         let mut asks = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Materials")
+        crate::app::shell::window("Materials")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(16.0, 16.0))
             .constrain_to(area)
@@ -563,12 +572,13 @@ impl CreaBimApp {
             .min_width(640.0)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.selectable_value(&mut self.mat.tab, MatTab::Project, "In this project");
                     ui.selectable_value(&mut self.mat.tab, MatTab::Library, "Library");
                     ui.separator();
                     ui.add(
                         egui::TextEdit::singleline(&mut self.mat.filter)
+                            .vertical_align(egui::Align::Center)
                             .hint_text("Find")
                             .desired_width(140.0),
                     );
@@ -644,7 +654,7 @@ impl CreaBimApp {
                             );
                             for (id, name, m) in rows {
                                 let users = library::users(model, *id).len();
-                                ui.horizontal(|ui| {
+                                crate::props::flow(ui, |ui| {
                                     if swatch(ui, m, 16.0).clicked() {
                                         asks.push(Ask::Pick(*id));
                                     }
@@ -675,7 +685,7 @@ impl CreaBimApp {
                             );
                         }
                     });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui.button("New").clicked() {
                         asks.push(Ask::New);
                     }
@@ -699,13 +709,13 @@ impl CreaBimApp {
                 let ElementKind::Material(m) = &e.kind else {
                     return;
                 };
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     preview(ui, m, 96.0);
                     ui.vertical(|ui| {
                         let mut name = e.name.clone();
                         if ui
                             .add(
-                                egui::TextEdit::singleline(&mut name)
+                                egui::TextEdit::singleline(&mut name).vertical_align(egui::Align::Center)
                                     .font(egui::TextStyle::Heading)
                                     .desired_width(240.0),
                             )
@@ -721,7 +731,7 @@ impl CreaBimApp {
                             .weak(),
                         );
                         let users = library::users(model, id);
-                        ui.horizontal(|ui| {
+                        crate::props::flow(ui, |ui| {
                             ui.label(match users.len() {
                                 0 => "Not used yet.".to_string(),
                                 n => format!("Used by {n} element{}.", plural_s(n)),
@@ -765,7 +775,7 @@ impl CreaBimApp {
                         let shown = choice
                             .and_then(|c| model.get(c))
                             .map_or("By type (no material)".to_string(), |e| e.name.clone());
-                        egui::ComboBox::from_id_salt("mat_replace")
+                        egui::ComboBox::from_id_salt("mat_replace").icon(crate::props::combo_icon)
                             .selected_text(shown)
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut choice, None, "By type (no material)");
@@ -778,7 +788,7 @@ impl CreaBimApp {
                         if choice != replacement {
                             asks.push(Ask::Replacement(del, choice));
                         }
-                        ui.horizontal(|ui| {
+                        crate::props::flow(ui, |ui| {
                             if ui.button("Delete and reassign").clicked() {
                                 asks.push(Ask::ConfirmDelete(del, choice));
                             }

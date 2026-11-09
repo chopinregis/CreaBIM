@@ -121,6 +121,87 @@ impl CreaBimApp {
         );
     }
 
+    /// A plan's or section's cut as a section box in the 3D window (MU34
+    /// A2): a plan keeps what is under its cut, down to its view depth
+    /// (`up`: what is above it, looking at the ceilings); a section keeps
+    /// what it looks at, from its line to its depth. One box per view,
+    /// replaced when asked again.
+    pub(super) fn cut_box(&mut self, view: ElementId, up: bool) {
+        let model = self.doc.model();
+        let Some(e) = model.get(view) else { return };
+        let ElementKind::View(v) = &e.kind else {
+            return;
+        };
+        let name = format!("{} cut", e.name);
+        let (mut lo, mut hi) = self
+            .shown_bounds(None)
+            .unwrap_or((DVec3::new(-5.0, -5.0, 0.0), DVec3::new(5.0, 5.0, 3.0)));
+        lo -= DVec3::splat(MARGIN);
+        hi += DVec3::splat(MARGIN);
+        match v.kind {
+            ViewKind::Plan { level, cut_height } => {
+                let z = model.level(level).map_or(0.0, |l| l.elevation);
+                let below = model
+                    .levels()
+                    .map(|(_, x)| x.elevation)
+                    .filter(|x| *x < z - 1e-6)
+                    .fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.max(x))));
+                if up {
+                    lo.z = z + cut_height;
+                } else {
+                    hi.z = z + cut_height;
+                    lo.z = z - v.graphics.depth(z, below);
+                }
+            }
+            ViewKind::Section {
+                start, end, depth, ..
+            } => {
+                let look = (end - start).normalize_or_zero().perp();
+                let (a, b) = (start, start + look * depth);
+                if look.x.abs() > 0.999 {
+                    lo.x = a.x.min(b.x);
+                    hi.x = a.x.max(b.x);
+                } else if look.y.abs() > 0.999 {
+                    lo.y = a.y.min(b.y);
+                    hi.y = a.y.max(b.y);
+                } else {
+                    self.status = "A section box stays square to the grid: this section runs at an angle, so it can't be one.".into();
+                    return;
+                }
+            }
+            _ => {
+                self.status = "Only a plan's or a section's cut makes a section box.".into();
+                return;
+            }
+        }
+        let existing = model
+            .iter()
+            .find(|x| x.name == name && matches!(x.kind, ElementKind::CropBox(_)))
+            .map(|x| x.id);
+        let c = CropBox::new(None, lo, hi);
+        let r = match existing {
+            Some(id) => self.doc.edit(id, &format!("Update {name}"), |x| {
+                if let ElementKind::CropBox(old) = &mut x.kind {
+                    old.min = c.min;
+                    old.max = c.max;
+                    old.enabled = true;
+                }
+            }),
+            None => self.doc.commit(
+                Transaction::new(format!("Add {name}"))
+                    .insert(Element::new(name.clone(), ElementKind::CropBox(c))),
+            ),
+        };
+        self.report(
+            r,
+            format!(
+                "3D is cut as {} sees it{}: drag the box's faces to change it, or switch it off in the browser.",
+                e_name(&name),
+                if up { ", looking up at the ceilings" } else { "" }
+            ),
+        );
+    }
+
     fn crop_box(&self, id: ElementId) -> Option<(&Element, &CropBox)> {
         let e = self.doc.model().get(id)?;
         match &e.kind {
@@ -232,7 +313,7 @@ impl CreaBimApp {
         }
         let mut act: Option<(&str, ElementId)> = None;
         for (id, name, on, shown) in &rows {
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 let mut v = *on;
                 if ui
                     .checkbox(&mut v, "")
@@ -273,7 +354,7 @@ impl CreaBimApp {
                 self.crop_action(what, &id.0.to_string());
             }
         }
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui.button("Add crop box").clicked() {
                 self.add_crop_box(false, false);
             }
@@ -315,6 +396,20 @@ impl CreaBimApp {
             c.frame_hidden = !shown;
             label = Some("Show or hide crop box");
         }
+        crate::props::row(ui, "Outside", |ui| {
+            egui::ComboBox::from_id_salt(("crop.outside", id))
+                .selected_text(c.outside.label())
+                .show_ui(ui, |ui| {
+                    for o in cropbox::Outside::ALL {
+                        if ui.selectable_label(c.outside == o, o.label()).clicked() && c.outside != o {
+                            c.outside = o;
+                            label = Some("What shows outside the crop box");
+                        }
+                    }
+                })
+                .response
+                .on_hover_text("What shows of what the box crops away whole: nothing, a ghost of what is selected, or a ghost of all of it")
+        });
         ui.add_space(4.0);
         ui.label("What it crops");
         let only = matches!(c.scope, CropScope::Only(_));
@@ -336,7 +431,7 @@ impl CreaBimApp {
             self.start_crop_pick(id);
         }
         if only {
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 if self.crop_pick == Some(id) {
                     if ui.button("Done picking").clicked() {
                         self.end_crop_pick();
@@ -351,21 +446,31 @@ impl CreaBimApp {
             });
         }
         ui.add_space(4.0);
-        let num = |ui: &mut egui::Ui, text: &str, v: &mut f64| -> bool {
-            crate::props::row(ui, text, |ui| {
-                crate::props::fill(ui, crate::units::drag(v).range(-1e5..=1e5)).changed()
-            })
-        };
+        // a small table, from | to, the axis as the row's label (A4-1)
         egui::Grid::new(("crop extents", id))
-            .num_columns(2)
+            .num_columns(3)
+            .spacing([6.0, 4.0])
             .show(ui, |ui| {
+                ui.label("");
+                ui.label(egui::RichText::new("from").weak());
+                ui.label(egui::RichText::new("to").weak());
+                ui.end_row();
+                let w = ((ui.available_width() - 30.0) / 2.0).max(60.0);
                 for (axis, name) in ["X", "Y", "Z"].iter().enumerate() {
                     let (mut lo, mut hi) = (c.min[axis], c.max[axis]);
-                    if num(ui, &format!("{name} from"), &mut lo) {
+                    ui.label(*name);
+                    let h = ui.spacing().interact_size.y;
+                    if ui
+                        .add_sized([w, h], crate::units::drag(&mut lo).range(-1e5..=1e5))
+                        .changed()
+                    {
                         c.set_face(axis * 2, lo);
                         label = Some("Crop box extents");
                     }
-                    if num(ui, "to", &mut hi) {
+                    if ui
+                        .add_sized([w, h], crate::units::drag(&mut hi).range(-1e5..=1e5))
+                        .changed()
+                    {
                         c.set_face(axis * 2 + 1, hi);
                         label = Some("Crop box extents");
                     }
@@ -382,7 +487,7 @@ impl CreaBimApp {
             ))
             .weak(),
         );
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             let fit = |me: &Self, c: &mut CropBox| -> bool {
                 let only = match &c.scope {
                     CropScope::Only(ids) if !ids.is_empty() => Some(ids.clone()),
@@ -577,6 +682,220 @@ impl CreaBimApp {
         }
     }
 
+    /// Selected elements an active crop box takes away whole (A5-4): each
+    /// one's bounds, and the first box that misses it.
+    pub(super) fn outside_crop(&mut self) -> Vec<(ElementId, (DVec3, DVec3), ElementId)> {
+        let model = self.doc.model();
+        let boxes = cropbox::crop_boxes(model, self.crop_owner());
+        if boxes.iter().all(|(_, c)| !c.enabled) {
+            return vec![];
+        }
+        let mut out = vec![];
+        // a box that always ghosts takes in everything; the others only
+        // the selection, unless they hide it (MU26)
+        let always = boxes
+            .iter()
+            .any(|(_, c)| c.enabled && c.outside == cropbox::Outside::AlwaysGhost);
+        let ids: Vec<ElementId> = if always {
+            model.iter().map(|e| e.id).collect()
+        } else {
+            self.selection.all()
+        };
+        // every element's real extent, from its 3D body (MU27: windows,
+        // doors, masses, furniture, columns and beams had none), kept
+        // while the model and the list stay the same
+        let rev = model.revision();
+        let fresh = self
+            .outside_bounds
+            .as_ref()
+            .is_some_and(|(r, l, _)| *r == rev && *l == ids);
+        if !fresh {
+            let only: std::collections::HashSet<ElementId> = ids.iter().copied().collect();
+            let mut b: std::collections::HashMap<ElementId, (DVec3, DVec3)> = Default::default();
+            for item in creabim_geom::scene::build_scene_of(model, Some(&only)) {
+                if let Some((lo, hi)) = item.mesh.bounds() {
+                    let (lo, hi) = (lo.as_dvec3(), hi.as_dvec3());
+                    b.entry(item.id)
+                        .and_modify(|e| *e = (e.0.min(lo), e.1.max(hi)))
+                        .or_insert((lo, hi));
+                }
+            }
+            self.outside_bounds = Some((rev, ids.clone(), b));
+        }
+        let bounds = self
+            .outside_bounds
+            .as_ref()
+            .map(|c| c.2.clone())
+            .unwrap_or_default();
+        let model = self.doc.model();
+        for id in ids {
+            let selected = self.selection.contains(id);
+            let Some(e) = model.get(id) else { continue };
+            if matches!(e.kind, ElementKind::CropBox(_) | ElementKind::View(_)) {
+                continue;
+            }
+            let Some((lo, hi)) = bounds
+                .get(&id)
+                .copied()
+                .or_else(|| creabim_core::parts::element_bounds(model, e))
+            else {
+                continue;
+            };
+            let host = match &e.kind {
+                ElementKind::Opening(o) => Some(o.host),
+                _ => None,
+            };
+            if let Some((b, _)) = boxes.iter().find(|(_, c)| {
+                c.enabled
+                    && c.crops(id, host)
+                    && c.misses(lo, hi)
+                    && match c.outside {
+                        cropbox::Outside::Hidden => false,
+                        cropbox::Outside::GhostSelected => selected,
+                        cropbox::Outside::AlwaysGhost => true,
+                    }
+            }) {
+                out.push((id, (lo, hi), b.id));
+            }
+        }
+        out
+    }
+
+    /// What lies outside the crop drawn as a ghost: a dashed box and a faint
+    /// fill in the crop colour, so nothing vanishes without a word (A5-4).
+    pub(super) fn draw_outside_crop(
+        &self,
+        painter: &egui::Painter,
+        project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+        outside: &[(ElementId, (DVec3, DVec3), ElementId)],
+    ) {
+        let stroke = egui::Stroke::new(1.4, FRAME);
+        for (_, (lo, hi), _) in outside {
+            let c = CropBox::new(None, *lo, *hi);
+            let corners: Vec<egui::Pos2> = (0..8)
+                .filter_map(|i| {
+                    project(DVec3::new(
+                        if i & 1 == 0 { lo.x } else { hi.x },
+                        if i & 2 == 0 { lo.y } else { hi.y },
+                        if i & 4 == 0 { lo.z } else { hi.z },
+                    ))
+                })
+                .collect();
+            if corners.len() == 8 {
+                painter.add(egui::Shape::convex_polygon(
+                    hull(&corners),
+                    FRAME.gamma_multiply(0.12),
+                    egui::Stroke::NONE,
+                ));
+            }
+            for (a, b) in c.edges() {
+                if let (Some(pa), Some(pb)) = (project(a), project(b)) {
+                    painter.add(egui::Shape::dashed_line(&[pa, pb], stroke, 5.0, 4.0));
+                }
+            }
+        }
+    }
+
+    /// The chip at the top of the 3D area for what the crop takes away:
+    /// extend the box, show it anyway, or turn the crop off (A5-4).
+    pub(super) fn outside_crop_chip(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        outside: &[(ElementId, (DVec3, DVec3), ElementId)],
+    ) {
+        let picked: Vec<(ElementId, (DVec3, DVec3), ElementId)> = outside
+            .iter()
+            .filter(|o| self.selection.contains(o.0))
+            .copied()
+            .collect();
+        let outside = &picked[..];
+        let Some((first, _, b)) = outside.first() else {
+            self.outside_said = None;
+            return;
+        };
+        let b = *b;
+        // said once in the status bar too, as a new element lands outside
+        if self.outside_said != Some(*first) {
+            self.outside_said = Some(*first);
+            let name = self
+                .doc
+                .model()
+                .get(*first)
+                .map_or("It".into(), |e| e.name.clone());
+            let bx = self
+                .doc
+                .model()
+                .get(b)
+                .map_or("the crop box".into(), |e| e.name.clone());
+            self.status = format!(
+                "{name} is outside {bx}, so the 3D view crops it away: extend the box, show it anyway or turn the crop off (the chip at the top)."
+            );
+        }
+        let name = self
+            .doc
+            .model()
+            .get(b)
+            .map_or("the crop box".into(), |e| e.name.clone());
+        let mut pick = None;
+        egui::Area::new(ui.id().with("outside-crop"))
+            .fixed_pos(rect.center_top() + Vec2::new(-200.0, 10.0))
+            .order(egui::Order::Foreground)
+            .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    crate::props::flow(ui, |ui| {
+                        let n = outside.len();
+                        let text = if n == 1 {
+                            format!("Outside {name}")
+                        } else {
+                            format!("{n} selected outside {name}")
+                        };
+                        ui.label(egui::RichText::new(text).color(FRAME).strong());
+                        if ui
+                            .button("Extend the box")
+                            .on_hover_text("Grow the box to take it in: one undo step")
+                            .clicked()
+                        {
+                            pick = Some(0);
+                        }
+                        if ui
+                            .button("Show anyway")
+                            .on_hover_text("Leave it whole: the box no longer crops it")
+                            .clicked()
+                        {
+                            pick = Some(1);
+                        }
+                        if ui
+                            .button("Turn crop off")
+                            .on_hover_text("Switch the box off; it keeps its place")
+                            .clicked()
+                        {
+                            pick = Some(2);
+                        }
+                    });
+                });
+            });
+        let mine = outside.iter().filter(|o| o.2 == b);
+        match pick {
+            Some(0) => {
+                let (lo, hi) = mine.fold(
+                    (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN)),
+                    |(a, z), o| (a.min(o.1 .0), z.max(o.1 .1)),
+                );
+                self.edit_crop(b, "Extend the crop box", |c| {
+                    c.min = c.min.min(lo - DVec3::splat(MARGIN));
+                    c.max = c.max.max(hi + DVec3::splat(MARGIN));
+                });
+            }
+            Some(1) => {
+                let ids: Vec<ElementId> = mine.map(|o| o.0).collect();
+                self.edit_crop(b, "Show it anyway", |c| c.except.extend(ids));
+            }
+            Some(2) => self.edit_crop(b, "Crop box off", |c| c.enabled = false),
+            _ => {}
+        }
+    }
+
     /// The crop box whose frame is near screen point `p`, to click it.
     pub(super) fn crop_frame_near(
         &self,
@@ -602,6 +921,35 @@ impl CreaBimApp {
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(id, _)| id)
     }
+}
+
+/// The convex hull of `p`.
+fn hull(p: &[egui::Pos2]) -> Vec<egui::Pos2> {
+    let mut v: Vec<egui::Pos2> = p.to_vec();
+    v.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
+    let cross =
+        |o: egui::Pos2, a: egui::Pos2, b: egui::Pos2| (a - o).x * (b - o).y - (a - o).y * (b - o).x;
+    let mut h: Vec<egui::Pos2> = vec![];
+    for pass in 0..2 {
+        let start = h.len();
+        let it: Vec<egui::Pos2> = if pass == 0 {
+            v.clone()
+        } else {
+            v.iter().rev().copied().collect()
+        };
+        for q in it {
+            while h.len() >= start + 2 && cross(h[h.len() - 2], h[h.len() - 1], q) <= 0.0 {
+                h.pop();
+            }
+            h.push(q);
+        }
+        h.pop();
+    }
+    h
+}
+
+fn e_name(cut_name: &str) -> &str {
+    cut_name.trim_end_matches(" cut")
 }
 
 #[cfg(test)]

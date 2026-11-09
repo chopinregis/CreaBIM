@@ -1,93 +1,93 @@
 {
- "MODEL": {
-  "Select": "<path d=\"M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z\"></path>",
-  "Align": "<path d=\"M4 3v18\" stroke-dasharray=\"2.5 2\"></path> <rect x=\"8\" y=\"5\" width=\"12\" height=\"5\"></rect> <rect x=\"8\" y=\"14\" width=\"7\" height=\"5\"></rect>",
-  "Wall": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect> <path d=\"M12 9v6\"></path> <path d=\"M16 15v6\"></path> <path d=\"M16 3v6\"></path> <path d=\"M3 15h18\"></path> <path d=\"M3 9h18\"></path> <path d=\"M8 15v6\"></path> <path d=\"M8 3v6\"></path>",
-  "Door": "<path d=\"M13 4h3a2 2 0 0 1 2 2v14\"></path> <path d=\"M2 20h3\"></path> <path d=\"M13 20h9\"></path> <path d=\"M10 12v.01\"></path> <path d=\"M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z\"></path>",
-  "Shaft": "<path d=\"M3 8h6\"></path><path d=\"M15 8h6\"></path><path d=\"M3 16h6\"></path><path d=\"M15 16h6\"></path><path d=\"M9 3h6v18H9z\" stroke-dasharray=\"1 3\"></path>",
-  "Mass": "<path d=\"M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z\"></path> <path d=\"m3.3 7 8.7 5 8.7-5\"></path> <path d=\"M12 22V12\"></path>",
-  "Column": "<rect width=\"12\" height=\"20\" x=\"6\" y=\"2\" rx=\"2\"></rect>",
-  "Beam": "<rect width=\"20\" height=\"12\" x=\"2\" y=\"6\" rx=\"2\"></rect>",
-  "Slab": "<path d=\"M2 10l10-5 10 5-10 5z\"></path><path d=\"M2 10v4l10 5 10-5v-4\"></path><path d=\"M12 15v4\"></path>",
-  "Stair": "<path d=\"M4 20h4v-4h4v-4h4V8h4\"></path>",
-  "Footing": "<path d=\"M9 3h6v10H9z\"></path><path d=\"M5 13h14v6H5z\"></path>",
-  "Object": "<path d=\"M4 11h16v5H4z\"></path><path d=\"M6 16v3\"></path><path d=\"M18 16v3\"></path><path d=\"M6 11V8h12v3\"></path>",
-  "Extrusion": "<path d=\"M3 18l9 4 9-4-9-4z\"></path><path d=\"M12 14V3\"></path><path d=\"M8 7l4-4 4 4\"></path>",
-  "Sweep": "<path d=\"M3 19c5 0 8-11 14-11\"></path><path d=\"M17 5h4v6h-4z\"></path>",
-  "Void": "<path d=\"M4 8l8-4 8 4v9l-8 4-8-4z\"></path><path d=\"M4 8l8 4 8-4\"></path><path d=\"M12 12v9\"></path><path d=\"M8.5 11.5l3 1.5v4l-3-1.5z\" stroke-dasharray=\"1 3\"></path>",
-  "Room": "<path d=\"M3 3h18v18H3z\"></path> <path d=\"M3 13h6M14 3v6\" stroke-dasharray=\"2 1.5\"></path> <path d=\"M10 15.5h7M10 18.5h4\"></path>",
-  "Ceiling": "<path d=\"M3 5h18\"></path><path d=\"M6 5v3\"></path><path d=\"M12 5v3\"></path><path d=\"M18 5v3\"></path><path d=\"M3 19h18\"></path>",
-  "Window": "<rect x=\"4\" y=\"3\" width=\"16\" height=\"15\" rx=\"2\"></rect><path d=\"M12 3v15\"></path><path d=\"M4 10.5h16\"></path><path d=\"M2 21h20\"></path>",
-  "Opening": "<path d=\"M3 4h18v16h-6v-6a3 3 0 0 0-6 0v6H3z\"></path>",
-  "Roof": "<path d=\"M3.5 21L14 3\"></path><path d=\"M20.5 21L10 3\"></path><path d=\"M15.5 21L12 15l-3.5 6\"></path><path d=\"M2 21h20\"></path>",
-  "Railing": "<path d=\"M2 7h20\"></path><path d=\"M5 7v12\"></path><path d=\"M19 7v12\"></path><path d=\"M9 7v12\"></path><path d=\"M12 7v12\"></path><path d=\"M15 7v12\"></path><path d=\"M3 19h18\"></path>",
-  "Room separator": "<path d=\"M3 4h18v16H3z\"></path><path d=\"M12 4v16\" stroke-dasharray=\"1.5 3\"></path><path d=\"M6 8h3\"></path><path d=\"M15 16h3\"></path>",
-  "Curtain wall": "<path d=\"M3 3h18v18H3z\"></path><path d=\"M12 3v18\"></path><path d=\"M3 12h18\"></path><path d=\"M6 9l3-3\"></path><path d=\"M15 18l3-3\"></path>",
-  "Screen wall": "<path d=\"M3 3h18v18H3z\"></path><path d=\"M8 5l3 3-3 3-3-3z\"></path><path d=\"M16 5l3 3-3 3-3-3z\"></path><path d=\"M8 13l3 3-3 3-3-3z\"></path><path d=\"M16 13l3 3-3 3-3-3z\"></path>",
-  "Fixtures": "<path d=\"M3 8h18\"></path><path d=\"M5 8v3a7 7 0 0 0 14 0V8\"></path><path d=\"M12 4v4\"></path><path d=\"M10 4h4\"></path>"
- },
- "SITE": {
-  "Terrain": "<path d=\"M2 20c3-2 6-2 9 0s6 2 11 0\"></path><path d=\"M2 15c3-2 6-2 9 0\"></path><path d=\"M17 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z\"></path><path d=\"M17 12v4\"></path>",
-  "Paving": "<path d=\"M8 21L11 3\"></path><path d=\"M16 21L13 3\"></path><path d=\"M7.4 17h9.2\"></path><path d=\"M8.4 11h7.2\"></path><path d=\"M9.3 6.5h5.4\"></path>",
-  "Planting": "<path d=\"M7 13a4 4 0 0 1 .5-7.9 5 5 0 0 1 9 0A4 4 0 0 1 17 13z\"></path><path d=\"M12 13v8\"></path><path d=\"M8 21h8\"></path>"
- },
- "VIEWS": {
-  "Section": "<path d=\"M5.42 9.42 8 12\"></path> <circle cx=\"4\" cy=\"8\" r=\"2\"></circle> <path d=\"m14 6-8.58 8.58\"></path> <circle cx=\"4\" cy=\"16\" r=\"2\"></circle> <path d=\"M10.8 14.8 14 18\"></path> <path d=\"M16 12h-2\"></path> <path d=\"M22 12h-2\"></path>",
-  "Callout": "<path d=\"M4 4h10v10H4z\"></path><path d=\"M14 14l6 6\"></path><path d=\"M16 20h4v-4\"></path>",
-  "Elevation": "<path d=\"M3 21V10l6-5 6 5v11z\"></path><path d=\"M7 21v-5h4v5\"></path><path d=\"M22 13h-4\"></path><path d=\"M20 11l2 2-2 2\"></path>",
-  "Crop box": "<path d=\"M12 4l7 4v8l-7 4-7-4V8z\" stroke-dasharray=\"1 3\"></path><path d=\"M2 7V3h4\"></path><path d=\"M22 17v4h-4\"></path>",
-  "Frame all": "<path d=\"M3 7V3h4\"></path><path d=\"M17 3h4v4\"></path><path d=\"M21 17v4h-4\"></path><path d=\"M7 21H3v-4\"></path><path d=\"M8 8h8v8H8z\"></path>",
-  "Hidden elements": "<path d=\"M4 6h12v12H4z\" stroke-dasharray=\"1 3\"></path><path d=\"M3 3l18 18\"></path>",
-  "X-ray": "<rect x=\"7\" y=\"2.5\" width=\"10\" height=\"19\" rx=\"1\" stroke-dasharray=\"2.5 2\"></rect> <path d=\"M2 10h20v4H2z\" fill=\"currentColor\" fill-opacity=\".35\"></path>"
- },
- "ANNOTATE": {
-  "Dimension": "<path d=\"M4 7v10\"></path><path d=\"M20 7v10\"></path><path d=\"M4 12h16\"></path><path d=\"M7 10l-3 2 3 2\"></path><path d=\"M17 10l3 2-3 2\"></path>",
-  "Tag": "<path d=\"M3 12V4h8l10 10-8 8z\"></path><path d=\"M7.5 7.5h.01\"></path>",
-  "Angle": "<path d=\"m12.99 6.74 1.93 3.44\"></path> <path d=\"M19.136 12a10 10 0 0 1-14.271 0\"></path> <path d=\"m21 21-2.16-3.84\"></path> <path d=\"m3 21 8.02-14.26\"></path> <circle cx=\"12\" cy=\"5\" r=\"2\"></circle>",
-  "Radius": "<path d=\"M20.34 17.52a10 10 0 1 0-2.82 2.82\"></path> <circle cx=\"19\" cy=\"19\" r=\"2\"></circle> <path d=\"m13.41 13.41 4.18 4.18\"></path> <circle cx=\"12\" cy=\"12\" r=\"2\"></circle>",
-  "Diameter": "<circle cx=\"19\" cy=\"19\" r=\"2\"></circle> <circle cx=\"5\" cy=\"5\" r=\"2\"></circle> <path d=\"M6.48 3.66a10 10 0 0 1 13.86 13.86\"></path> <path d=\"m6.41 6.41 11.18 11.18\"></path> <path d=\"M3.66 6.48a10 10 0 0 0 13.86 13.86\"></path>",
-  "Arc length": "<circle cx=\"19\" cy=\"5\" r=\"2\"></circle> <circle cx=\"5\" cy=\"19\" r=\"2\"></circle> <path d=\"M5 17A12 12 0 0 1 17 5\"></path>",
-  "Note": "<path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"></path> <path d=\"M13 8H7\"></path> <path d=\"M17 12H7\"></path>",
-  "Spot level": "<path d=\"M3 19h18\"></path><path d=\"M7 19l5-7 5 7\"></path><path d=\"M12 12V4h7\"></path>",
-  "Detail component": "<path d=\"M3 12l3-4 3 8 3-8 3 8 3-8 3 4\"></path>"
- },
- "DRAFTING AND DATUMS": {
-  "Sketch": "<path d=\"M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z\"></path> <path d=\"m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18\"></path> <path d=\"m2.3 2.3 7.286 7.286\"></path> <circle cx=\"11\" cy=\"11\" r=\"2\"></circle>",
-  "Guide": "<path d=\"M3 21L21 3\" stroke-dasharray=\"1.5 3\"></path><path d=\"M12 9.5l2.5 2.5-2.5 2.5-2.5-2.5z\"></path>",
-  "Guide lines": "<path d=\"M12 12H2\" stroke-dasharray=\"1 3\"></path><path d=\"M12 12V2\" stroke-dasharray=\"1 3\"></path><path d=\"M12 12h.01\"></path><path d=\"M14 14l7 3-3 1-1 3z\"></path>",
-  "Level": "<path d=\"M3 9h13\"></path><path d=\"M3 16h13\"></path><path d=\"M19 9l-2-3h4z\"></path><path d=\"M19 16l-2-3h4z\"></path>",
-  "Copy to levels": "<path d=\"M3 7h10\"></path><path d=\"M3 18h10\"></path><path d=\"M8 10v5\"></path><path d=\"M6 13l2 2 2-2\"></path><path d=\"M16 4h5v5h-5z\"></path><path d=\"M16 15h5v5h-5z\" stroke-dasharray=\"1 3\"></path>",
-  "Grid": "<path d=\"M8 3v18\"></path><path d=\"M16 3v18\"></path><path d=\"M3 8h18\"></path><path d=\"M3 16h18\"></path>",
-  "Switch join order": "<path d=\"M4 20V4h4v16z\"></path><path d=\"M8 10h12v4H8\"></path><path d=\"M13 19a3 3 0 0 0 5 0\"></path><path d=\"M18 19v-2.5\"></path><path d=\"M18 19h-2.5\"></path>"
- },
- "VIEW CONTROLS": {
-  "Units": "<path d=\"M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z\"></path> <path d=\"m14.5 12.5 2-2\"></path> <path d=\"m11.5 9.5 2-2\"></path> <path d=\"m8.5 6.5 2-2\"></path> <path d=\"m17.5 15.5 2-2\"></path>",
-  "Material": "<path d=\"M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.4A4.6 4.6 0 0 0 21 9.8C21 6 17 3 12 3z\"></path><path d=\"M7.5 10.5h.01\"></path><path d=\"M10.5 7h.01\"></path><path d=\"M15 7.5h.01\"></path>",
-  "Graphic styles": "<path d=\"M4 6h16\"></path><path d=\"M4 12h11\"></path><path d=\"M4 18h6\"></path>",
-  "Colour scheme": "<path d=\"M3 4h5v5H3z\"></path><path d=\"M3 15h5v5H3z\"></path><path d=\"M11 6.5h10\"></path><path d=\"M11 17.5h10\"></path><path d=\"M3 9.5v5\"></path>",
-  "View range": "<path d=\"M3 5h18\"></path><path d=\"M3 19h18\"></path><path d=\"M12 8v8\"></path><path d=\"M9 11l3-3 3 3\"></path>",
-  "Underlay": "<path d=\"M4 9l8-4 8 4-8 4z\"></path><path d=\"M4 15l8 4 8-4\"></path>",
-  "Workspace": "<path d=\"M3 4h18v16H3z\"></path><path d=\"M12 4v16\"></path><path d=\"M12 12h9\"></path>",
-  "Maximise area": "<path d=\"M14 4h6v6\"></path><path d=\"M20 4l-7 7\"></path><path d=\"M10 20H4v-6\"></path><path d=\"M4 20l7-7\"></path>",
-  "Frame selection (view header)": "<path d=\"M4 8V4h4\"></path><path d=\"M16 4h4v4\"></path><path d=\"M20 16v4h-4\"></path><path d=\"M8 20H4v-4\"></path><path d=\"M12 11v2\"></path><path d=\"M11 12h2\"></path>"
- },
- "ELEMENT ACTIONS (PROPERTIES BAR)": {
-  "Edit outline": "<path d=\"M4 18L3 7l9-3 6 6\"></path><path d=\"M14 20l7-7-3-3-7 7v3z\"></path>",
-  "Duplicate": "<path d=\"M8 8h12v12H8z\"></path><path d=\"M4 16V4h12\"></path><path d=\"M14 11v6\"></path><path d=\"M11 14h6\"></path>",
-  "Select similar": "<path d=\"M3 3h7v7H3z\"></path><path d=\"M14 3h7v7h-7z\"></path><path d=\"M3 14h7v7H3z\"></path><path d=\"M15 15l6 2.5-2.5 1-1 2.5z\"></path>",
-  "Hide (H)": "<path d=\"M3 3l18 18\"></path><path d=\"M10.6 6.1A9.8 9.8 0 0 1 12 6c6 0 10 6 10 6a17 17 0 0 1-3 3.6\"></path><path d=\"M6.6 6.6C3.8 8.4 2 12 2 12s4 6 10 6a9.4 9.4 0 0 0 5.4-1.6\"></path><path d=\"M9.9 9.9a3 3 0 0 0 4.2 4.2\"></path>",
-  "Isolate (/)": "<path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z\" stroke-dasharray=\"1 3\"></path><circle cx=\"12\" cy=\"12\" r=\"3.5\"></circle>",
-  "Frame (.)": "<path d=\"M4 8V4h4\"></path><path d=\"M16 4h4v4\"></path><path d=\"M20 16v4h-4\"></path><path d=\"M8 20H4v-4\"></path><path d=\"M12 11v2\"></path><path d=\"M11 12h2\"></path>",
-  "Open view": "<path d=\"M14 3h7v7\"></path><path d=\"M21 3l-9 9\"></path><path d=\"M19 14v7H3V5h7\"></path>",
-  "Flip": "<path d=\"M12 3v18\"></path><path d=\"M8 7L3 12l5 5z\"></path><path d=\"M16 7l5 5-5 5z\"></path>",
-  "Make a type": "<path d=\"M4 4h7v7H4z\"></path><path d=\"M13 4h7v7h-7z\"></path><path d=\"M4 13h7v7H4z\"></path><path d=\"M13 13h7v7h-7z\"></path>",
-  "Attach top": "<path d=\"M3 4h18\"></path><path d=\"M7 20V9h10v11\"></path><path d=\"M12 13V7\"></path><path d=\"M9.5 9.5L12 7l2.5 2.5\"></path>",
-  "Select tagged": "<path d=\"M3 11V4h7l9 9-7 7z\"></path><path d=\"M6.5 7.5h.01\"></path><path d=\"M15 21l6-6\"></path><path d=\"M21 19v-4h-4\"></path>",
-  "Straighten leader": "<path d=\"M4 20L20 4\"></path><path d=\"M4 20h.01\"></path><path d=\"M20 4h.01\"></path><path d=\"M4 12c4 0 6-8 16-8\" stroke-dasharray=\"1 3\"></path>",
-  "More": "<path d=\"M5 12h.01\"></path><path d=\"M12 12h.01\"></path><path d=\"M19 12h.01\"></path>",
-  "Delete": "<path d=\"M3 6h18\"></path><path d=\"M8 6V4h8v2\"></path><path d=\"M6 6l1 15h10l1-15\"></path><path d=\"M10 11v6\"></path><path d=\"M14 11v6\"></path>"
- },
- "FILES": {
-  "FreeCAD file (F and gear)": "<path d=\"M4 21V4h9\"></path><path d=\"M4 11.5h6\"></path><circle cx=\"17\" cy=\"16\" r=\"2.5\"></circle><path d=\"M17 11.5v1.5\"></path><path d=\"M17 19v1.5\"></path><path d=\"M12.5 16H14\"></path><path d=\"M20 16h1.5\"></path><path d=\"M13.8 12.8l1.1 1.1\"></path><path d=\"M19.1 18.1l1.1 1.1\"></path><path d=\"M13.8 19.2l1.1-1.1\"></path><path d=\"M19.1 13.9l1.1-1.1\"></path>"
- }
+  "MODEL": {
+    "Select": "<path d=\"M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z\"></path>",
+    "Align": "<path d=\"M4 3v18\" stroke-dasharray=\"2.5 2\"></path> <rect x=\"8\" y=\"5\" width=\"12\" height=\"5\"></rect> <rect x=\"8\" y=\"14\" width=\"7\" height=\"5\"></rect>",
+    "Wall": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect> <path d=\"M12 9v6\"></path> <path d=\"M16 15v6\"></path> <path d=\"M16 3v6\"></path> <path d=\"M3 15h18\"></path> <path d=\"M3 9h18\"></path> <path d=\"M8 15v6\"></path> <path d=\"M8 3v6\"></path>",
+    "Door": "<path d=\"M13 4h3a2 2 0 0 1 2 2v14\"></path> <path d=\"M2 20h3\"></path> <path d=\"M13 20h9\"></path> <path d=\"M10 12v.01\"></path> <path d=\"M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z\"></path>",
+    "Shaft": "<path d=\"M3 8h6\"></path><path d=\"M15 8h6\"></path><path d=\"M3 16h6\"></path><path d=\"M15 16h6\"></path><path d=\"M9 3h6v18H9z\" stroke-dasharray=\"1 3\"></path>",
+    "Mass": "<path d=\"M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z\"></path> <path d=\"m3.3 7 8.7 5 8.7-5\"></path> <path d=\"M12 22V12\"></path>",
+    "Column": "<rect width=\"12\" height=\"20\" x=\"6\" y=\"2\" rx=\"2\"></rect>",
+    "Beam": "<rect width=\"20\" height=\"12\" x=\"2\" y=\"6\" rx=\"2\"></rect>",
+    "Slab": "<path d=\"M2 10l10-5 10 5-10 5z\"></path><path d=\"M2 10v4l10 5 10-5v-4\"></path><path d=\"M12 15v4\"></path>",
+    "Stair": "<path d=\"M2 19.5h5v-5h5v-5h5V4.5h5\"></path>",
+    "Footing": "<path d=\"M8.25 2h7.5v12.5H8.25z\"></path><path d=\"M3.25 14.5h17.5v7.5H3.25z\"></path>",
+    "Object": "<path d=\"M2 8.875h20v6.25H2z\"></path><path d=\"M4.5 15.125v3.75\"></path><path d=\"M19.5 15.125v3.75\"></path><path d=\"M4.5 8.875V5.125h15v3.75\"></path>",
+    "Extrusion": "<path d=\"M3 18l9 4 9-4-9-4z\"></path><path d=\"M12 14V3\"></path><path d=\"M8 7l4-4 4 4\"></path>",
+    "Sweep": "<path d=\"M3 19c5 0 8-11 14-11\"></path><path d=\"M17 5h4v6h-4z\"></path>",
+    "Void": "<path d=\"M2.588 6.706l9.412 -4.706l9.412 4.706v10.588l-9.412 4.706l-9.412 -4.706z\"></path><path d=\"M2.588 6.706l9.412 4.706l9.412 -4.706\"></path><path d=\"M12 11.412v10.588\"></path><path d=\"M7.882 10.824l3.529 1.765v4.706l-3.529 -1.765z\" stroke-dasharray=\"1 3\"></path>",
+    "Room": "<path d=\"M3 3h18v18H3z\"></path> <path d=\"M3 13h6M14 3v6\" stroke-dasharray=\"2 1.5\"></path> <path d=\"M10 15.5h7M10 18.5h4\"></path>",
+    "Ceiling": "<path d=\"M3 5h18\"></path><path d=\"M6 5v3\"></path><path d=\"M12 5v3\"></path><path d=\"M18 5v3\"></path><path d=\"M3 19h18\"></path>",
+    "Window": "<rect x=\"4\" y=\"3\" width=\"16\" height=\"15\" rx=\"2\"></rect><path d=\"M12 3v15\"></path><path d=\"M4 10.5h16\"></path><path d=\"M2 21h20\"></path>",
+    "Opening": "<path d=\"M3 4h18v16h-6v-6a3 3 0 0 0-6 0v6H3z\"></path>",
+    "Roof": "<path d=\"M3.5 21L14 3\"></path><path d=\"M20.5 21L10 3\"></path><path d=\"M15.5 21L12 15l-3.5 6\"></path><path d=\"M2 21h20\"></path>",
+    "Railing": "<path d=\"M2 7h20\"></path><path d=\"M5 7v12\"></path><path d=\"M19 7v12\"></path><path d=\"M9 7v12\"></path><path d=\"M12 7v12\"></path><path d=\"M15 7v12\"></path><path d=\"M3 19h18\"></path>",
+    "Room separator": "<path d=\"M3 4h18v16H3z\"></path><path d=\"M12 4v16\" stroke-dasharray=\"1.5 3\"></path><path d=\"M6 8h3\"></path><path d=\"M15 16h3\"></path>",
+    "Curtain wall": "<path d=\"M3 3h18v18H3z\"></path><path d=\"M12 3v18\"></path><path d=\"M3 12h18\"></path><path d=\"M6 9l3-3\"></path><path d=\"M15 18l3-3\"></path>",
+    "Screen wall": "<path d=\"M3 3h18v18H3z\"></path><path d=\"M8 5l3 3-3 3-3-3z\"></path><path d=\"M16 5l3 3-3 3-3-3z\"></path><path d=\"M8 13l3 3-3 3-3-3z\"></path><path d=\"M16 13l3 3-3 3-3-3z\"></path>",
+    "Fixtures": "<path d=\"M3 8h18\"></path><path d=\"M5 8v3a7 7 0 0 0 14 0V8\"></path><path d=\"M12 4v4\"></path><path d=\"M10 4h4\"></path>"
+  },
+  "SITE": {
+    "Terrain": "<path d=\"M2 20c3-2 6-2 9 0s6 2 11 0\"></path><path d=\"M2 15c3-2 6-2 9 0\"></path><path d=\"M17 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z\"></path><path d=\"M17 12v4\"></path>",
+    "Paving": "<path d=\"M8 21L11 3\"></path><path d=\"M16 21L13 3\"></path><path d=\"M7.4 17h9.2\"></path><path d=\"M8.4 11h7.2\"></path><path d=\"M9.3 6.5h5.4\"></path>",
+    "Planting": "<path d=\"M7 13a4 4 0 0 1 .5-7.9 5 5 0 0 1 9 0A4 4 0 0 1 17 13z\"></path><path d=\"M12 13v8\"></path><path d=\"M8 21h8\"></path>"
+  },
+  "VIEWS": {
+    "Section": "<path d=\"M5 12h14\" stroke-dasharray=\"3 2.5\"></path><circle cx=\"4\" cy=\"12\" r=\"2.5\"></circle><circle cx=\"20\" cy=\"12\" r=\"2.5\"></circle><path d=\"M4 14.5V21M20 14.5V21\"></path><path d=\"M2 19l2 2 2-2M18 19l2 2 2-2\"></path><path d=\"M4 9.5V4M20 9.5V4\"></path>",
+    "Callout": "<path d=\"M2 2h12.5v12.5H2z\"></path><path d=\"M14.5 14.5l7.5 7.5\"></path><path d=\"M17 22h5v-5\"></path>",
+    "Elevation": "<path d=\"M2 22V10l7-6 7 6v12z\"></path><path d=\"M6.5 22v-6h5v6\"></path><path d=\"M23 13h-4\"></path><path d=\"M21 11l2 2-2 2\"></path>",
+    "Crop box": "<path d=\"M12 3l8 4.5v9L12 21l-8-4.5v-9z\" stroke-dasharray=\"2 2\"></path><path d=\"M4 7.5L12 12l8-4.5M12 12v9\"></path><path d=\"M1 5V1h4M23 5V1h-4M1 19v4h4M23 19v4h-4\"></path>",
+    "Frame all": "<path d=\"M3 7V3h4\"></path><path d=\"M17 3h4v4\"></path><path d=\"M21 17v4h-4\"></path><path d=\"M7 21H3v-4\"></path><path d=\"M8 8h8v8H8z\"></path>",
+    "Hidden elements": "<rect x=\"2\" y=\"3.25\" width=\"20\" height=\"17.5\" rx=\"2.5\"></rect><path d=\"M6.375 12s2.125 -3.75 5.625 -3.75s5.625 3.75 5.625 3.75s-2.125 3.75 -5.625 3.75s-5.625 -3.75 -5.625 -3.75z\"></path><circle cx=\"12\" cy=\"12\" r=\"1.375\"></circle>",
+    "X-ray": "<path d=\"M8 8V4.5A1.5 1.5 0 0 1 9.5 3h10A1.5 1.5 0 0 1 21 4.5v10a1.5 1.5 0 0 1-1.5 1.5H16\"></path><rect x=\"3\" y=\"8\" width=\"13\" height=\"13\" rx=\"1.5\"></rect><circle cx=\"7\" cy=\"12\" r=\".6\"></circle><circle cx=\"10\" cy=\"15\" r=\".6\"></circle><circle cx=\"12.5\" cy=\"17.5\" r=\".6\"></circle><circle cx=\"7.5\" cy=\"17\" r=\".6\"></circle>"
+  },
+  "ANNOTATE": {
+    "Dimension": "<path d=\"M2 5.75v12.5\"></path><path d=\"M22 5.75v12.5\"></path><path d=\"M2 12h20\"></path><path d=\"M5.75 9.5l-3.75 2.5l3.75 2.5\"></path><path d=\"M18.25 9.5l3.75 2.5l-3.75 2.5\"></path>",
+    "Tag": "<path d=\"M3 12V4h8l10 10-8 8z\"></path><path d=\"M7.5 7.5h.01\"></path>",
+    "Angle": "<path d=\"m12.99 6.74 1.93 3.44\"></path> <path d=\"M19.136 12a10 10 0 0 1-14.271 0\"></path> <path d=\"m21 21-2.16-3.84\"></path> <path d=\"m3 21 8.02-14.26\"></path> <circle cx=\"12\" cy=\"5\" r=\"2\"></circle>",
+    "Radius": "<path d=\"M20.34 17.52a10 10 0 1 0-2.82 2.82\"></path> <circle cx=\"19\" cy=\"19\" r=\"2\"></circle> <path d=\"m13.41 13.41 4.18 4.18\"></path> <circle cx=\"12\" cy=\"12\" r=\"2\"></circle>",
+    "Diameter": "<circle cx=\"19\" cy=\"19\" r=\"2\"></circle> <circle cx=\"5\" cy=\"5\" r=\"2\"></circle> <path d=\"M6.48 3.66a10 10 0 0 1 13.86 13.86\"></path> <path d=\"m6.41 6.41 11.18 11.18\"></path> <path d=\"M3.66 6.48a10 10 0 0 0 13.86 13.86\"></path>",
+    "Arc length": "<circle cx=\"19\" cy=\"5\" r=\"2\"></circle> <circle cx=\"5\" cy=\"19\" r=\"2\"></circle> <path d=\"M5 17A12 12 0 0 1 17 5\"></path>",
+    "Note": "<path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"></path> <path d=\"M13 8H7\"></path> <path d=\"M17 12H7\"></path>",
+    "Spot level": "<path d=\"M3 19h18\"></path><path d=\"M7 19l5-7 5 7\"></path><path d=\"M12 12V4h7\"></path>",
+    "Detail component": "<path d=\"M3 12l3-4 3 8 3-8 3 8 3-8 3 4\"></path>"
+  },
+  "DRAFTING AND DATUMS": {
+    "Sketch": "<path d=\"M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z\"></path> <path d=\"m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18\"></path> <path d=\"m2.3 2.3 7.286 7.286\"></path> <circle cx=\"11\" cy=\"11\" r=\"2\"></circle>",
+    "Guide": "<path d=\"M3 21L21 3\" stroke-dasharray=\"1.5 3\"></path><path d=\"M12 9.5l2.5 2.5-2.5 2.5-2.5-2.5z\"></path>",
+    "Guide lines": "<path d=\"M12 12H2\" stroke-dasharray=\"1 3\"></path><path d=\"M12 12V2\" stroke-dasharray=\"1 3\"></path><path d=\"M12 12h.01\"></path><path d=\"M14 14l7 3-3 1-1 3z\"></path>",
+    "Level": "<path d=\"M2 7h13\"></path><circle cx=\"19\" cy=\"7\" r=\"3\"></circle><path d=\"M19 4v6M16 7h6\"></path><path d=\"M2 17h13\"></path><circle cx=\"19\" cy=\"17\" r=\"3\"></circle><path d=\"M19 14v6M16 17h6\"></path>",
+    "Copy to levels": "<path d=\"M3 7h10\"></path><path d=\"M3 18h10\"></path><path d=\"M8 10v5\"></path><path d=\"M6 13l2 2 2-2\"></path><path d=\"M16 4h5v5h-5z\"></path><path d=\"M16 15h5v5h-5z\" stroke-dasharray=\"1 3\"></path>",
+    "Grid": "<path d=\"M8 3v18\"></path><path d=\"M16 3v18\"></path><path d=\"M3 8h18\"></path><path d=\"M3 16h18\"></path>",
+    "Switch join order": "<path d=\"M2 22V2h5v20z\"></path><path d=\"M7 9.5h15v5H7\"></path><path d=\"M13.25 20.75a3.75 3.75 0 0 0 6.25 0\"></path><path d=\"M19.5 20.75v-3.125\"></path><path d=\"M19.5 20.75h-3.125\"></path>"
+  },
+  "VIEW CONTROLS": {
+    "Units": "<path d=\"M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z\"></path> <path d=\"m14.5 12.5 2-2\"></path> <path d=\"m11.5 9.5 2-2\"></path> <path d=\"m8.5 6.5 2-2\"></path> <path d=\"m17.5 15.5 2-2\"></path>",
+    "Material": "<path d=\"M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.4A4.6 4.6 0 0 0 21 9.8C21 6 17 3 12 3z\"></path><path d=\"M7.5 10.5h.01\"></path><path d=\"M10.5 7h.01\"></path><path d=\"M15 7.5h.01\"></path>",
+    "Graphic styles": "<path d=\"M2 4.5h20\"></path><path d=\"M2 12h13.75\"></path><path d=\"M2 19.5h7.5\"></path>",
+    "Colour scheme": "<path d=\"M3 4h5v5H3z\"></path><path d=\"M3 15h5v5H3z\"></path><path d=\"M11 6.5h10\"></path><path d=\"M11 17.5h10\"></path><path d=\"M3 9.5v5\"></path>",
+    "View range": "<path d=\"M3 5h18\"></path><path d=\"M3 19h18\"></path><path d=\"M12 8v8\"></path><path d=\"M9 11l3-3 3 3\"></path>",
+    "Underlay": "<path d=\"M2 8.25l10 -5l10 5l-10 5z\"></path><path d=\"M2 15.75l10 5l10 -5\"></path>",
+    "Workspace": "<path d=\"M3 4h18v16H3z\"></path><path d=\"M12 4v16\"></path><path d=\"M12 12h9\"></path>",
+    "Maximise area": "<path d=\"M14.5 2h7.5v7.5\"></path><path d=\"M22 2l-8.75 8.75\"></path><path d=\"M9.5 22H2v-7.5\"></path><path d=\"M2 22l8.75 -8.75\"></path>",
+    "Frame selection (view header)": "<path d=\"M2 7V2h5\"></path><path d=\"M17 2h5v5\"></path><path d=\"M22 17v5h-5\"></path><path d=\"M7 22H2v-5\"></path><path d=\"M12 10.75v2.5\"></path><path d=\"M10.75 12h2.5\"></path>"
+  },
+  "ELEMENT ACTIONS (PROPERTIES BAR)": {
+    "Edit outline": "<path d=\"M4 18L3 7l9-3 6 6\"></path><path d=\"M14 20l7-7-3-3-7 7v3z\"></path>",
+    "Duplicate": "<path d=\"M7 7h15v15H7z\"></path><path d=\"M2 17V2h15\"></path><path d=\"M14.5 10.75v7.5\"></path><path d=\"M10.75 14.5h7.5\"></path>",
+    "Select similar": "<path d=\"M3 3h7v7H3z\"></path><path d=\"M14 3h7v7h-7z\"></path><path d=\"M3 14h7v7H3z\"></path><path d=\"M15 15l6 2.5-2.5 1-1 2.5z\"></path>",
+    "Hide (H)": "<path d=\"M3 3l18 18\"></path><path d=\"M10.6 6.1A9.8 9.8 0 0 1 12 6c6 0 10 6 10 6a17 17 0 0 1-3 3.6\"></path><path d=\"M6.6 6.6C3.8 8.4 2 12 2 12s4 6 10 6a9.4 9.4 0 0 0 5.4-1.6\"></path><path d=\"M9.9 9.9a3 3 0 0 0 4.2 4.2\"></path>",
+    "Isolate (/)": "<path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z\" stroke-dasharray=\"1 3\"></path><circle cx=\"12\" cy=\"12\" r=\"3.5\"></circle>",
+    "Frame (.)": "<path d=\"M2 7V2h5\"></path><path d=\"M17 2h5v5\"></path><path d=\"M22 17v5h-5\"></path><path d=\"M7 22H2v-5\"></path><path d=\"M12 10.75v2.5\"></path><path d=\"M10.75 12h2.5\"></path>",
+    "Open view": "<path d=\"M14 3h7v7\"></path><path d=\"M21 3l-9 9\"></path><path d=\"M19 14v7H3V5h7\"></path>",
+    "Flip": "<path d=\"M12 3v18\"></path><path d=\"M8 7L3 12l5 5z\"></path><path d=\"M16 7l5 5-5 5z\"></path>",
+    "Make a type": "<path d=\"M2 2h8.75v8.75H2z\"></path><path d=\"M13.25 2h8.75v8.75h-8.75z\"></path><path d=\"M2 13.25h8.75v8.75H2z\"></path><path d=\"M13.25 13.25h8.75v8.75h-8.75z\"></path>",
+    "Attach top": "<path d=\"M3 4h18\"></path><path d=\"M7 20V9h10v11\"></path><path d=\"M12 13V7\"></path><path d=\"M9.5 9.5L12 7l2.5 2.5\"></path>",
+    "Select tagged": "<path d=\"M3 11V4h7l9 9-7 7z\"></path><path d=\"M6.5 7.5h.01\"></path><path d=\"M15 21l6-6\"></path><path d=\"M21 19v-4h-4\"></path>",
+    "Straighten leader": "<path d=\"M2 21.994L21.988 2.006\"></path><path d=\"M2 21.994h0.012\"></path><path d=\"M21.988 2.006h0.012\"></path><path d=\"M2 12c4.997 0 7.495 -9.994 19.988 -9.994\" stroke-dasharray=\"1 3\"></path>",
+    "More": "<path d=\"M5 12h.01\"></path><path d=\"M12 12h.01\"></path><path d=\"M19 12h.01\"></path>",
+    "Delete": "<path d=\"M3 6h18\"></path><path d=\"M8 6V4h8v2\"></path><path d=\"M6 6l1 15h10l1-15\"></path><path d=\"M10 11v6\"></path><path d=\"M14 11v6\"></path>"
+  },
+  "FILES": {
+    "FreeCAD file (F and gear)": "<path d=\"M4 21V4h9\"></path><path d=\"M4 11.5h6\"></path><circle cx=\"17\" cy=\"16\" r=\"2.5\"></circle><path d=\"M17 11.5v1.5\"></path><path d=\"M17 19v1.5\"></path><path d=\"M12.5 16H14\"></path><path d=\"M20 16h1.5\"></path><path d=\"M13.8 12.8l1.1 1.1\"></path><path d=\"M19.1 18.1l1.1 1.1\"></path><path d=\"M13.8 19.2l1.1-1.1\"></path><path d=\"M19.1 13.9l1.1-1.1\"></path>"
+  }
 }

@@ -30,6 +30,60 @@ impl CreaBimApp {
     /// The Mark field of a selected element: what it is typed as, or
     /// (greyed in the empty field) the number the rules give it, and a
     /// warning when another element has the same mark.
+    /// The mark as a small field at the end of the header line (MU22).
+    pub(super) fn mark_inline(&mut self, ui: &mut egui::Ui, id: ElementId, width: f32) {
+        let model = self.doc.model();
+        let Some(e) = model.get(id) else { return };
+        if !markable(&e.kind) || width <= 0.0 {
+            return;
+        }
+        let shown = marks::mark_of(model, id);
+        let typed = marks::manual(e).is_some();
+        let mut text = e.mark.clone().unwrap_or_default();
+        let hint = match (&shown, typed) {
+            (Some(m), false) => m.clone(),
+            _ => "None".into(),
+        };
+        let changed = ui
+            .add_sized(
+                [width, ui.spacing().interact_size.y],
+                egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center)
+                    .hint_text(hint)
+                    .vertical_align(egui::Align::Center),
+            )
+            .on_hover_text(
+                "Mark: what its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering).",
+            )
+            .changed();
+        if changed {
+            let value = (!text.trim().is_empty()).then(|| text.clone());
+            let r = self.doc.edit_merged(id, "Mark", |e| e.mark = value.clone());
+            self.report(r, "Mark changed.");
+        }
+    }
+
+    /// A mark used twice, said under the header.
+    pub(super) fn mark_warning(&mut self, ui: &mut egui::Ui, id: ElementId) {
+        let model = self.doc.model();
+        if let Some((m, others)) = marks::duplicates(model)
+            .into_iter()
+            .find(|(_, ids)| ids.contains(&id))
+        {
+            let n = others.len() - 1;
+            ui.label(
+                egui::RichText::new(format!(
+                    "⚠ {m} is also the mark of {n} other element{}.",
+                    if n == 1 { "" } else { "s" }
+                ))
+                .color(ui.visuals().warn_fg_color),
+            );
+            if ui.small_button("Select them").clicked() {
+                self.selection.extend(others.clone(), false);
+            }
+        }
+    }
+
+    #[allow(dead_code)]
     pub(super) fn mark_field(&mut self, ui: &mut egui::Ui, id: ElementId) {
         let model = self.doc.model();
         let Some(e) = model.get(id) else { return };
@@ -44,7 +98,7 @@ impl CreaBimApp {
             _ => "None".into(),
         };
         let changed = crate::props::row(ui, "Mark", |ui| {
-            crate::props::fill(ui, egui::TextEdit::singleline(&mut text).hint_text(hint))
+            crate::props::fill(ui, egui::TextEdit::singleline(&mut text).vertical_align(egui::Align::Center).hint_text(hint))
                 .on_hover_text(
                     "What its tags and schedules show. Leave it empty for the number the project's rules give it (File, Mark numbering).",
                 )
@@ -84,7 +138,7 @@ impl CreaBimApp {
         let mut rules = before.clone();
         let mut action: Option<&'static str> = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Mark numbering")
+        crate::app::shell::window("Mark numbering")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 64.0))
             .constrain_to(area)
@@ -98,13 +152,13 @@ impl CreaBimApp {
                 );
                 ui.add_space(6.0);
                 rules_grid(ui, &mut rules);
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label("Ground level number").on_hover_text(
                         "The number of the lowest level at or above ±0, for level-based marks; levels above count up, those below count down",
                     );
                     ui.add(egui::DragValue::new(&mut rules.ground_number).range(-9..=99));
                 });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui
                         .button("D01, W01")
                         .on_hover_text("Doors and windows counted through the building, lowest level first")
@@ -128,8 +182,8 @@ impl CreaBimApp {
                 });
                 ui.separator();
                 ui.label(egui::RichText::new("Apply").strong());
-                ui.horizontal(|ui| {
-                    egui::ComboBox::from_id_salt("renumber_only")
+                crate::props::flow(ui, |ui| {
+                    egui::ComboBox::from_id_salt("renumber_only").icon(crate::props::combo_icon)
                         .selected_text(self.marks.only.map_or("Every kind", |c| c.label()))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(&mut self.marks.only, None, "Every kind");
@@ -139,7 +193,7 @@ impl CreaBimApp {
                         });
                     crate::props::switch(ui, &mut self.marks.replace, "Replace typed marks too");
                 });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui
                         .button("Renumber")
                         .on_hover_text(
@@ -210,7 +264,7 @@ impl CreaBimApp {
             .max_height(160.0)
             .show(ui, |ui| {
                 for (m, ids) in dups {
-                    ui.horizontal(|ui| {
+                    crate::props::flow(ui, |ui| {
                         let names: Vec<String> = ids
                             .iter()
                             .filter_map(|i| self.doc.model().get(*i).map(|e| e.name.clone()))
@@ -283,13 +337,23 @@ fn rules_grid(ui: &mut egui::Ui, rules: &mut MarkRules) {
             for class in MarkClass::ALL {
                 let r = rules.rule_mut(class);
                 ui.checkbox(&mut r.auto, class.label());
-                ui.add(egui::TextEdit::singleline(&mut r.prefix).desired_width(44.0));
-                ui.add(egui::TextEdit::singleline(&mut r.separator).desired_width(24.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut r.prefix)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(44.0),
+                );
+                ui.add(
+                    egui::TextEdit::singleline(&mut r.separator)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(24.0),
+                );
                 ui.add(egui::DragValue::new(&mut r.padding).range(1..=6));
                 ui.checkbox(&mut r.by_level, "");
                 egui::ComboBox::from_id_salt(("mark_order", class))
+                    .icon(crate::props::combo_icon)
                     .selected_text(r.order.label())
-                    .width(150.0)
+                    .width(ui.available_width().min(150.0))
+                    .truncate()
                     .show_ui(ui, |ui| {
                         for o in MarkOrder::ALL {
                             ui.selectable_value(&mut r.order, o, o.label());
@@ -326,7 +390,7 @@ impl CreaBimApp {
         let mut shown = !head.hidden;
         let mut edited = head;
         ui.add_space(4.0);
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if crate::props::switch(ui, &mut shown, format!("Head in {name}"))
                 .on_hover_text(
                     "Show this level's name and elevation in this view; its line stays either way",

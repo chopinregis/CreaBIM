@@ -13,6 +13,7 @@ pub mod cropbox;
 pub mod csg;
 pub mod curtain;
 pub mod detail;
+pub mod divide;
 pub mod document;
 pub mod editmesh;
 pub mod element;
@@ -32,9 +33,14 @@ pub mod modifiers;
 pub mod objects;
 pub mod offset;
 pub mod ops;
+pub mod papermark;
 pub mod parts;
 pub mod polygon;
+pub mod profiles;
+pub mod project;
 pub mod pushpull;
+pub mod reference;
+pub mod regions;
 pub mod room;
 pub mod sample;
 pub mod screen;
@@ -52,7 +58,8 @@ pub mod visibility;
 pub mod walls;
 
 pub use annotation::{
-    text_style, DimAxis, DimensionKind, Font, Note, StyleUse, TagShape, Terminator, TextStyle,
+    text_style, DimAxis, DimensionKind, Font, Note, StyleUse, TagShape, Terminator, TextAlign,
+    TextStyle,
 };
 pub use assembly::{assembly_of, Assembly, AssemblyUse, Layer, LayerFunction};
 pub use constraint::{Constraint, SolveError};
@@ -66,7 +73,8 @@ pub use element::{layer_edge_offsets, set_layer_edge, LayerEdge, LayerEnd, Locat
 pub use element::{
     Cut, Dimension, Element, ElementKind, FreeMesh, Grid, GridGroup, Guide, Hatch, HostPoint,
     Level, LevelHead, Material, Opening, OpeningFrame, OpeningKind, ScheduleCategory, Sheet,
-    Sketch, Slab, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall, Workplane,
+    SheetTitle, Sketch, Slab, Source, Tag, Underlay, View, ViewKind, ViewStyle, Viewport, Wall,
+    Workplane,
 };
 pub use footing::{Footing, FootingKind};
 pub use graphics::{LineWeights, PlanGraphics};
@@ -80,7 +88,10 @@ pub use model::Model;
 pub use modifiers::{Axis, Modifier, ModifierKind};
 pub use objects::{CatalogueObject, Object, ObjectCategory, ObjectType};
 pub use ops::{Op, Transaction};
+pub use papermark::{PaperMark, PaperMarkKind};
 pub use parts::Part;
+pub use project::{set_project, ProjectInfo};
+pub use reference::{RefSource, Reference};
 pub use room::{Ceiling, Room, RoomField, Separator};
 pub use screen::ScreenPattern;
 pub use site::{PlantForm, Site, SiteForm};
@@ -89,7 +100,7 @@ pub use slab::{room_outline, slab_from_sketch, Shaft};
 pub use titleblock::SheetTemplate;
 pub use transform::Xform;
 pub use types::{ElementType, TypeCategory, TypeParams, TypeRef};
-pub use units::{LengthUnit, Units};
+pub use units::{write_number, LengthUnit, NumberFormat, NumberFormats, NumberKind, Units};
 pub use visibility::{Category, ViewHidden};
 
 /// Errors raised when an edit would leave the model inconsistent.

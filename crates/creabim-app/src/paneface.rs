@@ -237,6 +237,7 @@ mod tests {
             id,
             points: pts,
             hatch: creabim_geom::plan::Hatch::Solid,
+            rgb: None,
         }]
     }
 

@@ -467,6 +467,30 @@ fn arc(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore]
+    fn report_icon_extents() {
+        let mut v: Vec<(String, f32)> = all()
+            .iter()
+            .map(|(k, lines)| {
+                let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
+                for l in lines {
+                    for p in &l.pts {
+                        for a in 0..2 {
+                            lo[a] = lo[a].min(p[a]);
+                            hi[a] = hi[a].max(p[a]);
+                        }
+                    }
+                }
+                (k.clone(), (hi[0] - lo[0]).max(hi[1] - lo[1]))
+            })
+            .collect();
+        v.sort_by(|a, b| a.1.total_cmp(&b.1));
+        for (k, e) in v {
+            println!("EXT {e:5.1} {k}");
+        }
+    }
+
     use super::*;
 
     #[test]

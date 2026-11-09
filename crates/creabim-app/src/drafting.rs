@@ -63,6 +63,42 @@ impl CreaBimApp {
                 ));
             }
             out.push(seg(items));
+            // continuous, and the spacing rows land on (MU23 board)
+            out.push(seg(vec![opt(
+                "dim.chain".into(),
+                "Continuous",
+                self.plan.dim_chain,
+                "After the first dimension, each click adds the next on the same line; Esc or right-click ends it",
+            )]));
+            // spacing the user types, not presets (MU25): off, lines go
+            // where clicked
+            out.push(seg(vec![opt(
+                "dim.step".into(),
+                "Even spacing",
+                self.plan.dim_step_mm > 0.0,
+                "Dimension lines land on steps of the spacing (on paper) from what they measure, so rows stay even. Off: where you click. They snap onto other dimensions' lines either way",
+            )]));
+            out.push(serde_json::json!({
+                "kind": "number", "key": "dim.spacing", "label": "Spacing",
+                "value": self.plan.dim_step_size, "unit": "mm", "step": 0.5, "min": 0.5, "max": 100.0,
+                "hint": "The step between rows of dimensions, millimetres on paper. Typing one turns Even spacing on",
+            }));
+        }
+        if tool == Tool::Tag {
+            out.push(seg(vec![
+                opt(
+                    "tag.reads:0".into(),
+                    "Mark",
+                    !self.plan.anno.tag_material,
+                    "The tag reads the element's mark, or its size",
+                ),
+                opt(
+                    "tag.reads:1".into(),
+                    "Material",
+                    self.plan.anno.tag_material,
+                    "A material tag: the element's material, or its layers one line each, outside to inside. It follows the model",
+                ),
+            ]));
         }
         let style_menu = match tool {
             Tool::Dimension
@@ -180,6 +216,18 @@ impl CreaBimApp {
                     _ => None,
                 };
             }
+            "tag.reads" => self.plan.anno.tag_material = index == Some(1),
+            "dim.chain" => {
+                self.plan.dim_chain = !self.plan.dim_chain;
+                self.plan.chain_line = None;
+            }
+            "dim.step" => {
+                self.plan.dim_step_mm = if self.plan.dim_step_mm > 0.0 {
+                    0.0
+                } else {
+                    self.plan.dim_step_size
+                };
+            }
             "align.mode" => {
                 if let Some(m) = index.and_then(|i| crate::aligntool::AlignMode::ALL.get(i)) {
                     self.plan.align.mode = *m;
@@ -242,7 +290,7 @@ impl CreaBimApp {
         }
         let mut open = true;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Annotation styles")
+        crate::app::shell::window("Annotation styles")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(40.0, 70.0))
             .constrain_to(area)
@@ -276,7 +324,7 @@ impl CreaBimApp {
         {
             self.drafting.style = list.first().map(|l| l.0);
         }
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             crate::app::helpui::combo(ui, "Show")
                 .selected_text(self.drafting.filter.label())
                 .show_ui(ui, |ui| {
@@ -358,7 +406,7 @@ impl CreaBimApp {
             return;
         };
         let mut name = e.name.clone();
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Name");
             if ui.text_edit_singleline(&mut name).changed() && !name.trim().is_empty() {
                 let r = self
@@ -376,7 +424,7 @@ impl CreaBimApp {
         ui.add_space(4.0);
         style_preview(ui, &s);
         let users = crate::annotate::style_users(self.doc.model(), id);
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .add_enabled(
                     users > 0,
@@ -420,7 +468,7 @@ impl CreaBimApp {
                 self.report(r, format!("{} now use {}.", picked.len(), e.name));
             }
         });
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("New ones get it:");
             let anno = &mut self.plan.anno;
             for (slot, text) in [
@@ -484,7 +532,7 @@ impl CreaBimApp {
         }
         let mut open = true;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Sheet templates")
+        crate::app::shell::window("Sheet templates")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(60.0, 80.0))
             .constrain_to(area)
@@ -509,7 +557,7 @@ impl CreaBimApp {
             )
             .weak(),
         );
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             if ui
                 .button("Copy of the built-in block")
                 .on_hover_text("Start from the usual title block and change it")
@@ -552,10 +600,11 @@ impl CreaBimApp {
                 }
             }
         });
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("From a path");
             ui.add(
                 egui::TextEdit::singleline(&mut self.drafting.path)
+                    .vertical_align(egui::Align::Center)
                     .hint_text(".dxf, .svg or another .creabim project")
                     .desired_width(360.0),
             );
@@ -608,7 +657,7 @@ impl CreaBimApp {
         };
         let mut label = None;
         let mut name = e.name.clone();
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Name");
             if ui.text_edit_singleline(&mut name).changed() && !name.trim().is_empty() {
                 let r = self
@@ -639,10 +688,18 @@ impl CreaBimApp {
         );
         let mut remove = None;
         for (i, (k, v)) in t.fields.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(k).desired_width(110.0));
+            crate::props::flow(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(k)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(110.0),
+                );
                 if ui
-                    .add(egui::TextEdit::singleline(v).desired_width(200.0))
+                    .add(
+                        egui::TextEdit::singleline(v)
+                            .vertical_align(egui::Align::Center)
+                            .desired_width(200.0),
+                    )
                     .changed()
                 {
                     label = Some("Field value");
@@ -677,9 +734,13 @@ impl CreaBimApp {
             .show(ui, |ui| {
                 for item in t.items.iter_mut() {
                     if let TitleItem::Text { text, size, .. } = item {
-                        ui.horizontal(|ui| {
+                        crate::props::flow(ui, |ui| {
                             if ui
-                                .add(egui::TextEdit::singleline(text).desired_width(260.0))
+                                .add(
+                                    egui::TextEdit::singleline(text)
+                                        .vertical_align(egui::Align::Center)
+                                        .desired_width(260.0),
+                                )
                                 .changed()
                             {
                                 label = Some("Template text");
@@ -710,7 +771,7 @@ impl CreaBimApp {
             }
         }
         ui.separator();
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             let sheet = self.active_view.filter(|v| self.is_sheet(*v));
             if ui
                 .add_enabled(sheet.is_some(), egui::Button::new("Use on this sheet"))
@@ -883,12 +944,13 @@ impl CreaBimApp {
             })
             .unwrap_or_default();
         for (k, default) in fields {
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 ui.label(&k);
                 let mut v = sh.fields.get(&k).cloned().unwrap_or_default();
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut v)
+                            .vertical_align(egui::Align::Center)
                             .hint_text(default)
                             .desired_width(180.0),
                     )

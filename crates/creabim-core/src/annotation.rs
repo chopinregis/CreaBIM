@@ -335,6 +335,26 @@ pub struct TextStyle {
     /// sits across them.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub break_at_tags: bool,
+    /// How a note's or tag's lines line up (MU31).
+    #[serde(default, skip_serializing_if = "TextAlign::is_usual")]
+    pub align: TextAlign,
+}
+
+/// How the lines of a note or tag line up: Usual is each kind's own
+/// (notes from the left, room tags centred).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TextAlign {
+    #[default]
+    Usual,
+    Left,
+    Centre,
+    Right,
+}
+
+impl TextAlign {
+    pub fn is_usual(&self) -> bool {
+        *self == TextAlign::Usual
+    }
 }
 
 /// Letter height of dimensions, tags and notes without a style, paper mm.
@@ -354,6 +374,7 @@ impl Default for TextStyle {
             tag_shape: TagShape::Auto,
             purpose: StyleUse::Any,
             break_at_tags: false,
+            align: TextAlign::Usual,
         }
     }
 }
@@ -407,7 +428,10 @@ pub fn spot_text(model: &Model, pattern: &str, z: f64) -> String {
         .map(|(e, _)| e.name.clone())
         .unwrap_or_default();
     pattern
-        .replace("{elevation}", &model.units().elevation(z))
+        .replace(
+            "{elevation}",
+            &crate::write_number(model, crate::NumberKind::SpotLevels, None, z),
+        )
         .replace("{m3}", &signed(z, 3))
         .replace("{m}", &signed(z, 2))
         .replace("{mm}", &signed(z * 1000.0, 0))
@@ -454,6 +478,13 @@ pub struct Note {
     /// the style says otherwise).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader_end: Option<Terminator>,
+    /// A text box (MU26): lines wrap to this width, paper mm; none, each
+    /// line runs as long as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    /// Read the text as markdown: headings, bullets, numbers, checkboxes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub markdown: bool,
 }
 
 impl Note {
@@ -467,6 +498,8 @@ impl Note {
             color: None,
             elbow: None,
             leader_end: None,
+            width: None,
+            markdown: false,
         }
     }
 

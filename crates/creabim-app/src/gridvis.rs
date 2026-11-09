@@ -313,6 +313,28 @@ impl CreaBimApp {
                     }
                 });
             }
+            // only the selection, and what it stands on, stays in this
+            // view (MU34: a 3D view on a sheet showed the whole model)
+            "others" => {
+                let mut keep: std::collections::HashSet<ElementId> = ids.iter().copied().collect();
+                for id in &ids {
+                    if let Some(e) = model.get(*id) {
+                        keep.extend(e.references());
+                    }
+                    keep.extend(model.dependents(*id));
+                }
+                let others: Vec<ElementId> = model
+                    .iter()
+                    .filter(|e| !keep.contains(&e.id) && crate::app::gridvis::shows_in_3d(&e.kind))
+                    .map(|e| e.id)
+                    .collect();
+                let label = format!("Show only {} in this view", ids.len());
+                self.set_view_hidden(t, &label, |h| {
+                    for id in others {
+                        h.set_element(id, true);
+                    }
+                });
+            }
             "element" => {
                 let label = match ids.len() {
                     1 => "Hide element".to_string(),
@@ -407,7 +429,8 @@ impl CreaBimApp {
                     "Elements hidden inside others",
                 )
                 .checked(self.shows_hidden_elements(id))
-                .icon("xray")
+                // the header's own icon for it, not X-ray's (MU23)
+                .icon("hidden-elements")
                 .keep_open()
                 .hint(
                     "Draw what is inside another element, like a beam in a wall, with dashed lines",
@@ -494,6 +517,9 @@ impl CreaBimApp {
             Item::new(format!("{p}.hide:category"), format!("Hide category in {where_}"))
                 .enabled(enabled)
                 .hint("Leave out every element of the selection's kind (walls, windows…) in this view"),
+            Item::new(format!("{p}.hide:others"), format!("Show only the selection in {where_}"))
+                .enabled(enabled)
+                .hint("Keep only what is selected in this view, saved with it and on its sheets; its Visibility settings bring the rest back"),
         ];
         let model = self.doc.model();
         let grouped = self.selection.all().iter().any(|id| {
@@ -862,7 +888,7 @@ impl CreaBimApp {
         let mut done = false;
         let mut error = None;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
-        egui::Window::new("Ground grid spacing")
+        crate::app::shell::window("Ground grid spacing")
             .open(&mut open)
             .default_pos(area.min + Vec2::new(60.0, 80.0))
             .constrain_to(area)
@@ -875,9 +901,13 @@ impl CreaBimApp {
                     )
                     .weak(),
                 );
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.label("Every");
-                    let r = ui.add(egui::TextEdit::singleline(&mut text).desired_width(110.0));
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut text)
+                            .vertical_align(egui::Align::Center)
+                            .desired_width(110.0),
+                    );
                     if !r.has_focus() && !r.lost_focus() && ui.memory(|m| m.focused().is_none()) {
                         r.request_focus();
                     }
@@ -886,7 +916,7 @@ impl CreaBimApp {
                         done = true;
                     }
                 });
-                ui.horizontal_wrapped(|ui| {
+                crate::props::flow(ui, |ui| {
                     for s in GROUND_SPACINGS {
                         if ui.small_button(crate::units::len(s)).clicked() {
                             text = crate::units::len(s);
@@ -942,22 +972,16 @@ impl CreaBimApp {
         };
         // folded or open as it was left, between sessions too
         if self.prop_header(ui, key, &title, t != VisTarget::Window3d, Some(help)) {
-            ui.indent(("visibility", format!("{t:?}")), |ui| {
-                ui.label(
-                    egui::RichText::new(match t {
-                        VisTarget::View(_) => "What this view shows. Sheets show it the same way.",
-                        VisTarget::Window3d => "What the 3D view shows.",
-                    })
-                    .weak(),
-                );
-                // the 2D objects first, in groups
+            // flush in its box, as Blender's (MU22)
+            ui.vertical(|ui| {
+                // as Blender's (MU22): check boxes in the value column, each
+                // group named once in the label column
                 let in_3d = t == VisTarget::Window3d;
-                ui.horizontal_wrapped(|ui| {
-                    for (key, label, _, _) in QUICK {
+                {
+                    for (n, (key, label, _, _)) in QUICK.iter().enumerate() {
                         let group = quick_group(key, in_3d);
                         let mut shown = group.iter().all(|c| !h.hides_category(*c));
-                        if ui
-                            .checkbox(&mut shown, label)
+                        if crate::props::check(ui, if n == 0 { "Show" } else { "" }, &mut shown, *label)
                             .on_hover_text(quick_hint(key))
                             .changed()
                         {
@@ -976,11 +1000,11 @@ impl CreaBimApp {
                             ));
                         }
                     }
-                });
+                }
                 if in_3d {
                     ui.vertical(|ui| {
                         let mut ground = self.shell.settings.ground_grid;
-                        if crate::props::switch(ui, &mut ground, "Ground grid").changed() {
+                        if crate::props::check(ui, "Also", &mut ground, "Ground grid").changed() {
                             extra = Some("ground.grid");
                         }
                         let mut xray = self.shell.settings.xray;
@@ -1000,21 +1024,21 @@ impl CreaBimApp {
                     });
                 } else if let VisTarget::View(id) = t {
                     let mut on = self.shows_hidden_elements(id);
-                    if crate::props::switch(ui, &mut on, "Elements hidden inside others, dashed")
+                    if crate::props::check(ui, "Hidden inside", &mut on, "Dashed")
                         .on_hover_text("A beam in a wall, a stud wall in a cavity: drawn with dashed hidden lines")
                         .changed()
                     {
                         reveal = Some(id);
                     }
                     let mut colour = self.shows_hidden_colour(id);
-                    if crate::props::switch(ui, &mut colour, "…in their material colours")
+                    if crate::props::check(ui, "", &mut colour, "In material colours")
                         .on_hover_text("For detailing: washed in their own colours over what hides them, as well as dashed")
                         .changed()
                     {
                         colour_of = Some(id);
                     }
                     let mut xray = self.plan.xray.contains(&id);
-                    if crate::props::switch(ui, &mut xray, "X-ray while working")
+                    if crate::props::check(ui, "While working", &mut xray, "X-ray")
                         .on_hover_text("Walls, slabs and roofs see-through here, what is inside them solid and clicked first (Alt+Z). Sheets don't change")
                         .changed()
                     {
@@ -1022,22 +1046,23 @@ impl CreaBimApp {
                     }
                 }
                 let mut guides = !self.shell.settings.guides_hidden;
-                if crate::props::switch(ui, &mut guides, "Guides in every view")
+                if crate::props::check(ui, "Guides", &mut guides, "In every view")
                     .on_hover_text("Hide all guides without deleting them, and bring them back (Shift+G)")
                     .changed()
                 {
                     extra = Some("guides.toggle");
                 }
-                ui.add_space(2.0);
-                ui.label(egui::RichText::new("Categories").strong());
-                // two columns when they fit, one when the panel is narrow
-                let cols = if ui.available_width() >= 330.0 { 2 } else { 1 };
-                egui::Grid::new(("vis-cats", format!("{t:?}")))
+                let cats_open = crate::props::subsection(ui, "vis.categories", "Categories", true);
+                // two compact columns, as Blender's lists of toggles
+                let cols = if ui.available_width() >= 180.0 { 2 } else { 1 };
+                let cw = (ui.available_width() / cols as f32 - 4.0).max(60.0);
+                if cats_open { egui::Grid::new(("vis-cats", format!("{t:?}")))
                     .num_columns(cols)
+                    .spacing(egui::vec2(4.0, 1.0))
                     .show(ui, |ui| {
                         for (i, c) in Category::ALL.iter().enumerate() {
                             let mut shown = !h.hides_category(*c);
-                            if ui.checkbox(&mut shown, c.label()).changed() {
+                            if crate::props::tick(ui, &mut shown, c.label(), cw).changed() {
                                 let c = *c;
                                 let label = format!(
                                     "{} {}",
@@ -1051,20 +1076,19 @@ impl CreaBimApp {
                                 ui.end_row();
                             }
                         }
-                    });
+                    }); }
                 let groups: Vec<(ElementId, String, [f32; 3])> = grids::groups(self.doc.model())
                     .into_iter()
                     .map(|(e, g)| (e.id, e.name.clone(), g.color))
                     .collect();
                 if !groups.is_empty() {
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new("Grid systems").strong());
-                    ui.add_enabled_ui(!h.hides_category(Category::Grids), |ui| {
+                    if crate::props::subsection(ui, "vis.grids", "Grid systems", true) { ui.add_enabled_ui(!h.hides_category(Category::Grids), |ui| {
                         for (id, name, color) in groups {
-                            ui.horizontal(|ui| {
+                            crate::props::flow(ui, |ui| {
                                 swatch(ui, color);
                                 let mut shown = !h.grid_groups.contains(&id);
-                                if ui.checkbox(&mut shown, name).changed() {
+                                let w = ui.available_width();
+                                if crate::props::tick(ui, &mut shown, &name, w).changed() {
                                     let label = if shown {
                                         "Show grid system"
                                     } else {
@@ -1086,10 +1110,9 @@ impl CreaBimApp {
                     .map(|e| (e.id, e.name.clone()))
                     .collect();
                 if !hidden.is_empty() {
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new("Hidden elements").strong());
+                    crate::props::subsection(ui, "vis.hidden", "Hidden elements", true);
                     for (id, name) in hidden {
-                        ui.horizontal(|ui| {
+                        crate::props::flow(ui, |ui| {
                             ui.label(name);
                             if ui.small_button("Unhide").clicked() {
                                 change = Some((
@@ -1097,25 +1120,20 @@ impl CreaBimApp {
                                     Box::new(move |h| h.set_element(id, false)),
                                 ));
                             }
-                        });
+                        }); }
                     }
                 }
-                ui.add_space(4.0);
-                if ui
-                    .add_enabled(!h.is_empty(), egui::Button::new("Show everything"))
-                    .clicked()
-                {
+                ui.add_space(3.0);
+                if crate::props::row(ui, "", |ui| {
+                    ui.add_enabled(!h.is_empty(), egui::Button::new("Show everything"))
+                        .on_hover_text("Right-click an element in a view to hide it or its category there.")
+                        .clicked()
+                }) {
                     change = Some((
                         "Show everything".into(),
                         Box::new(|h| *h = ViewHidden::default()),
                     ));
                 }
-                ui.label(
-                    egui::RichText::new(
-                        "Right-click an element in a view to hide it or its category there.",
-                    )
-                    .weak(),
-                );
             });
         }
         if let Some((label, f)) = change {
@@ -1164,7 +1182,7 @@ impl CreaBimApp {
         let mut pick = None;
         let mut edit = None;
         for (id, name, color, n) in rows {
-            ui.horizontal(|ui| {
+            crate::props::flow(ui, |ui| {
                 if ui
                     .radio(active == id, "")
                     .on_hover_text("New grid lines go here")
@@ -1207,10 +1225,14 @@ impl CreaBimApp {
             )
             .weak(),
         );
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Prefix");
             if ui
-                .add(egui::TextEdit::singleline(&mut g.prefix).desired_width(60.0))
+                .add(
+                    egui::TextEdit::singleline(&mut g.prefix)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(60.0),
+                )
                 .changed()
             {
                 label = "Grid prefix";
@@ -1232,7 +1254,7 @@ impl CreaBimApp {
         {
             label = "Grid label style";
         }
-        ui.horizontal(|ui| {
+        crate::props::flow(ui, |ui| {
             ui.label("Colour");
             // the picker works in 8-bit sRGB, as the colour is stored
             let mut c = g.color.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
@@ -1249,7 +1271,7 @@ impl CreaBimApp {
             g.prefix,
             g.horizontal.format(1)
         ));
-        ui.horizontal_wrapped(|ui| {
+        crate::props::flow(ui, |ui| {
             let active = self.active_grid_group() == Some(id);
             if ui
                 .add_enabled(!active, egui::Button::new("Draw lines in it"))
@@ -1558,6 +1580,24 @@ fn grid_ids(model: &Model, group: Option<ElementId>) -> Vec<ElementId> {
 fn swatch(ui: &mut egui::Ui, c: [f32; 3]) {
     let (r, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), Sense::hover());
     ui.painter().rect_filled(r, 2.0, color32(c));
+}
+
+/// Elements that have a body to hide (not views, styles, levels...).
+pub(super) fn shows_in_3d(kind: &ElementKind) -> bool {
+    !matches!(
+        kind,
+        ElementKind::View(_)
+            | ElementKind::Sheet(_)
+            | ElementKind::Viewport(_)
+            | ElementKind::Level(_)
+            | ElementKind::Material(_)
+            | ElementKind::Assembly(_)
+            | ElementKind::TextStyle(_)
+            | ElementKind::StylePack(_)
+            | ElementKind::Units(_)
+            | ElementKind::Project(_)
+            | ElementKind::ElementType(_)
+    )
 }
 
 #[cfg(test)]

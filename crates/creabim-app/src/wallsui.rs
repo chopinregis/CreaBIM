@@ -48,7 +48,7 @@ pub(super) fn wall_fields(
     w: &mut Wall,
 ) -> &'static str {
     let mut label = "";
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         crate::app::helpui::combo(ui, "Location line")
             .selected_text(walls::location_label(model, w))
             .width(ui.available_width().min(130.0))
@@ -78,21 +78,25 @@ pub(super) fn wall_fields(
                 "The line the wall is drawn and dimensioned on. It stays put when the wall gets thicker, changes its layers or is flipped.",
             );
     });
-    ui.horizontal(|ui| {
-        if ui
-            .button("Flip")
-            .on_hover_text("Swap the wall's exterior and interior faces, about its location line (Space). Its doors and windows turn with it.")
-            .clicked()
-        {
-            walls::flip_wall(w);
-            label = "Flip wall"
-        }
-        ui.label(egui::RichText::new(exterior_side(w)).weak());
-    });
+    // Blender's rows (MU32): the operator in the field column, what it
+    // did said under it
+    if crate::props::action(
+        ui,
+        "Faces",
+        "Flip inside / outside",
+        "Swap the wall's exterior and interior faces, about its location line (Space). Its doors and windows turn with it.",
+        true,
+    )
+    .clicked()
+    {
+        walls::flip_wall(w);
+        label = "Flip wall"
+    }
+    crate::props::note(ui, exterior_side(w));
 
     ui.add_space(4.0);
     let lv = levels(model);
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         crate::app::helpui::combo(ui, "Base level")
             .selected_text(name_of(model, w.level))
             .width(ui.available_width().min(130.0))
@@ -111,7 +115,7 @@ pub(super) fn wall_fields(
         WallTop::Unconnected => "Unconnected".to_string(),
         WallTop::UpToLevel { level, .. } => format!("Up to {}", name_of(model, level)),
     };
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         crate::app::helpui::combo(ui, "Top")
             .selected_text(shown)
             .width(ui.available_width().min(130.0))
@@ -162,36 +166,33 @@ pub(super) fn wall_fields(
     }
 
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.label("Joins at");
-        for (i, end) in ["start", "end"].into_iter().enumerate() {
-            let mut on = !w.disallow_join[i];
-            if ui
-                .checkbox(&mut on, end)
-                .on_hover_text("Off: this end stays square and free, and is not pulled along when the wall it touches moves. Right-click the end in plan to switch it too.")
-                .changed()
-            {
-                w.disallow_join[i] = !on;
-                label = if on {
-                    "Allow wall join"
-                } else {
-                    "Disallow wall join"
+    crate::props::row(ui, "Joins at", |ui| {
+        crate::props::flow(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 1.0;
+            let h = ui.spacing().interact_size.y;
+            let bw = ((ui.available_width() - 1.0) / 2.0).max(40.0);
+            for (i, end) in ["Start", "End"].into_iter().enumerate() {
+                let on = !w.disallow_join[i];
+                if ui
+                    .add_sized([bw, h], egui::Button::selectable(on, end))
+                    .on_hover_text("Off: this end stays square and free, and is not pulled along when the wall it touches moves. Right-click the end in plan to switch it too.")
+                    .clicked()
+                {
+                    w.disallow_join[i] = on;
+                    label = if on { "Disallow wall join" } else { "Allow wall join" }
                 }
             }
-        }
+        })
     });
 
     if w.attach_top.is_empty() {
         let found = walls::attach_candidates(model, id);
-        if ui
-            .add_enabled(
-                !found.is_empty(),
-                egui::Button::new("Attach top to roof/slab"),
-            )
-            .on_hover_text(
-                "The top follows the underside of the roof or slab above, cut to its slope.",
-            )
-            .on_disabled_hover_text("There is no roof or slab above this wall.")
+        let tip = if found.is_empty() {
+            "There is no roof or slab above this wall."
+        } else {
+            "The top follows the underside of the roof or slab above, cut to its slope."
+        };
+        if crate::props::action(ui, "Top", "Attach to roof / slab", tip, !found.is_empty())
             .clicked()
         {
             w.attach_top = found;
@@ -199,21 +200,22 @@ pub(super) fn wall_fields(
         }
     } else {
         let names: Vec<String> = w.attach_top.iter().map(|a| name_of(model, *a)).collect();
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(format!("Top attached to {}", names.join(", "))).weak());
-            if ui
-                .button("Detach")
-                .on_hover_text("The top goes back to the wall's own height.")
-                .clicked()
-            {
-                w.attach_top.clear();
-                label = "Detach wall top"
-            }
-        });
+        if crate::props::action(
+            ui,
+            "Top",
+            "Detach",
+            "The top goes back to the wall's own height.",
+            true,
+        )
+        .clicked()
+        {
+            w.attach_top.clear();
+            label = "Detach wall top"
+        }
+        crate::props::note(ui, format!("Attached to {}", names.join(", ")));
     }
 
-    ui.add_space(4.0);
-    ui.label(format!("Length {}", crate::units::len(w.length())));
+    crate::props::row(ui, "Length", |ui| ui.label(crate::units::len(w.length())));
     let (mut a, mut b) = walls::location_line(model, w);
     let moved_a = num(ui, "Start X", &mut a.x, -1e4, 1e4) | num(ui, "Start Y", &mut a.y, -1e4, 1e4);
     let moved_b = num(ui, "End X", &mut b.x, -1e4, 1e4) | num(ui, "End Y", &mut b.y, -1e4, 1e4);
@@ -237,46 +239,55 @@ pub(super) fn opening_fields(ui: &mut egui::Ui, model: &Model, o: &mut Opening) 
     };
     match o.kind {
         OpeningKind::Door => {
-            ui.label(format!(
-                "Hung {}",
-                creabim_geom::opening::door_hand(o, &host).to_lowercase()
-            ))
-            .on_hover_text("The hinge side seen from the side it opens to, and whether it opens into the building or out of it.");
-            ui.horizontal(|ui| {
-                if ui
-                    .button("Flip hand")
-                    .on_hover_text("Hinge it on the other jamb (Shift+Space).")
-                    .clicked()
-                {
-                    walls::flip_hand(o);
-                    label = "Flip door hand"
-                }
-                if ui
-                    .button("Flip swing")
-                    .on_hover_text("Open it to the other side of the wall (Space).")
-                    .clicked()
-                {
-                    walls::flip_facing(o);
-                    label = "Flip door swing"
-                }
+            // a label-column row, then two equal buttons, as Blender (MU29)
+            crate::props::row(ui, "Hung", |ui| {
+                ui.label(creabim_geom::opening::door_hand(o, &host).to_lowercase())
+                    .on_hover_text("The hinge side seen from the side it opens to, and whether it opens into the building or out of it.")
+            });
+            crate::props::row(ui, "Flip", |ui| {
+                crate::props::flow(ui, |ui| {
+                    let w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+                    if ui
+                        .add_sized([w, 22.0], egui::Button::new("Hand"))
+                        .on_hover_text("Hinge it on the other jamb (Shift+Space).")
+                        .clicked()
+                    {
+                        walls::flip_hand(o);
+                        label = "Flip door hand"
+                    }
+                    if ui
+                        .add_sized([w, 22.0], egui::Button::new("Swing"))
+                        .on_hover_text("Open it to the other side of the wall (Space).")
+                        .clicked()
+                    {
+                        walls::flip_facing(o);
+                        label = "Flip door swing"
+                    }
+                })
             });
         }
         OpeningKind::Window => {
             // the exterior is on the wall's left when it is flipped
             let out = o.faces_left(&host) == host.flip;
-            ui.label(if out {
-                "Its outside faces the wall's exterior"
-            } else {
-                "Turned round: its outside faces the wall's interior"
+            // the same rows as a door's (MU29)
+            crate::props::row(ui, "Outside", |ui| {
+                ui.label(if out {
+                    "faces the exterior"
+                } else {
+                    "turned to the interior"
+                })
             });
-            if ui
-                .button("Flip inside/outside")
-                .on_hover_text("Turn it round in its wall: its sill board and frame move to the other face (Space).")
-                .clicked()
-            {
-                walls::flip_facing(o);
-                label = "Flip window"
-            }
+            crate::props::row(ui, "Flip", |ui| {
+                let w = ui.available_width();
+                if ui
+                    .add_sized([w, 22.0], egui::Button::new("Inside / outside"))
+                    .on_hover_text("Turn it round in its wall: its sill board and frame move to the other face (Space).")
+                    .clicked()
+                {
+                    walls::flip_facing(o);
+                    label = "Flip window"
+                }
+            });
         }
         OpeningKind::Hole => {
             ui.label("A bare opening: a hole through the wall with no door or window in it");

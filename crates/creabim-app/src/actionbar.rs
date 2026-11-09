@@ -85,7 +85,8 @@ impl CreaBimApp {
             return vec![];
         };
         let mut out = vec![];
-        if alone && editmode::editable(model, id) {
+        // Edit mode moved to the view header's mode menu (MU27): no button here
+        if false && alone && editmode::editable(model, id) {
             out.push(
                 Act {
                     on: self.plan.edit == Some(id),
@@ -93,6 +94,17 @@ impl CreaBimApp {
                 }
                 .key("Enter")
                 .hint("Edit mode: all its grips in every view, corners to add and take away. Esc finishes."),
+            );
+        }
+        // a view not shown in the drawing area opens from here (A4-1)
+        if alone
+            // (views have their own Open view below)
+            && matches!(e.kind, ElementKind::Sheet(_))
+            && self.active_view != Some(id)
+        {
+            out.push(
+                Act::new("bar.view.open", "Open this view", "open-view")
+                    .hint("Show it in the drawing area"),
             );
         }
         match &e.kind {
@@ -253,7 +265,10 @@ impl CreaBimApp {
         let room = ui.available_width();
         // More and Delete, and the gaps between the groups
         let fixed = 2.0 * BUTTON + 3.0 * GAP + 2.0 * SPLIT;
-        let fit = (((room - fixed) / (BUTTON + GAP)).floor().max(0.0)) as usize;
+        // one button's room kept spare, so Delete and More always show at
+        // the right however the panel is sized (MU23: an extrusion's
+        // actions pushed Delete out of sight)
+        let fit = (((room - fixed) / (BUTTON + GAP)).floor().max(1.0) - 1.0) as usize;
         let mut shown_own = own.clone();
         let mut shown_common = common.clone();
         let mut more: Vec<Act> = vec![];
@@ -365,6 +380,11 @@ impl CreaBimApp {
         match id {
             "bar.edit" => self.toggle_edit_mode(),
             "bar.cmd:delete" => self.delete_selected(),
+            "bar.view.open" => {
+                if let Some(id) = self.selection.active {
+                    self.active_view = Some(id);
+                }
+            }
             "bar.maketype" => {
                 if let Some(id) = self.selection.active {
                     self.run_types(super::typesui::TypeAsk::FromElement(id));
@@ -506,10 +526,7 @@ mod tests {
         // a wall alone: its own first, then the common ones
         app.selection.only(wall);
         let (own, common) = app.element_actions();
-        assert_eq!(
-            ids(&own),
-            ["bar.edit", "wall.flip", "wall.attach", "bar.maketype"]
-        );
+        assert_eq!(ids(&own), ["wall.flip", "wall.attach", "bar.maketype"]);
         assert_eq!(common[0].label, "Duplicate");
         assert!(common.iter().any(|a| a.label == "Show only selected"));
         assert_eq!(common.last().unwrap().id, "nav.fitsel");

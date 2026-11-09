@@ -257,6 +257,28 @@ impl CutPiece {
         }
     }
 
+    /// The colour of the material this piece cuts: its layer's, else the
+    /// element's own (or its core layer's); none for an air gap.
+    fn colour(&self, model: &Model) -> Option<[f32; 3]> {
+        let mat = |id: ElementId| match &model.get(id)?.kind {
+            ElementKind::Material(m) => Some(m.color),
+            _ => None,
+        };
+        match self.layer {
+            Some(l) => l.material.and_then(mat),
+            None => {
+                let e = model.get(self.id)?;
+                creabim_core::material_of(model, e)
+                    .map(|(_, m)| m.color)
+                    .or_else(|| {
+                        let (_, a) = creabim_core::assembly::assembly_of(model, e)?;
+                        let i = (0..a.layers.len()).find(|i| a.is_core(*i))?;
+                        mat(a.layers[i].material?)
+                    })
+            }
+        }
+    }
+
     fn hatch(&self, model: &Model) -> Hatch {
         match self.layer {
             None => hatch_of(model, self.id),
@@ -459,6 +481,7 @@ pub fn clean_up_pieces(model: &Model, items: &mut Vec<PlanItem>, layers: Vec<Cut
             id: p.id,
             points: p.points.clone(),
             hatch: p.hatch(model),
+            rgb: p.colour(model),
         });
     }
     let edges = |pts: &Vec<DVec2>| -> Vec<(DVec2, DVec2)> {
@@ -574,6 +597,9 @@ pub enum PlanItem {
         id: ElementId,
         points: Vec<DVec2>,
         hatch: Hatch,
+        /// The colour of the material cut here (its layer's, for layered
+        /// elements), for the colour drawing styles (MU32).
+        rgb: Option<[f32; 3]>,
     },
     Line {
         id: ElementId,
@@ -937,7 +963,24 @@ pub fn plan_view_with(
         let on_level = match &e.kind {
             ElementKind::Wall(w) => w.level == level,
             ElementKind::Slab(s) => s.level == level,
-            ElementKind::FreeMesh(f) => f.level == Some(level),
+            // an imported mesh with no level of its own is on the level its
+            // base stands on (MU33: a Blender import showed in no plan)
+            ElementKind::FreeMesh(f) => match f.level {
+                Some(l) => l == level,
+                // no level of its own (an import): in every plan whose cut
+                // or range below it reaches it (MU36: it was on only one)
+                None => {
+                    let z0 = model.level(level).map_or(0.0, |l| l.elevation);
+                    let zs = f
+                        .mesh
+                        .vertices
+                        .iter()
+                        .map(|v| f.to_model(*v).z + f.origin.z);
+                    let (lo, hi) = zs.fold((f64::MAX, f64::MIN), |(a, b), z| (a.min(z), b.max(z)));
+                    // under the cut and not wholly below the floor's slab
+                    lo < z0 + cut_height && hi > z0 - 0.5
+                }
+            },
             ElementKind::Footing(f) => f.plan_level(model) == level,
             k => creabim_core::members::level_of(k) == Some(level),
         };
@@ -1170,6 +1213,28 @@ pub fn plan_view_with(
             }
             k if on_level && creabim_core::members::is_member(k) => {
                 items.extend(crate::members::member_plan(model, e, cut_height));
+                // a mass or sweep below the cut: its top seen tinted, in
+                // its material under the colour styles (MU36: they read as
+                // wireframe)
+                if let ElementKind::Part(p) = k {
+                    if !p.void {
+                        if let Some(mesh) = crate::parts::part_mesh(model, p) {
+                            let color = creabim_core::material_of(model, e)
+                                .map_or([0.78, 0.76, 0.72], |(_, m)| m.color);
+                            let item = crate::scene::SceneItem {
+                                id: e.id,
+                                mesh,
+                                color,
+                                surface: crate::scene::PLAIN_SURFACE,
+                                ghost: false,
+                                layer: None,
+                                finish: None,
+                            };
+                            let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
+                            shades.extend(mesh_shade(&item, z, graphics));
+                        }
+                    }
+                }
             }
             // a column standing on a level below, running up through this one
             ElementKind::Column(c) if c.crosses(model, level, cut_height) => {
@@ -1256,7 +1321,10 @@ pub fn plan_view_with(
     items.append(&mut overhead);
     if !sliced.is_empty() {
         let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
-        let scene = crate::scene::build_scene(model);
+        // only what is sliced, and what cuts it
+        let mut needed: std::collections::HashSet<ElementId> = sliced.iter().copied().collect();
+        needed.extend(cuts.iter().filter(|c| sliced.contains(&c.0)).map(|c| c.1));
+        let scene = crate::scene::build_scene_of(model, Some(&needed));
         for item in scene.iter().filter(|i| sliced.contains(&i.id)) {
             sliced_plan(model, item, z, &mut items);
             // an imported mesh wholly below the cut: its footprint tinted
@@ -1955,8 +2023,17 @@ fn opening_symbol(
         }
     }
     match o.kind {
-        // a bare hole is just the gap in the wall
-        OpeningKind::Hole => {}
+        // a hole that starts above the floor shows the wall's faces across,
+        // over its sill, as a window does; one down to the floor is just
+        // the gap (MU18)
+        OpeningKind::Hole => {
+            if c.v0 > 1e-9 {
+                let t = w.thickness / 2.0;
+                for s in [-t, t] {
+                    line(&mut out, at(c.u0, s), at(c.u1, s));
+                }
+            }
+        }
         OpeningKind::Window => {
             // the wall faces carry on across, over the sill
             let t = w.thickness / 2.0;
@@ -2008,6 +2085,18 @@ pub(crate) fn sliced_plan(
     z: f64,
     items: &mut Vec<PlanItem>,
 ) {
+    sliced_plan_creased(model, item, z, items, 0.995);
+}
+
+/// [`sliced_plan`] with its own crease for the edges seen below the cut
+/// (see [`crate::section::feature_edges_over`]).
+pub(crate) fn sliced_plan_creased(
+    model: &Model,
+    item: &crate::scene::SceneItem,
+    z: f64,
+    items: &mut Vec<PlanItem>,
+    crease: f32,
+) {
     let mut cut: Vec<(DVec2, DVec2)> = Vec::new();
     for lp in crate::slice::slice(&item.mesh, z) {
         let n = lp.len();
@@ -2020,19 +2109,19 @@ pub(crate) fn sliced_plan(
                 b: lp[(i + 1) % n],
             });
         }
-        let hatch = CutPiece {
+        let piece = CutPiece {
             id: item.id,
             points: vec![],
             layer: item.layer,
-        }
-        .hatch(model);
+        };
         items.push(PlanItem::Fill {
             id: item.id,
             points: lp,
-            hatch,
+            hatch: piece.hatch(model),
+            rgb: piece.colour(model),
         });
     }
-    for (a, b) in crate::section::feature_edges(item) {
+    for (a, b) in crate::section::feature_edges_over(item, crease) {
         let (a, b) = if a.z <= b.z { (a, b) } else { (b, a) };
         if a.z >= z - 1e-6 {
             continue;
@@ -2112,6 +2201,18 @@ fn section_marker(
             text: tag,
         });
     }
+}
+
+/// The level a height stands on: the highest at or below it, else the
+/// lowest.
+pub fn level_under(model: &Model, z: f64) -> Option<ElementId> {
+    let mut all: Vec<(ElementId, f64)> = model.levels().map(|(e, l)| (e.id, l.elevation)).collect();
+    all.sort_by(|a, b| a.1.total_cmp(&b.1));
+    all.iter()
+        .rev()
+        .find(|l| l.1 <= z + 0.05)
+        .or(all.first())
+        .map(|l| l.0)
 }
 
 #[cfg(test)]

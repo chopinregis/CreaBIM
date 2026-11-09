@@ -295,6 +295,9 @@ pub struct Band {
     /// How far it runs past the wall's start and end, edited by hand
     /// (see [`crate::Wall::layer_ends`]); zero for slabs and roofs.
     pub ext: [f64; 2],
+    /// How far it runs below the wall's base and above its top, edited by
+    /// hand; zero for slabs and roofs.
+    pub vext: [f64; 2],
 }
 
 /// A wall's layers across it, exterior first. The exterior is on the
@@ -321,6 +324,7 @@ pub fn wall_bands(a: &Assembly, wall: &Wall) -> Vec<Band> {
                 core: a.is_core(i),
                 priority: l.join_priority(),
                 ext: wall.layer_ext(i),
+                vext: wall.layer_vext(i),
             }
         })
         .collect()
@@ -350,6 +354,7 @@ pub fn depth_bands(a: &Assembly, thickness: f64) -> Vec<Band> {
             core: a.is_core(i),
             priority: l.join_priority(),
             ext: [0.0; 2],
+            vext: [0.0; 2],
         })
         .collect()
 }

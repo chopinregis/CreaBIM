@@ -28,6 +28,10 @@ pub struct TextLook {
     pub shape: TagShape,
     /// A dimension line leaves gaps where tags and notes cross it.
     pub breaks: bool,
+    /// How a note's lines line up, each by its real width (MU29: room
+    /// tags, placed by estimated widths, read ragged; MU31: the style's
+    /// Align).
+    pub align: creabim_core::TextAlign,
 }
 
 /// Size of dimension ticks and arrows, paper mm.
@@ -52,6 +56,7 @@ impl From<TextStyle> for TextLook {
             end_size: s.end_size.unwrap_or(END_SIZE),
             shape: s.tag_shape,
             breaks: s.break_at_tags,
+            align: s.align,
         }
     }
 }
@@ -132,6 +137,109 @@ pub fn end_marks(t: Terminator, tip: DVec2, dir: DVec2, size: f64, mm: f64) -> E
         Terminator::None => {}
     }
     out
+}
+
+/// A line [`lay_out_note`] wants underlined starts with this.
+pub const UNDERLINE: char = '\u{1}';
+
+/// A note's text as the lines it draws (MU26): read as markdown when
+/// `markdown` (`#` headings in capitals and underlined, `-` and `*`
+/// bullets, `1.` numbers, `- [ ]` and `- [x]` checkboxes, emphasis markers
+/// dropped), and wrapped to `width` paper mm when it has one, a list
+/// item's later lines set in under its text.
+pub fn lay_out_note(text: &str, look: &TextLook, width: Option<f64>, markdown: bool) -> String {
+    let mut out: Vec<String> = vec![];
+    for raw in text.split('\n') {
+        let (mut head, mut body, mut under) = (String::new(), raw.to_string(), false);
+        if markdown {
+            let t = raw.trim_start();
+            let indent = " ".repeat((raw.len() - t.len()).min(8));
+            let strip = |s: &str| s.replace("**", "").replace("__", "").replace('`', "");
+            if let Some(h) = t
+                .strip_prefix("### ")
+                .or(t.strip_prefix("## "))
+                .or(t.strip_prefix("# "))
+            {
+                body = strip(h).to_uppercase();
+                under = t.starts_with("# ") || t.starts_with("## ");
+            } else if let Some(r) = t.strip_prefix("- [ ] ").or(t.strip_prefix("* [ ] ")) {
+                (head, body) = (format!("{indent}[ ] "), strip(r));
+            } else if let Some(r) = t
+                .strip_prefix("- [x] ")
+                .or(t.strip_prefix("- [X] "))
+                .or(t.strip_prefix("* [x] "))
+            {
+                (head, body) = (format!("{indent}[x] "), strip(r));
+            } else if let Some(r) = t
+                .strip_prefix("- ")
+                .or(t.strip_prefix("* "))
+                .or(t.strip_prefix("+ "))
+            {
+                (head, body) = (format!("{indent}\u{2022} "), strip(r));
+            } else if let Some((n, r)) = t
+                .split_once(". ")
+                .filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+            {
+                (head, body) = (format!("{indent}{n}. "), strip(r));
+            } else {
+                body = strip(t);
+                // a single * or _ round a word: italic, kept as the word
+                body = body.replace(" *", " ").replace("* ", " ");
+            }
+        }
+        let Some(w) = width.filter(|w| *w > 1.0) else {
+            out.push(format!(
+                "{}{head}{body}",
+                if under {
+                    UNDERLINE.to_string()
+                } else {
+                    String::new()
+                }
+            ));
+            continue;
+        };
+        // wrap word by word; later lines set in as far as the list mark
+        let pad = " ".repeat(head.chars().count() + 1);
+        let mut line = head.clone();
+        let mut first = true;
+        for word in body.split(' ') {
+            let trial = if line.trim().is_empty() || line == head {
+                format!("{line}{word}")
+            } else {
+                format!("{line} {word}")
+            };
+            if look.width(&trial) > w && !(line.trim().is_empty() || line == head) {
+                out.push(format!(
+                    "{}{line}",
+                    if under && first {
+                        UNDERLINE.to_string()
+                    } else {
+                        String::new()
+                    }
+                ));
+                first = false;
+                line = format!(
+                    "{}{word}",
+                    if head.is_empty() {
+                        String::new()
+                    } else {
+                        pad.clone()
+                    }
+                );
+            } else {
+                line = trial;
+            }
+        }
+        out.push(format!(
+            "{}{line}",
+            if under && first {
+                UNDERLINE.to_string()
+            } else {
+                String::new()
+            }
+        ));
+    }
+    out.join("\n")
 }
 
 impl TextLook {
@@ -570,13 +678,37 @@ impl Annotation {
             Shape::Note { at, leader, elbow } => {
                 let lines: Vec<&str> = self.text.split('\n').collect();
                 let step = look.size * 1.5 * mm;
-                let width = lines.iter().map(|l| look.width(l)).fold(0.0, f64::max) * mm;
+                let width = lines
+                    .iter()
+                    .map(|l| look.width(l.trim_start_matches(UNDERLINE)))
+                    .fold(0.0, f64::max)
+                    * mm;
                 for (i, l) in lines.iter().enumerate() {
+                    let y = at - DVec2::Y * step * i as f64;
+                    // centred lines on the block's middle, right-aligned on
+                    // its right edge: the block's box stays put
+                    let (y, anchor) = match look.align {
+                        creabim_core::TextAlign::Centre => {
+                            (y + DVec2::X * width / 2.0, Anchor::Middle)
+                        }
+                        creabim_core::TextAlign::Right => (y + DVec2::X * width, Anchor::End),
+                        _ => (y, Anchor::Start),
+                    };
+                    // a markdown heading: underlined (MU26)
+                    let text = match l.strip_prefix(UNDERLINE) {
+                        Some(t) => {
+                            let under = y - DVec2::Y * look.size * 0.75 * mm;
+                            out.lines
+                                .push(vec![under, under + DVec2::X * look.width(t) * mm]);
+                            t
+                        }
+                        None => l,
+                    };
                     out.texts.push(MarkText {
-                        at: at - DVec2::Y * step * i as f64,
-                        text: l.to_string(),
+                        at: y,
+                        text: text.to_string(),
                         angle: 0.0,
-                        anchor: Anchor::Start,
+                        anchor,
                     });
                 }
                 if let Some(target) = leader {
@@ -822,6 +954,31 @@ mod tests {
             look: TextLook::default(),
             mm: 0.1,
         }
+    }
+
+    #[test]
+    fn a_text_box_reads_markdown_and_wraps_to_its_width() {
+        let look = TextLook::default();
+        let t = "# Notes\n- one **two** three four five six seven\n- [x] done\n2. next";
+        let flat = lay_out_note(t, &look, None, true);
+        let lines: Vec<&str> = flat.split('\n').collect();
+        assert_eq!(lines[0], format!("{UNDERLINE}NOTES"));
+        assert_eq!(lines[1], "\u{2022} one two three four five six seven");
+        assert_eq!(lines[2], "[x] done");
+        assert_eq!(lines[3], "2. next");
+        // 30 mm wide: the bullet wraps, its later lines set in
+        let boxed = lay_out_note(t, &look, Some(30.0), true);
+        let lines: Vec<&str> = boxed.split('\n').collect();
+        assert!(lines.len() > 4, "{lines:?}");
+        assert!(lines[2].starts_with("  "), "{lines:?}");
+        for l in &lines {
+            assert!(
+                look.width(l.trim_start_matches(UNDERLINE)) <= 30.0 + look.width("seven"),
+                "{l}"
+            );
+        }
+        // plain text, no box: as it was
+        assert_eq!(lay_out_note("a\n- b", &look, None, false), "a\n- b");
     }
 
     #[test]

@@ -347,8 +347,10 @@ fn part_material(
         .map_or("None".to_string(), |e| e.name.clone());
     let mut changed = false;
     egui::ComboBox::from_id_salt(("part_material", salt))
+        .icon(crate::props::combo_icon)
         .selected_text(shown)
-        .width(170.0)
+        .width(ui.available_width().min(170.0))
+        .truncate()
         .show_ui(ui, |ui| {
             changed |= ui.selectable_value(current, None, "None").changed();
             for e in model
@@ -371,9 +373,11 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
         crate::units::len(s.y),
         crate::units::len(s.z)
     ));
-    ui.horizontal(|ui| {
-        ui.label("Category");
+    // one setting a row, as the rest of Properties (MU23)
+    crate::props::row(ui, "Category", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         egui::ComboBox::from_id_salt("object_category")
+            .icon(crate::props::combo_icon)
             .selected_text(o.category.label())
             .show_ui(ui, |ui| {
                 for c in ObjectCategory::ALL {
@@ -383,9 +387,10 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
                 }
             });
     });
-    ui.horizontal(|ui| {
-        ui.label("Placed");
+    crate::props::row(ui, "Placed", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         egui::ComboBox::from_id_salt("object_mount")
+            .icon(crate::props::combo_icon)
             .selected_text(mount_label(o.mount))
             .show_ui(ui, |ui| {
                 for m in Mount::ALL {
@@ -403,14 +408,13 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
                  From the ceiling: it hangs below the ceiling over it, centred where clicked",
             );
     });
-    ui.horizontal(|ui| {
-        ui.label(if o.mount == Mount::Ceiling {
-            "New ones below the ceiling"
-        } else {
-            "New ones above the floor"
-        });
-        if ui
-            .add(crate::units::drag(&mut o.offset).range(-10.0..=100.0))
+    let new_at = if o.mount == Mount::Ceiling {
+        "New ones below the ceiling"
+    } else {
+        "New ones above the floor"
+    };
+    crate::props::row(ui, new_at, |ui| {
+        if crate::props::fill(ui, crate::units::drag(&mut o.offset).range(-10.0..=100.0))
             .on_hover_text(
                 "The height the Object tool places new ones at: to their underside, \
                  or from the ceiling down to their top",
@@ -420,10 +424,11 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
             label = "Object mounting height";
         }
     });
-    ui.horizontal(|ui| {
-        ui.label("IFC");
+    crate::props::row(ui, "IFC class", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         let mut class = o.ifc.class.clone();
         egui::ComboBox::from_id_salt("object_class")
+            .icon(crate::props::combo_icon)
             .selected_text(&class)
             .show_ui(ui, |ui| {
                 for (c, _, _) in IFC_CLASSES {
@@ -434,8 +439,12 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
             o.ifc = IfcKind::new(&class, "NOTDEFINED").normalized();
             label = "Object IFC class";
         }
+    });
+    crate::props::row(ui, "IFC type", |ui| {
+        ui.spacing_mut().combo_width = ui.available_width();
         let mut pre = o.ifc.predefined.clone();
         egui::ComboBox::from_id_salt("object_predefined")
+            .icon(crate::props::combo_icon)
             .selected_text(&pre)
             .show_ui(ui, |ui| {
                 for p in objects::predefined_types(&o.ifc.class) {
@@ -450,24 +459,23 @@ pub(super) fn type_fields(ui: &mut egui::Ui, model: &Model, o: &mut ObjectType) 
     if let Some(k) = &o.catalogue {
         ui.label(egui::RichText::new(format!("From the catalogue: {k}")).weak());
     }
-    ui.add_space(4.0);
-    ui.label(egui::RichText::new("Parts").strong());
-    egui::Grid::new("object_parts")
-        .num_columns(2)
-        .striped(true)
-        .show(ui, |ui| {
+    if !o.parts.is_empty() {
+        crate::props::subsection(ui, "object.parts", "Parts", true).then(|| {
             for (i, p) in o.parts.iter_mut().enumerate() {
-                ui.label(if p.name.is_empty() {
+                let name = if p.name.is_empty() {
                     format!("Part {}", i + 1)
                 } else {
                     p.name.clone()
+                };
+                crate::props::row(ui, &name, |ui| {
+                    ui.spacing_mut().combo_width = ui.available_width();
+                    if part_material(ui, model, i, &mut p.material) {
+                        label = "Part material";
+                    }
                 });
-                if part_material(ui, model, i, &mut p.material) {
-                    label = "Part material";
-                }
-                ui.end_row();
             }
         });
+    }
     label
 }
 
@@ -479,21 +487,18 @@ pub(super) fn object_fields(
     hung: bool,
 ) -> &'static str {
     let mut label = "";
-    ui.horizontal(|ui| {
-        ui.label(if hung {
-            "Below the ceiling"
-        } else {
-            "Above its level"
-        });
-        if ui
-            .add(crate::units::drag(&mut o.offset).range(-10.0..=100.0))
-            .changed()
+    let height = if hung {
+        "Below the ceiling"
+    } else {
+        "Above its level"
+    };
+    crate::props::row(ui, height, |ui| {
+        if crate::props::fill(ui, crate::units::drag(&mut o.offset).range(-10.0..=100.0)).changed()
         {
             label = "Object height";
         }
     });
-    ui.horizontal(|ui| {
-        ui.label("Rotation");
+    crate::props::row(ui, "Rotation", |ui| {
         if ui
             .add(
                 egui::DragValue::new(&mut o.rotation)
@@ -633,7 +638,7 @@ impl CreaBimApp {
                 (w, egui::pos2(area.max.x - w - 16.0, area.min.y + 64.0))
             }
         };
-        egui::Window::new("Catalogue")
+        crate::app::shell::window("Catalogue")
             .resizable(true)
             .open(&mut open)
             .default_pos(pos)
@@ -649,7 +654,7 @@ impl CreaBimApp {
                     }
                 });
                 ui.add(
-                    egui::TextEdit::singleline(&mut cat.filter)
+                    egui::TextEdit::singleline(&mut cat.filter).vertical_align(egui::Align::Center)
                         .hint_text("Search")
                         .desired_width(220.0),
                 );
@@ -757,7 +762,7 @@ impl CreaBimApp {
                         }
                     });
                 ui.separator();
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     if ui
                         .button("Import from Blender, FreeCAD or glTF…")
                         .on_hover_text("A .blend, .FCStd, .gltf or .glb file becomes one object of your catalogue, each mesh a part in its material")
@@ -773,9 +778,9 @@ impl CreaBimApp {
                         asks.push(CatAsk::Reveal);
                     }
                 });
-                ui.horizontal(|ui| {
+                crate::props::flow(ui, |ui| {
                     ui.add(
-                        egui::TextEdit::singleline(&mut cat.save_name)
+                        egui::TextEdit::singleline(&mut cat.save_name).vertical_align(egui::Align::Center)
                             .hint_text("Name")
                             .desired_width(200.0),
                     );
@@ -811,6 +816,7 @@ impl CreaBimApp {
                     c.name
                 );
                 self.plan.objects.current = Some(*c);
+                self.plan.objects.offset = None;
                 self.plan.objects.project_type = own;
                 self.plan.cancel();
                 self.plan.tool = Tool::Object;

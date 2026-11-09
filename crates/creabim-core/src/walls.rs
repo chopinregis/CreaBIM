@@ -494,6 +494,73 @@ pub fn widen_in_place(model: &Model, old_width: f64, o: &mut Opening) {
         o.offset -= d / 2.0;
     }
     o.offset = o.offset.clamp(0.0, (len - o.width).max(0.0));
+    clamp_opening(model, o);
+}
+
+/// The stretch of `wall` (distances from its start) a door or window can
+/// take: from its start to its end, less what a wall joined at either end
+/// covers there, so an opening never runs into the corner (MU23: a window
+/// by a mitred corner cut into it). A wall too short for that keeps its
+/// whole length.
+pub fn clear_span(model: &Model, wall_id: ElementId) -> (f64, f64) {
+    let Some(ElementKind::Wall(w)) = model.get(wall_id).map(|e| &e.kind) else {
+        return (0.0, 0.0);
+    };
+    let len = w.length();
+    let along = w.direction();
+    let (mut lo, mut hi) = (0.0_f64, len);
+    for e in model.iter() {
+        let ElementKind::Wall(v) = &e.kind else {
+            continue;
+        };
+        if e.id == wall_id || v.level != w.level || v.curtain.is_some() || v.length() < 1e-6 {
+            continue;
+        }
+        let dir = v.direction();
+        let sin = along.perp_dot(dir).abs();
+        if sin < 0.2 {
+            // (nearly) in line: not a corner
+            continue;
+        }
+        let cos = along.dot(dir).abs();
+        // how far along this wall the other one's body reaches past their
+        // meeting point, on this wall's inner face
+        let reach = v.thickness / 2.0 / sin + w.thickness / 2.0 * cos / sin;
+        let near = |p: DVec2| {
+            // the other wall's end, or its body, at this wall's end point
+            let ends = [v.start, v.end]
+                .iter()
+                .any(|q| q.distance(p) < v.thickness.max(w.thickness));
+            let t = ((p - v.start).dot(dir)).clamp(0.0, v.length());
+            let on = (v.start + dir * t).distance(p) < v.thickness / 2.0 + 0.02;
+            ends || on
+        };
+        if near(w.start) {
+            lo = lo.max(reach);
+        }
+        if near(w.end) {
+            hi = hi.min(len - reach);
+        }
+    }
+    if hi - lo < 0.1 {
+        (0.0, len)
+    } else {
+        (lo, hi)
+    }
+}
+
+/// `o`'s offset kept so it lies within its wall's [`clear_span`] (or the
+/// whole wall, if it is wider than that).
+pub fn clamp_opening(model: &Model, o: &mut Opening) {
+    let Some(ElementKind::Wall(w)) = model.get(o.host).map(|e| &e.kind) else {
+        return;
+    };
+    let (lo, hi) = clear_span(model, o.host);
+    if hi - lo >= o.width - 1e-9 {
+        o.offset = o.offset.clamp(lo, hi - o.width);
+    } else {
+        o.offset = o.offset.clamp(0.0, (w.length() - o.width).max(0.0));
+    }
 }
 
 /// Another wall on the host's level that an opening runs into: where two
@@ -920,6 +987,32 @@ mod widen_tests {
         o.width = 1.2;
         widen_in_place(&m, 0.9, &mut o);
         assert!((o.offset + o.width - 5.8).abs() < 1e-9);
+    }
+
+    #[test]
+    fn an_opening_by_a_corner_stays_clear_of_the_wall_joined_there() {
+        // MU23: a window by a mitred corner ran into the corner
+        let (mut m, host, mut o) = wall_and_door(5.5);
+        let l = match &m.get(host).unwrap().kind {
+            ElementKind::Wall(w) => w.level,
+            _ => unreachable!(),
+        };
+        let c = Element::new(
+            "C",
+            ElementKind::Wall(Wall::new(
+                l,
+                DVec2::new(6.0, 0.0),
+                DVec2::new(6.0, 3.0),
+                0.2,
+                2.7,
+            )),
+        );
+        Transaction::new("corner").insert(c).apply(&mut m).unwrap();
+        let (lo, hi) = clear_span(&m, host);
+        assert!(lo.abs() < 1e-9 && (hi - 5.9).abs() < 1e-9, "{lo} {hi}");
+        o.width = 1.2;
+        clamp_opening(&m, &mut o);
+        assert!((o.offset + o.width - 5.9).abs() < 1e-9, "{}", o.offset);
     }
 
     #[test]

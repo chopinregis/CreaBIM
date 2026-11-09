@@ -35,6 +35,8 @@ pub struct ViewCube {
     grab: Option<Nav>,
     /// Where the cube and its buttons were last drawn.
     area: Option<Rect>,
+    /// The parts that take the pointer: the cube's disc and the buttons.
+    hot: Option<(Pos2, f32, Rect)>,
 }
 
 /// A drag on the cube or its buttons, by this frame's pointer movement.
@@ -60,6 +62,10 @@ pub enum Pick {
     Zoom,
     /// The pan button: dragged, not clicked.
     Pan,
+    /// Frame everything, from where it is looked at (MU24: from the header).
+    FitAll,
+    /// Frame the selection.
+    FitSel,
 }
 
 /// The yaw and pitch that look from `d` toward the target. Straight down
@@ -367,7 +373,8 @@ impl ViewCube {
     /// Whether `p` is on the cube or its buttons, so a click there is the
     /// cube's and not a pick in the view.
     pub fn covers(&self, p: Pos2) -> bool {
-        self.area.is_some_and(|a| a.contains(p))
+        self.hot
+            .is_some_and(|(c, r, col)| p.distance(c) < r || col.expand(2.0).contains(p))
     }
 
     /// Start turning the camera to `to`.
@@ -407,16 +414,56 @@ impl ViewCube {
         ortho: bool,
     ) -> (Option<Pick>, Option<Nav>) {
         let s = 25.0;
-        let c = Pos2::new(rect.right() - 70.0, rect.top() + 70.0);
-        let area = Rect::from_center_size(c + Vec2::new(-16.0, 13.0), Vec2::new(164.0, 152.0));
+        // the buttons in a boxed column at the area's right edge, as in
+        // the 2D areas, the cube to their left (MU19)
+        let col_x = rect.right() - 24.0;
+        let c = Pos2::new(col_x - 96.0, rect.top() + 72.0);
+        let area = Rect::from_min_max(
+            Pos2::new(c.x - 80.0, rect.top() + 4.0),
+            // eight buttons now (MU24): the column reaches 250 px down
+            Pos2::new(rect.right() - 4.0, rect.top() + 250.0),
+        );
         if !rect.contains_rect(area) {
             self.area = None;
+            self.hot = None;
             return (None, None);
         }
         self.area = Some(area);
-        let response = ui.interact(area, ui.id().with("viewcube"), Sense::click_and_drag());
-        let painter = ui.painter_at(rect);
+        // only the cube's disc and the button column take the pointer: the
+        // empty corners of the box pan and pick as the rest of the view
+        // does (MU31: a pan beside the cube orbited instead)
+        let column = Rect::from_min_size(
+            Pos2::new(col_x - 17.0, rect.top() + 7.0),
+            Vec2::new(34.0, 8.0 * 28.0 + 6.0),
+        );
+        self.hot = Some((c, 2.05 * s + 8.0, column));
+        let hot = move |p: Pos2| p.distance(c) < 2.05 * s + 8.0 || column.expand(2.0).contains(p);
+        let over = ui.input(|i| i.pointer.hover_pos()).is_some_and(hot);
+        let sense = if over || self.grab.is_some() {
+            Sense::click_and_drag()
+        } else {
+            Sense::hover()
+        };
+        let response = ui.interact(area, ui.id().with("viewcube"), sense);
+        let mut painter = ui.painter_at(rect);
         let hover = response.hover_pos();
+        // the theme's colours, light or dark (MU20)
+        let pal = crate::theme::Palette::of(ui.ctx());
+        // faded until the pointer comes near or it is in use
+        let near = ui
+            .input(|i| i.pointer.hover_pos())
+            .is_some_and(|h| area.expand(40.0).contains(h))
+            || self.grab.is_some();
+        painter.multiply_opacity(if near { 1.0 } else { 0.45 });
+        // the buttons' box: the same box, gap and pitch as the drawing
+        // areas' column (MU21), 28 px buttons, 10 px under the header
+        painter.rect(
+            column,
+            8.0,
+            pal.panel,
+            Stroke::new(1.0, pal.border),
+            egui::StrokeKind::Inside,
+        );
         let (right, up, toward) = axes(cam);
         let to_screen = |p: Vec3| c + Vec2::new(p.dot(right), -p.dot(up)) * s;
 
@@ -429,11 +476,11 @@ impl ViewCube {
                 to_screen(Vec3::new(t.cos() * ring_r, t.sin() * ring_r, ring_z))
             })
             .collect();
-        let ink = Color32::from_rgb(52, 56, 62);
-        let faint = Color32::from_rgba_unmultiplied(70, 74, 80, 110);
+        let ink = pal.text;
+        let faint = pal.muted.gamma_multiply(0.6);
         painter.add(Shape::closed_line(
             ring.clone(),
-            Stroke::new(5.0, Color32::from_rgba_unmultiplied(255, 255, 255, 150)),
+            Stroke::new(5.0, pal.panel.gamma_multiply(0.6)),
         ));
         painter.add(Shape::closed_line(ring, Stroke::new(1.0, faint)));
         let mut pick = None;
@@ -469,7 +516,7 @@ impl ViewCube {
             if near {
                 painter.circle_filled(at, 7.5, accent);
             } else {
-                painter.circle_filled(at, 6.5, Color32::from_rgba_unmultiplied(255, 255, 255, 230));
+                painter.circle_filled(at, 6.5, pal.panel);
             }
             let colour = if near {
                 Color32::WHITE
@@ -498,7 +545,11 @@ impl ViewCube {
         } else {
             None
         };
-        let face_fill = Color32::from_rgb(250, 250, 251);
+        let face_fill = if pal.dark {
+            pal.raise
+        } else {
+            Color32::from_rgb(250, 250, 251)
+        };
         // whole faces first, so no seam shows between cells
         for (n, u, v, _) in FACES.iter() {
             if v3(*n).dot(toward) < 0.02 {
@@ -511,10 +562,13 @@ impl ViewCube {
                 .collect();
             painter.add(Shape::convex_polygon(face, face_fill, Stroke::NONE));
         }
+        // a lit edge or corner is see-through enough for the face's name
+        // to read under it (MU19)
         for cell in all.iter().filter(|c| hovered_zone == Some(c.zone)) {
+            let whole_face = FACES.get(cell.face).is_some_and(|f| f.0 == cell.zone);
             painter.add(Shape::convex_polygon(
                 cell.points.clone(),
-                accent.gamma_multiply(0.85),
+                accent.gamma_multiply(if whole_face { 0.85 } else { 0.45 }),
                 Stroke::NONE,
             ));
         }
@@ -528,10 +582,7 @@ impl ViewCube {
                 .iter()
                 .map(|(a, b)| to_screen(n3 + u3 * *a + v3_ * *b))
                 .collect();
-            painter.add(Shape::closed_line(
-                outline,
-                Stroke::new(1.0, Color32::from_rgb(150, 154, 160)),
-            ));
+            painter.add(Shape::closed_line(outline, Stroke::new(1.0, pal.edge)));
             if facing > 0.25 {
                 // the label printed on the face, so it turns and
                 // foreshortens with it and always reads the right way
@@ -546,11 +597,24 @@ impl ViewCube {
                     ink.gamma_multiply(0.35 + 0.65 * fade)
                 };
                 let width = 1.15 + 0.35 * facing;
-                for st in label_strokes(label) {
-                    let pts: Vec<Pos2> = st
-                        .iter()
-                        .map(|(a, b)| to_screen(n3 + lu * *a + lv * *b))
-                        .collect();
+                let strokes: Vec<Vec<Pos2>> = label_strokes(label)
+                    .iter()
+                    .map(|st| {
+                        st.iter()
+                            .map(|(a, b)| to_screen(n3 + lu * *a + lv * *b))
+                            .collect()
+                    })
+                    .collect();
+                // a light halo first, so a lit edge never swallows the name
+                if !lit {
+                    for pts in &strokes {
+                        painter.add(Shape::line(
+                            pts.clone(),
+                            Stroke::new(width + 2.4, face_fill.gamma_multiply(0.7)),
+                        ));
+                    }
+                }
+                for pts in strokes {
                     painter.add(Shape::line(pts, Stroke::new(width, colour)));
                 }
             }
@@ -580,7 +644,7 @@ impl ViewCube {
         });
         let press = if pressed {
             ui.input(|i| i.pointer.press_origin())
-                .filter(|p| area.contains(*p))
+                .filter(|p| area.contains(*p) && hot(*p))
         } else {
             None
         };
@@ -591,6 +655,8 @@ impl ViewCube {
         let buttons = [
             (Pick::Zoom, "Zoom: drag up to zoom in, down to zoom out"),
             (Pick::Pan, "Pan: drag to move the view"),
+            (Pick::FitAll, "Frame everything (Home)"),
+            (Pick::FitSel, "Frame the selection (.)"),
             (
                 Pick::Home,
                 "Home: frame everything from the three-quarter view",
@@ -607,7 +673,7 @@ impl ViewCube {
             ),
         ];
         for (k, (what, hint)) in buttons.into_iter().enumerate() {
-            let at = c + Vec2::new(-84.0, -50.0 + 25.0 * k as f32);
+            let at = Pos2::new(col_x, rect.top() + 24.0 + 28.0 * k as f32);
             let held = self.grab.is_some_and(|g| {
                 matches!(
                     (g, what),
@@ -622,18 +688,32 @@ impl ViewCube {
                     _ => {}
                 }
             }
-            let (ground, mark) = if lit {
-                (accent, Color32::WHITE)
-            } else {
-                (Color32::from_rgba_unmultiplied(255, 255, 255, 235), ink)
+            // a rounded square with a faint accent tint when lit, as the
+            // drawing areas' buttons (MU20)
+            let mark = ink;
+            let square = egui::Rect::from_center_size(at, Vec2::splat(24.0));
+            if lit {
+                painter.rect_filled(square, 6.0, accent.gamma_multiply(0.18));
+            }
+            // the drawing areas' icons, 16 px in a 28 px cell, where one
+            // exists (MU24: the two columns looked different)
+            let svg = match what {
+                Pick::Zoom => Some("zoom-in"),
+                Pick::Pan => Some("hand"),
+                Pick::FitAll => Some("frame-all"),
+                Pick::FitSel => Some("frame-selection"),
+                Pick::Home => Some("house"),
+                _ => None,
             };
-            painter.circle(
-                at,
-                10.5,
-                ground,
-                Stroke::new(1.0, Color32::from_rgb(196, 199, 204)),
-            );
-            button_icon(&painter, at, what, ortho, mark);
+            match svg {
+                Some(name) => crate::svgicon::paint(
+                    &painter,
+                    egui::Rect::from_center_size(at, Vec2::splat(16.0)),
+                    name,
+                    mark,
+                ),
+                None => button_icon(&painter, at, what, ortho, mark),
+            }
             if lit {
                 tip = Some(hint.to_string());
                 if clicked && !matches!(what, Pick::Zoom | Pick::Pan) {
@@ -662,7 +742,7 @@ impl ViewCube {
 
 /// The icon on one of the cube's round buttons, centred on `c`.
 fn button_icon(painter: &egui::Painter, c: Pos2, what: Pick, ortho: bool, colour: Color32) {
-    let stroke = Stroke::new(1.4, colour);
+    let stroke = Stroke::new(1.6, colour);
     let line = |pts: &[(f32, f32)]| {
         painter.add(Shape::line(
             pts.iter().map(|(x, y)| c + Vec2::new(*x, *y)).collect(),
@@ -679,7 +759,7 @@ fn button_icon(painter: &egui::Painter, c: Pos2, what: Pick, ortho: bool, colour
             // three quarters of a circle and its arrowhead
             // left turns anticlockwise, right clockwise
             let dir = -(q as f32);
-            let r = 4.6;
+            let r = 6.0;
             let pts: Vec<(f32, f32)> = (0..=18)
                 .map(|i| {
                     let t = (-60.0 + 270.0 * i as f32 / 18.0).to_radians();
@@ -744,7 +824,8 @@ fn button_icon(painter: &egui::Painter, c: Pos2, what: Pick, ortho: bool, colour
                 ));
             }
         }
-        Pick::From(_) => {}
+        // drawn from the icon set (see the column)
+        Pick::From(_) | Pick::FitAll | Pick::FitSel => {}
     }
 }
 
@@ -759,7 +840,9 @@ pub fn target_of(pick: Pick, cam: &OrbitCamera) -> Option<(f32, f32)> {
             (yaw / FRAC_PI_4).round() * FRAC_PI_4 + q as f32 * FRAC_PI_2,
             pitch,
         )),
-        Pick::Home | Pick::Projection | Pick::Zoom | Pick::Pan => None,
+        Pick::Home | Pick::Projection | Pick::Zoom | Pick::Pan | Pick::FitAll | Pick::FitSel => {
+            None
+        }
     }
 }
 
@@ -773,6 +856,8 @@ pub fn said(pick: Pick) -> String {
         Pick::Quarter(1) => "Turned a quarter to the left.".into(),
         Pick::Quarter(_) => "Turned a quarter to the right.".into(),
         Pick::Home => "Framed everything.".into(),
+        Pick::FitAll => "Framed everything.".into(),
+        Pick::FitSel => "Framed the selection.".into(),
         Pick::Projection | Pick::Zoom | Pick::Pan => String::new(),
     }
 }

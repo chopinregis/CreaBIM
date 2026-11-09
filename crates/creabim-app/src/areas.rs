@@ -22,6 +22,11 @@ pub enum Shows {
     /// In a workspace not yet opened: the sheet the drawing open now is
     /// placed on, or the first sheet.
     SheetOfCurrent,
+    /// The project's notepad, as a view of its own (MU28, as Blender's text
+    /// editor in an area).
+    Notes,
+    /// The profile library and its editor (MU36: a profile as its own view).
+    Profiles,
 }
 
 /// A layout of areas: one area, or two side by side (`across`) or one

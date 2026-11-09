@@ -31,6 +31,11 @@ pub struct MemberSettings {
     /// Width of new strips, and the sides of new pads.
     pub footing_width: f64,
     pub footing_thickness: f64,
+    /// New doors', windows' and bare holes' width, height and sill, set in
+    /// the bar before placing (MU18); a type, when picked, sets its own.
+    pub door: [f64; 3],
+    pub window: [f64; 3],
+    pub hole: [f64; 3],
 }
 
 impl Default for MemberSettings {
@@ -51,6 +56,9 @@ impl Default for MemberSettings {
             footing_pad: false,
             footing_width: creabim_core::footing::STRIP_WIDTH,
             footing_thickness: creabim_core::footing::STRIP_THICKNESS,
+            door: [0.9, 2.1, 0.0],
+            window: [1.2, 1.3, 0.9],
+            hole: [1.0, 1.0, 1.0],
         }
     }
 }
@@ -617,20 +625,19 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             .changed()
         })
     };
-    let weak = |ui: &mut egui::Ui, t: String| {
-        ui.label(egui::RichText::new(t).weak());
-    };
+    // under the fields, in their column, as Blender's notes (MU31)
+    let weak = |ui: &mut egui::Ui, t: String| crate::props::note(ui, t);
     match kind {
         ElementKind::Column(c) => {
             let mut round = matches!(c.profile, Profile::Round { .. });
-            ui.horizontal(|ui| {
-                ui.label("Profile");
-                let a = ui.selectable_value(&mut round, false, "Rectangular");
-                let b = ui.selectable_value(&mut round, true, "Round");
-                if a.changed() || b.changed() {
-                    label = "Column profile";
-                }
-            });
+            if crate::props::choice(
+                ui,
+                "Profile",
+                &mut round,
+                &[(false, "Rectangular", ""), (true, "Round", "")],
+            ) {
+                label = "Column profile";
+            }
             if label == "Column profile" {
                 c.profile = match (round, c.profile) {
                     (true, Profile::Rectangle { width, .. }) => Profile::Round { diameter: width },
@@ -753,17 +760,37 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             }
             let n = r.boundary.len();
             if matches!(r.shape, RoofShape::Shed | RoofShape::Gable) && n > 0 {
-                ui.horizontal(|ui| {
-                    ui.label(if r.shape == RoofShape::Shed {
-                        "Low edge"
-                    } else {
-                        "Eave edge"
-                    });
-                    if ui.button("Next edge").clicked() {
-                        r.edge = (r.edge + 1) % n;
-                        label = "Roof edge";
-                    }
-                    ui.label(format!("{} of {n}", r.edge % n + 1));
+                let what = if r.shape == RoofShape::Shed {
+                    "Low edge"
+                } else {
+                    "Eave edge"
+                };
+                crate::props::row(ui, what, |ui| {
+                    crate::props::flow(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 1.0;
+                        let h = ui.spacing().interact_size.y;
+                        let w = ((ui.available_width() - 2.0) / 3.0).max(24.0);
+                        if ui
+                            .add_sized([w, h], egui::Button::new("‹"))
+                            .on_hover_text("The edge before")
+                            .clicked()
+                        {
+                            r.edge = (r.edge + n - 1) % n;
+                            label = "Roof edge";
+                        }
+                        ui.add_sized(
+                            [w, h],
+                            egui::Label::new(format!("{} of {n}", r.edge % n + 1)),
+                        );
+                        if ui
+                            .add_sized([w, h], egui::Button::new("›"))
+                            .on_hover_text("The next edge")
+                            .clicked()
+                        {
+                            r.edge = (r.edge + 1) % n;
+                            label = "Roof edge";
+                        }
+                    })
                 });
             }
             if r.effective_shape() != r.shape {
@@ -821,27 +848,23 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 label = "Stair landing";
             }
             if let Some(l) = &mut s.landing {
-                ui.horizontal(|ui| {
-                    ui.label("Landing after");
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut l.after)
-                                .range(1..=n.saturating_sub(1).max(1))
-                                .suffix(" risers"),
-                        )
-                        .changed()
-                    {
+                // full rows in the label and field columns (MU31)
+                crate::props::row(ui, "Landing after", |ui| {
+                    let d = egui::DragValue::new(&mut l.after)
+                        .range(1..=n.saturating_sub(1).max(1))
+                        .suffix(" risers");
+                    if crate::props::fill(ui, d).changed() {
                         label = "Stair landing";
                     }
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Turns");
-                    let a = ui.selectable_value(&mut l.left, true, "Left");
-                    let b = ui.selectable_value(&mut l.left, false, "Right");
-                    if a.changed() || b.changed() {
-                        label = "Stair turn";
-                    }
-                });
+                if crate::props::choice(
+                    ui,
+                    "Turns",
+                    &mut l.left,
+                    &[(true, "Left", ""), (false, "Right", "")],
+                ) {
+                    label = "Stair turn";
+                }
             }
             let lay = s.layout(rise);
             let going: f64 = lay.flights.iter().map(|f| f.run(s.tread)).sum();
@@ -874,15 +897,51 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             if num(ui, "Post spacing", &mut r.post_spacing, 0.1, 5.0) {
                 label = "Railing posts"
             }
+            // its top rail from the profile library (MU36)
+            crate::props::row(ui, "Top rail", |ui| {
+                let w = ui.available_width();
+                let mut names: Vec<String> = creabim_core::profiles::project_profiles(model)
+                    .into_iter()
+                    .map(|p| p.name)
+                    .collect();
+                names.extend(["Handrail", "Tube", "Bar"].iter().map(|s| s.to_string()));
+                egui::ComboBox::from_id_salt("rail.profile")
+                    .icon(crate::props::combo_icon)
+                    .width(w)
+                    .truncate()
+                    .selected_text(
+                        r.rail_profile
+                            .clone()
+                            .unwrap_or_else(|| "Square bar".into()),
+                    )
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(r.rail_profile.is_none(), "Square bar")
+                            .clicked()
+                        {
+                            r.rail_profile = None;
+                            label = "Railing top rail";
+                        }
+                        for n in &names {
+                            if ui
+                                .selectable_label(r.rail_profile.as_deref() == Some(n.as_str()), n)
+                                .clicked()
+                            {
+                                r.rail_profile = Some(n.clone());
+                                label = "Railing top rail";
+                            }
+                        }
+                    });
+            });
             if let Some(side) = &mut r.stair {
-                ui.horizontal(|ui| {
-                    ui.label("Side");
-                    let a = ui.selectable_value(&mut side.left, true, "Left");
-                    let b = ui.selectable_value(&mut side.left, false, "Right");
-                    if a.changed() || b.changed() {
-                        label = "Railing side";
-                    }
-                });
+                if crate::props::choice(
+                    ui,
+                    "Side",
+                    &mut side.left,
+                    &[(true, "Left", ""), (false, "Right", "")],
+                ) {
+                    label = "Railing side";
+                }
                 weak(ui, "Follows its stair.".into());
             }
             weak(
@@ -962,9 +1021,8 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
             crate::props::fill(ui, crate::units::drag(v).range(lo..=hi)).changed()
         })
     };
-    let weak = |ui: &mut egui::Ui, t: String| {
-        ui.label(egui::RichText::new(t).weak());
-    };
+    // under the fields, in their column, as Blender's notes (MU31)
+    let weak = |ui: &mut egui::Ui, t: String| crate::props::note(ui, t);
     if num(ui, "Width", &mut f.width, 0.1, 10.0) {
         label = "Footing width";
     }
@@ -1036,7 +1094,7 @@ fn footing_fields(ui: &mut egui::Ui, model: &Model, f: &mut creabim_core::Footin
                         f.end = f.start;
                         label = "Move footing";
                     }
-                    let r = ui.horizontal(|ui| {
+                    let r = crate::props::flow(ui, |ui| {
                         ui.label("Rotation");
                         ui.add(
                             egui::DragValue::new(&mut f.rotation)
@@ -1094,7 +1152,44 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             "icon": icon, "hint": hint,
         })
     };
+    let opening = |key: &str, s: [f64; 3], what: &str| {
+        vec![
+            num(
+                &format!("{key}_width"),
+                "Width",
+                s[0],
+                "m",
+                0.01,
+                0.1,
+                20.0,
+                &format!("Width of new {what}s. Typing a size here places it without a type."),
+            ),
+            num(
+                &format!("{key}_height"),
+                "Height",
+                s[1],
+                "m",
+                0.01,
+                0.1,
+                20.0,
+                &format!("Height of new {what}s"),
+            ),
+            num(
+                &format!("{key}_sill"),
+                "Sill",
+                s[2],
+                "m",
+                0.01,
+                0.0,
+                20.0,
+                &format!("How high new {what}s start above the wall's base"),
+            ),
+        ]
+    };
     let mut out = match state.tool {
+        Tool::Door => opening("door", m.door, "door"),
+        Tool::Window => opening("window", m.window, "window"),
+        Tool::Opening => opening("hole", m.hole, "opening"),
         Tool::Column => vec![
             toggle(
                 "square",
@@ -1259,6 +1354,20 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
         "railing_height" => m.railing_height = v.clamp(0.3, 3.0),
         "footing_width" => m.footing_width = v.clamp(0.1, 10.0),
         "footing_thickness" => m.footing_thickness = v.clamp(0.05, 5.0),
+        k if k.starts_with("door_") || k.starts_with("window_") || k.starts_with("hole_") => {
+            let (kind, what) = k.split_once('_').unwrap_or((k, ""));
+            let s = match kind {
+                "door" => &mut m.door,
+                "window" => &mut m.window,
+                _ => &mut m.hole,
+            };
+            match what {
+                "width" => s[0] = v.clamp(0.1, 20.0),
+                "height" => s[1] = v.clamp(0.1, 20.0),
+                "sill" => s[2] = v.clamp(0.0, 20.0),
+                _ => {}
+            }
+        }
         _ => {}
     }
 }

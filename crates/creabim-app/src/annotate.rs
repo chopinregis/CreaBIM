@@ -40,7 +40,17 @@ pub fn ink(look: &TextLook, selected: bool, highlight: Color32) -> Color32 {
 /// Text height on screen, in pixels, for a look in a pane at `mm` drawing
 /// units per paper mm.
 pub fn text_px(look: &TextLook, mm: f64, xf: &Xf) -> f32 {
-    ((look.size * mm * xf.scale as f64) as f32).max(7.0)
+    let px = (look.size * mm * xf.scale as f64) as f32;
+    if (mm - 1.0).abs() < 1e-9 {
+        // on a sheet's paper (mm = 1): its true size, shrinking with the
+        // sheet and left out once too small, never spilling off (MU23)
+        px.max(1.0)
+    } else {
+        // in a view while working: up to 9 px so a detail's tags read
+        // (A5-7), but never more than twice their true size, so a view
+        // zoomed far out does not fill with oversized words (MU28)
+        px.max(9.0_f32.min(px * 2.0))
+    }
 }
 
 /// Text on screen in a look's family, weight and slant, turned `angle`
@@ -56,6 +66,9 @@ pub fn text(
     anchor: Anchor,
     look: &TextLook,
 ) {
+    if px < 3.0 {
+        return;
+    }
     let family = match look.font {
         Font::Mono => egui::FontFamily::Monospace,
         Font::Sans | Font::Serif => egui::FontFamily::Proportional,
@@ -282,10 +295,15 @@ pub struct Draft {
     /// A note was just placed: Properties should put the cursor in its text.
     pub focus_text: bool,
     pub grab: Option<Grab>,
+    /// The area whose drag took `grab`: another area, not dragged, must
+    /// not let it go (MU31: a sheet note moved one frame, then stopped).
+    pub grab_by: Option<egui::Id>,
     /// The styles new dimensions, notes and tags get (none: the default).
     pub dim_style: Option<ElementId>,
     pub note_style: Option<ElementId>,
     pub tag_style: Option<ElementId>,
+    /// New tags read their host's material build-up (Annotate step 5).
+    pub tag_material: bool,
 }
 
 impl Default for Draft {
@@ -297,9 +315,11 @@ impl Default for Draft {
             leader: true,
             focus_text: false,
             grab: None,
+            grab_by: None,
             dim_style: None,
             note_style: None,
             tag_style: None,
+            tag_material: false,
         }
     }
 }
@@ -916,10 +936,15 @@ pub fn drag(
             ) => selection.only(id),
             None => {}
         }
+        d.grab_by = d.grab.map(|_| response.id);
+    }
+    if d.grab.is_some() && d.grab_by.is_some_and(|o| o != response.id) {
+        return None;
     }
     let grab = d.grab?;
     if response.drag_stopped() || !response.dragged() {
         d.grab = None;
+        d.grab_by = None;
         return Some(None);
     }
     let p = xf.to_world(response.interact_pointer_pos()?);
@@ -1232,21 +1257,26 @@ pub fn look_ui(
                 out = LookEdit::NewStyle;
             }
         });
-    ui.horizontal(|ui| {
-        let mut own = color.is_some();
-        if crate::props::switch(ui, &mut own, "Own colour")
-            .on_hover_text("Override the style's colour for this one")
-            .changed()
-        {
-            *color = own.then_some([0.8, 0.1, 0.1]);
-            out = LookEdit::Changed("Annotation colour");
-        }
-        if let Some(c) = color {
+    // the switch, then the swatch on a row of its own (MU34: the swatch
+    // sat past the panel's edge)
+    let mut own = color.is_some();
+    if crate::props::switch(ui, &mut own, "Own colour")
+        .on_hover_text("Override the style's colour for this one")
+        .changed()
+    {
+        *color = own.then_some([0.8, 0.1, 0.1]);
+        out = LookEdit::Changed("Annotation colour");
+    }
+    if let Some(c) = color {
+        crate::props::row(ui, "Colour", |ui| {
+            let h = ui.spacing().interact_size.y;
+            ui.spacing_mut().interact_size.x = ui.available_width().max(40.0);
+            ui.spacing_mut().interact_size.y = h;
             if ui.color_edit_button_rgb(c).changed() {
                 out = LookEdit::Changed("Annotation colour");
             }
-        }
-    });
+        });
+    }
     out
 }
 
@@ -1284,21 +1314,21 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
                 }
             }
         });
-    ui.horizontal(|ui| {
-        ui.label("Size on paper");
-        if ui
-            .add(
-                egui::DragValue::new(&mut s.size)
-                    .speed(0.05)
-                    .range(0.5..=50.0)
-                    .suffix(" mm"),
-            )
-            .changed()
+    // full-width fields in the label column, as every other row (MU29)
+    crate::props::row(ui, "Size on paper", |ui| {
+        if crate::props::fill(
+            ui,
+            egui::DragValue::new(&mut s.size)
+                .speed(0.05)
+                .range(0.5..=50.0)
+                .suffix(" mm"),
+        )
+        .changed()
         {
             label = Some("Text size");
         }
     });
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         let mut own = s.color.is_some();
         if crate::props::switch(ui, &mut own, "Colour")
             .on_hover_text("Off: black on paper, blue on screen")
@@ -1313,14 +1343,59 @@ pub fn style_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             }
         }
     });
-    ui.horizontal(|ui| {
-        if ui.checkbox(&mut s.bold, "Bold").changed() {
-            label = Some("Bold text");
-        }
-        if ui.checkbox(&mut s.italic, "Italic").changed() {
-            label = Some("Italic text");
-        }
+    // Blender's rows (MU31): toggles in the field column, then how the
+    // lines line up
+    crate::props::row(ui, "Emphasis", |ui| {
+        crate::props::flow(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 1.0;
+            let h = ui.spacing().interact_size.y;
+            let w = ((ui.available_width() - 1.0) / 2.0).max(30.0);
+            if ui
+                .add_sized([w, h], egui::Button::selectable(s.bold, "Bold"))
+                .clicked()
+            {
+                s.bold = !s.bold;
+                label = Some("Bold text");
+            }
+            if ui
+                .add_sized([w, h], egui::Button::selectable(s.italic, "Italic"))
+                .clicked()
+            {
+                s.italic = !s.italic;
+                label = Some("Italic text");
+            }
+        })
     });
+    use creabim_core::TextAlign;
+    if crate::props::choice(
+        ui,
+        "Align",
+        &mut s.align,
+        &[
+            (
+                TextAlign::Usual,
+                "Usual",
+                "Each kind's own: notes from the left, room tags centred",
+            ),
+            (
+                TextAlign::Left,
+                "Left",
+                "Every line from the block's left edge",
+            ),
+            (
+                TextAlign::Centre,
+                "Centre",
+                "Every line on the block's middle",
+            ),
+            (
+                TextAlign::Right,
+                "Right",
+                "Every line against the block's right edge",
+            ),
+        ],
+    ) {
+        label = Some("Text alignment");
+    }
     if let Some(l) = ends_ui(ui, s) {
         label = Some(l);
     }
@@ -1338,6 +1413,7 @@ fn terminator_combo(
     let mut changed = false;
     crate::props::row(ui, text, |ui| {
         egui::ComboBox::from_id_salt(salt)
+            .icon(crate::props::combo_icon)
             .selected_text(t.map_or(usual.to_string(), |t| t.label().to_string()))
             .width(ui.available_width())
             .show_ui(ui, |ui| {
@@ -1359,7 +1435,7 @@ pub fn leader_ui(
     elbow: &mut Option<DVec2>,
 ) -> Option<&'static str> {
     let mut label = None;
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         if terminator_combo(ui, "leader_end_own", "Leader end", usual, end) {
             label = Some("Leader end");
         }
@@ -1379,7 +1455,7 @@ pub fn leader_ui(
 /// A style's line ends, tag shape and what it is for.
 pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
     let mut label = None;
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         if terminator_combo(
             ui,
             "style_end",
@@ -1390,7 +1466,7 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             label = Some("Dimension ends");
         }
     });
-    ui.horizontal(|ui| {
+    crate::props::flow(ui, |ui| {
         if terminator_combo(
             ui,
             "style_leader",
@@ -1401,17 +1477,16 @@ pub fn ends_ui(ui: &mut egui::Ui, s: &mut TextStyle) -> Option<&'static str> {
             label = Some("Leader end");
         }
     });
-    ui.horizontal(|ui| {
+    crate::props::row(ui, "End size", |ui| {
         let mut size = s.end_size.unwrap_or(creabim_geom::annotation::END_SIZE);
-        ui.label("End size");
-        if ui
-            .add(
-                egui::DragValue::new(&mut size)
-                    .speed(0.05)
-                    .range(0.5..=10.0)
-                    .suffix(" mm"),
-            )
-            .changed()
+        if crate::props::fill(
+            ui,
+            egui::DragValue::new(&mut size)
+                .speed(0.05)
+                .range(0.5..=10.0)
+                .suffix(" mm"),
+        )
+        .changed()
         {
             s.end_size = Some(size);
             label = Some("Terminator size");
@@ -1475,15 +1550,21 @@ pub fn style_inline(
     };
     let users = style_users(doc.model(), id);
     let mut label = None;
-    egui::CollapsingHeader::new(format!("Edit \u{201c}{}\u{201d}", e.name))
-        .id_salt(("style", id))
-        .open(open.then_some(true))
-        .show(ui, |ui| {
-            label = style_ui(ui, &mut s);
-            ui.label(
-                egui::RichText::new(format!("Changes every one of its {users} users.")).weak(),
-            );
-        });
+    // a section of its own, with the panel's chevron (MU26)
+    let key = egui::Id::new(("style.open", id));
+    if open {
+        ui.ctx().data_mut(|d| d.insert_temp(key, true));
+    }
+    let shown = ui.ctx().data(|d| d.get_temp::<bool>(key)).unwrap_or(false);
+    let title = format!("Text style \u{201c}{}\u{201d}", e.name);
+    let (resp, _) = crate::props::header(ui, &title, shown, false);
+    if resp.clicked() {
+        ui.ctx().data_mut(|d| d.insert_temp(key, !shown));
+    }
+    if shown {
+        label = style_ui(ui, &mut s);
+        ui.label(egui::RichText::new(format!("Changes every one of its {users} users.")).weak());
+    }
     let label = label?;
     let r = doc.edit_merged(id, label, |e| e.kind = ElementKind::TextStyle(s));
     Some(match r {
@@ -1523,14 +1604,36 @@ pub fn note_ui(
     n: &mut Note,
     focus: &mut bool,
     unit: f64,
+    pop_out: &mut bool,
 ) -> Option<&'static str> {
     let mut label = None;
-    ui.label("Text");
-    let r = ui.add(
-        egui::TextEdit::multiline(&mut n.text)
-            .desired_rows(3)
-            .desired_width(f32::INFINITY),
-    );
+    // the field keeps its size and scrolls inside; the small button at its
+    // corner opens the large editor (MU27)
+    crate::props::flow(ui, |ui| {
+        ui.label("Text");
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if crate::props::icon_button(
+                ui,
+                "maximise",
+                "Edit in a larger window (or double-click the note)",
+            )
+            .clicked()
+            {
+                *pop_out = true;
+            }
+        });
+    });
+    let r = egui::ScrollArea::vertical()
+        .id_salt("note.text")
+        .max_height(110.0)
+        .show(ui, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut n.text)
+                    .desired_rows(4)
+                    .desired_width(f32::INFINITY),
+            )
+        })
+        .inner;
     if std::mem::take(focus) {
         r.request_focus();
         // select it all, so typing replaces the placeholder
@@ -1545,6 +1648,41 @@ pub fn note_ui(
     }
     if r.changed() {
         label = Some("Note text");
+    }
+    // a text box (MU26): wraps to a width, reads markdown
+    let mut boxed = n.width.is_some();
+    crate::props::row(ui, "Box", |ui| {
+        crate::props::flow(ui, |ui| {
+            if ui
+                .checkbox(&mut boxed, "Wrap at")
+                .on_hover_text(
+                    "Lines wrap to this width on paper; off, each line runs as long as it is",
+                )
+                .changed()
+            {
+                n.width = boxed.then_some(60.0);
+                label = Some("Note box");
+            }
+            if let Some(w) = &mut n.width {
+                if ui
+                    .add(
+                        egui::DragValue::new(w)
+                            .speed(0.5)
+                            .range(5.0..=800.0)
+                            .suffix(" mm"),
+                    )
+                    .changed()
+                {
+                    label = Some("Note box");
+                }
+            }
+        });
+    });
+    if crate::props::switch(ui, &mut n.markdown, "Markdown")
+        .on_hover_text("# heading (capitals, underlined), - bullet, 1. numbered, - [ ] and - [x] checkboxes; **bold** and *italic* marks are dropped on paper")
+        .changed()
+    {
+        label = Some("Note markdown");
     }
     let mut leader = n.leader.is_some();
     if crate::props::switch(ui, &mut leader, "Leader")

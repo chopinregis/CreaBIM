@@ -222,7 +222,7 @@ html[data-pane="top"] body {
 }
 
 .bar1 {
-  height: 40px;
+  height: 36px;
   display: flex;
   align-items: center;
   padding: 0 10px 0 12px;
@@ -260,7 +260,20 @@ html[data-pane="top"] body {
 
 html[data-theme="light"] .logo, html[data-theme="paper"] .logo, html[data-theme="sage"] .logo { color: #4F6B4C; }
 
-.logo svg.mark { width: 20px; height: 20px; display: block; }
+/* the full mark, white on a rounded sage tile that fits the bar, as small
+   app logos do (MU20, MU21: it no longer spills out of its button) */
+.logo svg.mark { width: 22px; height: 22px; display: block; }
+.bar1 .brand .logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #4F6B4C;
+  color: #FFFFFF;
+  overflow: hidden;
+}
+.bar1 .brand .logo svg.mark { width: 21px; height: 21px; }
+/* the branch is drawn in sage: white on the sage tile */
+.bar1 .brand .logo svg.mark path[stroke="#4F6B4C"] { stroke: #FFFFFF; }
 
 .menubtn {
   height: 28px;
@@ -305,7 +318,7 @@ html[data-theme="light"] .logo, html[data-theme="paper"] .logo, html[data-theme=
 .doc .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex: none; }
 
 .bar2 {
-  height: 40px;
+  height: 38px;
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -380,7 +393,7 @@ html[data-theme="light"] .logo, html[data-theme="paper"] .logo, html[data-theme=
 /* The tool options strip, under the tools: never over a view. */
 .bar2 { border-bottom: 1px solid var(--border-2); }
 .bar3 {
-  height: 32px;
+  height: 30px;
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -633,7 +646,7 @@ html[data-pane="status"] body { background: var(--bg); border-top: 1px solid var
 .status .msg > span:not(.hint):not(.pulse) { flex: 0 1 auto; max-width: 62%; }
 .status .msg span.hint { color: var(--muted); flex: 1 1 0; min-width: 60px; padding-left: 10px; border-left: 1px solid var(--border); }
 .status .pulse { width: 7px; height: 7px; border-radius: 4px; background: var(--good); flex: none; box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.15); }
-.status .dd, .status .toggle, .status .btn { height: 24px; font-size: 12px; }
+.status .dd, .status .toggle, .status .btn { height: 20px; font-size: 12px; }
 .status .dd { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
 .status .dd:hover { background: var(--raise); box-shadow: inset 0 0 0 1px var(--border-2); }
 .status .meta { color: var(--faint); padding: 0 8px; white-space: nowrap; }
@@ -980,3 +993,45 @@ kbd {
 .np-btn { height: 32px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border-2); color: var(--text); background: var(--panel); font-weight: 550; }
 .np-btn:hover { background: var(--raise); }
 .np-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* a tool that can't be used in the view in front: greyed, why on hover (MU24) */
+.tool.off, .tool:disabled { opacity: .32; cursor: default; }
+.tool.off:hover { background: transparent; }
+
+/* MU27: a narrow browser fades its words out instead of wrapping them or
+   cutting them with dots, so it reads clean and stretching shows more */
+.browser-head .title { white-space: nowrap; overflow: hidden; min-width: 0; }
+.browser-head .title .count { white-space: nowrap; overflow: hidden; min-width: 0; flex: 0 1 auto; }
+.row span, .group > span:not(.n):not(.gnote) {
+  text-overflow: clip;
+  white-space: nowrap;
+  /* the span fills the row, so the fade falls on empty space unless the
+     words run that far */
+  flex: 1 1 auto;
+  min-width: 0;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+}
+
+/* MU27: the browser folded to a rail of its groups */
+.rail { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; height: 100%; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; background: var(--panel); }
+.rail::-webkit-scrollbar { display: none; }
+.rail-btn { flex: none; width: 32px; height: 28px; border: 0; background: transparent; border-radius: 6px; display: grid; place-items: center; color: var(--muted); cursor: pointer; }
+.rail-btn:hover { background: var(--raise); color: var(--text); }
+.rail-btn svg.i { width: 18px; height: 18px; }
+
+/* MU29: a quiet line under the tool line, as between the rows above it */
+.bar3 { border-bottom: 1px solid var(--border); }
+
+/* MU30: the guide's previous/next links as two equal cards */
+.pn { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pn-card { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; min-width: 0; }
+.pn-card:hover { background: var(--raise); }
+.pn-card.next { text-align: right; }
+.pn-card small { color: var(--muted); font-size: 11px; }
+.pn-card span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* MU30: a group's title fills its row, so the fade falls only where its
+   words run out of room (as before MU29); its note stays its own size */
+.group > span:not(.n):not(.gnote) { flex: 1 1 auto; min-width: 0; }
+.group > .gnote { flex: none; white-space: nowrap; }

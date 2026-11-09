@@ -178,6 +178,38 @@ pub struct PartSettings {
     pub plant: PlantForm,
     pub canopy: f64,
     pub plant_height: f64,
+    /// A profile from the library (a preset or the project's own) new
+    /// sweeps take instead of `profile` (MU27 block 5).
+    pub library: Option<String>,
+    /// A library profile the Extrusion tool places, pulled up (MU36).
+    pub extrusion_library: Option<String>,
+}
+
+impl PartSettings {
+    /// The profile new sweeps take, for a wall `wall` thick, and its name.
+    pub fn sweep_profile(&self, model: &Model, wall: f64) -> (Vec<DVec2>, String) {
+        if let Some(p) = self
+            .library
+            .as_deref()
+            .and_then(|n| creabim_core::profiles::find(model, n))
+        {
+            return (p, self.library.clone().unwrap_or_default());
+        }
+        let (a, b) = self.size;
+        (
+            self.profile.profile(wall, a, b, self.steps),
+            self.profile.label().to_string(),
+        )
+    }
+
+    /// The wall edge new sweeps follow: a library profile the top.
+    fn sweep_edge(&self) -> WallEdge {
+        if self.library.is_some() {
+            WallEdge::Top
+        } else {
+            self.profile.edge()
+        }
+    }
 }
 
 impl Default for PartSettings {
@@ -197,6 +229,8 @@ impl Default for PartSettings {
             plant: PlantForm::Tree,
             canopy: 4.0,
             plant_height: 6.0,
+            library: None,
+            extrusion_library: None,
         }
     }
 }
@@ -244,12 +278,8 @@ pub fn on_face(state: &PlanState) -> Option<(f64, f64, bool)> {
 }
 
 /// The profile and name of a sweep drawn now on a face in the 3D view.
-pub fn face_sweep(state: &PlanState) -> Option<(Vec<DVec2>, &'static str)> {
-    let s = &state.parts;
-    (state.tool == Tool::Sweep).then(|| {
-        let (a, b) = s.size;
-        (s.profile.profile(0.2, a, b, s.steps), s.profile.label())
-    })
+pub fn face_sweep(state: &PlanState, model: &Model) -> Option<(Vec<DVec2>, String)> {
+    (state.tool == Tool::Sweep).then(|| state.parts.sweep_profile(model, 0.2))
 }
 
 /// The new element (and any library material it needs, first) for an
@@ -359,31 +389,32 @@ pub fn click(
         }
         Tool::Sweep => {
             let (a, b) = s.size;
-            if s.path.is_empty() && s.profile != SweepProfile::Steps {
+            let _ = (a, b);
+            if s.path.is_empty() && (s.library.is_some() || s.profile != SweepProfile::Steps) {
                 if let Some(wall) = crate::memberstool::wall_at(doc.model(), level, p) {
                     let Some(ElementKind::Wall(w)) = doc.model().get(wall).map(|e| &e.kind) else {
                         return Ok(());
                     };
-                    let profile = s.profile.profile(w.thickness, a, b, s.steps);
-                    let part = Part::sweep(
+                    let (profile, name) = s.sweep_profile(doc.model(), w.thickness);
+                    let mut part = Part::sweep(
                         level,
                         profile,
                         Path::Wall {
                             wall,
-                            edge: s.profile.edge(),
+                            edge: s.sweep_edge(),
                             offset: 0.0,
                             extend: [0.0, 0.0],
                         },
                     );
+                    part.profile = s.library.clone();
                     state.status = Some(format!(
-                        "{} added along the wall's {}: it follows the wall. Click another wall for the next one.",
-                        s.profile.label(),
-                        s.profile.edge().label().to_lowercase()
+                        "{name} added along the wall's {}: it follows the wall. Click another wall for the next one.",
+                        s.sweep_edge().label().to_lowercase()
                     ));
                     return add(
                         doc,
                         selection,
-                        Element::new(s.profile.label(), ElementKind::Part(part)),
+                        Element::new(name, ElementKind::Part(part)),
                         "Sweep along wall",
                     );
                 }
@@ -396,8 +427,8 @@ pub fn click(
                 if pts.len() < 2 {
                     return Ok(());
                 }
-                let profile = s.profile.profile(0.2, a, b, s.steps);
-                let part = Part::sweep(
+                let (profile, name) = s.sweep_profile(doc.model(), 0.2);
+                let mut part = Part::sweep(
                     level,
                     profile,
                     Path::Points {
@@ -406,11 +437,12 @@ pub fn click(
                         normal: None,
                     },
                 );
-                state.status = Some(format!("{} added.", s.profile.label()));
+                part.profile = s.library.clone();
+                state.status = Some(format!("{name} added."));
                 return add(
                     doc,
                     selection,
-                    Element::new(s.profile.label(), ElementKind::Part(part)),
+                    Element::new(name, ElementKind::Part(part)),
                     "Draw sweep",
                 );
             }
@@ -440,6 +472,11 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
     let opt = |id: String, label: &str, on: bool, hint: &str| json!({"id": id, "label": label, "on": on, "hint": hint});
     let mut out = match state.tool {
         Tool::Extrusion => vec![
+            json!({
+                "kind": "menu", "key": "extrusion.library", "label": "Profile",
+                "value": s.extrusion_library.clone().unwrap_or_else(|| "Draw".into()), "icon": "profile",
+                "hint": "Draw the outline, or place a profile from the library at a click, pulled up by the Height",
+            }),
             num(
                 "extrusion_base",
                 "Base",
@@ -481,14 +518,23 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                     opt(
                         format!("part:profile.{}", p.label()),
                         p.label(),
-                        s.profile == *p,
+                        s.library.is_none() && s.profile == *p,
                         "The profile new sweeps start from",
                     )
                 })
                 .collect())];
-            v.push(num("size_a", la, s.size.0, "A size of the profile"));
-            v.push(num("size_b", lb, s.size.1, "A size of the profile"));
-            if s.profile == SweepProfile::Steps {
+            // the profile library: presets, the project's own, and ways to
+            // make one (MU27 block 5)
+            v.push(json!({
+                "kind": "menu", "key": "sweep.library", "label": "Profile",
+                "value": s.library.clone().unwrap_or_else(|| "Library".into()), "icon": "profile",
+                "hint": "Pick a profile from the library: presets and the project's own; or make one from a shape",
+            }));
+            if s.library.is_none() {
+                v.push(num("size_a", la, s.size.0, "A size of the profile"));
+                v.push(num("size_b", lb, s.size.1, "A size of the profile"));
+            }
+            if s.library.is_none() && s.profile == SweepProfile::Steps {
                 v.push(json!({
                     "kind": "number", "key": "part.steps", "label": "Steps", "value": s.steps,
                     "unit": "", "step": 1, "min": 1, "max": 40, "hint": "Number of steps",
@@ -572,6 +618,7 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
     let s = &mut state.parts;
     if let Some(p) = what.strip_prefix("profile.") {
         if let Some(p) = SweepProfile::ALL.into_iter().find(|x| x.label() == p) {
+            s.library = None;
             if p != s.profile {
                 s.profile = p;
                 s.size = p.defaults();
@@ -601,7 +648,7 @@ fn num(ui: &mut egui::Ui, text: &str, v: &mut f64, lo: f64, hi: f64) -> bool {
 }
 
 fn weak(ui: &mut egui::Ui, t: impl Into<String>) {
-    ui.label(egui::RichText::new(t.into()).weak().small());
+    crate::props::note(ui, t);
 }
 
 /// The Properties fields of a part or a site element. Returns the undo
@@ -713,7 +760,7 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
                 } => {
                     let name = model.get(*wall).map_or("?", |e| e.name.as_str());
                     weak(ui, format!("Follows wall {name}."));
-                    ui.horizontal(|ui| {
+                    crate::props::flow(ui, |ui| {
                         ui.label("Along its");
                         for e in [WallEdge::Top, WallEdge::Base] {
                             if ui.selectable_value(edge, e, e.label()).changed() {
@@ -747,19 +794,25 @@ fn part_fields(ui: &mut egui::Ui, model: &Model, p: &mut Part) -> &'static str {
         }
     }
     if !p.void {
-        egui::ComboBox::from_id_salt("part_ifc_class")
-            .selected_text(p.ifc_class.clone())
-            .width(190.0)
-            .show_ui(ui, |ui| {
-                for c in IFC_CLASSES {
-                    if ui.selectable_label(p.ifc_class == *c, *c).clicked() {
-                        p.ifc_class = c.to_string();
-                        label = "IFC class";
+        // a row in the field column, cut to the panel (MU36: it ran past)
+        crate::props::row(ui, "Exports as", |ui| {
+            let w = ui.available_width();
+            egui::ComboBox::from_id_salt("part_ifc_class")
+                .icon(crate::props::combo_icon)
+                .selected_text(p.ifc_class.clone())
+                .width(w)
+                .truncate()
+                .show_ui(ui, |ui| {
+                    for c in IFC_CLASSES {
+                        if ui.selectable_label(p.ifc_class == *c, *c).clicked() {
+                            p.ifc_class = c.to_string();
+                            label = "IFC class";
+                        }
                     }
-                }
-            })
-            .response
-            .on_hover_text("The IFC class it is exported as");
+                })
+                .response
+                .on_hover_text(format!("The IFC class it is exported as: {}", p.ifc_class));
+        });
     }
     if let Some((lo, hi)) = p.bounds(model) {
         weak(
@@ -794,32 +847,48 @@ fn site_fields(ui: &mut egui::Ui, model: &Model, s: &mut Site) -> &'static str {
             if num(ui, "Contours every", contour, 0.0, 50.0) {
                 label = "Contour interval";
             }
-            ui.label("Spot heights");
+            // Blender's rows (MU31): each spot a labelled row of X, Y, Z
+            // filling the field column, the operator under them
             let mut remove = None;
             for (i, q) in points.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    let mut changed = ui.add(crate::units::drag(&mut q.x)).changed();
-                    changed |= ui.add(crate::units::drag(&mut q.y)).changed();
-                    changed |= ui
-                        .add(crate::units::drag(&mut q.z))
-                        .on_hover_text("Height above the level")
-                        .changed();
-                    if changed {
-                        label = "Spot height";
-                    }
-                    if ui.small_button("✕").clicked() {
-                        remove = Some(i);
-                    }
+                crate::props::row(ui, &format!("Spot {}", i + 1), |ui| {
+                    crate::props::flow(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        let h = ui.spacing().interact_size.y;
+                        let w = ((ui.available_width() - 26.0) / 3.0).max(30.0);
+                        let mut changed = ui
+                            .add_sized([w, h], crate::units::drag(&mut q.x))
+                            .on_hover_text("X")
+                            .changed();
+                        changed |= ui
+                            .add_sized([w, h], crate::units::drag(&mut q.y))
+                            .on_hover_text("Y")
+                            .changed();
+                        changed |= ui
+                            .add_sized([w, h], crate::units::drag(&mut q.z))
+                            .on_hover_text("Height above the level")
+                            .changed();
+                        if changed {
+                            label = "Spot height";
+                        }
+                        if crate::props::icon_button(ui, "x", "Remove this spot height").clicked() {
+                            remove = Some(i);
+                        }
+                    })
                 });
             }
             if let Some(i) = remove {
                 points.remove(i);
                 label = "Remove spot height";
             }
-            if ui
-                .button("Add spot height")
-                .on_hover_text("A new spot height in the middle; type where it is and how high")
-                .clicked()
+            if crate::props::action(
+                ui,
+                "Spot heights",
+                "Add",
+                "A new spot height in the middle; type where it is and how high",
+                true,
+            )
+            .clicked()
             {
                 let n = boundary.len().max(1) as f64;
                 let c = boundary.iter().copied().sum::<DVec2>() / n;

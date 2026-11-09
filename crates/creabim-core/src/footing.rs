@@ -251,10 +251,32 @@ impl Footing {
     }
 }
 
+/// Every strip footing's plan pieces, by footing.
+pub type Strips = HashMap<ElementId, Vec<Vec<DVec2>>>;
+
 /// The plan outlines of every strip footing in the model, each in one
 /// piece or more (crossing strips cut each other into pieces), mitred and
 /// trimmed where strips meet.
-pub fn strip_outlines(model: &Model) -> HashMap<ElementId, Vec<Vec<DVec2>>> {
+pub fn strip_outlines(model: &Model) -> Strips {
+    // worked out once per model revision (revisions are unique across
+    // models): every footing's plan and mesh asks for all of them
+    static LAST: std::sync::Mutex<Option<(u64, Strips)>> = std::sync::Mutex::new(None);
+    let rev = model.revision();
+    if rev != 0 {
+        if let Some((r, m)) = LAST.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            if *r == rev {
+                return m.clone();
+            }
+        }
+    }
+    let out = strip_outlines_now(model);
+    if rev != 0 {
+        *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some((rev, out.clone()));
+    }
+    out
+}
+
+fn strip_outlines_now(model: &Model) -> HashMap<ElementId, Vec<Vec<DVec2>>> {
     // each strip as a wall as wide as it, on the level its plan is on
     let mut lines: Vec<(ElementId, Wall, f64)> = vec![];
     for e in model.iter() {

@@ -239,7 +239,6 @@ pub fn section_view_in(
 /// metre past each side, each with its head (name and elevation in the
 /// project's units) at the right-hand end. `scale` sizes the heads.
 pub fn level_datums(model: &Model, span: (f64, f64), scale: f64) -> Vec<PlanItem> {
-    let units = model.units();
     let look = crate::annotate::look_of(model, None, None);
     let mut items = Vec::new();
     for (e, l) in model.levels() {
@@ -255,7 +254,12 @@ pub fn level_datums(model: &Model, span: (f64, f64), scale: f64) -> Vec<PlanItem
             item: Box::new(crate::annotation::Annotation {
                 shape: crate::annotation::Shape::Level {
                     at: DVec2::new(x1, l.elevation),
-                    elevation: units.elevation(l.elevation),
+                    elevation: creabim_core::write_number(
+                        model,
+                        creabim_core::NumberKind::LevelHeads,
+                        None,
+                        l.elevation,
+                    ),
                     line_end: None,
                 },
                 text: e.name.clone(),
@@ -790,7 +794,140 @@ pub fn view_drawing_with(model: &Model, view: ElementId, xray: bool) -> Option<D
     // dimension lines whose style says so break where tags and notes
     // finally sit
     crate::annotate::break_dimensions(&mut d.items, v.scale / 1000.0);
+    apply_drawing_style(model, &mut d.items, v.graphics.drawing_style);
+    // roofs seen from above, under a plan's cut: the colour styles wash
+    // them in their material's colour too (MU33: a roof plan stayed white,
+    // its roofs never being cut)
+    {
+        use creabim_core::graphics::DrawingStyle as S;
+        let style = v.graphics.drawing_style;
+        if let (
+            creabim_core::ViewKind::Plan { level, cut_height },
+            S::MaterialColour | S::ColourHatch | S::ColourWash,
+        ) = (&v.kind, style)
+        {
+            let z0 = model.level(*level).map_or(0.0, |l| l.elevation);
+            let cut = z0 + cut_height;
+            let mut under: Vec<(f64, PlanItem)> = vec![];
+            for e in model.iter() {
+                let ElementKind::Roof(r) = &e.kind else {
+                    continue;
+                };
+                let base = model.level(r.level).map_or(0.0, |l| l.elevation) + r.base_offset;
+                if base < z0 - 0.5 || base + r.peak() > cut || hidden.contains(&e.id) {
+                    continue;
+                }
+                let rgb = creabim_core::material_of(model, e)
+                    .map(|(_, m)| m.color)
+                    .or_else(|| {
+                        let (_, a) = creabim_core::assembly::assembly_of(model, e)?;
+                        match &model.get(a.layers.first()?.material?)?.kind {
+                            ElementKind::Material(m) => Some(m.color),
+                            _ => None,
+                        }
+                    })
+                    .unwrap_or([0.6, 0.6, 0.6]);
+                let rgb = if style == S::ColourWash {
+                    rgb.map(|c| c + (1.0 - c) * 0.55)
+                } else {
+                    rgb.map(|c| c + (1.0 - c) * 0.25)
+                };
+                under.push((
+                    base + r.peak(),
+                    PlanItem::Shade {
+                        id: e.id,
+                        points: r.eave_outline(),
+                        rgb,
+                    },
+                ));
+            }
+            // the lower first, so a higher roof covers it (MU34: the
+            // green roof, lower, was drawn over the slate)
+            under.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut under: Vec<PlanItem> = under.into_iter().map(|u| u.1).collect();
+            if !under.is_empty() {
+                under.append(&mut d.items);
+                d.items = under;
+            }
+        }
+    }
     Some(d)
+}
+
+/// A view's drawing style over its cut fills (A4-11).
+pub fn apply_drawing_style(
+    model: &Model,
+    items: &mut Vec<PlanItem>,
+    style: creabim_core::graphics::DrawingStyle,
+) {
+    use creabim_core::graphics::DrawingStyle as S;
+    match style {
+        // only Colour and hatch keeps the materials' colours under hatches
+        S::Technical => {
+            for it in items.iter_mut() {
+                if let PlanItem::Fill { rgb, .. } = it {
+                    *rgb = None;
+                }
+            }
+        }
+        S::ColourHatch => {
+            for it in items.iter_mut() {
+                if let PlanItem::Fill { rgb: Some(c), .. } = it {
+                    // a touch lighter, so the hatch reads over it
+                    *c = c.map(|v| v + (1.0 - v) * 0.2);
+                }
+            }
+        }
+        S::Clean => items.retain(|it| !matches!(it, PlanItem::Fill { .. })),
+        S::Poche | S::MaterialColour | S::ColourWash | S::GreyWash => {
+            for it in items.iter_mut() {
+                let PlanItem::Fill {
+                    id,
+                    points,
+                    rgb: own,
+                    ..
+                } = it
+                else {
+                    continue;
+                };
+                let own = *own;
+                let wash = |c: [f32; 3]| c.map(|v| v + (1.0 - v) * 0.55);
+                let rgb = match style {
+                    S::Poche => [0.12, 0.12, 0.13],
+                    S::GreyWash => [0.86, 0.86, 0.85],
+                    // the layer's own material first (MU32: a layered wall
+                    // took its core's colour throughout)
+                    _ if own.is_some() => own.unwrap_or_default(),
+                    _ => model
+                        .get(*id)
+                        .and_then(|e| {
+                            creabim_core::material_of(model, e)
+                                .map(|(_, m)| m.color)
+                                // a layered element: its structure's
+                                .or_else(|| {
+                                    let (_, a) = creabim_core::assembly::assembly_of(model, e)?;
+                                    let i = (0..a.layers.len()).find(|i| a.is_core(*i))?;
+                                    match &model.get(a.layers[i].material?)?.kind {
+                                        ElementKind::Material(m) => Some(m.color),
+                                        _ => None,
+                                    }
+                                })
+                        })
+                        .unwrap_or([0.75, 0.75, 0.75]),
+                };
+                let rgb = if style == S::ColourWash {
+                    wash(rgb)
+                } else {
+                    rgb
+                };
+                *it = PlanItem::Shade {
+                    id: *id,
+                    points: std::mem::take(points),
+                    rgb,
+                };
+            }
+        }
+    }
 }
 
 /// Wash the elements a drawing shows hidden inside others (those with
@@ -1009,6 +1146,13 @@ fn crop_along(a: DVec3, b: DVec3, lo: f64, hi: f64) -> Option<(DVec3, DVec3)> {
 /// Edges where the surface creases, plus open boundaries. Coplanar
 /// triangulation edges inside a flat face are skipped.
 pub fn feature_edges(item: &SceneItem) -> Vec<(DVec3, DVec3)> {
+    feature_edges_over(item, 0.995)
+}
+
+/// [`feature_edges`] with its own crease: faces meeting at more than
+/// `acos(cos)` keep their edge. A sweep along a curve uses a wider one
+/// (25°), so the seams between its segments don't draw as ribs (MU23).
+pub fn feature_edges_over(item: &SceneItem, cos: f32) -> Vec<(DVec3, DVec3)> {
     let key = |p: [f32; 3]| {
         let q = |v: f32| (v as f64 * 1e4).round() as i64;
         (q(p[0]), q(p[1]), q(p[2]))
@@ -1037,9 +1181,7 @@ pub fn feature_edges(item: &SceneItem) -> Vec<(DVec3, DVec3)> {
     }
     let mut out: Vec<(DVec3, DVec3)> = edges
         .into_values()
-        .filter(|(_, _, ns)| {
-            ns.len() == 1 || ns.iter().any(|a| ns.iter().any(|b| a.dot(*b) < 0.995))
-        })
+        .filter(|(_, _, ns)| ns.len() == 1 || ns.iter().any(|a| ns.iter().any(|b| a.dot(*b) < cos)))
         .map(|(a, b, _)| (a, b))
         .collect();
     out.sort_by(|x, y| {
@@ -1577,6 +1719,45 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_views_drawing_style_changes_its_cut_fills_on_screen_and_paper() {
+        use creabim_core::graphics::DrawingStyle;
+        let m = creabim_core::starter::starter_house();
+        let plan = m.iter().find(|e| e.name == "Ground Floor plan").unwrap().id;
+        let fills = |d: &Drawing| {
+            d.items
+                .iter()
+                .filter(|i| matches!(i, PlanItem::Fill { .. }))
+                .count()
+        };
+        let shades = |d: &Drawing| {
+            d.items
+                .iter()
+                .filter(|i| matches!(i, PlanItem::Shade { .. }))
+                .count()
+        };
+        let base = view_drawing(&m, plan).unwrap();
+        assert!(fills(&base) > 0);
+        for (style, want_fills, more_shades) in [
+            (DrawingStyle::Poche, 0, true),
+            (DrawingStyle::MaterialColour, 0, true),
+            (DrawingStyle::Clean, 0, false),
+            (DrawingStyle::ColourWash, 0, true),
+            (DrawingStyle::GreyWash, 0, true),
+        ] {
+            let mut doc = creabim_core::document::Document::from_model(m.clone());
+            doc.edit(plan, "style", |e| {
+                if let ElementKind::View(v) = &mut e.kind {
+                    v.graphics.drawing_style = style;
+                }
+            })
+            .unwrap();
+            let d = view_drawing(doc.model(), plan).unwrap();
+            assert_eq!(fills(&d), want_fills, "{style:?}");
+            assert_eq!(shades(&d) > shades(&base), more_shades, "{style:?}");
+        }
+    }
     use creabim_core::sample::sample_house;
 
     fn sample() -> Model {

@@ -12,7 +12,10 @@ const INK: Color32 = Color32::from_rgb(31, 37, 43);
 const MUTED: Color32 = Color32::from_rgb(110, 116, 122);
 const HEADER: Color32 = Color32::from_rgb(236, 238, 236);
 const STRIPE: Color32 = Color32::from_rgb(246, 247, 245);
-const SELECTED: Color32 = Color32::from_rgb(255, 236, 214);
+// a soft tone that dark paper turns dark too, and an accent bar at the
+// row's left (MU29: the orange fill stayed light, its text unreadable)
+const SELECTED: Color32 = Color32::from_rgb(222, 228, 238);
+const SELECTED_BAR: Color32 = Color32::from_rgb(230, 120, 30);
 const RULE: Color32 = Color32::from_rgb(224, 226, 222);
 const ACCENT: Color32 = Color32::from_rgb(200, 100, 20);
 const ROW_H: f32 = 28.0;
@@ -42,6 +45,7 @@ type Edit = (ElementId, Box<dyn FnOnce(&mut creabim_core::Element)>);
 /// Show the schedule `view` of `category` (grouped by type with
 /// `by_type`) in `rect`. Returns a status
 /// message when an edit fails or the schedule is exported.
+#[allow(clippy::too_many_arguments)]
 pub fn show(
     ui: &mut egui::Ui,
     rect: Rect,
@@ -50,6 +54,7 @@ pub fn show(
     (category, by_type): (ScheduleCategory, bool),
     selection: &mut Selection,
     (csv_path, xlsx_path): (&str, &str),
+    export: Option<&str>,
 ) -> Option<String> {
     let table = schedule::schedule_by(doc.model(), category, by_type);
     let listed = table.listed;
@@ -109,40 +114,32 @@ pub fn show(
             .strong()
             .color(INK),
         );
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui
-                .button("Export Excel")
-                .on_hover_text(format!(
-                    "Save every schedule as {xlsx_path}: a summary, then a sheet for each"
-                ))
-                .clicked()
-            {
-                let project = std::path::Path::new(xlsx_path)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Project")
-                    .to_string();
-                let r = creabim_geom::xlsx::schedules_xlsx(doc.model(), &project)
-                    .and_then(|b| std::fs::write(xlsx_path, b).map_err(|e| e.to_string()));
-                message = Some(match r {
-                    Ok(()) => format!("Exported {xlsx_path}"),
-                    Err(e) => format!("Couldn't export {xlsx_path}: {e}"),
-                });
-            }
-            if ui
-                .button("Export CSV")
-                .on_hover_text(format!("Save the table as {csv_path}"))
-                .clicked()
-            {
-                let r = std::fs::write(csv_path, schedule::to_csv(&table));
-                message = Some(match r {
-                    Ok(()) => format!("Exported {csv_path}"),
-                    Err(e) => format!("Couldn't export {csv_path}: {e}"),
-                });
-            }
-        });
     });
     ui.label(egui::RichText::new(count).color(MUTED));
+    // Export CSV / Excel sit in the view's header now (MU29)
+    match export {
+        Some("xlsx") => {
+            let project = std::path::Path::new(xlsx_path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Project")
+                .to_string();
+            let r = creabim_geom::xlsx::schedules_xlsx(doc.model(), &project)
+                .and_then(|b| std::fs::write(xlsx_path, b).map_err(|e| e.to_string()));
+            message = Some(match r {
+                Ok(()) => format!("Exported {xlsx_path}"),
+                Err(e) => format!("Couldn't export {xlsx_path}: {e}"),
+            });
+        }
+        Some("csv") => {
+            let r = std::fs::write(csv_path, schedule::to_csv(&table));
+            message = Some(match r {
+                Ok(()) => format!("Exported {csv_path}"),
+                Err(e) => format!("Couldn't export {csv_path}: {e}"),
+            });
+        }
+        _ => {}
+    }
     ui.add_space(12.0);
 
     // each column as wide as its widest cell, editors a little wider
@@ -279,6 +276,13 @@ pub fn show(
                 None
             };
             let rr = row(ui, fill);
+            if selected {
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(rr.min, egui::vec2(3.0, rr.height())),
+                    1.0,
+                    SELECTED_BAR,
+                );
+            }
             for (i, (c, col)) in cells(rr).into_iter().zip(&table.columns).enumerate() {
                 let text = &r.cells[i];
                 let inner = c.shrink2(egui::vec2(PAD - 3.0, 3.0));
@@ -294,7 +298,11 @@ pub fn show(
                     Some(Field::Name) => {
                         let mut name = e.name.clone();
                         if ui
-                            .put(inner, egui::TextEdit::singleline(&mut name))
+                            .put(
+                                inner,
+                                egui::TextEdit::singleline(&mut name)
+                                    .vertical_align(egui::Align::Center),
+                            )
                             .changed()
                         {
                             edit = Some((r.id, Box::new(move |e| e.name = name)));
@@ -332,6 +340,7 @@ pub fn show(
                         let mut chosen = per;
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                             egui::ComboBox::from_id_salt(("rate_per", n, r.id))
+                                .icon(crate::props::combo_icon)
                                 .selected_text(per.label())
                                 .width(inner.width())
                                 .show_ui(ui, |ui| {
@@ -361,6 +370,7 @@ pub fn show(
                         let mut chosen = current;
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                             egui::ComboBox::from_id_salt(("material", r.id))
+                                .icon(crate::props::combo_icon)
                                 .selected_text(text.as_str())
                                 .width(inner.width())
                                 .show_ui(ui, |ui| {

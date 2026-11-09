@@ -245,16 +245,44 @@ pub fn centre(model: &Model, id: ElementId) -> Option<DVec3> {
     })
 }
 
+/// What a material tag on `id` reads: its layers, one line each with
+/// their thickness, outside to inside, or its one material's name.
+pub fn material_text(model: &Model, id: ElementId) -> String {
+    let Some(e) = model.get(id) else {
+        return String::new();
+    };
+    let tag = |m: f64| creabim_core::write_number(model, creabim_core::NumberKind::Tags, None, m);
+    if let Some((_, a)) = creabim_core::assembly_of(model, e) {
+        if !a.layers.is_empty() {
+            return a
+                .layers
+                .iter()
+                .map(|l| {
+                    let name = l
+                        .material
+                        .and_then(|m| model.get(m))
+                        .map_or("(no material)".to_string(), |m| m.name.clone());
+                    format!("{} {name}", tag(l.thickness))
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+        }
+    }
+    creabim_core::material_of(model, e).map_or("(no material)".into(), |(m, _)| m.name.clone())
+}
+
 /// What a tag on `id` reads, and whether it sits in a circle (doors) or a box.
 pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
     let Some(e) = model.get(id) else {
         return (String::new(), false);
     };
     let material = creabim_core::material_of(model, e).map(|(m, _)| m.name.clone());
-    let units = model.units();
+    let units = creabim_core::units::number_format(model, creabim_core::NumberKind::Tags, None)
+        .units(&model.units());
+    let tag = |m: f64| creabim_core::write_number(model, creabim_core::NumberKind::Tags, None, m);
     let with_material = |t: f64| match &material {
-        Some(m) => format!("{m} {}", units.dimension(t)),
-        None => units.dimension(t),
+        Some(m) => format!("{m} {}", tag(t)),
+        None => tag(t),
     };
     // a mark, typed or numbered by the project's rules, is what it reads
     if !matches!(e.kind, ElementKind::Object(_)) {
@@ -268,14 +296,7 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         ElementKind::Wall(w) => (with_material(w.thickness), false),
         ElementKind::Slab(s) => (with_material(s.thickness), false),
         ElementKind::Column(c) => (c.profile.label_in(&units), false),
-        ElementKind::Beam(b) => (
-            format!(
-                "{} × {}",
-                units.dimension(b.width),
-                units.dimension(b.depth)
-            ),
-            false,
-        ),
+        ElementKind::Beam(b) => (format!("{} × {}", tag(b.width), tag(b.depth)), false),
         ElementKind::Roof(r) => (
             format!("{} {:.0}°", with_material(r.thickness), r.pitch),
             false,
@@ -287,23 +308,21 @@ pub fn tag_text(model: &Model, id: ElementId) -> (String, bool) {
         },
         ElementKind::Footing(f) => (
             match f.kind {
-                creabim_core::FootingKind::Strip => format!(
-                    "{} × {}",
-                    units.dimension(f.width),
-                    units.dimension(f.thickness)
-                ),
+                creabim_core::FootingKind::Strip => {
+                    format!("{} × {}", tag(f.width), tag(f.thickness))
+                }
                 creabim_core::FootingKind::Pad => format!(
                     "{} × {} × {}",
-                    units.dimension(f.width),
-                    units.dimension(f.length),
-                    units.dimension(f.thickness)
+                    tag(f.width),
+                    tag(f.length),
+                    tag(f.thickness)
                 ),
             },
             false,
         ),
         ElementKind::Room(_) => (room_tag_text(model, id, &[]), false),
         // a ceiling: its height above the floor, as reflected ceiling plans write it
-        ElementKind::Ceiling(c) => (format!("CLG +{}", units.dimension(c.height)), false),
+        ElementKind::Ceiling(c) => (format!("CLG +{}", tag(c.height)), false),
         _ => (e.name.clone(), false),
     }
 }
@@ -352,6 +371,11 @@ pub fn room_tag_text(model: &Model, id: ElementId, fields: &[RoomField]) -> Stri
 
 /// A room's tag as drawing text: its lines stacked and centred on `at`.
 pub fn room_tag_item(id: ElementId, text: String, at: DVec2, look: TextLook, mm: f64) -> PlanItem {
+    // its lines centred by their real widths (MU29)
+    let mut look = look;
+    if look.align == creabim_core::TextAlign::Usual {
+        look.align = creabim_core::TextAlign::Centre;
+    }
     let lines: Vec<&str> = text.split('\n').collect();
     let width = lines.iter().map(|l| look.width(l)).fold(0.0, f64::max) * mm;
     let step = look.size * 1.5 * mm;
@@ -435,8 +459,19 @@ pub fn room_tag_items(
             let total: f64 = steps.iter().sum::<f64>() - steps.last().copied().unwrap_or(0.0);
             let mut y = at.y + total / 2.0;
             let mut items = vec![];
+            // left or right aligned: every line against the block's edge
+            let block = lines
+                .iter()
+                .map(|(t, l)| l.width(t) * mm)
+                .fold(0.0, f64::max);
             for ((text, l), step) in lines.into_iter().zip(steps) {
-                items.push(room_tag_item(id, text, DVec2::new(at.x, y), l, mm));
+                let w = l.width(&text) * mm;
+                let x = match look.align {
+                    creabim_core::TextAlign::Left => at.x - block / 2.0 + w / 2.0,
+                    creabim_core::TextAlign::Right => at.x + block / 2.0 - w / 2.0,
+                    _ => at.x,
+                };
+                items.push(room_tag_item(id, text, DVec2::new(x, y), l, mm));
                 y -= step;
             }
             items
@@ -669,7 +704,18 @@ fn measured(
         id,
         item: Box::new(Annotation {
             shape,
-            text: measure(&model.units(), d.kind, c, a, b),
+            text: measure(
+                &creabim_core::units::number_format(
+                    model,
+                    creabim_core::NumberKind::Dimensions,
+                    d.format,
+                )
+                .units(&model.units()),
+                d.kind,
+                c,
+                a,
+                b,
+            ),
             look: look_of(model, d.style, d.color),
             mm: view.scale / 1000.0,
         }),
@@ -745,7 +791,7 @@ pub fn note_item(
                 leader,
                 elbow: leader.and(n.elbow),
             },
-            text: n.text.clone(),
+            text: crate::annotation::lay_out_note(&n.text, &look, n.width, n.markdown),
             look,
             mm,
         }),
@@ -830,7 +876,12 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     a,
                     b: b2,
                     offset: d.offset,
-                    text: dimension_text(&model.units(), a, b2),
+                    text: creabim_core::write_number(
+                        model,
+                        creabim_core::NumberKind::Dimensions,
+                        d.format,
+                        a.distance(b2),
+                    ),
                     look: look_of(model, d.style, d.color),
                     witness,
                     breaks: vec![],
@@ -846,6 +897,9 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     model.get(t.host).map(|h| &h.kind),
                     Some(ElementKind::Room(_))
                 ) {
+                    if !view.shows_room_tags() {
+                        continue;
+                    }
                     let outline = match model.get(t.host).map(|h| &h.kind) {
                         Some(ElementKind::Room(r)) => {
                             creabim_core::room::shape_of(model, r).map(|s| {
@@ -871,7 +925,12 @@ pub fn annotations(model: &Model, view_id: ElementId, view: &View) -> Vec<PlanIt
                     ));
                     continue;
                 }
-                let (text, round) = tag_text(model, t.host);
+                // a material tag reads the build-up (Annotate step 5)
+                let (text, round) = if t.material {
+                    (material_text(model, t.host), false)
+                } else {
+                    tag_text(model, t.host)
+                };
                 let mut look = look_of(model, t.style, t.color);
                 look.leader_end = t.leader_end.or(look.leader_end);
                 out.push(PlanItem::Tag {
@@ -1240,6 +1299,22 @@ mod tests {
 
     fn named(m: &Model, name: &str) -> ElementId {
         m.iter().find(|e| e.name == name).unwrap().id
+    }
+
+    #[test]
+    fn a_material_tag_reads_the_layers_outside_to_inside() {
+        // Annotate step 5: a layered wall reads one line a layer
+        let m = creabim_core::starter::starter_house();
+        let wall = m
+            .iter()
+            .find(|e| {
+                matches!(e.kind, ElementKind::Wall(_))
+                    && creabim_core::assembly_of(&m, e).is_some_and(|(_, a)| a.layers.len() > 1)
+            })
+            .expect("a layered wall");
+        let (_, a) = creabim_core::assembly_of(&m, wall).unwrap();
+        let text = material_text(&m, wall.id);
+        assert_eq!(text.lines().count(), a.layers.len(), "{text}");
     }
 
     #[test]

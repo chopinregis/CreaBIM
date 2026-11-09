@@ -50,7 +50,7 @@ const CLASS_URI: &str = "https://identifier.buildingsmart.org/uri/buildingsmart/
 /// name and a few properties.
 pub fn export_ifcx(model: &Model) -> String {
     let scene: HashMap<ElementId, creabim_geom::TriMesh> =
-        creabim_geom::scene::element_meshes(&creabim_geom::build_scene(model));
+        creabim_geom::scene::element_meshes(&creabim_geom::scene::build_scene_for_exchange(model));
     let mut nodes: Vec<J> = Vec::new();
     // ids for nodes CreaBIM has no element for, stable across exports
     let base = model.levels().next().map_or(ElementId::NIL, |(e, _)| e.id);

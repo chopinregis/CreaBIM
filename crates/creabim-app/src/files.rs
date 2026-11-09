@@ -157,6 +157,12 @@ pub struct Settings {
     /// Width of the project browser and of the properties panel, in points.
     pub left_width: f32,
     pub right_width: f32,
+    /// The browser folded to a rail of its groups (MU27).
+    #[serde(default)]
+    pub left_folded: bool,
+    /// Properties folded to its tab column (MU27).
+    #[serde(default)]
+    pub right_folded: bool,
     /// One view at a time instead of the 3D view and a drawing side by
     /// side, and which of the two it shows.
     pub single_view: bool,
@@ -164,6 +170,18 @@ pub struct Settings {
     /// The ground grid in the 3D view, and its spacing in metres.
     pub ground_grid: bool,
     pub ground_grid_spacing: f64,
+    /// The drawings' paper and the 3D background (A4-3): "theme" follows
+    /// the theme (dark paper in a dark theme), "light" or "dark" always.
+    /// Prints and PDFs are always on white.
+    pub drawing_paper: String,
+    /// The mouse (MU19): "creabim" (left selects and boxes, middle
+    /// orbits, right or Shift + middle pans) or "classic" (left orbits).
+    pub navigation: String,
+    /// How the last IFC export wrote walls, slabs and roofs: "modelled"
+    /// (recommended), "joined" or "layers" (MU20).
+    pub ifc_body: String,
+    /// Temporary dimensions muted in drawings (MU21).
+    pub temp_dims_off: bool,
     /// The kinds of element the 3D view leaves out (grids, annotation,
     /// guides…), from its Visibility settings.
     pub hidden_3d: Vec<creabim_core::Category>,
@@ -192,6 +210,11 @@ pub struct Settings {
     pub workspaces: Vec<crate::areas::Workspace>,
     /// How grips look (brief 02, 2.13): a personal choice.
     pub grips: crate::handles::GripStyle,
+    /// Distance marks while dragging (the Grid snap menu).
+    pub distance_marks: bool,
+    /// The grid snap's and the distance marks' spacing, micrometres. Grid
+    /// snap itself always starts off.
+    pub snap_spacing_um: u32,
 }
 
 impl Default for Settings {
@@ -201,10 +224,16 @@ impl Default for Settings {
             theme: "sage".into(),
             left_width: 264.0,
             right_width: 290.0,
+            left_folded: false,
+            right_folded: false,
             single_view: false,
             single_shows_3d: true,
             ground_grid: true,
             ground_grid_spacing: 1.0,
+            drawing_paper: "theme".into(),
+            navigation: "creabim".into(),
+            ifc_body: "modelled".into(),
+            temp_dims_off: false,
             hidden_3d: vec![],
             xray: false,
             hidden_colour_3d: false,
@@ -217,6 +246,8 @@ impl Default for Settings {
             areas: None,
             workspaces: vec![],
             grips: Default::default(),
+            distance_marks: false,
+            snap_spacing_um: 50_000,
         }
     }
 }

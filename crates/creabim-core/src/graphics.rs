@@ -195,6 +195,74 @@ pub struct PlanGraphics {
     /// How far it looks above and below the cut.
     #[serde(default, skip_serializing_if = "PlanRange::is_default")]
     pub range: PlanRange,
+    /// How what is cut is drawn (A4-11).
+    #[serde(default, skip_serializing_if = "DrawingStyle::is_default")]
+    pub drawing_style: DrawingStyle,
+}
+
+/// How a view draws what it cuts (A4-11): a set of overrides over its
+/// graphic styles, the same on screen, on sheets and in PDFs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DrawingStyle {
+    /// Hatches by material, as the graphic styles set them.
+    #[default]
+    Technical,
+    /// What is cut in solid ink, no hatch.
+    Poche,
+    /// What is cut in its material's colour.
+    MaterialColour,
+    /// Outlines only: no hatches, no fills.
+    Clean,
+    /// What is cut in a soft wash of its material's colour (MU21).
+    ColourWash,
+    /// What is cut in an even light grey, no hatch (MU21).
+    GreyWash,
+    /// Each cut material in its own colour with its hatch over it (MU32).
+    ColourHatch,
+}
+
+impl DrawingStyle {
+    pub const ALL: [DrawingStyle; 7] = [
+        DrawingStyle::Technical,
+        DrawingStyle::Poche,
+        DrawingStyle::ColourHatch,
+        DrawingStyle::MaterialColour,
+        DrawingStyle::ColourWash,
+        DrawingStyle::GreyWash,
+        DrawingStyle::Clean,
+    ];
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::Technical
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            DrawingStyle::Technical => "Technical",
+            DrawingStyle::Poche => "Poché",
+            DrawingStyle::MaterialColour => "Material colour",
+            DrawingStyle::Clean => "Clean",
+            DrawingStyle::ColourWash => "Colour wash",
+            DrawingStyle::GreyWash => "Grey wash",
+            DrawingStyle::ColourHatch => "Colour and hatch",
+        }
+    }
+
+    pub fn hint(self) -> &'static str {
+        match self {
+            DrawingStyle::Technical => "Cut materials hatched, as the graphic styles set them",
+            DrawingStyle::Poche => "Cut walls and slabs solid ink, no hatch",
+            DrawingStyle::MaterialColour => "Cut materials in their own colours, layer by layer, no hatch",
+            DrawingStyle::Clean => "Outlines only: no hatches or fills",
+            DrawingStyle::ColourWash => {
+                "Cut materials in a soft wash of their colours, for presentation"
+            }
+            DrawingStyle::GreyWash => "Cut materials in an even light grey, no hatch",
+            DrawingStyle::ColourHatch => {
+                "Each cut material in its own colour, layer by layer, with its hatch over it: brick red, insulation yellow"
+            }
+        }
+    }
 }
 
 fn yes() -> bool {
@@ -214,6 +282,7 @@ impl Default for PlanGraphics {
             below_strength: default_strength(),
             below_grey: false,
             range: PlanRange::default(),
+            drawing_style: DrawingStyle::default(),
         }
     }
 }

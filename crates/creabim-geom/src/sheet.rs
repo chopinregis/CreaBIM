@@ -32,12 +32,27 @@ pub struct PlacedView {
     pub looks: std::sync::Arc<crate::looks::Looks>,
     /// The drawing's extent on paper, mm.
     pub bounds: (DVec2, DVec2),
+    /// How its title reads (MU27).
+    pub title_look: creabim_core::SheetTitle,
+    /// Its title's text style, resolved (MU28).
+    pub title_text: crate::annotation::TextLook,
 }
 
 impl PlacedView {
     /// Where the view title sits, below the drawing.
     pub fn title_at(&self) -> DVec2 {
-        DVec2::new(self.bounds.0.x, self.bounds.0.y - 7.0)
+        DVec2::new(self.bounds.0.x, self.bounds.0.y - 7.0) + self.title_look.offset
+    }
+
+    /// The title's extent on paper, to pick and drag it.
+    pub fn title_box(&self) -> Option<(DVec2, DVec2)> {
+        if self.title_look.hidden || self.map.scale == 1000.0 {
+            return None;
+        }
+        let at = self.title_at();
+        let s = self.title_look.size;
+        let w = 9.0 + paper::text_width(&self.title, s).max(30.0);
+        Some((at - DVec2::new(0.5, s * 1.4), at + DVec2::new(w, s * 1.2)))
     }
 }
 
@@ -141,10 +156,17 @@ pub fn placed_views_with(
             viewport: e.id,
             view: vp.view,
             number: out.len() + 1,
-            title: model
-                .get(vp.view)
-                .map(|v| v.name.clone())
+            title: Some(view.sheet_title.text.trim())
+                .filter(|t| !t.is_empty())
+                .map(str::to_string)
+                .or_else(|| model.get(vp.view).map(|v| v.name.clone()))
                 .unwrap_or_default(),
+            title_look: (*view.sheet_title).clone(),
+            title_text: {
+                let mut l = crate::annotate::look_of(model, view.sheet_title.style, None);
+                l.size = view.sheet_title.size;
+                l
+            },
             map,
             drawing: d,
             weights: looks.weights,
@@ -253,6 +275,27 @@ pub fn field_values(
     v
 }
 
+/// A sheet's title-block values with the project's information (A7-5)
+/// filled in: over the template's defaults, under the sheet's own.
+pub fn frame_values(
+    model: &Model,
+    sheet: &Sheet,
+    template: Option<&SheetTemplate>,
+    title: &str,
+    scales: &str,
+    info: &SheetInfo,
+) -> BTreeMap<String, String> {
+    let mut values = field_values(sheet, template, title, scales, info);
+    if let Some((_, project)) = model.project_info() {
+        for (k, v) in project.fields() {
+            if !sheet.fields.contains_key(k) {
+                values.insert(k.to_string(), v);
+            }
+        }
+    }
+    values
+}
+
 /// Where a sheet's title block sits, mm from its lower left: the
 /// template's drawing, or the built-in block.
 pub fn title_block_bounds(model: &Model, sheet: &Sheet) -> (DVec2, DVec2) {
@@ -317,9 +360,25 @@ pub fn draw_frame(
     scales: &str,
     info: &SheetInfo,
 ) {
+    // the project's information (A7-5): over the template's defaults and
+    // the file's name, under what this sheet sets itself
+    let project = model
+        .project_info()
+        .map(|(_, p)| p.clone())
+        .unwrap_or_default();
+    let named;
+    let info = if project.name.trim().is_empty() {
+        info
+    } else {
+        named = SheetInfo {
+            project: project.name.trim().to_string(),
+            date: info.date.clone(),
+        };
+        &named
+    };
     match template_of(model, sheet) {
         Some(t) => {
-            let values = field_values(sheet, Some(t), title, scales, info);
+            let values = frame_values(model, sheet, Some(t), title, scales, info);
             draw_template(c, sheet, t, &values);
         }
         None => draw_builtin_frame(c, sheet, title, scales, info),
@@ -476,30 +535,45 @@ pub fn draw_view_title(c: &mut dyn Canvas, v: &PlacedView) {
     if v.map.scale == 1000.0 {
         return;
     }
+    let t = &v.title_look;
+    if t.hidden {
+        return;
+    }
     let at = v.title_at();
+    let k = t.size / 3.5;
     let thin = Stroke::solid(0.18, 0.0);
-    c.circle(at + DVec2::new(3.5, 0.0), 3.5, thin);
-    c.text(
-        at + DVec2::new(3.5, 0.0),
-        3.0,
-        &v.number.to_string(),
-        Anchor::Middle,
+    let x0 = if t.show_number {
+        c.circle(at + DVec2::new(3.5 * k, 0.0), 3.5 * k, thin);
+        c.text(
+            at + DVec2::new(3.5 * k, 0.0),
+            3.0 * k,
+            &v.number.to_string(),
+            Anchor::Middle,
+        );
+        9.0 * k
+    } else {
+        0.0
+    };
+    c.styled_text(
+        at + DVec2::new(x0, 1.2 * k),
+        &v.title,
+        Anchor::Start,
+        0.0,
+        &v.title_text,
     );
-    c.text(at + DVec2::new(9.0, 1.2), 3.5, &v.title, Anchor::Start);
-    let width = paper::text_width(&v.title, 3.5).max(30.0);
+    let width = paper::text_width(&v.title, t.size).max(30.0 * k);
     c.line(
-        &[
-            at + DVec2::new(9.0, -1.0),
-            at + DVec2::new(9.0 + width, -1.0),
-        ],
+        &[at + DVec2::new(x0, -k), at + DVec2::new(x0 + width, -k)],
         Stroke::solid(0.35, 0.0),
     );
-    c.text(
-        at + DVec2::new(9.0, -3.5),
-        2.5,
-        &format!("1:{:.0}", v.map.scale),
-        Anchor::Start,
-    );
+    if t.show_scale {
+        c.text(
+            at + DVec2::new(x0, -3.5 * k),
+            2.5 * k,
+            &format!("1:{:.0}", v.map.scale),
+            Anchor::Start,
+        );
+    }
 }
 
 /// Draw a whole sheet: frame, every view and its title.
@@ -535,6 +609,258 @@ pub fn draw_sheet_notes(c: &mut dyn Canvas, model: &Model, sheet: ElementId) {
         items: crate::annotate::sheet_notes(model, sheet),
     };
     paper::draw(c, &notes, &PAPER);
+    draw_paper_marks(c, model, sheet);
+}
+
+/// Where a sheet's title block is, as drawn (its template's or the built-in
+/// one): the box round what its frame draws in the lower half of the
+/// sheet, inside the border (MU22). Paper marks are placed clear of it.
+pub fn title_block_box(model: &Model, sheet: ElementId) -> Option<(DVec2, DVec2)> {
+    struct Points(Vec<DVec2>);
+    impl Canvas for Points {
+        fn line(&mut self, pts: &[DVec2], _: Stroke) {
+            self.0.extend_from_slice(pts);
+        }
+        fn fill(&mut self, pts: &[DVec2], _: f64) {
+            self.0.extend_from_slice(pts);
+        }
+        fn text_angle(&mut self, at: DVec2, size: f64, _: &str, _: Anchor, _: f64) {
+            self.0.push(at);
+            self.0.push(at + DVec2::new(0.0, size));
+        }
+        fn image(
+            &mut self,
+            lo: DVec2,
+            hi: DVec2,
+            _: Option<(DVec2, DVec2)>,
+            _: &std::sync::Arc<crate::raster::Raster>,
+        ) {
+            self.0.push(lo);
+            self.0.push(hi);
+        }
+    }
+    let s = sheet_of(model, sheet)?;
+    let mut c = Points(vec![]);
+    let title = model.get(sheet).map(|e| e.name.as_str()).unwrap_or("");
+    draw_frame(&mut c, model, s, title, "1:100", &SheetInfo::default());
+    let (w, h) = (s.width, s.height);
+    let on_border = |p: &DVec2| {
+        (p.x - BINDING).abs() < 0.05
+            || (p.x - (w - MARGIN)).abs() < 0.05
+            || (p.y - MARGIN).abs() < 0.05
+            || (p.y - (h - MARGIN)).abs() < 0.05
+            || p.x <= 0.05
+            || p.y <= 0.05
+            || p.x >= w - 0.05
+            || p.y >= h - 0.05
+    };
+    let inside: Vec<DVec2> =
+        c.0.into_iter()
+            .filter(|p| p.y < h * 0.5 && !on_border(p))
+            .collect();
+    let first = *inside.first()?;
+    let (lo, hi) = inside
+        .iter()
+        .fold((first, first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+    Some((lo, hi))
+}
+
+/// The north arrows and scale bars on a sheet (MU22).
+pub fn draw_paper_marks(c: &mut dyn Canvas, model: &Model, sheet: ElementId) {
+    let north = model.project_info().map_or(0.0, |(_, p)| p.true_north);
+    // the sheet's revisions, for its table
+    let mut revs: Vec<(String, String, String)> = model
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::PaperMark(m) if m.sheet == sheet => match &m.kind {
+                creabim_core::PaperMarkKind::Cloud {
+                    rev, date, what, ..
+                } => Some((rev.clone(), date.clone(), what.clone())),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    revs.sort();
+    revs.dedup_by(|a, b| a.0 == b.0);
+    for e in model.iter() {
+        if let ElementKind::PaperMark(m) = &e.kind {
+            if m.sheet == sheet {
+                if matches!(m.kind, creabim_core::PaperMarkKind::RevisionTable) {
+                    draw_revision_table(c, m, &revs);
+                } else {
+                    draw_paper_mark(c, m, north);
+                }
+            }
+        }
+    }
+}
+
+/// The revisions table: REV, DATE, DESCRIPTION, a row per revision.
+fn draw_revision_table(
+    c: &mut dyn Canvas,
+    m: &creabim_core::PaperMark,
+    revs: &[(String, String, String)],
+) {
+    let t = m.size;
+    let row = t * 2.4;
+    let cols = [0.0, 14.0, 40.0, 110.0];
+    let thin = Stroke::solid(0.18, 0.0);
+    let rows = revs.len() + 1;
+    let top = m.at.y + row * rows as f64;
+    for i in 0..=rows {
+        let y = m.at.y + row * i as f64;
+        c.line(
+            &[DVec2::new(m.at.x, y), DVec2::new(m.at.x + cols[3], y)],
+            thin,
+        );
+    }
+    for x in cols {
+        c.line(
+            &[DVec2::new(m.at.x + x, m.at.y), DVec2::new(m.at.x + x, top)],
+            thin,
+        );
+    }
+    let cell = |c: &mut dyn Canvas, r: usize, col: usize, s: &str| {
+        let y = top - row * (r as f64 + 1.0) + row * 0.32;
+        c.text(DVec2::new(m.at.x + cols[col] + 1.5, y), t, s, Anchor::Start);
+    };
+    cell(c, 0, 0, "REV");
+    cell(c, 0, 1, "DATE");
+    cell(c, 0, 2, "DESCRIPTION");
+    for (i, (rev, date, what)) in revs.iter().enumerate() {
+        cell(c, i + 1, 0, rev);
+        cell(c, i + 1, 1, date);
+        cell(c, i + 1, 2, what);
+    }
+}
+
+/// One paper mark, in sheet millimetres.
+pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_north: f64) {
+    use creabim_core::PaperMarkKind;
+    match &m.kind {
+        PaperMarkKind::NorthArrow { .. } => {
+            let s = m.size;
+            let turn = DVec2::from_angle(m.north_angle(true_north).to_radians());
+            let at = |p: DVec2| m.at + turn.rotate(p);
+            // the arrow inside its circle, the tip just touching it (MU29)
+            let tip = at(DVec2::new(0.0, 0.40 * s));
+            let notch = at(DVec2::new(0.0, -0.14 * s));
+            let left = at(DVec2::new(-0.21 * s, -0.31 * s));
+            let right = at(DVec2::new(0.21 * s, -0.31 * s));
+            c.circle(m.at, 0.42 * s, Stroke::solid(0.25, 0.0));
+            // half black, half white, as drawn by hand
+            c.fill(&[tip, notch, left], 0.0);
+            c.polygon(&[tip, right, notch, left], Stroke::solid(0.3, 0.0));
+            c.text(
+                at(DVec2::new(0.0, 0.42 * s + 3.0)),
+                3.5,
+                "N",
+                Anchor::Middle,
+            );
+        }
+        PaperMarkKind::Cloud { rev, arc, .. } => {
+            // scallops of about `arc` mm round the outline, bulging out
+            let corners = m.cloud_outline();
+            let stroke = Stroke::solid(0.35, 0.0);
+            let ink = |c: &mut dyn Canvas, pts: &[DVec2]| match m.color {
+                Some(rgb) => c.line_rgb(pts, stroke, rgb),
+                None => c.line(pts, stroke),
+            };
+            let k = corners.len();
+            for q in 0..k {
+                let (a, b) = (corners[q], corners[(q + 1) % k]);
+                let len = a.distance(b);
+                if len < 1e-6 {
+                    continue;
+                }
+                let n = (len / arc.max(1.0)).ceil().max(1.0) as usize;
+                let dir = (b - a) / len;
+                let out = DVec2::new(dir.y, -dir.x);
+                for i in 0..n {
+                    let (s, e) = (
+                        a + (b - a) * (i as f64 / n as f64),
+                        a + (b - a) * ((i + 1) as f64 / n as f64),
+                    );
+                    let mid = (s + e) / 2.0;
+                    let r = s.distance(e) / 2.0;
+                    let pts: Vec<DVec2> = (0..=8)
+                        .map(|j| {
+                            let t = std::f64::consts::PI * j as f64 / 8.0;
+                            mid - dir * r * t.cos() + out * r * t.sin()
+                        })
+                        .collect();
+                    ink(c, &pts);
+                }
+            }
+            let hi = corners
+                .iter()
+                .fold(DVec2::splat(f64::MIN), |a, p| a.max(*p));
+            // its revision in a triangle at the top right
+            let tip = hi + DVec2::new(4.0, 4.0);
+            let s = m.size * 1.6;
+            let tri = [
+                tip + DVec2::new(-s, -s * 0.6),
+                tip + DVec2::new(s, -s * 0.6),
+                tip + DVec2::new(0.0, s * 1.1),
+            ];
+            c.polygon(&tri, Stroke::solid(0.3, 0.0));
+            c.text(
+                tip + DVec2::new(0.0, -s * 0.25),
+                m.size,
+                rev,
+                Anchor::Middle,
+            );
+        }
+        PaperMarkKind::RevisionTable => {}
+        PaperMarkKind::ScaleBar {
+            scale,
+            length,
+            parts,
+        } => {
+            let parts = (*parts).max(1) as usize;
+            let w = length * 1000.0 / scale.max(1.0);
+            let h = m.size;
+            let seg = w / parts as f64;
+            let o = m.at;
+            for i in 0..parts {
+                let x0 = o.x + seg * i as f64;
+                let box_ = [
+                    DVec2::new(x0, o.y),
+                    DVec2::new(x0 + seg, o.y),
+                    DVec2::new(x0 + seg, o.y + h),
+                    DVec2::new(x0, o.y + h),
+                ];
+                if i % 2 == 0 {
+                    c.fill(&box_, 0.0);
+                }
+                c.polygon(&box_, Stroke::solid(0.2, 0.0));
+            }
+            let step = length / parts as f64;
+            let num = |v: f64| {
+                if (v - v.round()).abs() < 1e-6 {
+                    format!("{v:.0}")
+                } else {
+                    format!("{v:.1}")
+                }
+            };
+            for i in 0..=parts {
+                let x = o.x + seg * i as f64;
+                let t = if i == parts {
+                    format!("{} m", num(step * i as f64))
+                } else {
+                    num(step * i as f64)
+                };
+                c.text(DVec2::new(x, o.y + h + 1.2), 2.2, &t, Anchor::Middle);
+            }
+            c.text(
+                DVec2::new(o.x, o.y - 3.6),
+                2.2,
+                &format!("1:{:.0}", scale),
+                Anchor::Start,
+            );
+        }
+    }
 }
 
 pub fn sheet_svg(model: &Model, sheet: ElementId, info: &SheetInfo) -> Option<String> {
@@ -547,8 +873,14 @@ pub fn sheet_svg(model: &Model, sheet: ElementId, info: &SheetInfo) -> Option<St
 
 /// All sheets as one PDF, a page per sheet in sheet-number order.
 pub fn sheets_pdf(model: &Model, info: &SheetInfo) -> Vec<u8> {
+    let all: Vec<ElementId> = sheets(model).into_iter().map(|(id, _)| id).collect();
+    sheets_pdf_of(model, info, &all)
+}
+
+/// The sheets `ids` as one PDF, a page each in sheet-number order (MU22).
+pub fn sheets_pdf_of(model: &Model, info: &SheetInfo, ids: &[ElementId]) -> Vec<u8> {
     let mut pdf = PdfWriter::new();
-    for (id, s) in sheets(model) {
+    for (id, s) in sheets(model).into_iter().filter(|(id, _)| ids.contains(id)) {
         let views = placed_views(model, id, &mut |v| view_drawing(model, v));
         let mut page = pdf.page(DVec2::new(s.width, s.height));
         draw_sheet(&mut page, model, id, &views, info);
@@ -560,6 +892,45 @@ pub fn sheets_pdf(model: &Model, info: &SheetInfo) -> Vec<u8> {
 mod tests {
     use super::*;
     use creabim_core::sample::sample_house;
+
+    #[test]
+    fn project_information_fills_the_title_block_under_the_sheets_own() {
+        let mut m = sample_house();
+        let info = creabim_core::ProjectInfo {
+            name: "Maple Lane House".into(),
+            client: "A. Client".into(),
+            status: "Tender".into(),
+            ..Default::default()
+        };
+        let mut doc = creabim_core::Document::from_model(m.clone());
+        doc.commit(creabim_core::set_project(doc.model(), info))
+            .unwrap();
+        m = doc.model().clone();
+        let t = SheetTemplate {
+            corner: Default::default(),
+            items: vec![],
+            border: true,
+            fields: vec![
+                ("client".into(), "Client".into()),
+                ("status".into(), "Draft".into()),
+            ],
+            paper: None,
+        };
+        let (_, s) = sheets(&m).into_iter().next().unwrap();
+        let mut s = s.clone();
+        s.fields.insert("status".into(), "Construction".into());
+        let base = SheetInfo {
+            project: "Starter house".into(),
+            date: String::new(),
+        };
+        let v = frame_values(&m, &s, Some(&t), "Plan", "1:100", &base);
+        assert_eq!(
+            v["client"], "A. Client",
+            "the project's client over the template's default"
+        );
+        assert_eq!(v["status"], "Construction", "the sheet's own value wins");
+        assert_eq!(v["job"], "Maple Lane House");
+    }
 
     #[test]
     fn sample_sheets_place_their_views_inside_the_border() {
