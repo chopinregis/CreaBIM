@@ -1234,6 +1234,25 @@ impl CreaBimApp {
         if ctx.egui_wants_keyboard_input() || self.plan.grips.typing {
             return;
         }
+        // over a Profile view its own keys win (M, R, F, D, Delete…): the
+        // model's would act on the model behind it (MU37: Shift+D started a
+        // dimension); undo and redo still work
+        if self.profile_view_hovered(ctx) {
+            let (undo, redo) = ctx.input(|i| {
+                let cmd = i.modifiers.command;
+                (
+                    cmd && !i.modifiers.shift && i.key_pressed(egui::Key::Z),
+                    cmd && (i.key_pressed(egui::Key::Y) || (i.modifiers.shift && i.key_pressed(egui::Key::Z))),
+                )
+            });
+            if undo {
+                self.run_command(ctx, Command::Undo, None);
+            }
+            if redo {
+                self.run_command(ctx, Command::Redo, None);
+            }
+            return;
+        }
         // Alt+S: grid snap on or off, as in ArchiCAD
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::S)) {
             let s = &mut self.plan.snap;

@@ -95,6 +95,12 @@ pub struct ProfilesUi {
     /// Move or Rotate leaves the original and drops a copy (Shift+D, or
     /// Shift held at the last click; MU37).
     copy: bool,
+    /// A guide being dragged: (its place, where the drag began, its two
+    /// points then).
+    guide_drag: Option<(usize, DVec2, DVec2, DVec2)>,
+    /// The pass the pointer was last over the view, for the app's keys
+    /// to stand aside.
+    hovered_pass: u64,
     /// The clicks of Move (base) and Rotate (centre, from).
     op: Vec<DVec2>,
     /// Align's line to align to.
@@ -629,6 +635,12 @@ impl CreaBimApp {
         self.report(r, format!("Renamed {old} to {new}, on everything made with it."));
     }
 
+    /// Whether the pointer was over a Profile view in this pass or the last.
+    pub(super) fn profile_view_hovered(&self, ctx: &egui::Context) -> bool {
+        let p = self.profiles.hovered_pass;
+        p > 0 && p + 1 >= ctx.cumulative_pass_nr()
+    }
+
     /// The Profile view header's buttons beside the list: id, icon, tip,
     /// and whether it can be used now.
     pub(super) fn profile_buttons(&self) -> Vec<(&'static str, &'static str, String, bool)> {
@@ -770,6 +782,9 @@ impl CreaBimApp {
     /// The Profile view in an area (MU37).
     pub(super) fn profiles_area(&mut self, ui: &mut egui::Ui, body: Rect) {
         let _perf = crate::app::Perf::new("profile view");
+        if ui.rect_contains_pointer(body) {
+            self.profiles.hovered_pass = ui.ctx().cumulative_pass_nr();
+        }
         let pal = self.shell.theme.palette();
         let model = self.doc.model();
         let response = ui.interact(body, ui.id().with("profile.view"), egui::Sense::click_and_drag());
@@ -1255,8 +1270,19 @@ impl CreaBimApp {
                     if let Some((si, _)) = self.profiles.drag {
                         self.profiles.shape = si;
                     }
+                    // a guide under it: dragged square to itself, as in 3D
+                    self.profiles.guide_drag = None;
+                    if let (None, None, Some(q)) = (self.profiles.drag, self.profiles.edge_drag, q) {
+                        if let Some(PSel::Guide(i)) = pick(q) {
+                            if let Some(&(a, b)) = guides.get(i) {
+                                self.profiles.guide_drag = Some((i, snap(q, None).0, a, b));
+                                self.profiles.sel = Some(PSel::Guide(i));
+                                self.profiles.extra.clear();
+                            }
+                        }
+                    }
                     // nothing under it: a box pick
-                    if self.profiles.drag.is_none() && self.profiles.edge_drag.is_none() {
+                    if self.profiles.drag.is_none() && self.profiles.edge_drag.is_none() && self.profiles.guide_drag.is_none() {
                         self.profiles.boxsel = q;
                     }
                 }
@@ -1335,9 +1361,25 @@ impl CreaBimApp {
                         }
                     }), "Move profile edge", true));
                 }
+                // (the pointer as it is: the guide would snap to itself)
+                if let (Some((i, from, a0, b0)), Some(w), true) = (self.profiles.guide_drag, pointer.map(to_w), response.dragged_by(egui::PointerButton::Primary)) {
+                    let nrm = (b0 - a0).perp().normalize_or_zero();
+                    let d = nrm * (w - from).dot(nrm);
+                    if let Some(g) = self.profiles.guides.get_mut(&key).and_then(|g| g.get_mut(i)) {
+                        *g = (a0 + d, b0 + d);
+                    }
+                    painter.text(
+                        to_s(w) + egui::vec2(14.0, -14.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        crate::units::len((w - from).dot(nrm).abs()),
+                        egui::FontId::proportional(11.0),
+                        violet,
+                    );
+                }
                 if response.drag_stopped() {
                     self.profiles.drag = None;
                     self.profiles.edge_drag = None;
+                    self.profiles.guide_drag = None;
                 }
                 if let (true, Some(q)) = (response.secondary_clicked(), pointer) {
                     let hit = shapes.iter().enumerate().find_map(|(si, s)| s.points.iter().position(|c| to_s(*c).distance(q) < 8.0).map(|ci| (si, ci)));
