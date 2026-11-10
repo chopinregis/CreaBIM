@@ -101,3 +101,19 @@
 
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { ident(); poster(); });
 })();
+// "On this page": light the heading being read
+(function () {
+  const links = [...document.querySelectorAll(".pagetoc a")];
+  if (!links.length || !("IntersectionObserver" in window)) return;
+  const heads = links.map((a) => document.getElementById(a.getAttribute("href").slice(1))).filter(Boolean);
+  const light = (id) => links.forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + id));
+  const seen = new Set();
+  const obs = new IntersectionObserver((es) => {
+    es.forEach((e) => (e.isIntersecting ? seen.add(e.target.id) : seen.delete(e.target.id)));
+    const first = heads.find((h) => seen.has(h.id));
+    if (first) return light(first.id);
+    const above = heads.filter((h) => h.getBoundingClientRect().top < 100).pop();
+    if (above) light(above.id);
+  }, {rootMargin: "-80px 0px -60% 0px"});
+  heads.forEach((h) => obs.observe(h));
+})();

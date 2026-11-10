@@ -812,15 +812,23 @@ def guide_page(pid, title, body, toc, order, pages):
     sec = next(s for s, ids in SECTIONS.items() if pid in ids)
     prev = f'<a href="{order[i - 1]}.html"><span>Previous</span><b>{html.escape(pages[order[i - 1]])}</b></a>' if i > 0 else ""
     nxt = f'<a class="next" href="{order[i + 1]}.html"><span>Next</span><b>{html.escape(pages[order[i + 1]])}</b></a>' if i + 1 < len(order) else ""
+    heads = re.findall(r'<h([23]) id="([^"]+)">(.*?)</h[23]>', body)
+    toc_html = ""
+    if len(heads) >= 2:
+        items = "".join(f'<li class="l{lv}"><a href="#{sid}">{re.sub(r"<[^>]+>", "", t)}</a></li>' for lv, sid, t in heads)
+        toc_html = items
+    side_toc = f'<aside class="pagetoc" aria-label="On this page"><h4>On this page</h4><ul>{toc_html}</ul></aside>' if toc_html else ""
+    inline_toc = f'<details class="onpage"><summary>On this page</summary><ul>{toc_html}</ul></details>' if toc_html else ""
     return f"""
-  <div class="wrap gutter guide">
+  <div class="gutter guide{' has-toc' if toc_html else ''}">
     <button class="side-toggle" type="button" aria-expanded="false">Guide contents <span aria-hidden="true">▾</span></button>
     <nav class="side" aria-label="Guide">{guide_index(pages, "", pid, side=True)}</nav>
     <article class="doc">
       <div class="crumbs"><a href="../tutorials/index.html">Tutorials</a><span>/</span><a href="../tutorials/index.html#guide">Guide</a><span>/</span><span>{html.escape(sec)}</span></div>
-      {body}
+      {body.replace("</h1>", "</h1>" + inline_toc, 1)}
       <nav class="pager" aria-label="Pages">{prev}{nxt}</nav>
     </article>
+    {side_toc}
   </div>
 """
 
