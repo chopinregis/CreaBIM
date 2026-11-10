@@ -333,8 +333,8 @@ def home(rel):
     </div>
     <ul class="ticks"><li>No account, no licence fee</li><li>Works fully offline</li><li>IFC in and out</li><li>Blender-style keys</li></ul>
     <figure class="shot wrap" style="margin-inline:auto">
-      <img src="assets/img/app-3d-and-plan.jpg" width="1920" height="1080" alt="CreaBIM with the Maple Lane House in 3D beside its ground-floor plan" fetchpriority="high">
-      <figcaption><span class="live">Maple Lane House · the starter project</span><span>3D and plan side by side · 1:50</span></figcaption>
+      <img src="assets/img/app-3d-and-plan.jpg" width="1922" height="992" alt="CreaBIM 1.0.1 in the Sage theme: the Maple Lane House in 3D beside its ground-floor plan, with the project browser and Properties" fetchpriority="high">
+      <figcaption><span class="live">Maple Lane House · the starter project</span><span>Two view areas: 3D and the plan at 1:50</span></figcaption>
     </figure>
   </section>
 
@@ -371,7 +371,7 @@ def home(rel):
           <div class="hub"><b>One element store</b><span>walls · slabs · openings · levels · grids · rooms</span></div>
           <ul class="fan">
             <li>3D view <span>live</span></li><li>Plan <span>1:50</span></li><li>Section <span>cut</span></li><li>Elevation <span>1:100</span></li>
-            <li>Sheet <span>A1</span></li><li>IFC <span>4</span></li><li>Schedule <span>csv</span></li><li>Take-off <span>xlsx</span></li>
+            <li>Sheet <span>A0–A4</span></li><li>IFC <span>4</span></li><li>Schedule <span>csv</span></li><li>Take-off <span>xlsx</span></li>
           </ul>
           <p class="foot-note">One edit lands in all of them, in the same moment and the same undo step.</p>
         </div>
@@ -412,12 +412,12 @@ def home(rel):
         </ul>
         <div class="chips" aria-label="Exports">
           <span class="chip"><code>SVG</code>Plan drawings</span><span class="chip"><code>PDF</code>Sheets</span><span class="chip"><code>CSV</code>Schedules</span>
-          <span class="chip"><code>XLSX</code>Schedules and take-off</span><span class="chip"><code>IFC</code>IFC4</span>
+          <span class="chip"><code>XLSX</code>Schedules and take-off</span><span class="chip"><code>IFC</code>IFC4, and IFC5 (alpha)</span>
           <span class="chip"><code>GLB</code>glTF for Blender</span><span class="chip"><code>FCSTD</code>FreeCAD document</span>
         </div>
       </div>
       <figure class="clip">
-        <div class="view"><img src="assets/img/plan-ground-floor.jpg" width="1100" height="1255" alt="Part of the Maple Lane House ground-floor plan, drawn by CreaBIM" loading="lazy"></div>
+        <div class="view"><img src="assets/img/plan-ground-floor.jpg" width="870" height="728" alt="Part of the Maple Lane House ground-floor plan, drawn by CreaBIM" loading="lazy"></div>
         <figcaption>Ground-floor plan, drawn by CreaBIM from the model · hatches, dimension chains, room tags</figcaption>
       </figure>
     </div>
@@ -426,8 +426,8 @@ def home(rel):
   <section class="sec gutter" id="profiles">
     <div class="wrap two mid">
       <figure class="clip">
-        <div class="view"><img src="assets/img/profile-view.jpg" width="1400" height="850" alt="The Profile view: a profile with a void, being copied" loading="lazy"></div>
-        <figcaption>The Profile view · draw a shape, pick a void, copy as you move</figcaption>
+        <div class="view"><img src="assets/img/profile-view.jpg" width="1154" height="810" alt="The profile library with its twelve presets, and the I-section open in the Profile view" loading="lazy"></div>
+        <figcaption>The profile library and the Profile view · presets, and your own</figcaption>
       </figure>
       <div class="stack first-mobile">
         <div class="head" style="margin:0">
@@ -534,7 +534,9 @@ FEATURES = [
       ("Rooms and ceilings", "Rooms with areas and tags; ceilings from the room outline.", "rooms"),
       ("Masses and sketches", "Freeform volumes for concept work, extruded from a sketch.", "masses"),
       ("Furniture, fixtures and site", "Catalogue objects that sit against walls, and the ground around the building.", "furniture"),
-      ("Types and materials", "Change a type once and every element of it follows.", "types")]),
+      ("Types and materials", "Change a type once and every element of it follows.", "types"),
+      ("Profiles", "Draw a coping, gutter or steel section once in the Profile view; sweeps, columns, beams and railings use it.", "profiles"),
+      ("Divide", "Cut a wall, beam or part into even parts, add guides at the divisions, or copy something into each.", "divide")]),
     ("edit", "i-swap", "Editing", "Edit like a modeller.",
      "Blender-style keys for move, rotate and scale, typed values for exact work, and an Edit mode for points, edges and faces.",
      [("Move, rotate, scale", "Press the key, move the pointer, type a value.", "move"),
@@ -542,18 +544,23 @@ FEATURES = [
       ("Align and handles", "Align to any edge; drag grips in 2D and handles in 3D.", "align"),
       ("Snaps and guides", "Endpoints, midpoints, intersections and dashed guide lines.", "snaps"),
       ("Selecting", "Click, box select, select all of a type, isolate with /.", "select"),
-      ("Undo, always", "Every change, in every view, is one undo step.", "edit")]),
+      ("Undo, always", "Every change, in every view, is one undo step.", "edit"),
+      ("View areas and workspaces", "Split the window like Blender: plan, section, sheet and 3D side by side, saved as your own layouts.", "interface"),
+      ("Properties in tabs", "The element, the view and the project, each a tab; several elements edited at once.", "interface")]),
     ("draw", "i-sheet", "Drawings and documents", "Drawings you can submit.",
      "Plans, sections and elevations are read from the model, with cut lines, hidden lines removed and the annotation an architect expects.",
      [("Plans, sections and elevations", "Live views, at any scale, cut where you draw them.", "sections"),
       ("View range and graphic styles", "Cut height, depth, line weights and hatches by category.", "graphic-styles"),
       ("Dimensions, tags and marks", "Dimension chains, door, window and room tags, level and section marks.", "dimensions"),
       ("Details", "Callouts with their own crop and scale.", "details"),
-      ("Sheets", "Title blocks, scales and live views, exported as vector PDF.", "sheets"),
+      ("Sheets", "Title blocks, scales and live views, rulers and guides, exported as vector PDF.", "sheets"),
+      ("Revisions and key plans", "Revision clouds with their table, and a key plan over the title block.", "sheets"),
+      ("Notes and the notepad", "Notes with Markdown on drawings, and a project notepad of to-dos that never prints.", "notes"),
+      ("Number formats", "How dimensions, levels, tags and schedules write their numbers, kept with the style pack.", "units"),
       ("Schedules and take-off", "Door, window and room schedules; quantities by material, to CSV and XLSX.", "take-off")]),
     ("files", "i-file", "Files and exchange", "Open formats, both ways.",
      "Your project is an open, documented file. Other tools read what CreaBIM writes, and CreaBIM reads theirs.",
-     [("IFC", "Read IFC2X3, IFC4 and IFC4X3; write IFC4.", "ifc"),
+     [("IFC", "Read IFC2X3, IFC4 and IFC4X3; write IFC4, with a choice of how walls, slabs and roofs go out, and IFC5 (alpha).", "ifc"),
       ("Blender", "glTF / GLB out to Blender, and a Blender import.", "blender"),
       ("FreeCAD", "Write a FreeCAD document.", "freecad"),
       ("DXF and SVG", "DXF in as a reference to trace over; plans out as SVG.", "dxf-svg"),
@@ -581,8 +588,8 @@ def features():
     pics = """
   <section class="sec gutter">
     <div class="wrap grid2">
-      <figure class="clip"><div class="view"><img src="assets/img/sheet-ground-floor.jpg" alt="A CreaBIM sheet: the ground-floor plan with its title block" loading="lazy"></div><figcaption>A sheet, straight from the model</figcaption></figure>
-      <figure class="clip"><div class="view"><img src="assets/img/profile-view.jpg" alt="The Profile view in CreaBIM" loading="lazy"></div><figcaption>The Profile view: your own sections for sweeps and beams</figcaption></figure>
+      <figure class="clip"><div class="view"><img src="assets/img/sheet-ground-floor.jpg" width="1030" height="720" alt="The starter house's cover sheet: a live 3D view, the drawing list and a filled-in title block" loading="lazy"></div><figcaption>A cover sheet, straight from the model</figcaption></figure>
+      <figure class="clip"><div class="view"><img src="assets/img/profile-view.jpg" width="1154" height="810" alt="The profile library and the Profile view in CreaBIM" loading="lazy"></div><figcaption>The Profile view: your own sections for sweeps and beams</figcaption></figure>
     </div>
   </section>"""
     return f"""
@@ -594,7 +601,7 @@ def features():
       <nav class="toc" aria-label="On this page">{toc}</nav>
     </div>
   </section>
-  <section class="gutter"><figure class="shot wrap" style="margin:0 auto"><img src="assets/img/app-3d-and-plan.jpg" width="1920" height="1080" alt="CreaBIM: 3D and plan side by side" loading="lazy"><figcaption><span class="live">One model</span><span>every view updates as you edit</span></figcaption></figure></section>
+  <section class="gutter"><figure class="shot wrap" style="margin:0 auto"><img src="assets/img/app-3d-and-plan.jpg" width="1922" height="992" alt="CreaBIM: 3D and plan side by side" loading="lazy"><figcaption><span class="live">One model</span><span>every view updates as you edit</span></figcaption></figure></section>
   {''.join(secs[:2])}
   <div class="night"><section class="sec gutter">
     <div class="wrap">
@@ -657,7 +664,7 @@ def download(rels):
       <div class="dl">
         <div class="card">
           <div class="os"><svg aria-hidden="true"><use href="#i-win"/></svg><h3>Windows</h3></div>
-          <p>Windows 10 or 11, 64-bit. The installer adds CreaBIM to the Start menu.</p>
+          <p>Windows 10 or 11, 64-bit. The installer needs no admin rights: it installs for you, with Start menu and desktop shortcuts, and uninstalls from Settings › Apps.</p>
           <a class="btn primary" href="{setup["url"]}"><svg aria-hidden="true"><use href="#i-dl"/></svg>Installer <small>{fmt_size(setup["size"])}</small></a>
           {zipline}
         </div>
