@@ -9367,6 +9367,7 @@ impl eframe::App for CreaBimApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let _perf = Perf::new("frame");
         let ctx = ui.ctx().clone();
+        crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
         // the activity log: what the status bar said (it names every edit
         // and undo) and the tool, when they change
         if self.status != self.logged.0 {

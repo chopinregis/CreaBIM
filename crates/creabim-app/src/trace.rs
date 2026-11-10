@@ -17,6 +17,15 @@ use glam::DVec2;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Set each frame: true while a pointer button is down, so drags reuse
+/// what the references showed instead of reading their views again.
+static HOLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Hold (or release) the references' read drawings; see [`RefCache::get`].
+pub fn hold(on: bool) {
+    HOLD.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// What a reference shows, read: a picture, or lines in its own metres.
 #[derive(Clone, Debug)]
 pub enum Shown {
@@ -51,7 +60,11 @@ impl RefCache {
             _ => 0,
         };
         if let Some((kk, rr, s)) = self.read.get(&id) {
-            if *kk == k && *rr == rev {
+            // while a button is held (a drag), what was read stands: a view's
+            // drawing was read again on every frame of a drag, because each
+            // frame's move is a change to the model (MU37: references dragged
+            // slowly); it is read again once, when the drag ends
+            if *kk == k && (*rr == rev || HOLD.load(std::sync::atomic::Ordering::Relaxed)) {
                 return s.clone();
             }
         }

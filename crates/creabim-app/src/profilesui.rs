@@ -100,6 +100,9 @@ pub struct ProfilesUi {
     guide_drag: Option<(usize, DVec2, DVec2, DVec2)>,
     /// Edge lengths and overall dimensions shown (D, or the header toggle).
     hide_dims: bool,
+    /// A trace being dragged by its middle: (it, where the drag began, its
+    /// place then, how far it has gone); shown moved, committed on release.
+    trace_drag: Option<(ElementId, DVec2, DVec2, DVec2)>,
     /// The pass the pointer was last over the view, for the app's keys
     /// to stand aside.
     hovered_pass: u64,
@@ -1162,7 +1165,16 @@ impl CreaBimApp {
             creabim_core::reference::in_view(model, profiles::trace_view(&prof.name))
                 .into_iter()
                 .filter(|(_, r)| !r.hidden)
-                .map(|(i, r)| (i, r.clone()))
+                .map(|(i, r)| {
+                    let mut r = r.clone();
+                    // a trace being dragged shows where it is going
+                    if let Some((d, _, at0, delta)) = self.profiles.trace_drag {
+                        if d == i {
+                            r.at = at0 + delta;
+                        }
+                    }
+                    (i, r)
+                })
                 .collect();
         let mut trace_lines: Vec<Vec<DVec2>> = vec![];
         {
@@ -1579,6 +1591,36 @@ impl CreaBimApp {
             .chain(self.profiles.extra.iter().copied())
             .collect();
         for &sel in &picked {
+            if let PSel::Trace(id) = sel {
+                if let Some(c) = traces
+                    .iter()
+                    .find(|t| t.0 == id)
+                    .and_then(|t| t.1.outline())
+                {
+                    let orange = crate::planview::ACCENT_SELECTED;
+                    let mut pts: Vec<egui::Pos2> = c.iter().map(|p| to_s(*p)).collect();
+                    pts.push(pts[0]);
+                    crate::snaps::dashed_clipped(
+                        &painter,
+                        &pts,
+                        egui::Stroke::new(1.5, orange),
+                        6.0,
+                        4.0,
+                    );
+                    let mid = c.iter().fold(DVec2::ZERO, |a, p| a + *p) / 4.0;
+                    for p in c.iter().chain(std::iter::once(&mid)) {
+                        let r = Rect::from_center_size(to_s(*p), egui::vec2(9.0, 9.0));
+                        painter.rect(
+                            r,
+                            1.0,
+                            paper,
+                            egui::Stroke::new(1.5, orange),
+                            egui::StrokeKind::Middle,
+                        );
+                    }
+                }
+                continue;
+            }
             for line in sel_lines(&shapes, &guides, &traces, sel) {
                 let pts: Vec<egui::Pos2> = line.iter().map(|p| to_s(*p)).collect();
                 if pts.len() == 1 {
@@ -1852,10 +1894,27 @@ impl CreaBimApp {
                             }
                         }
                     }
+                    // a picked trace under it: dragged by its middle
+                    if let (None, None, None, Some(q)) = (
+                        self.profiles.drag,
+                        self.profiles.edge_drag,
+                        self.profiles.guide_drag,
+                        q,
+                    ) {
+                        if let Some(PSel::Trace(id)) = pick(q) {
+                            if let Some((_, r)) = traces.iter().find(|t| t.0 == id) {
+                                self.profiles.trace_drag = Some((id, to_w(q), r.at, DVec2::ZERO));
+                                self.profiles.sel = Some(PSel::Trace(id));
+                                self.profiles.extra.clear();
+                                self.selection.only(id);
+                            }
+                        }
+                    }
                     // nothing under it: a box pick
                     if self.profiles.drag.is_none()
                         && self.profiles.edge_drag.is_none()
                         && self.profiles.guide_drag.is_none()
+                        && self.profiles.trace_drag.is_none()
                     {
                         self.profiles.boxsel = q;
                     }
@@ -1981,10 +2040,23 @@ impl CreaBimApp {
                         violet,
                     );
                 }
+                if let (Some((id, from, at0, _)), Some(w), true) = (
+                    self.profiles.trace_drag,
+                    pointer.map(to_w),
+                    response.dragged_by(egui::PointerButton::Primary),
+                ) {
+                    self.profiles.trace_drag = Some((id, from, at0, w - from));
+                }
                 if response.drag_stopped() {
                     self.profiles.drag = None;
                     self.profiles.edge_drag = None;
                     self.profiles.guide_drag = None;
+                    // the trace lands: one change, one undo step
+                    if let Some((id, _, at0, delta)) = self.profiles.trace_drag.take() {
+                        if delta.length() > 1e-9 {
+                            trace_move.push((id, at0 + delta, 0.0));
+                        }
+                    }
                 }
                 // a click picks a corner, an edge, a guide or a shape; Shift
                 // adds it to what is picked, or takes it off
@@ -2004,6 +2076,11 @@ impl CreaBimApp {
                         }
                     } else {
                         self.profiles.sel = hit;
+                        // a trace picked here is the reference picked in the
+                        // app: Properties shows its settings (MU37)
+                        if let Some(PSel::Trace(id)) = hit {
+                            self.selection.only(id);
+                        }
                         self.profiles.extra.clear();
                     }
                     if let Some(PSel::Corner(si, _) | PSel::Edge(si, _) | PSel::Shape(si)) = hit {
