@@ -341,7 +341,7 @@ def home(rel):
   <section class="proof" aria-label="At a glance">
     <ul class="wrap gutter">
       <li><b>640<small>elements</small></b><span>in the starter house, footings to fixtures</span></li>
-      <li><b>11<small>sheets</small></b><span>drawn from one model, as vector PDF</span></li>
+      <li><b>13<small>sheets</small></b><span>drawn from one model, as vector PDF</span></li>
       <li><b>3<small>IFC schemas</small></b><span>IFC2X3, IFC4 and IFC4X3 read</span></li>
       <li><b>1<small>model</small></b><span>behind every view, sheet, schedule and export</span></li>
     </ul>
