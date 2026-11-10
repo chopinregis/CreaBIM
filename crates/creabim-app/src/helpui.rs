@@ -187,6 +187,10 @@ impl CreaBimApp {
             ));
         let mut read = false;
         egui::Popup::from_toggle_button_response(&r)
+            // opening leftward, under the ?: the Help panel to the right
+            // is drawn over anything that runs into it (MU39)
+            .align(egui::RectAlign::BOTTOM_END)
+            .align_alternatives(&[egui::RectAlign::TOP_END, egui::RectAlign::LEFT_START])
             // above the views' zoom columns, which sit on the foreground
             // layer (MU22)
             .kind(egui::PopupKind::Tooltip)
