@@ -4278,6 +4278,7 @@ impl CreaBimApp {
         }
         let Some((p0, n)) = plane else { return };
         let Some((a, _, _)) = self.beam_face else {
+            self.plan.members.last_beam = None;
             self.beam_face = Some((at, p0, n));
             self.status = "Beam on face: click its other end; it stays on this face.".into();
             return;
@@ -4308,10 +4309,11 @@ impl CreaBimApp {
             .plan
             .typed(model, Element::new("Beam", ElementKind::Beam(b)));
         // the one before in this chain, ending where this starts
-        let prev = self.selection.active.and_then(|id| model.get(id).cloned()).filter(|pe| {
+        let prev = self.plan.members.last_beam.and_then(|id| model.get(id).cloned()).filter(|pe| {
             matches!(&pe.kind, ElementKind::Beam(pb) if pb.end.distance(ta.truncate()) < 1e-6)
         });
         let id = e.id;
+        self.plan.members.last_beam = Some(id);
         let tx = match prev {
             Some(pe) => {
                 let (mut pe2, mut ne) = (pe.clone(), e);

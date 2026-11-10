@@ -47,6 +47,9 @@ pub struct MemberSettings {
     pub beam_on_face: bool,
     /// The library profile new railings' top rail takes (MU40).
     pub railing_section: Option<String>,
+    /// The beam this chain placed last: the next joins only it, and a new
+    /// chain starts with none (MU40: a new Beam command joined the old one).
+    pub last_beam: Option<ElementId>,
 }
 
 impl Default for MemberSettings {
@@ -75,6 +78,7 @@ impl Default for MemberSettings {
             beam_corner: Default::default(),
             beam_on_face: false,
             railing_section: None,
+            last_beam: None,
         }
     }
 }
@@ -181,6 +185,7 @@ pub fn click(
         Tool::Beam => {
             match state.pending {
                 None => {
+                    state.members.last_beam = None;
                     state.pending = Some(p);
                     state.status = Some("Click the beam's other end.".into());
                     Ok(())
@@ -207,9 +212,12 @@ pub fn click(
                     let e = state.typed(doc.model(), Element::new("Beam", ElementKind::Beam(b)));
                     // the beam before it in the chain, ending here: the two
                     // meet as the tool's Corners says (MU40)
-                    let prev = selection.active.and_then(|id| doc.model().get(id).cloned()).filter(
-                    |pe| matches!(&pe.kind, ElementKind::Beam(pb) if pb.end.distance(a) < 1e-6),
-                );
+                    let prev = state
+                    .members
+                    .last_beam
+                    .and_then(|id| doc.model().get(id).cloned())
+                    .filter(|pe| matches!(&pe.kind, ElementKind::Beam(pb) if pb.end.distance(a) < 1e-6));
+                    state.members.last_beam = Some(e.id);
                     match prev {
                         Some(pe) => {
                             let (mut pe2, mut ne) = (pe.clone(), e);

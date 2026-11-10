@@ -1380,6 +1380,10 @@ impl CreaBimApp {
                     crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
                     self.plan.tool = *t;
                     self.plan.cancel();
+                    // a chain begun in 3D ends with its tool (MU40)
+                    self.pending_3d = None;
+                    self.beam_face = None;
+                    self.plan.members.last_beam = None;
                     self.status = t.hint().into();
                     if *t == Tool::Guide && self.shell.settings.guides_hidden {
                         // drawing guides you can't see helps no one
