@@ -112,7 +112,7 @@ pub fn draw(
 ) {
     let palette = crate::theme::Palette::of(painter.ctx());
     let pill = crate::handles::PillLook::of(&palette);
-    let accent = crate::planview::ACCENT_SELECTED;
+    let accent = crate::planview::accent_selected();
     let outline = |pts: &[DVec2], c: Color32| {
         let mut s: Vec<Pos2> = pts.iter().map(|p| xf.to_screen(*p)).collect();
         if let Some(f) = s.first().copied() {

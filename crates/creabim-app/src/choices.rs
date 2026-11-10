@@ -196,7 +196,7 @@ fn paint_room_tag(painter: &Painter, r: Rect, style: RoomTagStyle) {
 /// A picture of grips in `style`'s way on a selected outline.
 pub fn paint_grips(painter: &Painter, r: Rect, style: crate::handles::GripStyle) {
     use crate::handles::GripStyle as G;
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     let b = r.shrink2(Vec2::new(10.0, 8.0));
     painter.rect(
         b,
@@ -248,10 +248,30 @@ pub fn paint_grips(painter: &Painter, r: Rect, style: crate::handles::GripStyle)
 /// One option of a list: its picture, its name and a line under it, and
 /// a tick when it is the one in use. Click it to choose it; resting on it
 /// previews it.
+/// A picture of the interaction colour: a selected box and its grips.
+pub fn paint_interaction(painter: &Painter, r: Rect, ink: Color32) {
+    let b = r.shrink2(Vec2::new(16.0, 9.0));
+    painter.rect(
+        b,
+        0.0,
+        ink.gamma_multiply(0.25),
+        Stroke::new(1.4, ink),
+        egui::StrokeKind::Middle,
+    );
+    for c in [
+        b.left_top(),
+        b.right_top(),
+        b.left_bottom(),
+        b.right_bottom(),
+    ] {
+        painter.rect_filled(Rect::from_center_size(c, Vec2::splat(5.0)), 1.0, ink);
+    }
+}
+
 /// A picture of where the Move bar sits: a slim pill at the top of a
 /// view, or a small palette by the pointer.
 pub fn paint_edit_bar(painter: &Painter, r: Rect, by_pointer: bool) {
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     let ink = Color32::from_gray(120);
     // the view, and a box being moved in it
     painter.rect_stroke(r, 3.0, Stroke::new(1.0, ink), egui::StrokeKind::Inside);

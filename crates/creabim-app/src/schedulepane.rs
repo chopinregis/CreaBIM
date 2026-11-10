@@ -15,7 +15,9 @@ const STRIPE: Color32 = Color32::from_rgb(246, 247, 245);
 // a soft tone that dark paper turns dark too, and an accent bar at the
 // row's left (MU29: the orange fill stayed light, its text unreadable)
 const SELECTED: Color32 = Color32::from_rgb(222, 228, 238);
-const SELECTED_BAR: Color32 = Color32::from_rgb(230, 120, 30);
+fn selected_bar() -> Color32 {
+    crate::theme::interaction()
+}
 const RULE: Color32 = Color32::from_rgb(224, 226, 222);
 const ACCENT: Color32 = Color32::from_rgb(200, 100, 20);
 const ROW_H: f32 = 28.0;
@@ -280,7 +282,7 @@ pub fn show(
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(rr.min, egui::vec2(3.0, rr.height())),
                     1.0,
-                    SELECTED_BAR,
+                    selected_bar(),
                 );
             }
             for (i, (c, col)) in cells(rr).into_iter().zip(&table.columns).enumerate() {

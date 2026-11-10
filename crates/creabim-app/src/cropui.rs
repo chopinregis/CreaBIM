@@ -12,7 +12,9 @@ use crate::ui_model::Item;
 use creabim_core::{cropbox, CropBox, CropScope};
 
 const FRAME: Color32 = Color32::from_rgb(40, 110, 200);
-const FRAME_SELECTED: Color32 = Color32::from_rgb(230, 120, 30);
+fn frame_selected() -> Color32 {
+    crate::theme::interaction()
+}
 /// How far a new crop box stands off what it is fitted round, metres.
 const MARGIN: f64 = 0.3;
 
@@ -650,7 +652,7 @@ impl CreaBimApp {
                 continue;
             }
             let color = match (selected, c.enabled) {
-                (true, _) => FRAME_SELECTED,
+                (true, _) => frame_selected(),
                 (false, true) => FRAME,
                 (false, false) => Color32::from_gray(140),
             };

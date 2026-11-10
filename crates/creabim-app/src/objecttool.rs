@@ -11,7 +11,7 @@ use crate::planview::PlanState;
 use crate::selection::Selection;
 use creabim_core::objects::{self, CatalogueObject, Mount, Object};
 use creabim_core::{Document, ElementId, ElementKind, Model, ModelError};
-use eframe::egui::{self, Color32, Pos2, Stroke};
+use eframe::egui::{self, Pos2, Stroke};
 use glam::{DVec2, DVec3};
 
 /// How far from a wall face an object that stands against walls finds it.
@@ -169,8 +169,8 @@ pub fn preview(
     o.offset = c.object.offset;
     // its box where it will stand: up a wall, or under the ceiling
     let base = objects::base_z_of(model, &o, &c.object) - z;
-    let stroke = Stroke::new(1.5, Color32::from_rgb(230, 120, 30));
-    let thin = Stroke::new(1.0, Color32::from_rgb(230, 120, 30));
+    let stroke = Stroke::new(1.5, crate::theme::interaction());
+    let thin = Stroke::new(1.0, crate::theme::interaction());
     let line = |pts: &[DVec3], s: Stroke| {
         let scr: Option<Vec<Pos2>> = pts.iter().map(|q| project(*q)).collect();
         if let Some(scr) = scr {

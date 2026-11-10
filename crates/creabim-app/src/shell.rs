@@ -828,6 +828,27 @@ impl CreaBimApp {
                         .icon("copy-levels"),
                 );
             }
+            // cutting up, after the edits (MU39): found in the menu and by
+            // typing, not only on a right-click
+            if group.contains(&Command::Duplicate) {
+                let some = !self.selection.is_empty();
+                let span = self
+                    .selection
+                    .active
+                    .is_some_and(|id| creabim_core::divide::span(self.doc.model(), id).is_some());
+                items.push(
+                    Item::new("split", "Split…")
+                        .icon("scissors")
+                        .enabled(some)
+                        .hint("Cut the selection along a guide, a line or two points; keep the side you click"),
+                );
+                items.push(
+                    Item::new("divide", "Divide…")
+                        .icon("mod-array")
+                        .enabled(span)
+                        .hint("Into parts along it, up it or both: cuts, guides or copies"),
+                );
+            }
             items.push(Item::Separator);
         }
         let levels = self.level_menu_items();
@@ -968,6 +989,31 @@ impl CreaBimApp {
         flatten(self.file_menu(), "File › ", &mut out);
         flatten(self.materials_menu(), "Materials › ", &mut out);
         flatten(self.help_menu(), "Help › ", &mut out);
+        // what the tool tabs hold that the menus don't (MU39: Profiles, on
+        // Manage, could not be found by typing)
+        for (tab, name) in crate::tooltabs::TABS.iter().enumerate() {
+            for e in crate::tooltabs::entries(tab) {
+                use crate::tooltabs::Entry;
+                match e {
+                    Entry::Act {
+                        id,
+                        label,
+                        icon,
+                        hint,
+                    } => flatten(
+                        vec![Item::new(id, label).icon(icon).hint(hint)],
+                        &format!("{name} › "),
+                        &mut out,
+                    ),
+                    Entry::Menu { key, label, .. } => flatten(
+                        self.menu_items(key),
+                        &format!("{name} › {label} › "),
+                        &mut out,
+                    ),
+                    Entry::Tool(_) | Entry::Sep => {}
+                }
+            }
+        }
         // every page of the guide, found by its title
         for (section, id, md) in crate::help::PAGES {
             let item = Item::new(format!("help:{id}"), crate::help::title(md))

@@ -8,7 +8,7 @@ use creabim_core::{
     bulge_through, Curve, Document, Element, ElementId, ElementKind, Model, ModelError, Slab,
     Transaction,
 };
-use eframe::egui::{self, Color32, Pos2, Stroke};
+use eframe::egui::{self, Pos2, Stroke};
 use glam::{DVec2, DVec3};
 
 /// Thickness of a newly drawn slab.
@@ -418,7 +418,7 @@ impl Outline {
         project: &dyn Fn(DVec3) -> Option<Pos2>,
         hover: Option<DVec2>,
     ) {
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         let stroke = Stroke::new(2.0, accent);
         let at = |p: DVec2| project(p.extend(self.z));
         let line = |pts: &[DVec2], stroke: Stroke| {

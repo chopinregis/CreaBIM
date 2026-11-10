@@ -322,8 +322,12 @@ pub struct PlanState {
     /// (its view, or None for 3D): set as it is drawn there, and shown a
     /// frame later in every other view, so placing a mass in 3D shows it
     /// in the plans too (MU39).
-    pub ghost_now: Option<(Option<ElementId>, crate::ghost::Ghost)>,
-    pub ghost_shared: Option<(Option<ElementId>, crate::ghost::Ghost)>,
+    /// Keyed by the pane (two panes may show the same view; the 3D view
+    /// is `usize::MAX`).
+    pub ghost_now: Option<(Option<usize>, crate::ghost::Ghost)>,
+    pub ghost_shared: Option<(Option<usize>, crate::ghost::Ghost)>,
+    /// The pane being drawn now, while the areas draw theirs.
+    pub pane_now: Option<usize>,
     /// Divide is making guides: its marks show as guides do (MU39).
     pub divide_guides: bool,
     /// While a point is asked for (a radial array's centre): the next
@@ -592,6 +596,7 @@ impl Default for PlanState {
             divide_guides: false,
             ghost_now: None,
             ghost_shared: None,
+            pane_now: None,
             point_pick: false,
             point_picked: None,
             point_hover: None,
@@ -1016,7 +1021,7 @@ pub fn show(
                     ui.id().with("pick"),
                 ))
                 .with_clip_rect(rect);
-            let s = Stroke::new(1.5, ACCENT_SELECTED);
+            let s = Stroke::new(1.5, accent_selected());
             top.line_segment([c - egui::vec2(12.0, 0.0), c + egui::vec2(12.0, 0.0)], s);
             top.line_segment([c - egui::vec2(0.0, 12.0), c + egui::vec2(0.0, 12.0)], s);
             top.circle_stroke(c, 5.0, s);
@@ -1134,9 +1139,9 @@ pub fn show(
                 let mut pts: Vec<Pos2> = c.iter().map(|p| xf.to_screen(*p)).collect();
                 pts.push(pts[0]);
                 let ink = if lit {
-                    ACCENT_SELECTED
+                    accent_selected()
                 } else {
-                    ACCENT_SELECTED.gamma_multiply(0.6)
+                    accent_selected().gamma_multiply(0.6)
                 };
                 painter.extend(egui::Shape::dashed_line(
                     &pts,
@@ -1222,7 +1227,7 @@ pub fn show(
     // a selected mark is traced in the accent, as a hover traces it
     for item in plan.items.iter().filter(|it| is_mark(it)) {
         if selection.contains(item.id()) && !ghost {
-            trace(&painter, &xf, item, ACCENT_SELECTED, mm);
+            trace(&painter, &xf, item, accent_selected(), mm);
         }
     }
     if let Some(id) = hovered {
@@ -1640,15 +1645,15 @@ pub fn show(
         let project = |p: DVec3| Some(xf.to_screen(model_to_pane(space, p)));
         // the element another view's pointer would place, here too
         if let Some((from, g)) = &state.ghost_shared {
-            if *from != Some(view) {
-                crate::ghost::draw(&painter, &project, g, ACCENT_SELECTED);
+            if *from != state.pane_now {
+                crate::ghost::draw(&painter, &project, g, accent_selected());
             }
         }
         // what the modifier being set shows: its centre, plane or cuts
         crate::modguides::draw(
             &painter,
             &state.mod_guides,
-            state.mod_guides.ink.unwrap_or(ACCENT_SELECTED),
+            state.mod_guides.ink.unwrap_or(accent_selected()),
             matches!(space, Space::Plan),
             &project,
         );
@@ -1671,7 +1676,7 @@ pub fn show(
                         5.0,
                     );
                 } else {
-                    painter.line_segment([pa, pb], Stroke::new(2.0, ACCENT_SELECTED));
+                    painter.line_segment([pa, pb], Stroke::new(2.0, accent_selected()));
                 }
             }
         }
@@ -1686,7 +1691,7 @@ pub fn show(
                 &painter,
                 xf.to_screen(model_to_pane(space, *at)),
                 text,
-                ACCENT_SELECTED,
+                accent_selected(),
                 &mut taken,
             );
         }
@@ -2045,7 +2050,7 @@ pub fn show(
         _ => None,
     };
     let dim_hit = dim_guided.as_ref().map(|(h, at, k, _)| (*h, *at, *k));
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     if let Some((_, at, k, used)) = &dim_guided {
         let c = xf.to_screen(*at);
         match k {
@@ -2154,11 +2159,11 @@ pub fn show(
     if let (PaneKind::Plan { level }, Some(h), true) = (kind, hover_world, response.hovered()) {
         if crate::ghost::shows(tool) {
             // the interaction colour, as the 3D view's ghost (MU39)
-            let accent = ACCENT_SELECTED;
+            let accent = accent_selected();
             match crate::ghost::cached(doc.model(), level, tool, h, state) {
                 Some(g) => {
                     crate::ghost::draw(&painter, &|p| Some(xf.to_screen(p.truncate())), &g, accent);
-                    state.ghost_now = Some((Some(view), g));
+                    state.ghost_now = Some((state.pane_now, g));
                 }
                 None if matches!(tool, Tool::Door | Tool::Window | Tool::Opening) => {
                     if let Some(at) = response.hover_pos() {
@@ -2243,7 +2248,7 @@ pub fn show(
             let hi = prof.iter().map(|p| p.x).fold(f64::MIN, f64::max);
             let mut path = state.parts.path.clone();
             path.push(b);
-            let ghost = Color32::from_rgb(230, 120, 30);
+            let ghost = crate::theme::interaction();
             for w in path.windows(2) {
                 let d = (w[1] - w[0]).normalize_or_zero();
                 if d == DVec2::ZERO {
@@ -2296,7 +2301,7 @@ pub fn show(
     }
     // preview of the tool in progress
     if let (Some(a), Some(b)) = (state.pending, hover_world) {
-        let accent = Stroke::new(1.5, Color32::from_rgb(230, 120, 30));
+        let accent = Stroke::new(1.5, crate::theme::interaction());
         match tool {
             Tool::Level => {
                 let end = DVec2::new(b.x, a.y);
@@ -2421,7 +2426,7 @@ pub fn show(
             painter.circle_stroke(
                 xf.to_screen(p),
                 4.0,
-                Stroke::new(1.0, Color32::from_rgb(230, 120, 30)),
+                Stroke::new(1.0, crate::theme::interaction()),
             );
         }
     }
@@ -2592,14 +2597,20 @@ pub fn show(
         if response.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
         }
-        let ink = |i: usize| if i < 2 { ACCENT_SELECTED } else { GUIDE_COLOR };
+        let ink = |i: usize| {
+            if i < 2 {
+                accent_selected()
+            } else {
+                GUIDE_COLOR
+            }
+        };
         for (i, q) in pts.iter().enumerate() {
             painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, ink(i)));
         }
         if pts.len() == 2 {
             painter.line_segment(
                 [xf.to_screen(pts[0]), xf.to_screen(pts[1])],
-                Stroke::new(1.5, ACCENT_SELECTED),
+                Stroke::new(1.5, accent_selected()),
             );
         }
         if let Some(h) = hover_world {
@@ -2641,15 +2652,15 @@ pub fn show(
         }
         // where the next click goes, before the first too (MU23)
         if let (Some(h), true) = (hover_world, pts.is_empty()) {
-            painter.circle_stroke(xf.to_screen(h), 4.0, Stroke::new(1.0, ACCENT_SELECTED));
+            painter.circle_stroke(xf.to_screen(h), 4.0, Stroke::new(1.0, accent_selected()));
         }
         for q in pts.iter() {
-            painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, ACCENT_SELECTED));
+            painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, accent_selected()));
         }
         if let (Some(a), Some(h)) = (pts.first(), hover_world) {
             painter.line_segment(
                 [xf.to_screen(*a), xf.to_screen(h)],
-                Stroke::new(1.0, ACCENT_SELECTED),
+                Stroke::new(1.0, accent_selected()),
             );
         }
         if response.clicked() {
@@ -4420,7 +4431,7 @@ fn plan_ranges(
             e.name.clone(),
         ));
     }
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     // the band's ends, in the drawing: its own, else the drawing's width
     let (ex0, ex1) = *state.range_ends.entry(section).or_insert_with(|| {
         drawing
@@ -4724,7 +4735,7 @@ fn drag_section_line(
         (Handle::End, end),
         (Handle::Line, (start + end) / 2.0),
     ];
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     for (h, p) in handles {
         let c = xf.to_screen(p);
         if h == Handle::Line {
@@ -5211,7 +5222,7 @@ pub fn draw_item_with(
     mm: f64,
     o: &Ovr,
 ) {
-    let highlight = Color32::from_rgb(230, 120, 30);
+    let highlight = crate::theme::interaction();
     let ink = if selected {
         highlight
     } else {
@@ -5571,7 +5582,7 @@ fn draw_item_xray(
             ..
         } => {
             let c = if selected {
-                Color32::from_rgb(230, 120, 30)
+                crate::theme::interaction()
             } else {
                 Color32::from_gray(25)
             };
@@ -5592,7 +5603,7 @@ pub fn draw_footings(
     working: bool,
     selection: &Selection,
 ) {
-    let accent = ACCENT_SELECTED;
+    let accent = accent_selected();
     let strips = creabim_core::footing::strip_outlines(model);
     for e in model.iter() {
         let ElementKind::Footing(f) = &e.kind else {
@@ -5618,7 +5629,9 @@ pub fn draw_footings(
 }
 
 /// The selection's colour in a pane: what selected linework is drawn in.
-pub const ACCENT_SELECTED: Color32 = Color32::from_rgb(230, 120, 30);
+pub fn accent_selected() -> Color32 {
+    crate::theme::interaction()
+}
 
 /// How much heavier a traced mark is than the mark itself (A3-5).
 pub const TRACE: f32 = 1.5;

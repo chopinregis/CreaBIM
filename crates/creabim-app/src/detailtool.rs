@@ -11,7 +11,7 @@ use creabim_core::{
     DetailItem, DetailKind, Document, Element, ElementId, ElementKind, Hatch, JoinRule, JoinWinner,
     Model, ModelError, Transaction, View,
 };
-use eframe::egui::{self, Color32, Stroke};
+use eframe::egui::{self, Stroke};
 use glam::DVec2;
 
 /// What the Detail and Callout tools draw next, and the Detail tool's
@@ -282,7 +282,7 @@ pub fn preview(
     hover: Option<DVec2>,
     mm: f64,
 ) {
-    let accent = Stroke::new(1.5, Color32::from_rgb(230, 120, 30));
+    let accent = Stroke::new(1.5, crate::theme::interaction());
     match tool {
         crate::planview::Tool::Callout => {
             if let (Some(a), Some(b)) = (state.pending, hover) {

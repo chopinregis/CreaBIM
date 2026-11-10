@@ -619,7 +619,7 @@ pub fn draw(
     state: &AlignState,
     under: &Under,
 ) {
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     let fill = |tris: &[[DVec3; 3]], c: Color32| {
         for t in tris {
             let pts: Option<Vec<Pos2>> = t.iter().map(|p| project(*p)).collect();

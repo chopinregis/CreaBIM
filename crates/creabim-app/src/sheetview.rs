@@ -276,7 +276,7 @@ fn sheet_move(
             painter.rect_stroke(
                 Rect::from_center_size(at, Vec2::splat(9.0)),
                 1.0,
-                egui::Stroke::new(1.5, ACCENT),
+                egui::Stroke::new(1.5, interaction_ink()),
                 egui::StrokeKind::Middle,
             );
         }
@@ -291,7 +291,11 @@ fn sheet_move(
         let base_click = armed && response.clicked();
         if armed && response.hovered() {
             if let Some(h) = here {
-                painter.circle_stroke(xf.to_screen(h), 5.0, egui::Stroke::new(1.5, ACCENT));
+                painter.circle_stroke(
+                    xf.to_screen(h),
+                    5.0,
+                    egui::Stroke::new(1.5, interaction_ink()),
+                );
             }
         }
         if !(base_click || g) {
@@ -354,7 +358,11 @@ fn sheet_move(
     }
     match (base, here) {
         (None, Some(p)) => {
-            painter.circle_stroke(xf.to_screen(p), 5.0, egui::Stroke::new(1.5, ACCENT));
+            painter.circle_stroke(
+                xf.to_screen(p),
+                5.0,
+                egui::Stroke::new(1.5, interaction_ink()),
+            );
             if response.clicked() {
                 state.moving = Some((items, Some(p)));
                 plan.status =
@@ -365,7 +373,7 @@ fn sheet_move(
             let by = p - b;
             painter.line_segment(
                 [xf.to_screen(b), xf.to_screen(b + by)],
-                egui::Stroke::new(1.0, ACCENT),
+                egui::Stroke::new(1.0, interaction_ink()),
             );
             error = put(doc, by);
             if response.clicked() {
@@ -417,7 +425,7 @@ fn outline_items(
     sheet: ElementId,
     ids: &[ElementId],
 ) {
-    let stroke = egui::Stroke::new(1.5, ACCENT);
+    let stroke = egui::Stroke::new(1.5, interaction_ink());
     for e in model.iter().filter(|e| ids.contains(&e.id)) {
         let b = match &e.kind {
             ElementKind::PaperMark(m) if m.sheet == sheet => Some(m.bounds()),
@@ -591,7 +599,9 @@ impl Canvas for EguiCanvas<'_> {
     }
 }
 
-const ACCENT: Color32 = Color32::from_rgb(230, 120, 30);
+fn interaction_ink() -> Color32 {
+    crate::theme::interaction()
+}
 
 /// Draw `d` as it prints, as large as fits in `rect`: a type's preview.
 /// Lines keep their printed weights at three pixels a millimetre.
@@ -807,7 +817,7 @@ pub fn show(
             painter.rect_stroke(
                 xf.rect_of(lo, hi).expand(4.0),
                 2.0,
-                egui::Stroke::new(1.5, ACCENT),
+                egui::Stroke::new(1.5, interaction_ink()),
                 egui::StrokeKind::Outside,
             );
         }
@@ -842,7 +852,7 @@ pub fn show(
         painter.rect_stroke(
             inner,
             3.0,
-            egui::Stroke::new(1.5, ACCENT),
+            egui::Stroke::new(1.5, interaction_ink()),
             egui::StrokeKind::Outside,
         );
     }
@@ -1158,7 +1168,7 @@ pub fn show(
                     r.left_bottom(),
                     r.left_top(),
                 ],
-                egui::Stroke::new(1.0, ACCENT),
+                egui::Stroke::new(1.0, interaction_ink()),
                 6.0,
                 4.0,
             ));
@@ -1173,7 +1183,7 @@ pub fn show(
                     Rect::from_center_size(h, Vec2::splat(8.0)),
                     0.0,
                     Color32::WHITE,
-                    egui::Stroke::new(1.5, ACCENT),
+                    egui::Stroke::new(1.5, interaction_ink()),
                     egui::StrokeKind::Middle,
                 );
             }
@@ -1324,15 +1334,15 @@ pub fn show(
                             at,
                             if lit { 5.0 } else { 3.5 },
                             Color32::WHITE,
-                            egui::Stroke::new(1.2, ACCENT),
+                            egui::Stroke::new(1.2, interaction_ink()),
                         );
                         painter.line_segment(
                             [at - Vec2::new(2.0, 0.0), at + Vec2::new(2.0, 0.0)],
-                            egui::Stroke::new(1.0, ACCENT),
+                            egui::Stroke::new(1.0, interaction_ink()),
                         );
                         painter.line_segment(
                             [at - Vec2::new(0.0, 2.0), at + Vec2::new(0.0, 2.0)],
-                            egui::Stroke::new(1.0, ACCENT),
+                            egui::Stroke::new(1.0, interaction_ink()),
                         );
                     }
                     _ => {
@@ -1341,8 +1351,12 @@ pub fn show(
                         painter.rect(
                             r,
                             1.0,
-                            if lit { ACCENT } else { Color32::WHITE },
-                            egui::Stroke::new(1.3, ACCENT),
+                            if lit {
+                                interaction_ink()
+                            } else {
+                                Color32::WHITE
+                            },
+                            egui::Stroke::new(1.3, interaction_ink()),
                             egui::StrokeKind::Middle,
                         );
                     }
@@ -1407,7 +1421,7 @@ pub fn show(
                     egui::Stroke::new(
                         1.5,
                         if lit {
-                            ACCENT
+                            interaction_ink()
                         } else {
                             hoverpick::HOVER.gamma_multiply(0.7)
                         },
@@ -1582,8 +1596,8 @@ pub fn show(
             if let Some(b) = pointer {
                 let r = Rect::from_two_pos(a, b);
                 let touching = b.x < a.x;
-                let stroke = egui::Stroke::new(1.0, ACCENT);
-                painter.rect_filled(r, 0.0, ACCENT.gamma_multiply(0.08));
+                let stroke = egui::Stroke::new(1.0, interaction_ink());
+                painter.rect_filled(r, 0.0, interaction_ink().gamma_multiply(0.08));
                 if touching {
                     let c = [
                         r.left_top(),
@@ -1606,7 +1620,7 @@ pub fn show(
                         l.x >= lo.x && h.x <= hi.x && l.y >= lo.y && h.y <= hi.y
                     }
                 };
-                let lit = egui::Stroke::new(2.0, ACCENT);
+                let lit = egui::Stroke::new(2.0, interaction_ink());
                 let mut ids: Vec<ElementId> = vec![];
                 for (id, bx) in &mark_boxes {
                     if take(*bx) {
@@ -1634,7 +1648,7 @@ pub fn show(
                                     &painter,
                                     &pxf,
                                     item,
-                                    ACCENT,
+                                    interaction_ink(),
                                     1.0,
                                     planview::TRACE,
                                 );
@@ -1659,7 +1673,7 @@ pub fn show(
                     egui::Align2::LEFT_TOP,
                     format!("{n}"),
                     egui::FontId::proportional(12.0),
-                    ACCENT,
+                    interaction_ink(),
                 );
                 if response.drag_stopped() {
                     let add = ui.input(|i| i.modifiers.shift);
@@ -1732,7 +1746,7 @@ pub fn show(
                     _ => None,
                 })
                 .collect();
-            let guide = egui::Stroke::new(1.0, ACCENT);
+            let guide = egui::Stroke::new(1.0, interaction_ink());
             if let Some(o) = others.iter().find(|o| (o.x - moved.x).abs() < tol) {
                 moved.x = o.x;
                 painter.extend(egui::Shape::dashed_line(
@@ -1816,7 +1830,7 @@ pub fn show(
             painter.rect_stroke(
                 area,
                 2.0,
-                egui::Stroke::new(2.0, ACCENT),
+                egui::Stroke::new(2.0, interaction_ink()),
                 egui::StrokeKind::Outside,
             );
             painter.text(
@@ -1824,7 +1838,7 @@ pub fn show(
                 egui::Align2::LEFT_BOTTOM,
                 format!("Working in {}. Esc or click outside to finish.", v.title),
                 egui::FontId::proportional(12.0),
-                ACCENT,
+                interaction_ink(),
             );
         }
     }

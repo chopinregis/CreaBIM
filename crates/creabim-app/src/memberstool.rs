@@ -9,7 +9,7 @@ use creabim_core::{
     Beam, Column, Document, Element, ElementId, ElementKind, Model, ModelError, Railing, Roof,
     Slab, Stair, Transaction,
 };
-use eframe::egui::{self, Color32, Pos2, Stroke};
+use eframe::egui::{self, Pos2, Stroke};
 use glam::{DVec2, DVec3};
 
 /// Sizes and shapes for new elements, set in the tool bar.
@@ -551,7 +551,7 @@ pub fn preview(
     a: DVec3,
     b: DVec3,
 ) {
-    let stroke = Stroke::new(1.0, Color32::from_rgb(230, 120, 30));
+    let stroke = Stroke::new(1.0, crate::theme::interaction());
     let z = a.z;
     let ring = |pts: &[DVec2]| {
         let scr: Option<Vec<Pos2>> = pts

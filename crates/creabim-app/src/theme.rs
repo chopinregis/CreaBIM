@@ -267,3 +267,22 @@ mod tests {
         }
     }
 }
+
+static INTERACTION: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0xE6781E);
+
+/// The colour of what is being worked on: the selection, grips, ghosts,
+/// cutting planes' outlines (MU39): the orange it always was, or the
+/// theme's accent when Settings says to follow the theme.
+pub fn interaction() -> eframe::egui::Color32 {
+    let v = INTERACTION.load(std::sync::atomic::Ordering::Relaxed);
+    eframe::egui::Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
+}
+
+/// Set the interaction colour.
+pub fn set_interaction(c: eframe::egui::Color32) {
+    let v = (c.r() as u32) << 16 | (c.g() as u32) << 8 | c.b() as u32;
+    INTERACTION.store(v, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The orange the selection has always been.
+pub const ORANGE: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(230, 120, 30);

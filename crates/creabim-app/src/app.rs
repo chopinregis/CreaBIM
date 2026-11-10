@@ -908,7 +908,7 @@ impl CreaBimApp {
         painter: &egui::Painter,
         project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
     ) {
-        let accent = crate::planview::ACCENT_SELECTED;
+        let accent = crate::planview::accent_selected();
         for (a, b, _) in &self.plan.divide_marks {
             if let (Some(pa), Some(pb)) = (project(*a), project(*b)) {
                 if self.plan.divide_guides {
@@ -927,8 +927,14 @@ impl CreaBimApp {
         }
         crate::modguides::draw(painter, &self.plan.mod_guides, accent, false, project);
         // what a plan's pointer would place, here in 3D too
-        if let Some((Some(_), g)) = &self.plan.ghost_shared {
-            crate::ghost::draw(painter, project, g, egui::Color32::from_rgb(230, 120, 30));
+        if let Some((from, g)) = self
+            .plan
+            .ghost_shared
+            .as_ref()
+            .filter(|(from, _)| *from != Some(usize::MAX))
+        {
+            let _ = from;
+            crate::ghost::draw(painter, project, g, crate::theme::interaction());
         }
     }
 
@@ -1234,7 +1240,7 @@ impl CreaBimApp {
             crate::snaps::dashed_clipped(
                 painter,
                 &pts,
-                egui::Stroke::new(1.5, crate::planview::ACCENT_SELECTED),
+                egui::Stroke::new(1.5, crate::planview::accent_selected()),
                 6.0,
                 4.0,
             );
@@ -2207,7 +2213,7 @@ impl CreaBimApp {
         // (A7-2): a tint over the element's own colour and a crisp
         // outline, never a repaint
         let highlight = {
-            let a = crate::planview::ACCENT_SELECTED;
+            let a = crate::planview::accent_selected();
             [
                 a.r() as f32 / 255.0,
                 a.g() as f32 / 255.0,
@@ -2549,7 +2555,7 @@ impl CreaBimApp {
             return;
         }
         self.selection_key = Some(key);
-        let a = crate::planview::ACCENT_SELECTED;
+        let a = crate::planview::accent_selected();
         let highlight = [
             a.r() as f32 / 255.0,
             a.g() as f32 / 255.0,
@@ -3507,7 +3513,7 @@ impl CreaBimApp {
             }
             None => {
                 if let Some(c) = project(w.extend(z)) {
-                    let s = egui::Stroke::new(1.5, crate::planview::ACCENT_SELECTED);
+                    let s = egui::Stroke::new(1.5, crate::planview::accent_selected());
                     painter.line_segment([c - egui::vec2(12.0, 0.0), c + egui::vec2(12.0, 0.0)], s);
                     painter.line_segment([c - egui::vec2(0.0, 12.0), c + egui::vec2(0.0, 12.0)], s);
                     painter.circle_stroke(c, 5.0, if self.split.is_some() { red } else { s });
@@ -3777,7 +3783,7 @@ impl CreaBimApp {
         let Some(mode) = self.plane_pick.clone() else {
             return false;
         };
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
         if esc || response.secondary_clicked() {
             self.plane_pick = None;
@@ -3873,7 +3879,7 @@ impl CreaBimApp {
         ray: &dyn Fn(egui::Pos2) -> (DVec3, DVec3),
         plane: Workplane,
     ) {
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         let Some(hover) = response.hover_pos() else {
             return;
         };
@@ -4049,7 +4055,7 @@ impl CreaBimApp {
         let Some((level, z)) = self.work_level() else {
             return;
         };
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         let stroke = egui::Stroke::new(2.0, accent);
         // a right-click with nothing drawn leaves the Slab tool
         if tool.draws_outline() && response.secondary_clicked() && self.pending_3d.is_none() {
@@ -4089,7 +4095,7 @@ impl CreaBimApp {
                 match crate::ghost::cached(self.doc.model(), wl, tool, at.truncate(), &self.plan) {
                     Some(g) => {
                         crate::ghost::draw(painter, &project, &g, accent);
-                        self.plan.ghost_now = Some((None, g));
+                        self.plan.ghost_now = Some((Some(usize::MAX), g));
                     }
                     None => {
                         if let Some(c) = project(at) {
@@ -4196,7 +4202,7 @@ impl CreaBimApp {
         if from.is_none() && crate::ghost::shows(tool) {
             if let Some(g) = crate::ghost::cached(self.doc.model(), level, tool, p, &self.plan) {
                 crate::ghost::draw(painter, &project, &g, accent);
-                self.plan.ghost_now = Some((None, g));
+                self.plan.ghost_now = Some((Some(usize::MAX), g));
             }
         }
         if tool == Tool::Object {
@@ -5804,7 +5810,7 @@ impl CreaBimApp {
             }
             _ => None,
         };
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         // a slab, roof or shaft's Rectangle too, not only a face's (MU31)
         let rect_preview = (crate::partstool::on_face(&self.plan).is_some()
             || self.plan.tool.draws_outline())
@@ -10366,8 +10372,20 @@ impl eframe::App for CreaBimApp {
         let _perf = Perf::new("frame");
         let ctx = ui.ctx().clone();
         crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
+        // the colour of what is worked on: orange, or the theme's accent;
+        // the 3D view's highlight is built again when it changes (MU39)
+        let ink = if self.shell.settings.interaction == "theme" {
+            crate::theme::Palette::of(&ctx).accent
+        } else {
+            crate::theme::ORANGE
+        };
+        if ink != crate::theme::interaction() {
+            crate::theme::set_interaction(ink);
+            self.geometry_key = None;
+            self.selection_key = None;
+        }
         // the ghost the pointer's view drew last frame, for the others
-        let at = |g: &Option<(Option<ElementId>, crate::ghost::Ghost)>| {
+        let at = |g: &Option<(Option<usize>, crate::ghost::Ghost)>| {
             g.as_ref()
                 .and_then(|(_, g)| g.parts.first()?.points.first().copied())
         };
@@ -11360,7 +11378,7 @@ mod title_tests {
         let ink = paper_dark(Color32::BLACK);
         assert!(paper.r() < 50, "paper {paper:?}");
         assert!(ink.r() > 200, "ink {ink:?}");
-        let orange = Color32::from_rgb(230, 120, 30);
+        let orange = crate::theme::interaction();
         assert_eq!(paper_dark(orange), orange);
     }
 

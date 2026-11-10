@@ -262,140 +262,261 @@ impl CreaBimApp {
         let mut grip_hover = None;
         let mut edit_bar = self.shell.settings.edit_bar.clone();
         let mut axis_lines = self.shell.settings.axis_lines;
+        let mut interaction = self.shell.settings.interaction.clone();
+        let theme_accent = crate::theme::Palette::of(ctx).accent;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
+        // as Blender's Preferences (MU39): its categories down the left, the
+        // one picked on the right, scrolling, so it never grows past the
+        // window as settings are added
+        let tab_id = egui::Id::new("settings.tab");
+        let mut tab: usize = ctx.data(|d| d.get_temp(tab_id)).unwrap_or(0);
+        const TABS: [(&str, &str); 6] = [
+            ("Interface", "layout-panel-left"),
+            ("Viewport", "box"),
+            ("Navigation", "hand"),
+            ("Snapping", "magnet"),
+            ("Project", "folder"),
+            ("Keymap", "keyboard"),
+        ];
+        let height = (area.height() - 80.0).clamp(300.0, 560.0);
         crate::app::shell::window("Settings")
             .open(&mut open)
-            .default_pos(area.center() - Vec2::new(180.0, 140.0))
+            .default_pos(area.center() - Vec2::new(310.0, height / 2.0))
             .constrain_to(area)
             .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.set_width(360.0);
-                crate::props::section(ui, "Appearance (yours)");
-                crate::props::row(ui, "Theme", |ui| {
-                    egui::ComboBox::from_id_salt("settings.theme").icon(crate::props::combo_icon)
-                        .selected_text(theme.label())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for t in crate::theme::Theme::ALL {
-                                ui.selectable_value(&mut theme, t, t.label());
+                ui.set_width(620.0);
+                ui.set_height(height);
+                let p = crate::theme::Palette::of(ui.ctx());
+                ui.horizontal_top(|ui| {
+                    // the categories
+                    ui.vertical(|ui| {
+                        ui.set_width(140.0);
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        for (i, (name, icon)) in TABS.iter().enumerate() {
+                            let (r, resp) = ui.allocate_exact_size(
+                                Vec2::new(140.0, 28.0),
+                                egui::Sense::click(),
+                            );
+                            let on = i == tab;
+                            if on {
+                                ui.painter().rect_filled(r, 6.0, p.accent.gamma_multiply(0.22));
+                            } else if resp.hovered() {
+                                ui.painter().rect_filled(r, 6.0, p.raise);
                             }
-                        });
-                });
-                ui.label("Grips");
-                for g in crate::handles::GripStyle::ALL {
-                    let note = match g {
-                        crate::handles::GripStyle::Quiet => "Default. Squares at corners, bars on edges",
-                        crate::handles::GripStyle::Edges => "Almost nothing at rest; edges drag",
-                        crate::handles::GripStyle::OneShape => "The same small circle everywhere",
-                    };
-                    let r = crate::choices::choice_row(ui, grips == g, g.label(), note, |p, r| {
-                        crate::choices::paint_grips(p, r, g)
+                            let ink = if on { p.text } else { p.muted };
+                            crate::svgicon::paint(
+                                ui.painter(),
+                                egui::Rect::from_center_size(
+                                    egui::pos2(r.left() + 16.0, r.center().y),
+                                    Vec2::splat(15.0),
+                                ),
+                                icon,
+                                ink,
+                            );
+                            ui.painter().text(
+                                egui::pos2(r.left() + 32.0, r.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                *name,
+                                egui::FontId::proportional(13.0),
+                                ink,
+                            );
+                            if resp.clicked() {
+                                tab = i;
+                            }
+                        }
                     });
-                    if r.clicked() {
-                        grips = g;
-                    } else if r.hovered() {
-                        grip_hover = Some(g);
-                    }
-                }
-                ui.checkbox(&mut axis_lines, "X and Y axes on the 3D grid")
-                    .on_hover_text("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it.");
-                ui.label("Move, Rotate and Scale bar");
-                for (k, name, note) in [
-                    ("top", "Over the view", "Default. A slim bar at the top of the view"),
-                    ("pointer", "By the pointer", "A small palette where you started"),
-                ] {
-                    let r = crate::choices::choice_row(ui, edit_bar == k, name, note, |p, r| {
-                        crate::choices::paint_edit_bar(p, r, k == "pointer")
+                    let (sep, _) = ui.allocate_exact_size(Vec2::new(9.0, height), egui::Sense::hover());
+                    ui.painter().line_segment(
+                        [sep.center_top(), sep.center_bottom()],
+                        egui::Stroke::new(1.0, p.border),
+                    );
+                    // the category picked
+                    ui.vertical(|ui| {
+                        ui.set_width(460.0);
+                        egui::ScrollArea::vertical()
+                            .id_salt(("settings.page", tab))
+                            .max_height(height)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.set_width(448.0);
+                                let yours = |ui: &mut egui::Ui| {
+                                    ui.add_space(6.0);
+                                    ui.label(
+                                        egui::RichText::new("Yours alone: it never changes anyone's drawings, and goes with you, not with the project.")
+                                            .weak()
+                                            .small(),
+                                    );
+                                };
+                                match tab {
+                                    0 => {
+                                        crate::props::section(ui, "Look");
+                                        crate::props::row(ui, "Theme", |ui| {
+                                            egui::ComboBox::from_id_salt("settings.theme").icon(crate::props::combo_icon)
+                                                .selected_text(theme.label())
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for t in crate::theme::Theme::ALL {
+                                                        ui.selectable_value(&mut theme, t, t.label());
+                                                    }
+                                                });
+                                        });
+                                        crate::props::row(ui, "Drawing paper", |ui| {
+                                            let label = |k: &str| match k {
+                                                "light" => "Always light",
+                                                "dark" => "Always dark",
+                                                _ => "Follow the theme",
+                                            };
+                                            egui::ComboBox::from_id_salt("settings.paper").icon(crate::props::combo_icon)
+                                                .selected_text(label(&paper))
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for k in ["theme", "light", "dark"] {
+                                                        ui.selectable_value(&mut paper, k.to_string(), label(k));
+                                                    }
+                                                })
+                                                .response
+                                                .on_hover_text("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white.");
+                                        });
+                                        crate::props::section(ui, "Move, Rotate and Scale bar");
+                                        for (k, name, note) in [
+                                            ("top", "Over the view", "Default. A slim bar at the top of the view"),
+                                            ("pointer", "By the pointer", "A small palette where you started"),
+                                        ] {
+                                            let r = crate::choices::choice_row(ui, edit_bar == k, name, note, |p, r| {
+                                                crate::choices::paint_edit_bar(p, r, k == "pointer")
+                                            });
+                                            if r.clicked() {
+                                                edit_bar = k.to_string();
+                                            }
+                                        }
+                                        yours(ui);
+                                    }
+                                    1 => {
+                                        crate::props::section(ui, "Selection and grips colour");
+                                        for (k, name, note, ink) in [
+                                            ("orange", "Orange", "Default. The selection, grips and ghosts in orange", crate::theme::ORANGE),
+                                            ("theme", "Follow the theme", "In the theme's own accent colour", theme_accent),
+                                        ] {
+                                            let r = crate::choices::choice_row(ui, interaction == k, name, note, |p, r| {
+                                                crate::choices::paint_interaction(p, r, ink)
+                                            });
+                                            if r.clicked() {
+                                                interaction = k.to_string();
+                                            }
+                                        }
+                                        crate::props::section(ui, "Grips");
+                                        for g in crate::handles::GripStyle::ALL {
+                                            let note = match g {
+                                                crate::handles::GripStyle::Quiet => "Default. Squares at corners, bars on edges",
+                                                crate::handles::GripStyle::Edges => "Almost nothing at rest; edges drag",
+                                                crate::handles::GripStyle::OneShape => "The same small circle everywhere",
+                                            };
+                                            let r = crate::choices::choice_row(ui, grips == g, g.label(), note, |p, r| {
+                                                crate::choices::paint_grips(p, r, g)
+                                            });
+                                            if r.clicked() {
+                                                grips = g;
+                                            } else if r.hovered() {
+                                                grip_hover = Some(g);
+                                            }
+                                        }
+                                        crate::props::section(ui, "3D view");
+                                        ui.checkbox(&mut axis_lines, "X and Y axes on the grid")
+                                            .on_hover_text("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it.");
+                                        yours(ui);
+                                    }
+                                    2 => {
+                                        crate::props::section(ui, "Mouse");
+                                        crate::props::row(ui, "Mouse", |ui| {
+                                            let label = |k: &str| match k {
+                                                "classic" => "Classic: left drag orbits",
+                                                _ => "CreaBIM: middle orbits, left boxes",
+                                            };
+                                            egui::ComboBox::from_id_salt("settings.navigation").icon(crate::props::combo_icon)
+                                                .selected_text(label(&navigation))
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for k in ["creabim", "classic"] {
+                                                        ui.selectable_value(&mut navigation, k.to_string(), label(k));
+                                                    }
+                                                });
+                                        });
+                                        ui.label(
+                                            egui::RichText::new("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D.")
+                                                .weak()
+                                                .small(),
+                                        );
+                                        yours(ui);
+                                    }
+                                    3 => {
+                                        crate::props::section(ui, "Grid snap");
+                                        crate::props::row(ui, "Spacing", |ui| {
+                                            let steps: &[u32] = if crate::units::get().is_imperial() {
+                                                &crate::snaps::STEPS_IMPERIAL
+                                            } else {
+                                                &crate::snaps::STEPS_METRIC
+                                            };
+                                            egui::ComboBox::from_id_salt("settings.spacing").icon(crate::props::combo_icon)
+                                                .selected_text(crate::units::len(spacing as f64 / 1e6))
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for um in steps {
+                                                        ui.selectable_value(&mut spacing, *um, crate::units::len(*um as f64 / 1e6));
+                                                    }
+                                                });
+                                        });
+                                        ui.checkbox(&mut marks, "Distance marks while dragging")
+                                            .on_hover_text("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it.");
+                                        ui.label(
+                                            egui::RichText::new("Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time.")
+                                                .weak()
+                                                .small(),
+                                        );
+                                        yours(ui);
+                                    }
+                                    4 => {
+                                        crate::props::section(ui, "This project");
+                                        crate::props::row(ui, "Units", |ui| {
+                                            egui::ComboBox::from_id_salt("settings.units").icon(crate::props::combo_icon)
+                                                .selected_text(unit_row(unit).0)
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for u in UNIT_ORDER {
+                                                        ui.selectable_value(&mut unit, u, unit_row(u).0);
+                                                    }
+                                                });
+                                        });
+                                        ui.label(
+                                            egui::RichText::new("Saved with the project: everyone who opens it works in these units.")
+                                                .weak()
+                                                .small(),
+                                        );
+                                    }
+                                    _ => {
+                                        crate::props::section(ui, "Shortcuts");
+                                        ui.label(
+                                            egui::RichText::new("Every key, by what it does. Ctrl+/ opens the list any time.")
+                                                .weak()
+                                                .small(),
+                                        );
+                                        ui.add_space(4.0);
+                                        keys = ui.button("Keyboard shortcuts…").clicked();
+                                    }
+                                }
+                            });
                     });
-                    if r.clicked() {
-                        edit_bar = k.to_string();
-                    }
-                }
-                ui.label(
-                    egui::RichText::new(
-                        "Yours alone: it never changes anyone's drawings, and goes with you, not with the project.",
-                    )
-                    .weak(),
-                );
-                crate::props::row(ui, "Drawing paper", |ui| {
-                    let label = |k: &str| match k {
-                        "light" => "Always light",
-                        "dark" => "Always dark",
-                        _ => "Follow the theme",
-                    };
-                    egui::ComboBox::from_id_salt("settings.paper").icon(crate::props::combo_icon)
-                        .selected_text(label(&paper))
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for k in ["theme", "light", "dark"] {
-                                ui.selectable_value(&mut paper, k.to_string(), label(k));
-                            }
-                        })
-                    .response
-                    .on_hover_text("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white.");
                 });
-                crate::props::row(ui, "Mouse", |ui| {
-                    let label = |k: &str| match k {
-                        "classic" => "Classic: left drag orbits",
-                        _ => "CreaBIM: middle orbits, left boxes",
-                    };
-                    egui::ComboBox::from_id_salt("settings.navigation").icon(crate::props::combo_icon)
-                        .selected_text(label(&navigation))
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for k in ["creabim", "classic"] {
-                                ui.selectable_value(&mut navigation, k.to_string(), label(k));
-                            }
-                        })
-                        .response
-                        .on_hover_text("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D.");
-                });
-                crate::props::section(ui, "Snapping (yours)");
-                crate::props::row(ui, "Spacing", |ui| {
-                    let steps: &[u32] = if crate::units::get().is_imperial() {
-                        &crate::snaps::STEPS_IMPERIAL
-                    } else {
-                        &crate::snaps::STEPS_METRIC
-                    };
-                    egui::ComboBox::from_id_salt("settings.spacing").icon(crate::props::combo_icon)
-                        .selected_text(crate::units::len(spacing as f64 / 1e6))
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for um in steps {
-                                ui.selectable_value(
-                                    &mut spacing,
-                                    *um,
-                                    crate::units::len(*um as f64 / 1e6),
-                                );
-                            }
-                        });
-                });
-                ui.checkbox(&mut marks, "Distance marks while dragging")
-                    .on_hover_text("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it.");
-                ui.label(
-                    egui::RichText::new(
-                        "Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time.",
-                    )
-                    .weak(),
-                );
-                crate::props::section(ui, "This project");
-                crate::props::row(ui, "Units", |ui| {
-                    egui::ComboBox::from_id_salt("settings.units").icon(crate::props::combo_icon)
-                        .selected_text(unit_row(unit).0)
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for u in UNIT_ORDER {
-                                ui.selectable_value(&mut unit, u, unit_row(u).0);
-                            }
-                        });
-                });
-                ui.add_space(8.0);
-                keys = ui.button("Keyboard shortcuts…").clicked();
             });
+        ctx.data_mut(|d| d.insert_temp(tab_id, tab));
         self.settings_open = open;
         // resting on a grip look shows it at once; leaving puts yours back
         crate::handles::set_grip_style(grip_hover.filter(|_| open).unwrap_or(grips));
+        if interaction != self.shell.settings.interaction {
+            self.shell.settings.interaction = interaction;
+            self.shell.settings.store();
+        }
         if axis_lines != self.shell.settings.axis_lines {
             self.shell.settings.axis_lines = axis_lines;
             self.shell.settings.store();

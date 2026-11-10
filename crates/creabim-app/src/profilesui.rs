@@ -1602,7 +1602,7 @@ impl CreaBimApp {
                     .find(|t| t.0 == id)
                     .and_then(|t| t.1.outline())
                 {
-                    let orange = crate::planview::ACCENT_SELECTED;
+                    let orange = crate::planview::accent_selected();
                     let mut pts: Vec<egui::Pos2> = c.iter().map(|p| to_s(*p)).collect();
                     pts.push(pts[0]);
                     crate::snaps::dashed_clipped(

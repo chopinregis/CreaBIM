@@ -221,6 +221,9 @@ pub struct Settings {
     /// The model's X and Y axes drawn red and green on the 3D ground
     /// grid, as Blender's (MU39).
     pub axis_lines: bool,
+    /// The colour of what is worked on (selection, grips, ghosts): "orange",
+    /// the default, or "theme" for the theme's accent (MU39).
+    pub interaction: String,
 }
 
 impl Default for Settings {
@@ -256,6 +259,7 @@ impl Default for Settings {
             snap_spacing_um: 50_000,
             edit_bar: "top".into(),
             axis_lines: true,
+            interaction: "orange".into(),
         }
     }
 }

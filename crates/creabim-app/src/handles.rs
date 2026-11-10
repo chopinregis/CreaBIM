@@ -2158,7 +2158,9 @@ pub fn delete_picked(
     r
 }
 
-const ACCENT: Color32 = Color32::from_rgb(230, 120, 30);
+fn interaction_ink() -> Color32 {
+    crate::theme::interaction()
+}
 /// The colour of a shape that would be broken.
 const INVALID: Color32 = Color32::from_rgb(210, 40, 40);
 
@@ -2374,7 +2376,7 @@ impl GripLook {
     fn of(ctx: &egui::Context) -> Self {
         let v = ctx.global_style().visuals.clone();
         Self {
-            accent: ACCENT,
+            accent: interaction_ink(),
             ink: v.strong_text_color(),
             paper: v.panel_fill,
             pill: PillLook::of(&crate::theme::Palette::of(ctx)),
@@ -2857,10 +2859,10 @@ fn edge_palette(
         if n >= 2 {
             let (a, b) = (r.corners[p.i % n], r.corners[(p.i + 1) % n]);
             if let (Some(a), Some(b)) = ((input.project)(a), (input.project)(b)) {
-                response
-                    .ctx
-                    .layer_painter(response.layer_id)
-                    .line_segment([a, b], Stroke::new(3.0, ACCENT.gamma_multiply(0.6)));
+                response.ctx.layer_painter(response.layer_id).line_segment(
+                    [a, b],
+                    Stroke::new(3.0, interaction_ink().gamma_multiply(0.6)),
+                );
             }
         }
     }
@@ -3276,14 +3278,14 @@ fn draw_view_range(painter: &Painter, input: &PaneInput, a: DVec2, b: DVec2, dep
     };
     painter.add(egui::Shape::convex_polygon(
         pts.clone(),
-        ACCENT.gamma_multiply(0.08),
+        interaction_ink().gamma_multiply(0.08),
         Stroke::NONE,
     ));
-    painter.line_segment([pts[0], pts[1]], Stroke::new(2.5, ACCENT));
+    painter.line_segment([pts[0], pts[1]], Stroke::new(2.5, interaction_ink()));
     for (p, q) in [(pts[1], pts[2]), (pts[2], pts[3]), (pts[3], pts[0])] {
         painter.add(egui::Shape::dashed_line(
             &[p, q],
-            Stroke::new(1.2, ACCENT.gamma_multiply(0.8)),
+            Stroke::new(1.2, interaction_ink().gamma_multiply(0.8)),
             6.0,
             4.0,
         ));
@@ -3369,7 +3371,7 @@ pub fn interact(
     };
     let element = doc.model().get(id).cloned();
     if let (true, Some(e)) = (edit, &element) {
-        draw_rings(doc.model(), e, painter, input, grips, ACCENT);
+        draw_rings(doc.model(), e, painter, input, grips, interaction_ink());
     }
     if let Some(ElementKind::View(v)) = element.as_ref().map(|e| &e.kind) {
         if let ViewKind::Section {
@@ -3595,8 +3597,8 @@ pub fn interact(
             painter.rect(
                 rect,
                 0.0,
-                ACCENT.gamma_multiply(0.08),
-                Stroke::new(1.0, ACCENT),
+                interaction_ink().gamma_multiply(0.08),
+                Stroke::new(1.0, interaction_ink()),
                 egui::StrokeKind::Middle,
             );
             if response.drag_stopped() || !response.dragged() {
@@ -3630,7 +3632,7 @@ pub fn interact(
         if let (Some(pa), Some(pb)) = ((input.project)(a.extend(z)), (input.project)(b.extend(z))) {
             painter.add(egui::Shape::dashed_line(
                 &[pa, pb],
-                Stroke::new(1.2, ACCENT),
+                Stroke::new(1.2, interaction_ink()),
                 8.0,
                 3.0,
             ));
@@ -4065,7 +4067,7 @@ fn distance_marks(
     let held = held.is_some();
     let side = (b - a).normalized().rot90();
     let quiet = Stroke::new(1.0, Color32::from_rgb(79, 107, 76).gamma_multiply(0.75));
-    let hot = Stroke::new(2.0, crate::planview::ACCENT_SELECTED);
+    let hot = Stroke::new(2.0, crate::planview::accent_selected());
     let n = ((len / every).ceil() as i64 + 1).min(400);
     for i in 1..=n {
         let Some(c) = (input.project)(grab + dir * (every * i as f64)) else {
@@ -4226,7 +4228,12 @@ fn follow(
                 }
             }
             if let (true, Some(k), Some(p), Some(e)) = (outline, d.kind, pointer, changed.first()) {
-                note(painter, p, &live_lengths(&model, e, k, d.grab, now), ACCENT);
+                note(
+                    painter,
+                    p,
+                    &live_lengths(&model, e, k, d.grab, now),
+                    interaction_ink(),
+                );
             }
             // the live pill: only the value that's changing, by the grip
             let ctx = painter.ctx();
@@ -4358,7 +4365,7 @@ fn typed_length(
                 "{shown}| {}  Enter: apply · Esc: back to the pointer",
                 crate::units::symbol()
             ),
-            ACCENT,
+            interaction_ink(),
         );
     }
     *status = Some(format!(

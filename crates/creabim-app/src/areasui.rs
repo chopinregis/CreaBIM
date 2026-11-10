@@ -374,7 +374,9 @@ impl CreaBimApp {
                     let own = !self.plan.linked_areas.contains(&i);
                     self.plan.area = own.then_some(i);
                     self.area_now = i;
+                    self.plan.pane_now = Some(i);
                     ui.push_id(("area", i), |ui| self.show_plan(ui, body, background));
+                    self.plan.pane_now = None;
                     self.plan.area = None;
                     timings.push(format!(
                         "area {i} {:.1}",

@@ -1685,11 +1685,7 @@ impl Modal {
                     (_, Axis::Y) => ("Y", "Along Y only (Y)"),
                     (_, Axis::Z) => ("Z", "Up and down only (Z)"),
                 };
-                let colour = match a {
-                    Axis::X => egui::Color32::from_rgb(214, 72, 72),
-                    Axis::Y => egui::Color32::from_rgb(82, 160, 72),
-                    Axis::Z => egui::Color32::from_rgb(64, 120, 214),
-                };
+                let colour = axis_colour(*a);
                 if chip(ui, self.axis == Some(*a), name, Some(colour), tip) {
                     self.toggle(*a);
                 }
@@ -2317,7 +2313,7 @@ impl Modal {
     }
 
     fn draw(&self, painter: &egui::Painter, map: &PaneMap) {
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         if self.uses_points() {
             return self.draw_points(painter, map);
         }
@@ -2347,7 +2343,7 @@ impl Modal {
     /// The base point, the rubber band to where it goes, and the snap
     /// marker under the pointer.
     fn draw_points(&self, painter: &egui::Painter, map: &PaneMap) {
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         let stroke = Stroke::new(1.5, accent);
         let marker = |s: Snap, from: Option<Pos2>| {
             if let Some(at) = (map.project)(s.p) {
@@ -2424,8 +2420,13 @@ impl Modal {
                         painter.add(egui::Shape::dashed_line(&[b, t], stroke, 6.0, 4.0));
                     }
                 } else if let (Some(b), Some(t)) = (base, to) {
-                    // the rubber band, with its length at its middle
-                    painter.add(egui::Shape::dashed_line(&[b, t], stroke, 6.0, 4.0));
+                    // the rubber band, with its length at its middle; in
+                    // its axis's colour when it keeps to one (MU39)
+                    let band = match self.axis {
+                        Some(a) => Stroke::new(1.5, axis_colour(a)),
+                        None => stroke,
+                    };
+                    painter.add(egui::Shape::dashed_line(&[b, t], band, 6.0, 4.0));
                     if b.distance(t) > 30.0 {
                         let side = (t - b).normalized().rot90() * 14.0;
                         let side = if side.y > 0.0 { -side } else { side };
@@ -2454,15 +2455,30 @@ impl Modal {
 }
 
 /// The line through `at` along axis `a`, in the axis' colour.
+/// An axis's colour, as Blender's: X red, Y green, Z blue.
+pub fn axis_colour(a: Axis) -> Color32 {
+    match a {
+        Axis::X => Color32::from_rgb(214, 72, 72),
+        Axis::Y => Color32::from_rgb(82, 170, 72),
+        Axis::Z => Color32::from_rgb(70, 125, 225),
+    }
+}
+
+/// The line a move keeps to, through `at`, in the axis's colour. Drawn in
+/// pieces, keeping those in front of the camera: drawn end to end, a Z
+/// line's far end could fall behind the camera and the whole line went
+/// missing (MU39).
 fn draw_axis(painter: &egui::Painter, map: &PaneMap, at: DVec3, a: Axis) {
-    let color = match a {
-        Axis::X => Color32::from_rgb(210, 60, 60),
-        Axis::Y => Color32::from_rgb(60, 160, 60),
-        Axis::Z => Color32::from_rgb(60, 100, 220),
-    };
-    let far = |s: f64| (map.project)(at + a.unit() * s);
-    if let (Some(p), Some(q)) = (far(-200.0), far(200.0)) {
-        painter.line_segment([p, q], Stroke::new(1.5, color));
+    let stroke = Stroke::new(1.5, axis_colour(a));
+    let steps: Vec<f64> = (-40..=40).map(|k| k as f64 * 5.0).collect();
+    for w in steps.windows(2) {
+        let (p, q) = (
+            (map.project)(at + a.unit() * w[0]),
+            (map.project)(at + a.unit() * w[1]),
+        );
+        if let (Some(p), Some(q)) = (p, q) {
+            painter.line_segment([p, q], stroke);
+        }
     }
 }
 
