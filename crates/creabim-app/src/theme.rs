@@ -238,16 +238,20 @@ pub fn set_interaction(c: eframe::egui::Color32) {
 /// The orange the selection has always been.
 pub const ORANGE: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(230, 120, 30);
 
-/// A theme's accent made bright enough to work with: its hue kept, its
-/// colour and lightness raised, so a dark accent (Sage's deep green) reads
-/// against black linework and light or dark paper alike (MU39).
-pub fn vivid(c: eframe::egui::Color32) -> eframe::egui::Color32 {
-    // in gamma space, as the eye sees it: a mid-tone, so it reads on
-    // light paper and against dark lines alike
-    let mut h = eframe::egui::ecolor::HsvaGamma::from(c);
-    h.s = h.s.clamp(0.65, 0.85);
-    h.v = h.v.clamp(0.68, 0.78);
-    h.into()
+impl Theme {
+    /// The selection's colour when it follows the theme: picked by hand
+    /// for each, to read against its paper and its linework (MU39).
+    pub fn selection(self) -> Color32 {
+        match self {
+            Theme::Dark => Color32::from_rgb(0x5B, 0x8C, 0xFF),
+            Theme::Light => Color32::from_rgb(0x2F, 0x6B, 0xF0),
+            Theme::Graphite => Color32::from_rgb(0xE0, 0xA2, 0x4A),
+            Theme::Paper => Color32::from_rgb(0xC0, 0x55, 0x2E),
+            Theme::Blueprint => Color32::from_rgb(0x5F, 0xD0, 0xFF),
+            Theme::Sage => Color32::from_rgb(0x3F, 0xA3, 0x4D),
+            Theme::Ink => Color32::from_rgb(0xF0, 0xC3, 0x6B),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -255,16 +259,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_dark_accent_followed_stands_off_the_linework() {
+    fn every_themes_selection_stands_off_its_panels() {
         // Sage's deep green was nearly black on its plans (MU39)
-        let sage = vivid(Color32::from_rgb(0x4F, 0x6B, 0x4C));
-        let black = Color32::from_rgb(0x22, 0x26, 0x1F);
-        eprintln!("sage followed: {sage:?}");
-        assert!(contrast_ratio(sage, black) >= 3.0, "{sage:?}");
-        // and still shows on white paper
-        assert!(contrast_ratio(sage, Color32::WHITE) >= 2.2, "{sage:?}");
-        // its hue is kept: still green
-        assert!(sage.g() > sage.r() && sage.g() > sage.b());
+        for t in Theme::ALL {
+            let sel = t.selection();
+            let bg = t.palette().panel;
+            assert!(contrast_ratio(sel, bg) >= 2.0, "{t:?}: {sel:?} on {bg:?}");
+        }
     }
 
     #[test]

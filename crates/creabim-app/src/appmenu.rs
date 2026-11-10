@@ -264,7 +264,7 @@ impl CreaBimApp {
         let mut axis_lines = self.shell.settings.axis_lines;
         let mut interaction = self.shell.settings.interaction.clone();
         let mut keep_alt_a = self.shell.settings.keep_alt_a;
-        let theme_accent = crate::theme::vivid(crate::theme::Palette::of(ctx).accent);
+        let theme_accent = self.shell.theme.selection();
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         // as Blender's Preferences (MU39): its categories down the left, the
         // one picked on the right, scrolling, so it never grows past the
