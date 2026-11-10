@@ -33,7 +33,10 @@ fn exe_icon() {
         res.set("ProductName", "CreaBIM");
         res.set("FileDescription", "CreaBIM, open-source BIM modeller");
         res.set("CompanyName", "Regis Benoit Brice Nde Tene");
-        res.set("LegalCopyright", "Copyright 2026 Regis Benoit Brice Nde Tene. GPL-3.0-or-later.");
+        res.set(
+            "LegalCopyright",
+            "Copyright 2026 Regis Benoit Brice Nde Tene. GPL-3.0-or-later.",
+        );
         res.set("OriginalFilename", "CreaBIM.exe");
         if let Err(e) = res.compile() {
             println!("cargo:warning=the .exe icon was not embedded: {e}");

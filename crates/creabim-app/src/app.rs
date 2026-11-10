@@ -7045,18 +7045,22 @@ impl CreaBimApp {
                     Some(&format!("View: {name}")),
                 );
                 // a section's or elevation's drawing style, as a plan's (MU21)
+                // folding with its ?, as the other sections (MU37)
+                let is_section = matches!(
+                    self.doc.model().get(v).map(|e| &e.kind),
+                    Some(ElementKind::View(x)) if matches!(x.kind, ViewKind::Section { .. })
+                );
+                let open = is_section
+                    && self.prop_header(
+                        ui,
+                        "view.graphics",
+                        "Graphics",
+                        true,
+                        Some("graphic-styles"),
+                    );
                 if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
                     if matches!(view.kind, ViewKind::Section { .. }) {
                         let mut style = view.graphics.drawing_style;
-                        // folding, as the plan's Graphics and the others (MU37)
-                        let gid = egui::Id::new("props.view.graphics.open");
-                        let open = ui.ctx().data(|d| d.get_temp::<bool>(gid)).unwrap_or(true);
-                        if crate::props::header(ui, "Graphics", open, false)
-                            .0
-                            .clicked()
-                        {
-                            ui.ctx().data_mut(|d| d.insert_temp(gid, !open));
-                        }
                         if open {
                             crate::props::row(ui, "Drawing style", |ui| {
                                 egui::ComboBox::from_id_salt("section.panel.drawing_style")
@@ -7082,6 +7086,18 @@ impl CreaBimApp {
                     }
                 }
                 // a plan's graphics: weights, below-cut tint, view depth
+                let is_plan = matches!(
+                    self.doc.model().get(v).map(|e| &e.kind),
+                    Some(ElementKind::View(x)) if matches!(x.kind, ViewKind::Plan { .. })
+                );
+                let plan_open = is_plan
+                    && self.prop_header(
+                        ui,
+                        "view.graphics",
+                        "Graphics",
+                        true,
+                        Some("graphic-styles"),
+                    );
                 if let Some(ElementKind::View(view)) = self.doc.model().get(v).map(|e| &e.kind) {
                     if matches!(view.kind, ViewKind::Plan { .. }) {
                         let (mut g, scale) = (view.graphics.clone(), view.scale);
@@ -7089,7 +7105,11 @@ impl CreaBimApp {
                             .hidden
                             .categories
                             .contains(&creabim_core::visibility::Category::Footings);
-                        if let Some(label) = plan_graphics_ui(ui, &mut g, scale) {
+                        if let Some(label) = if plan_open {
+                            plan_graphics_ui(ui, &mut g, scale, false)
+                        } else {
+                            None
+                        } {
                             let r = self.doc.edit_merged(v, label, |e| {
                                 if let ElementKind::View(x) = &mut e.kind {
                                     x.graphics = g.clone();
@@ -7548,7 +7568,7 @@ impl CreaBimApp {
                             )
                             .weak(),
                         );
-                            if let Some(l) = plan_graphics_ui(ui, &mut v.graphics, v.scale) {
+                            if let Some(l) = plan_graphics_ui(ui, &mut v.graphics, v.scale, true) {
                                 label = l;
                             }
                         }
@@ -10085,17 +10105,21 @@ fn plan_graphics_ui(
     ui: &mut egui::Ui,
     g: &mut creabim_core::PlanGraphics,
     scale: f64,
+    header: bool,
 ) -> Option<&'static str> {
     let mut label = None;
-    // its own box, folding as the others (MU22)
-    let id = egui::Id::new("props.view.graphics.open");
-    let open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(true);
-    let (resp, _) = crate::props::header(ui, "Graphics", open, false);
-    if resp.clicked() {
-        ui.ctx().data_mut(|d| d.insert_temp(id, !open));
-    }
-    if !open {
-        return None;
+    // its own box, folding as the others (MU22); in Properties the panel
+    // draws the header, with its ? (MU37)
+    if header {
+        let id = egui::Id::new("props.view.graphics.open");
+        let open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(true);
+        let (resp, _) = crate::props::header(ui, "Graphics", open, false);
+        if resp.clicked() {
+            ui.ctx().data_mut(|d| d.insert_temp(id, !open));
+        }
+        if !open {
+            return None;
+        }
     }
     // how what is cut is drawn (A4-11)
     crate::props::row(ui, "Drawing style", |ui| {
