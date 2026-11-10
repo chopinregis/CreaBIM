@@ -62,10 +62,15 @@ jobs:
           Copy-Item LICENSE, README.md "$name/"
           Copy-Item docs/RELEASE_README.txt "$name/READ ME FIRST.txt"
           Compress-Archive -Path $name -DestinationPath "$name.zip"
+      - name: Installer
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/make-setup.ps1 -Out . -Target target/release
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: CreaBIM-*.zip
+          path: |
+            CreaBIM-*.zip
+            CreaBIM-*-setup.exe
 
   linux:
     name: Linux
@@ -115,7 +120,7 @@ jobs:
           Free and open-source BIM modeller: one model for 3D, plans, sections, sheets, schedules, quantities and IFC. Works offline, with no account.
 
           ## Downloads
-          - **Windows:** unzip and run \`CreaBIM.exe\` (no installer needed). If Windows warns about an unknown publisher, choose *More info*, then *Run anyway*.
+          - **Windows:** run the \`-setup.exe\` to install (no administrator rights needed; uninstall from Settings › Apps), or unzip the \`.zip\` and run \`CreaBIM.exe\`. If Windows warns about an unknown publisher, choose *More info*, then *Run anyway*.
           - **Linux:** untar and run \`./creabim\` (needs WebKitGTK 4.1 and GTK 3).
           - Check a download against \`SHA256SUMS.txt\`.
 
