@@ -23,21 +23,30 @@
     if (!box) return;
     box.innerHTML = "";
     const svg = el("svg", {viewBox: "0 0 520 200", role: "img", "aria-hidden": "true"}, box);
-    const ink = css("--sage"), bg = css("--paper"), soft = css("--line-2"), deep = css("--sage-deep");
+    const ink = css("--sage"), soft = css("--line-2"), deep = css("--sage-deep");
     const g = el("g", {transform: "translate(9 4)"}, svg);
     const clip = el("clipPath", {id: "nestclip"}, svg); el("path", {d: P.nest}, clip);
-    const strands = el("g", {"clip-path": "url(#nestclip)"}, g);
+    // the two bands across the nest and the bird's eye are holes, not paint:
+    // a mask cuts them out, so the page itself shows through in any theme
+    const BIG = {x: -40, y: -40, width: 600, height: 300};
+    const nestCut = el("mask", {id: "nestcut", maskUnits: "userSpaceOnUse", ...BIG}, svg);
+    el("rect", {...BIG, fill: "#fff"}, nestCut);
+    const eyeCut = el("mask", {id: "eyecut", maskUnits: "userSpaceOnUse", ...BIG}, svg);
+    el("rect", {...BIG, fill: "#fff"}, eyeCut);
+    el("circle", {cx: 61.5, cy: 11.4, r: 2.8, fill: "#000"}, eyeCut);
+    const nestG = el("g", {mask: "url(#nestcut)"}, g);
+    const strands = el("g", {"clip-path": "url(#nestclip)"}, nestG);
     const A = [];
     for (let i = 0; i < 9; i++) {
       const y = 60 + i * 15, d = i % 2 ? 1 : -1;
       A.push(draw(el("path", {d: `M84 ${y} C110 ${y + 18 * d} 150 ${y - 18 * d} 176 ${y + 10}`, fill: "none", stroke: soft, "stroke-width": 7, "stroke-linecap": "round"}, strands), 400 + i * 110, 650));
     }
     A.push(draw(el("path", {d: P.branch, fill: "none", stroke: ink, "stroke-width": 9, "stroke-linecap": "round"}, g), 100, 700));
-    A.push(fadeIn(el("path", {d: P.nest, fill: ink}, g), 1550, 500));
-    A.push(draw(el("path", {d: "M98 98 L164 124", fill: "none", stroke: bg, "stroke-width": 9, "stroke-linecap": "round"}, g), 1900, 350));
-    A.push(draw(el("path", {d: "M96 132 L160 156", fill: "none", stroke: bg, "stroke-width": 9, "stroke-linecap": "round"}, g), 2050, 350));
-    const bird = el("g", {}, g);
-    el("path", {d: P.bird, fill: ink}, bird); el("path", {d: P.beak, fill: ink}, bird); el("circle", {cx: 61.5, cy: 11.4, r: 2.8, fill: bg}, bird);
+    A.push(fadeIn(el("path", {d: P.nest, fill: ink}, nestG), 1550, 500));
+    A.push(draw(el("path", {d: "M98 98 L164 124", fill: "none", stroke: "#000", "stroke-width": 9, "stroke-linecap": "round"}, nestCut), 1900, 350));
+    A.push(draw(el("path", {d: "M96 132 L160 156", fill: "none", stroke: "#000", "stroke-width": 9, "stroke-linecap": "round"}, nestCut), 2050, 350));
+    const bird = el("g", {mask: "url(#eyecut)"}, g);
+    el("path", {d: P.bird, fill: ink}, bird); el("path", {d: P.beak, fill: ink}, bird);
     if (canAnimate) A.push(bird.animate([{transform: "translate(-200px,-90px) rotate(-18deg)", opacity: 0}, {transform: "translate(-20px,-14px) rotate(6deg)", opacity: 1, offset: .8}, {transform: "none", opacity: 1}], {duration: 1200, delay: 1700, easing: EASE, fill: "both"}));
     const word = el("text", {x: 214, y: 132, "font-family": "Nunito, sans-serif", "font-weight": 800, "font-size": 104, fill: deep, "letter-spacing": -1}, svg);
     word.textContent = "creabim";
@@ -116,4 +125,23 @@
     if (above) light(above.id);
   }, {rootMargin: "-80px 0px -60% 0px"});
   heads.forEach((h) => obs.observe(h));
+})();
+
+// the guide index: filter pages by title as you type
+(function () {
+  const box = document.getElementById("gfind"), idx = document.getElementById("gindex"), none = document.getElementById("gnone");
+  if (!box || !idx) return;
+  const cards = [...idx.querySelectorAll(".gcard")];
+  box.addEventListener("input", () => {
+    const q = box.value.trim().toLowerCase();
+    idx.classList.toggle("filtering", !!q);
+    let any = false;
+    cards.forEach((c) => {
+      let hit = 0;
+      c.querySelectorAll("li").forEach((li) => { const ok = !q || li.querySelector("a").dataset.t.includes(q); li.hidden = !ok; if (ok) hit++; });
+      const more = c.querySelector("details.more"); if (more) more.open = !!q;
+      c.hidden = !!q && !hit; if (hit) any = true;
+    });
+    none.hidden = !q || any;
+  });
 })();

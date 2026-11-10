@@ -231,7 +231,8 @@ class Md:
 # ---------------------------------------------------------------- layout
 
 ICONS = """<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-<symbol id="mark" viewBox="0 0 200 200"><g transform="translate(9 4)"><path d="M26 52 H174" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/><path d="M130 52 C162 64 172 100 166 128 C160 156 146 166 142 190 L118 190 C114 166 98 156 94 128 C88 100 98 64 130 52 Z" fill="currentColor"/><path d="M98 98 L164 124 M96 132 L160 156" fill="none" stroke="var(--paper)" stroke-width="9" stroke-linecap="round"/><path d="M44.5 8.0 C51.2 2.1 63.8 3.0 67.2 12.2 C69.7 18.9 66.4 24.8 63.0 29.0 C61.3 39.9 52.9 50.0 38.6 50.8 C32.8 51.3 27.7 50.0 23.5 48.3 L8.4 56.7 L16.8 43.3 C14.3 35.7 16.0 27.3 21.8 22.3 C27.7 17.2 37.8 14.7 44.5 8.0 Z M65.5 10.5 L80.6 16.4 L65.5 21.4 Z" fill="currentColor"/><circle cx="61.5" cy="11.4" r="2.8" fill="var(--paper)"/></g></symbol>
+<mask id="markcut" maskUnits="userSpaceOnUse" x="-20" y="-20" width="240" height="240"><rect x="-20" y="-20" width="240" height="240" fill="#fff"/><path d="M98 98 L164 124 M96 132 L160 156" fill="none" stroke="#000" stroke-width="9" stroke-linecap="round"/><circle cx="61.5" cy="11.4" r="2.8" fill="#000"/></mask>
+<symbol id="mark" viewBox="0 0 200 200"><g transform="translate(9 4)"><path d="M26 52 H174" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/><g mask="url(#markcut)"><path d="M130 52 C162 64 172 100 166 128 C160 156 146 166 142 190 L118 190 C114 166 98 156 94 128 C88 100 98 64 130 52 Z" fill="currentColor"/><path d="M44.5 8.0 C51.2 2.1 63.8 3.0 67.2 12.2 C69.7 18.9 66.4 24.8 63.0 29.0 C61.3 39.9 52.9 50.0 38.6 50.8 C32.8 51.3 27.7 50.0 23.5 48.3 L8.4 56.7 L16.8 43.3 C14.3 35.7 16.0 27.3 21.8 22.3 C27.7 17.2 37.8 14.7 44.5 8.0 Z M65.5 10.5 L80.6 16.4 L65.5 21.4 Z" fill="currentColor"/></g></g></symbol>
 <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 <symbol id="i-gh" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.5-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.4 1.1 2.9.8.1-.6.3-1.100.6-1.3-2.2-.3-4.6-1.1-4.6-5a3.9 3.9 0 0 1 1-2.7c-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2z" fill="currentColor"/></symbol>
 <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
@@ -244,6 +245,10 @@ ICONS = """<svg width="0" height="0" style="position:absolute" aria-hidden="true
 <symbol id="i-sheet" viewBox="0 0 24 24"><path d="M3 4h18v16H3zM3 16h18M14 16v4M7 8h6M7 11h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
 <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14l-4-4M20 16H6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="i-ruler" viewBox="0 0 24 24"><path d="M3 15 15 3l6 6L9 21zM7 11l2 2M10 8l2 2M13 5l2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+<symbol id="i-magnet" viewBox="0 0 24 24"><path d="M6 3v8a6 6 0 0 0 12 0V3h-4v8a2 2 0 0 1-4 0V3zM6 7h4M14 7h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><path d="M3 6h18v12H3zM7 10h2M11 10h2M15 10h2M7 14h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
 <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="m10 8 6 4-6 4z" fill="currentColor"/></symbol>
 <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3zM12 4.3 21 3v8.5h-9zM3 12.5h7.5v7L3 18.5zM12 12.5h9V21l-9-1.3z" fill="currentColor"/></symbol>
 <symbol id="i-linux" viewBox="0 0 24 24"><path d="M12 2c-2.2 0-3.5 1.8-3.5 4.3 0 1.5.3 2.4-.6 3.9C6.6 12.3 5 14.400 5 17c0 1 .4 1.8 1 2.300-.6.4-1.300.8-1.300 1.4C4.700 21.700 6 22 7.500 22c1.300 0 2.300-.6 3-1.100.5.1 1 .1 1.500.1s1-.1 1.500-.1c.700.500 1.700 1.100 3 1.100 1.500 0 2.800-.3 2.800-1.300 0-.6-.700-1-1.300-1.400.600-.5 1-1.300 1-2.300 0-2.600-1.600-4.700-2.900-6.800-.900-1.500-.6-2.400-.6-3.900C15.500 3.800 14.200 2 12 2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="10.300" cy="7" r=".9" fill="currentColor"/><circle cx="13.700" cy="7" r=".9" fill="currentColor"/><path d="M10.500 9.300 12 10.300l1.500-1" fill="none" stroke="currentColor" stroke-width="1.500" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -782,23 +787,50 @@ def tutorials(md, texts, pages):
       <div class="head">
         <div class="kicker"><span class="n">04</span>The guide</div>
         <h2>Every tool, <span class="acc">explained.</span></h2>
-        <p class="lede">The complete guide from the app, by subject.</p>
+        <p class="lede">The complete guide from the app, by subject. The same pages open in CreaBIM with <kbd>F1</kbd>.</p>
       </div>
-      <div class="gindex">{guide_index(pages, "../guide/")}</div>
+      <div class="gfind"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="gfind" type="search" placeholder="Find a page: walls, sheets, IFC…" aria-label="Find a guide page" autocomplete="off"></div>
+      <p class="gnone" id="gnone" hidden>No page matches. Try another word.</p>
+      <div class="gindex" id="gindex">{guide_index(pages, "../guide/")}</div>
     </div>
   </section>
 """
 
 
+SECTION_INFO = {
+    "Getting started": ("i-book", "Your first hour: the starter house, a first house in eight steps, the window."),
+    "Selecting and editing": ("i-swap", "Pick, move, align, reshape in Edit mode, divide, undo."),
+    "Building the model": ("i-cube", "Walls, openings, slabs, roofs, structure, profiles, site and rooms."),
+    "Views and drawings": ("i-sheet", "Plans, sections, view range, styles, schedules and sheets."),
+    "Annotation": ("i-ruler", "Dimensions, tags, marks, spot levels, notes and their styles."),
+    "Drawing aids": ("i-magnet", "Snaps, guides, units and number formats, project information."),
+    "Files and exchange": ("i-file", "Saving, IFC, Blender, FreeCAD, glTF, PDF, SVG and DXF."),
+    "Reference": ("i-key", "Every shortcut, the BIM words, and about CreaBIM."),
+}
+SHOWN = 4
+
+
 def guide_index(pages, prefix, current=None, side=False):
     out = []
     for sec, ids in SECTIONS.items():
-        li = "".join(f'<li><a href="{prefix}{p}.html"{" aria-current=page" if p == current else ""}>{html.escape(pages[p])}</a></li>' for p in ids)
         if side:
+            li = "".join(f'<li><a href="{prefix}{p}.html"{" aria-current=page" if p == current else ""}>{html.escape(pages[p])}</a></li>' for p in ids)
             here = " open" if current in ids else ""
             out.append(f'<details class="sg"{here}><summary>{sec}<span>{len(ids)}</span></summary><ul>{li}</ul></details>')
-        else:
-            out.append(f"<section><h3>{sec}</h3><ul>{li}</ul></section>")
+            continue
+        # the first house's steps are the course above the guide: one entry here
+        shown = [p for p in ids if not p.startswith("start-")]
+        icon, blurb = SECTION_INFO.get(sec, ("i-book", ""))
+
+        def link(p):
+            steps = "<small>8 steps</small>" if p == "start" else ""
+            return f'<li><a href="{prefix}{p}.html" data-t="{html.escape(pages[p].lower())}">{html.escape(pages[p])}{steps}</a></li>'
+
+        top = "".join(link(p) for p in shown[:SHOWN])
+        rest = shown[SHOWN:]
+        more = f'<details class="more"><summary>{len(rest)} more</summary><ul>{"".join(link(p) for p in rest)}</ul></details>' if rest else ""
+        out.append(f'<article class="gcard"><header><span class="ico"><svg><use href="#{icon}"/></svg></span>'
+                   f'<h3>{sec}</h3><span class="count">{len(shown)}</span></header><p>{blurb}</p><ul>{top}</ul>{more}</article>')
     return "".join(out)
 
 

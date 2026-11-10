@@ -267,12 +267,32 @@ td a{color:var(--sage-deep);font-weight:500;overflow-wrap:anywhere}
 .course .n{grid-row:span 2;font:800 26px/1 var(--head);color:var(--sage);padding-top:2px}
 .course b{font-family:var(--head);font-size:18px}
 .course span:not(.n){color:var(--muted);font-size:14.5px}
-.gindex{columns:3 240px;column-gap:28px}
-.gindex section{break-inside:avoid;margin-bottom:26px}
-.gindex h3{font-size:17px;margin-bottom:8px;color:var(--sage-deep)}
-.gindex ul{list-style:none;margin:0;padding:0;display:grid;gap:2px}
-.gindex a{text-decoration:none;color:var(--ink-2);display:block;padding:3px 0}
-.gindex a:hover{color:var(--sage)}
+.gindex{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;align-items:start}
+.gcard{border:1px solid var(--line);border-radius:12px;background:var(--paper-2);padding:18px 18px 12px;display:grid;gap:10px;min-width:0;transition:border-color .15s}
+.gcard:hover{border-color:var(--line-2)}
+.gcard header{display:flex;align-items:center;gap:10px}
+.gcard h3{font-size:17px;flex:1;min-width:0}
+.gcard .ico{width:32px;height:32px;border-radius:8px;flex:none}
+.gcard .ico svg{width:18px;height:18px}
+.gcard .count{font:500 11px var(--mono);color:var(--muted);background:var(--paper-3);border-radius:999px;padding:2px 8px}
+.gcard p{color:var(--muted);font-size:13.5px;line-height:1.45}
+.gcard ul{list-style:none;margin:0;padding:0;display:grid}
+.gcard li + li{border-top:1px solid var(--line)}
+.gcard a{display:flex;align-items:baseline;gap:8px;text-decoration:none;color:var(--ink-2);font-size:14.5px;padding:7px 2px}
+.gcard a::after{content:"\2192";margin-left:auto;color:var(--line-2);transition:color .15s,transform .15s}
+.gcard a small{white-space:nowrap;flex:none;font:500 11px var(--mono);color:var(--sage-deep);background:var(--sage-wash);border-radius:999px;padding:1px 7px}
+.gcard a:hover{color:var(--sage-deep)}
+.gcard a:hover::after{color:var(--sage);transform:translateX(2px)}
+.gcard details.more{border:0;padding:0;border-top:1px solid var(--line)}
+.gcard details.more summary{font:600 13px var(--body);color:var(--sage-deep);padding:9px 2px 4px;justify-content:flex-start;gap:8px;align-items:center}
+.gcard details.more summary::after{content:"";width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translateY(-2px)}
+.gcard details.more[open] summary{display:none}
+.gfind{position:relative;max-width:520px;margin:0 0 22px}
+.gfind svg{position:absolute;left:14px;top:50%;width:18px;height:18px;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+.gfind input{width:100%;font:15px var(--body);color:var(--ink);background:var(--paper-2);border:1px solid var(--line-2);border-radius:10px;padding:12px 14px 12px 42px;outline:none}
+.gfind input:focus{border-color:var(--sage);box-shadow:0 0 0 3px color-mix(in srgb,var(--sage) 22%,transparent)}
+.gnone{color:var(--muted);margin:-8px 0 18px}
+.gindex.filtering .gcard p{display:none}
 
 /* guide pages */
 .guide{display:grid;grid-template-columns:250px minmax(0,1fr);gap:48px;padding-block:40px 80px;align-items:start;max-width:1380px;margin:0 auto}
