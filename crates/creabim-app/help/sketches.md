@@ -17,6 +17,8 @@ Select a sketch to add constraints in *Properties*: length, equal, horizontal, v
 
 ## Extruding
 
+A **closed** sketch is a face: it has a light wash inside its outline, in 3D, plans and sections, and *Properties* says *Closed: a face. Extruding it makes a solid.* An **open** one is a wire, and extrudes into a surface. A closed sketch that crosses itself has no inside: no wash, and *Extrude into a mass* is greyed out until no lines cross.
+
 Select a closed sketch and press `E`: it becomes a mass, extruded by *Extrude by* in *Properties*. An open sketch extrudes into a surface, which a Solidify [modifier](masses#modifiers) can thicken.
 
 ## The workplane

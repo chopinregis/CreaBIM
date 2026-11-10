@@ -4,11 +4,25 @@ Edit mode opens one element so every one of its grips shows, in every view it is
 
 ## Opening and closing it
 
-- Select the element, then click **Edit** at the top of *Properties*;
+- Select the element, then switch the area's **mode button** from *Object mode* to *Edit mode*, or press `Tab` over the view (with several things under the pointer, `Tab` steps through them instead);
 - or double-click the selected element (or one of its corners) in any view;
 - or press `Enter` with it selected.
 
+A layered element's *Properties* has an **Edit its layers in the views** button too.
+
 `Esc`, `Enter` again, *Finish editing* in the right-click menu, or selecting something else closes it. *Properties* says *Editing* while it is open, and the status bar lists what you can do.
+
+## Points, edges and faces
+
+In Edit mode, three keys choose what a click picks, as in Blender, and the other kinds of grip step aside:
+
+| Key | Picks |
+| --- | --- |
+| `1` | **Points**: corners, ends, vertices |
+| `2` | **Edges**: sides, edges, jambs |
+| `3` | **Faces**: faces, tops, undersides |
+
+A mass shows only its main grips at rest (its base point, its turn grip and the clicked face's push and pull); every face's arrow, its corners, its edges and the lift arrow come in Edit mode.
 
 ## Layers: each layer's ends
 
@@ -19,6 +33,8 @@ On a layered wall, press `Tab` in Edit mode for **Layers**: the wall's own grips
 | Drag a layer grip along the wall | The layer runs on past its join, or is held back; press `Tab` to type how far |
 | Rest on a grip | It names its layer and end, and how far it was moved |
 | Right-click a grip | *Reset layer end*, *Reset all layers*; on a wall, *Draw by its exterior face* or *interior face*: that line between layers becomes the wall's location line, and the wall stays where it is |
+
+Each layer of a wall also has a **bottom** and a **top** grip at mid-length: drag it to run the layer down past the wall's base or up past its top (the outer leaf and insulation down past a slab's edge), or to stop it short (a finish stopping on the screed). Right-click it for *Reset layer bottom* or *Reset layer top*.
 
 On a layered slab or roof, Layers puts a grip on each edge of each layer instead: drag it square to the edge to push that layer out past the element's edge or pull it in, such as roof slates run on past the fascia. In plan each layer's grip is drawn a step further out, since they would sit on one another.
 

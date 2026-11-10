@@ -37,15 +37,20 @@ The cube in the top right corner of the 3D view turns the view for you:
 | Drag with the left button on empty paper | Select with a box |
 | Drag with the right or middle button | Pan |
 | Roll the wheel | Zoom |
-| The buttons at the top right | Zoom in and out (click a step, or drag up and down), fit, and drag the hand to pan |
+| The buttons at the top right | Zoom in and out (click a step, or drag up and down), fit, frame the selection, and drag the hand to pan |
+| *Zoom to scale* (*⋯ More*) | 1 mm on paper is 1 mm on screen |
 
 ## Layout
 
-- *View › One view at a time*, or the square button by the view switcher, gives one big view with tabs: *3D view* and the open drawing. *Split* goes back to both.
-- *View › Docked layout* puts the views side by side or one above the other, and you drag the divider between them to share the room. Double-click it to reset.
-- *View › In its own window* moves the 2D view to a window of its own, for a second screen.
-- *View › Overlaid in the 3D workspace* shows the 2D view as an inset over the 3D view.
+- The window's middle is split into [view areas](interface#view-areas); **Workspace** at the top right picks a layout of them (*Model*, *Drawing*, *Document*, *Sheets*, or your own), and `Ctrl+PgUp` / `Ctrl+PgDn` step through them.
+- `Ctrl+Space` shows the area under the pointer alone, and again brings the others back.
+- Each area pans and zooms on its own; *Pan and zoom with the other area of this view* in its *⋯ More* menu links two areas of one view.
+- In the *View* menu, under *2D view*: *In its own window* moves the drawing to a window of its own, for a second screen; *Overlaid in the 3D workspace* shows it as an inset over the 3D view.
 - *View › Show the 2D view in 3D space* draws the plan or section in the 3D view, where it cuts.
+
+## Touchpads
+
+A two-finger scroll pans plans, sheets and the 3D view; a pinch zooms. A mouse wheel still zooms.
 
 ## The ground grid
 

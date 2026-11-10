@@ -2,8 +2,8 @@
 
 A **sheet** is a page of paper (A0 to A4) with a title block. You place views on it, and they stay live: if the model changes, the sheet changes.
 
-1. Pick *File › New sheet* (or *Create › Sheet*). The new sheet opens in the 2D view.
-2. In the top bar, click **Place view…** and pick the floor plan. Then place the section the same way.
+1. Pick *File › New sheet* (or **New sheet** on the *View* tab). The new sheet opens in an area.
+2. In the sheet's header, click **Place view…** and pick the floor plan. Then place the section the same way. The *Sheets* workspace shows the sheet beside the drawing you are placing.
 3. Drag a view to move it on the paper.
 4. Double-click a view to work on the model through it. Press `Esc` to finish.
 

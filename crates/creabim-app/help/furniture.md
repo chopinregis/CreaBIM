@@ -25,6 +25,8 @@ With an object picked, the **Object** tool is on. The object follows the pointer
 - Lights, diffusers and smoke detectors hang from the ceiling, centred where you click. See [Electrical, plumbing and HVAC fixtures](fixtures).
 - Each goes in at its type's height: a wall cabinet at 1450 mm, a socket at 300 mm.
 - **Space** turns the next object a quarter. *Turn* sets any angle, *Turn 90°* adds a quarter, and *Free of walls* places even wall-standing objects where you click.
+- With nothing selected, the **Next element** tab of *Properties* shows the object to place: its size, how it is fixed (*on a wall*, *on the floor*, *hung from the ceiling*), its **Above floor** height before placing, and *Pick an object…* and *Turn 90°* as buttons.
+- A ghost of the object shows where the click will place it, in the plan and in 3D.
 - Keep clicking to place more; **Esc** ends.
 
 ![A washbasin finding the wall it backs onto](img/object-against-wall.jpg)
@@ -35,7 +37,7 @@ Plans draw each object's plan symbol. A wall cabinet above the cut height is dra
 
 Select it. In *Properties*:
 
-- **Above its level** raises it, for example a wall cabinet or a wall-hung basin. For something hung from the ceiling it reads **Below the ceiling**. **Turn** turns it, and *Turn 90°* adds a quarter.
+- **Above its level** raises it, for example a wall cabinet or a wall-hung basin. For something hung from the ceiling it reads **Below the ceiling**. **Rotation** turns it, and **↺ 90°** adds a quarter. In a plan, the round grip with a curved arrow in front of the object turns it with the pointer, in 5° steps (`Alt` for any angle).
 - The **Type** picker swaps it for another object type, so a chair can become an armchair. An object always has a type.
 - Below them are its type's **category**, how it is **placed** (*Against a wall*, *Free-standing* or *From the ceiling*), the height **new ones** go in at, its **IFC class and predefined type**, and each **part's material**. Changing these changes every object of that type.
 

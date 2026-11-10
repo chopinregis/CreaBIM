@@ -53,6 +53,7 @@ pub const PAGES: &[(&str, &str, &str)] = &[
     page!("Selecting and editing", "align"),
     page!("Selecting and editing", "handles"),
     page!("Selecting and editing", "edit-mode"),
+    page!("Selecting and editing", "divide"),
     page!("Selecting and editing", "edit"),
     page!("Building the model", "levels"),
     page!("Building the model", "walls"),
@@ -64,6 +65,7 @@ pub const PAGES: &[(&str, &str, &str)] = &[
     page!("Building the model", "stairs-railings"),
     page!("Building the model", "footings"),
     page!("Building the model", "parts"),
+    page!("Building the model", "profiles"),
     page!("Building the model", "site"),
     page!("Building the model", "curtain-walls"),
     page!("Building the model", "types"),
@@ -146,6 +148,7 @@ pub const IMAGES: &[(&str, &[u8])] = &[
     img!("catalogue"),
     img!("object-against-wall"),
     img!("details"),
+    img!("profile-view"),
 ];
 
 /// A page's text by id.

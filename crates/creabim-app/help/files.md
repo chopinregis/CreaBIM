@@ -11,6 +11,12 @@ A CreaBIM project is a `.creabim` file. It holds the model, its views, sheets, s
 
 Exports are written next to the project file, with its name.
 
+While the project has unsaved changes, a dot shows beside its name in the top bar, and the window's title starts with a •.
+
+## The activity log
+
+CreaBIM keeps a plain text log of what you did in this session: each drag frame by frame, every edit and undo, every tool change. Nothing leaves your computer. *CreaBIM menu › Open the activity log* opens it, to attach to a bug report when something felt wrong.
+
 ## Linked files
 
 *File › Import and link…* brings in the objects of a Blender (`.blend`) or FreeCAD (`.FCStd`) file. They stay linked: with *Reload linked files when saved* ticked, saving the file in Blender or FreeCAD updates them here within a second. *Reload a linked file* does it by hand. See [Blender](blender) and [FreeCAD](freecad).

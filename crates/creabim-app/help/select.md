@@ -24,7 +24,7 @@ Sometimes several elements are under the pointer: a beam inside a wall, a column
 
 A plain click without `Tab` takes what it always took. In an elevation this also reaches what is behind the face you see, such as a slab behind a wall.
 
-![Tab picks the beam inside the wall](img/tab-pick.jpg)
+![Two things under the pointer: the wall is lit, and Tab steps to the next](img/tab-pick.jpg)
 
 For hidden elements you need to work on for a while, [X-ray](visibility#x-ray) (`Alt+Z`) makes walls and slabs faint and puts what is inside them first.
 
@@ -33,7 +33,9 @@ For hidden elements you need to work on for a while, [X-ray](visibility#x-ray) (
 - In a plan or section, drag on empty paper.
 - In 3D, press `B`, then drag.
 
-Dragged **left to right** (solid blue), the box takes only what lies wholly inside it. Dragged **right to left** (dashed green), it takes everything it touches. Hold `Shift` to add to what is already selected.
+Dragged **left to right** (solid blue), the box takes only what lies wholly inside it. Dragged **right to left** (dashed green), it takes everything it touches. Hold `Shift` to add to what is already selected. While you drag, what the box will catch lights up.
+
+A box starts anywhere except on something already selected (that drag moves it), in plans, sections and sheets, and in the 3D view with the usual mouse scheme. On a sheet, a box on empty paper picks views, marks and notes.
 
 ![A box dragged in a plan](img/box-select.jpg)
 

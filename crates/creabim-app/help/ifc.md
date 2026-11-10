@@ -9,6 +9,18 @@
 
 What goes out: levels (storeys), walls with their location line and layers, slabs, roofs, doors and windows with their hand and swing, openings and shafts, columns, beams, stairs, railings, curtain walls with their mullions and panels, types, materials with their colours, furniture and fixtures with their types, and masses with their IFC class. Guides, sketches and crop boxes stay behind.
 
+### How walls, slabs and roofs go out
+
+Before writing, the export asks how walls, slabs and roofs go out, and says what the other program will see under each. The choice is remembered.
+
+| Choice | The other program gets |
+| --- | --- |
+| **As modelled elements** (recommended) | One IfcWall or IfcSlab each, with its layer set and its plain body. It comes back into CreaBIM as it went out. |
+| **Joined shapes, as drawn** | Their bodies cut where walls run through slabs, as CreaBIM shows them |
+| **Layers as separate elements** | The structure stays the IfcWall or IfcSlab; finishes, insulation and membranes become IfcCovering elements (cladding, flooring, roofing) covering it. For trades and quantities by layer. |
+
+The project's name, site and building, from *Manage › Project information*, name the IFC project, site and building.
+
 ## Opening an IFC file
 
 *File › Open…* reads IFC2X3, IFC4 and IFC4X3 files, and `.ifcx`.
