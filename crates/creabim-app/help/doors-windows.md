@@ -27,7 +27,7 @@ A door has a **hand** (which jamb the hinges are on) and a **swing** (which side
 
 ## Tags and schedules
 
-The **Tag** tool labels a door or window with its mark (D01, W01). *Tag openings* in the top bar tags all of them in the view at once. A door or window schedule lists them all, and you can edit sizes in the table. See [Tags](tags) and [Schedules](schedules).
+The **Tag** tool labels a door or window with its mark (D01, W01). *Tag all* (`Shift+T`), or *Tag openings* in the view's header, tags all of them in the view at once. A door or window schedule lists them all, and you can edit sizes in the table. See [Tags](tags) and [Schedules](schedules).
 
 ## Holes with nothing in them
 

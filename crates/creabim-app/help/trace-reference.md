@@ -10,7 +10,7 @@ A reference is saved with the project. One reference can show in **several views
 
 ## Adding one
 
-*View › Reference* opens *Properties › Trace* for the view in the focused area. Pick another view from *Add*, or click **Picture…** or **DXF drawing…**. It is added in place and selected.
+**Reference** on the *View* tab opens the **Trace and reference** tab of *Properties* for the view in the area you last used. Pick another view from *Add*, or click **Picture…** or **DXF drawing…**. It is added in place and selected. A picture or DXF file dropped on a plan or section becomes a reference too.
 
 ## Placing it
 
@@ -19,7 +19,11 @@ A reference is saved with the project. One reference can show in **several views
 - Drag the **round grip** above it to turn it about its middle (5° steps; `Alt` for any angle).
 - Or type *X*, *Y*, *Rotation* and *Scale* in *Properties*.
 - **Calibrate…**: click two points on it a known distance apart (a dimensioned wall on a scan), then type that distance. It is scaled to fit; the first point stays put.
+- **Align…**: click two points on the reference, then the two points on the model they belong on: it is moved, turned and scaled onto them.
 - **Back in place**: where it was drawn, unmoved, unturned, at its own size.
+- **Move**, **Rotate** and **Scale** from the toolbar work on references as on any element.
+
+In a section, a reference stands on the section's plane, and its grips and moves stay on that plane. Its lines snap: ends, middles and anywhere along them.
 
 Its dashed outline shows when it is selected or under the pointer; clicking the outline selects it. **Locked** keeps the grips off.
 
@@ -30,4 +34,8 @@ Its dashed outline shows when it is selected or under the pointer; clicking the 
 - **Under** or **Over** the model.
 - **Hidden**, or `Alt+F2` to hide or show every reference in the view.
 
-References are never in 3D, exports, schedules or IFC.
+## In 3D
+
+Under **In 3D** in its *Properties*: **Shown** draws the reference in the 3D view too, on its level or its section's plane (a picture shows its image), where it can be picked and snapped to. It can have its **Own strength** there, and be drawn **In perspective** or flat.
+
+References are never in exports, schedules or IFC.

@@ -18,8 +18,8 @@ The *File* menu has a few ready-made houses to explore:
 
 Before drawing, check *File › Project units…*. Pick **Metric** (millimetres, centimetres or metres) or **Imperial** (feet and inches). Every field, dimension and schedule follows that choice. See [Units](units).
 
-## The two views
+## The views
 
-The middle of the window shows the **3D view** and a **2D view** (a plan, section or sheet) side by side. Whatever you draw in one appears in the other at once. The button left of the view switcher (top right) shows one view at a time instead, with tabs to switch.
+The middle of the window is split into **areas**: by default the **3D view** and a drawing (a plan, section or sheet) side by side. Whatever you draw in one appears in the other at once. Pick another layout from **Workspace** at the top right: *Model* is one big 3D view, *Document* adds the sheet. Each area's header picks what it shows. See [View areas](interface#view-areas).
 
 **Next:** [Set up the levels](start-levels)

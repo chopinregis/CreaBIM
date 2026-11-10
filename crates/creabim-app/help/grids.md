@@ -13,7 +13,7 @@ Each line takes the next label of its direction. Lines show in plans, sections a
 
 A project with several buildings can have a **grid system** for each, with its own prefix ("A-", "B-"), labels and colour.
 
-- The Grid tool's *Grid system* menu in the top bar picks the active system, makes a new one, renumbers the lines in order, selects its lines, moves selected lines into a system, and opens *Edit the grid system…*.
+- The Grid tool's *Grid system* menu in the tool options picks the active system, makes a new one, renumbers the lines in order, selects its lines, moves selected lines into a system, and opens *Edit the grid system…*.
 - A grid system's *Properties*: name, prefix, how its north–south and east–west lines are counted, colour.
 
 Changing the prefix relabels the whole system.
