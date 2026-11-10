@@ -6,7 +6,7 @@
 2. In the tool options choose *Square* or *Round* and the *Size*, or a column **Type**.
 3. Click where each column goes.
 
-A column runs from its level up to the next one, unless you tie its top to a level or give it a fixed height in *Properties*. *Properties* also has its profile and rotation. Drag its centre handle to move it, its top handle to change its height and its base handle to change its base offset.
+A column runs from its level up to the next one, unless you tie its top to a level or give it a fixed height in *Properties*. *Properties* also has its rotation and its **Profile**: *Its own (width × depth)*, or any profile of the [library](profiles), such as an I-section or a tube. Drag its centre handle to move it, its top handle to change its height and its base handle to change its base offset.
 
 ## Over several levels
 

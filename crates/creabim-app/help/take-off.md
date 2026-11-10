@@ -18,6 +18,10 @@ Walls, slabs, roofs, ceilings, columns, beams and footings each give one line fo
 | Beam | - | section × length | its length |
 | Footing | its plan area | area × thickness | a strip's length |
 
+Walls and strip footings are measured on their joined outline, so a corner where two walls meet is counted once, and a wall stopping at another's face isn't counted into it.
+
+The take-off also lists, each under its own category: **doors** and **windows** (one piece each, with their size as area), **objects** (one piece each), **stairs** (the run as length, its plan area, and the concrete as a builder estimates it), **railings** (their length) and **masses** (their volume as modelled, modifiers and scale included).
+
 Quantities are in metres, square metres and cubic metres.
 
 ## Rates

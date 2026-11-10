@@ -33,7 +33,9 @@ For hidden elements you need to work on for a while, [X-ray](visibility#x-ray) (
 - In a plan or section, drag on empty paper.
 - In 3D, press `B`, then drag.
 
-Dragged **left to right** (solid blue), the box takes only what lies wholly inside it. Dragged **right to left** (dashed green), it takes everything it touches. Hold `Shift` to add to what is already selected.
+Dragged **left to right** (solid blue), the box takes only what lies wholly inside it. Dragged **right to left** (dashed green), it takes everything it touches. Hold `Shift` to add to what is already selected. While you drag, what the box will catch lights up, with a count.
+
+A box starts anywhere except on something already selected (that drag moves it), in plans, sections and sheets, and in the 3D view with the usual mouse scheme. On a sheet, a box on empty paper picks views, marks and notes.
 
 ![A box dragged in a plan](img/box-select.jpg)
 

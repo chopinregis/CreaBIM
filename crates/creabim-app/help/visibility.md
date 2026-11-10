@@ -8,7 +8,9 @@ Each view keeps its own list of what it leaves out:
 - single **grid systems**;
 - single **elements**.
 
-Set it with the *Visibility* menu at the right of the tool options strip, or in *Properties* with nothing selected. Or right-click an element and pick *Hide in view* or *Hide category in view*. *Properties* lists the hidden elements, each with *Unhide*.
+Set it with the *Visibility* menu in the area's header, or in *Properties* (the *View* tab) with nothing selected. Or right-click an element and pick *Hide in view* or *Hide category in view*. *Properties* lists the hidden elements, each with *Unhide*.
+
+To keep a view to a few elements, select them, right-click and pick **Show only the selection in this view**: the view, and every sheet it is on, shows them alone until you show the rest again.
 
 This is saved with the view and undoes like any edit. Sheets show each view the way it is set, so whatever a view hides is hidden on every sheet it is on.
 
@@ -35,7 +37,7 @@ X-ray lets you see, select and move what is buried inside other elements.
 
 ## Hidden elements
 
-- **Hidden** (tool options strip, or *Elements hidden inside others, dashed* in a view's visibility) draws the edges of elements hidden inside or behind others with dashed lines: a beam in a wall, a column in a wall in plan, a slab edge behind a wall.
+- **Hidden** (the area's header, or *Elements hidden inside others, dashed* in a view's visibility) draws the edges of elements hidden inside or behind others with dashed lines: a beam in a wall, a column in a wall in plan, a slab edge behind a wall.
 - **In colour** adds a see-through fill in each hidden element's material colour under its dashed lines, so a timber lintel in a wall reads as timber. Clicking inside the tint selects it. Turning it on also turns on *Hidden*.
 
 Both are saved with the view and print on sheets, PDF and SVG. In 3D, *Hidden elements in colour* (in *Show*) draws buried elements in their colours, half see-through.
