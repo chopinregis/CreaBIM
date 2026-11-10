@@ -9496,6 +9496,8 @@ impl eframe::App for CreaBimApp {
         let _perf = Perf::new("frame");
         let ctx = ui.ctx().clone();
         crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
+        // R draws a rectangle while sketching, not a rotate (MU38)
+        crate::sketch::set_sketching(&ctx, self.plan.tool == Tool::Sketch);
         // the activity log: what the status bar said (it names every edit
         // and undo) and the tool, when they change
         if self.status != self.logged.0 {

@@ -3903,6 +3903,7 @@ pub fn restart_modal(
 /// Which keyboard edit the keys pressed this frame start, if any:
 /// (mode, duplicate first).
 pub fn start_keys(ctx: &egui::Context) -> Option<(Mode, bool)> {
+    let sketching = crate::sketch::sketching(ctx);
     ctx.input(|i| {
         if i.modifiers.command || i.modifiers.alt {
             return None;
@@ -3914,7 +3915,7 @@ pub fn start_keys(ctx: &egui::Context) -> Option<(Mode, bool)> {
             None
         } else if i.key_pressed(egui::Key::G) {
             Some((Mode::Move, false))
-        } else if i.key_pressed(egui::Key::R) {
+        } else if i.key_pressed(egui::Key::R) && !sketching {
             Some((Mode::Rotate, false))
         } else if i.key_pressed(egui::Key::S) {
             Some((Mode::Scale, false))
