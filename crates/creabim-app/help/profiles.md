@@ -2,7 +2,7 @@
 
 A **profile** is a cross-section you draw once and use many times: a coping, a cornice, a gutter, a skirting, a steel section. Sweeps carry it along a path, extrusions push it straight up, and columns, beams and railings can take it as their section.
 
-![A profile in the Profile view](img/profile-view.jpg)
+![The Profile view in an area: the Coping preset, its insertion point and overall sizes](img/profile-view.jpg)
 
 ## The profile library
 

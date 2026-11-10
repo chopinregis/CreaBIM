@@ -21,7 +21,7 @@ Cut faces are closed with a darker cap, so walls and slabs look solid, layer by 
 - Drag the square handle at its corner to move it across the plan, or press `G`.
 - Or type its extents in *Properties*: *X*, *Y* and *Z from … to …*, in project units. *Fit to the model* fits it again.
 
-![A new crop box round the sample house](img/crop-box.jpg)
+![A new crop box round the starter house: in 3D, dashed in Section A-A, and its settings in Properties](img/crop-box.jpg)
 
 ## Cropping only some elements
 

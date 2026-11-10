@@ -27,7 +27,7 @@ For example, draw the outside walls on their **exterior face**: then making them
 
 Pick it in the tool options before drawing, or in *Properties* afterwards.
 
-![A wall drawn on its exterior face, made thicker](img/location-line.jpg)
+![An outside wall with its location line on its exterior face: a thicker build-up grows inwards](img/location-line.jpg)
 
 ## Inside and outside: flip
 

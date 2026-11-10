@@ -18,7 +18,7 @@ A project with several buildings can have a **grid system** for each, with its o
 
 Changing the prefix relabels the whole system.
 
-![Two grid systems in 3D](img/grids-3d.jpg)
+![The starter house's grid in 3D: lines A to E and 1 to 3](img/grids-3d.jpg)
 
 ## Moving grid lines
 

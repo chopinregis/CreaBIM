@@ -33,7 +33,7 @@ X-ray lets you see, select and move what is buried inside other elements.
 
 2D X-ray is a way of working: it isn't saved and never shows on sheets.
 
-![X-ray in a section: the beam inside the wall](img/xray-2d.jpg)
+![X-ray in Section B-B: walls and slabs see-through, the beams and columns inside them solid](img/xray-2d.jpg)
 
 ## Hidden elements
 
