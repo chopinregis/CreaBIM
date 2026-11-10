@@ -28,11 +28,6 @@ gtk = "0.18"
 x11-dl = "2.21"
 winit = { version = "0.30", default-features = false, features = ["x11"] }
 
-# Alt+A kept for CreaBIM while it is in front, before another app's global
-# hotkey takes it (MU39)
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Threading", "Win32_System_LibraryLoader"] }
-
 # the .exe's icon (the logo's creabim.ico), embedded when built on Windows
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

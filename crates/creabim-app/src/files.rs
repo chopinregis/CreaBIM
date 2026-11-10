@@ -224,8 +224,6 @@ pub struct Settings {
     /// The colour of what is worked on (selection, grips, ghosts): "orange",
     /// the default, or "theme" for the theme's accent (MU39).
     pub interaction: String,
-    /// Keep Alt+A (select nothing) for CreaBIM while it is in front.
-    pub keep_alt_a: bool,
     /// Edit mode's wires and corner dots, in points.
     pub edit_edge_width: f32,
     pub edit_vertex_size: f32,
@@ -265,7 +263,6 @@ impl Default for Settings {
             edit_bar: "top".into(),
             axis_lines: true,
             interaction: "orange".into(),
-            keep_alt_a: true,
             edit_edge_width: 1.0,
             edit_vertex_size: 4.0,
         }

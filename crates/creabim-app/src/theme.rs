@@ -22,6 +22,8 @@ pub enum Theme {
     Sage,
     /// Near black with a gold accent, for high contrast.
     Ink,
+    /// Warm cream with slate ink and blue: Solarized Light (MU39).
+    Solarized,
 }
 
 /// The colours egui needs.
@@ -63,13 +65,14 @@ const fn hex(v: u32) -> Color32 {
 }
 
 impl Theme {
-    pub const ALL: [Theme; 7] = [
+    pub const ALL: [Theme; 8] = [
         Theme::Dark,
         Theme::Light,
         Theme::Graphite,
         Theme::Paper,
         Theme::Blueprint,
         Theme::Sage,
+        Theme::Solarized,
         Theme::Ink,
     ];
 
@@ -83,6 +86,7 @@ impl Theme {
             Theme::Blueprint => "blueprint",
             Theme::Sage => "sage",
             Theme::Ink => "ink",
+            Theme::Solarized => "solarized",
         }
     }
 
@@ -95,6 +99,7 @@ impl Theme {
             Theme::Blueprint => "Blueprint",
             Theme::Sage => "Sage",
             Theme::Ink => "Ink (high contrast)",
+            Theme::Solarized => "Solarized",
         }
     }
 
@@ -169,6 +174,11 @@ impl Theme {
                 // the approved mockup's palette (brief 02)
                 false, 0xF6F7F4, 0xFFFFFF, 0xF6F7F4, 0xE3E6DF, 0xD3D8CE, 0x22261F, 0x5D6558,
                 0x4F6B4C,
+            ),
+            Theme::Solarized => t(
+                // Solarized Light: base3 paper, base2 panels, base01 ink
+                false, 0xEEE8D5, 0xFDF6E3, 0xF5EFDC, 0xE2DBC6, 0xD3CBB2, 0x073642, 0x657B83,
+                0x268BD2,
             ),
             Theme::Ink => t(
                 true, 0x0B0C0E, 0x141518, 0x1D1F23, 0x2A2D33, 0x3A3E46, 0xF5F3EE, 0x8F9096,
@@ -248,6 +258,7 @@ impl Theme {
             Theme::Blueprint => Color32::from_rgb(0x9F, 0xD3, 0xEA),
             Theme::Ink => Color32::from_rgb(0xF0, 0xC3, 0x6B),
             Theme::Dark => Color32::from_rgb(0x8F, 0xB0, 0x8A),
+            Theme::Solarized => Color32::from_rgb(0x85, 0x99, 0x00),
         }
     }
 
@@ -262,6 +273,7 @@ impl Theme {
             Theme::Blueprint => Color32::from_rgb(0x5F, 0xD0, 0xFF),
             Theme::Sage => Color32::from_rgb(0x3F, 0xA3, 0x4D),
             Theme::Ink => Color32::from_rgb(0xF0, 0xC3, 0x6B),
+            Theme::Solarized => Color32::from_rgb(0xCB, 0x4B, 0x16),
         }
     }
 }

@@ -142,6 +142,33 @@ html[data-theme="sage"] {
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
 }
 
+html[data-theme="solarized"] {
+  /* Solarized Light (MU39): base3 paper, slate ink, the Solarized accents */
+  --bg: #EEE8D5;
+  --panel: #FDF6E3;
+  --panel-2: #F5EFDC;
+  --raise: #EEE8D5;
+  --raise-2: #E2DBC6;
+  --border: #E2DBC6;
+  --border-2: #D3CBB2;
+  --text: #073642;
+  --text-2: #22434D;
+  --muted: #657B83;
+  --faint: rgba(101, 123, 131, 0.75);
+  --accent: #268BD2;
+  --accent-2: #1F74B0;
+  --accent-text: #1F6FA8;
+  --accent-soft: #E3EBEE;
+  --accent-ring: rgba(38, 139, 210, 0.5);
+  --select: #CB4B16;
+  --anno: #6C71C4;
+  --on-accent: #ffffff;
+  --good: #859900;
+  --warn: #B58900;
+  --shadow: 0 1px 2px rgba(7, 54, 66, 0.06);
+  --logo: #859900;
+}
+
 html[data-theme="ink"] {
   --bg: #0B0C0E;
   --panel: #141518;
@@ -413,6 +440,8 @@ html[data-theme="light"] .logo, html[data-theme="paper"] .logo, html[data-theme=
 .seg button { height: 22px; padding: 0 9px; border-radius: 5px; color: var(--text-2); white-space: nowrap; font-size: 12px; }
 .seg button:hover { background: var(--raise); color: var(--text); }
 .seg button.on { background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent-ring); }
+.seg button.ico { display: inline-grid; place-items: center; padding: 0 7px; }
+.seg button.ico svg { width: 15px; height: 15px; display: block; }
 
 /* ---------- controls (top options and status bar) ----------
    Every control shows what it is: buttons and toggles have a fill and an
@@ -1071,3 +1100,17 @@ html[data-theme="ink"] { --logo: #F0C36B; }
 .status .mb { display: inline-flex; align-items: center; gap: 4px; }
 .status .mb svg { width: 10px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.2; }
 .status .mb svg path { fill: var(--text); stroke: none; }
+/* the guide's major sections fold (MU39) */
+.hdoc details.hsec > summary { list-style: none; cursor: pointer; position: relative; }
+.hdoc details.hsec > summary::-webkit-details-marker { display: none; }
+.hdoc details.hsec > summary h2 { padding-right: 22px; }
+.hdoc details.hsec > summary::after { content: ""; position: absolute; right: 4px; top: 50%; width: 7px; height: 7px; border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted); transform: translateY(-20%) rotate(45deg); transition: transform .15s; }
+.hdoc details.hsec:not([open]) > summary::after { transform: translateY(-50%) rotate(-45deg); }
+.hdoc details.hsec > summary:hover h2 { color: var(--accent-text); }
+/* a status message too long for its room slides to show the rest while the
+   pointer rests on it (MU39) */
+.status .msg span[title], .status .hint { overflow: hidden; text-overflow: ellipsis; }
+.status .slide { text-overflow: clip !important; }
+.status .slide > i { display: inline-block; font-style: normal; animation: st-slide var(--slide-t, 6s) linear .6s infinite alternate; }
+@keyframes st-slide { 0%, 10% { transform: translateX(0); } 90%, 100% { transform: translateX(var(--slide, 0px)); } }
+

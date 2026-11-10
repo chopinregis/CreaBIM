@@ -322,6 +322,10 @@ fn command_icon(c: Command) -> &'static str {
     }
 }
 
+/// The modifier keys held this frame (1 Shift, 2 Ctrl, 4 Alt), for the
+/// status bar's mouse hints.
+pub(super) static MODS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
 impl CreaBimApp {
     fn cmd_item(&self, c: Command) -> Item {
         let enabled = match c {
@@ -1873,6 +1877,7 @@ impl CreaBimApp {
             "sel.invert" => self.select_invert(),
             "sel.linked" => self.select_linked(),
             "sel.random" => self.select_random(),
+            "sel.kind" => self.select_kind(arg),
             "sketch.shape" => {
                 if let Some(s) = index.and_then(|i| crate::sketch::Shape::ALL.get(i)) {
                     crate::sketch::pick_shape(ctx, *s);
@@ -2795,27 +2800,61 @@ impl CreaBimApp {
     /// What the left, middle and right buttons do over the view the
     /// pointer was last in, for the status bar (MU39).
     fn mouse_hints(&self) -> Value {
+        // as Blender's status bar: they change while Shift, Ctrl or Alt
+        // is held, to what the buttons then do (MU39)
+        let m = MODS.load(std::sync::atomic::Ordering::Relaxed);
+        let (shift, ctrl, alt) = (m & 1 != 0, m & 2 != 0, m & 4 != 0);
         let in_2d = self.last_in_2d;
         let classic = self.shell.settings.navigation == "classic";
-        let left = if self.plan.modal.is_some() {
-            "Place"
-        } else if self.plan.tool == Tool::Select {
-            if self.plan.edit.is_some() {
-                "Pick a point"
-            } else {
-                "Select"
-            }
+        let select = self.plan.tool == Tool::Select;
+        let editing = self.plan.edit.is_some();
+        let (left, middle, right): (String, &str, &str) = if self.plan.modal.is_some() {
+            (
+                if ctrl { "Place, snapping" } else { "Place" }.into(),
+                if in_2d { "Pan" } else { "Rotate view" },
+                "Cancel",
+            )
+        } else if ctrl {
+            (
+                if select {
+                    "Take away"
+                } else {
+                    self.plan.tool.label()
+                }
+                .into(),
+                "Zoom",
+                "Menu",
+            )
+        } else if shift {
+            (
+                if editing {
+                    "Pick more"
+                } else if select {
+                    "Add to selection"
+                } else {
+                    self.plan.tool.label()
+                }
+                .into(),
+                "Pan",
+                if in_2d { "Menu" } else { "Place pivot" },
+            )
+        } else if alt && !in_2d {
+            ("Rotate view".into(), "Rotate view", "Menu")
         } else {
-            self.plan.tool.label()
-        };
-        let middle = match (in_2d, classic) {
-            (true, _) | (false, true) => "Pan",
-            (false, false) => "Rotate view",
-        };
-        let right = if self.plan.tool == Tool::Select {
-            "Menu"
-        } else {
-            "Back"
+            (
+                if editing {
+                    "Pick a point".into()
+                } else if select {
+                    "Select".into()
+                } else {
+                    self.plan.tool.label().to_string()
+                },
+                match (in_2d, classic) {
+                    (true, _) | (false, true) => "Pan",
+                    (false, false) => "Rotate view",
+                },
+                if select { "Menu" } else { "Back" },
+            )
         };
         json!([
             {"b": "l", "label": left},
@@ -2877,6 +2916,32 @@ impl CreaBimApp {
                 .enabled(some)
                 .hint("Keep about half of the selection, picked at random: to thin out a row"),
         ];
+        // every kind the project holds, without a selection first (MU39)
+        let mut kinds: Vec<(&'static str, usize)> = vec![];
+        for id in self.selectable_ids() {
+            if let Some(e) = self.doc.model().get(id) {
+                let k = crate::app::kind_word(&e.kind);
+                match kinds.iter_mut().find(|(w, _)| *w == k) {
+                    Some((_, n)) => *n += 1,
+                    None => kinds.push((k, 1)),
+                }
+            }
+        }
+        kinds.sort_by_key(|k| k.0);
+        let by_kind: Vec<Item> = kinds
+            .into_iter()
+            .map(|(k, n)| {
+                let word = crate::app::plural(k, 2);
+                let mut c = word.chars();
+                let label = c
+                    .next()
+                    .map_or(String::new(), |f| f.to_uppercase().chain(c).collect());
+                Item::new(format!("sel.kind:{k}"), format!("{label} ({n})"))
+            })
+            .collect();
+        if !by_kind.is_empty() {
+            items.push(Item::sub("All by type", by_kind).icon("layers"));
+        }
         let similar = self.similar_items();
         if !similar.is_empty() {
             items.push(Item::sub("Select similar", similar).icon("copy"));

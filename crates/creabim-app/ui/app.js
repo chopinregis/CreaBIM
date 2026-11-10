@@ -46,6 +46,42 @@
       `</g>${ctxArt}</svg>`;
   }
 
+  // A page's major sections (its ## headings) fold, as Properties' do
+  // (MU39); what is folded stays folded while the page is redrawn.
+  const folded = new Set();
+  function foldSections(html, pageId) {
+    const parts = html.split(/(?=<h2 )/);
+    return parts.map((p, i) => {
+      if (i === 0 && !p.startsWith("<h2 ")) return p;
+      const end = p.indexOf("</h2>") + 5;
+      const id = (p.match(/id="([^"]+)"/) || [])[1] || String(i);
+      const key = pageId + "#" + id;
+      return `<details class="hsec" data-fold="${esc(key)}"${folded.has(key) ? "" : " open"}><summary>${p.slice(0, end)}</summary>${p.slice(end)}</details>`;
+    }).join("");
+  }
+  // A status message cut short slides to show the rest while the pointer
+  // rests on it, and back (MU39).
+  document.addEventListener("mouseover", (e) => {
+    const t = e.target && e.target.closest && e.target.closest(".status .msg span[title], .status .hint");
+    if (!t || t.classList.contains("slide")) return;
+    const over = t.scrollWidth - t.clientWidth;
+    if (over < 4) return;
+    t.classList.add("slide");
+    t.innerHTML = `<i>${esc(t.textContent)}</i>`;
+    t.style.setProperty("--slide", `-${over + 8}px`);
+    t.style.setProperty("--slide-t", `${Math.max(2, over / 40)}s`);
+    t.addEventListener("mouseleave", () => {
+      t.classList.remove("slide");
+      t.textContent = t.textContent;
+    }, { once: true });
+  });
+  document.addEventListener("toggle", (e) => {
+    const d = e.target;
+    if (d && d.dataset && d.dataset.fold) {
+      if (d.open) folded.delete(d.dataset.fold); else folded.add(d.dataset.fold);
+    }
+  }, true);
+
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -808,7 +844,7 @@
       // the woven mark over each page, woven once as the page opens
       const opened = local.hwoven !== page.id;
       local.hwoven = page.id;
-      body = `<div class="help-mark logo">${woven("guide", opened)}</div><div class="crumb"><a data-act="help:contents">Contents</a> › ${esc(page.section)}</div><article class="hdoc">${markdown(page.md)}</article>` +
+      body = `<div class="help-mark logo">${woven("guide", opened)}</div><div class="crumb"><a data-act="help:contents">Contents</a> › ${esc(page.section)}</div><article class="hdoc">${foldSections(markdown(page.md), page.id)}</article>` +
         // two equal cards, a small label over the page's title (MU30)
         `<div class="pn">${prev ? `<a class="pn-card" data-act="help:${esc(prev.id)}"><small>← Previous</small><span>${esc(prev.title)}</span></a>` : "<span></span>"}` +
         `${next ? `<a class="pn-card next" data-act="help:${esc(next.id)}"><small>Next →</small><span>${esc(next.title)}</span></a>` : "<span></span>"}</div>`;
@@ -826,6 +862,8 @@
     if (keep !== null) b.scrollTop = keep;
     else {
       const h = S.anchor && !q.trim() && root.querySelector(`#h-${CSS.escape(S.anchor)}`);
+      const fold = h && h.closest("details");
+      if (fold) fold.open = true;
       if (h) h.scrollIntoView({ block: "start" });
       else b.scrollTop = 0;
     }

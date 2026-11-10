@@ -111,10 +111,34 @@ fn covers(start: Pos2, now: Pos2, p: Pos2) -> bool {
     }
 }
 
-/// Does a box from `start` to `now` take what it touches? Circles and
-/// lassos always do.
+/// Does a drag from `start` to `now` take what it touches (green, dashed),
+/// or only what lies wholly inside (blue)? Drawn leftward it touches, as
+/// in CAD: a box, a circle, or a lasso ending left of where it began (MU39).
 pub fn crossing(start: Pos2, now: Pos2) -> bool {
-    shape() != Shape::Box || now.x < start.x
+    match shape() {
+        Shape::Lasso => {
+            let l = lasso();
+            match (l.first(), l.last()) {
+                (Some(a), Some(b)) => b.x < a.x,
+                _ => now.x < start.x,
+            }
+        }
+        _ => now.x < start.x,
+    }
+}
+
+fn look(start: Pos2, now: Pos2) -> (Color32, Stroke) {
+    if crossing(start, now) {
+        (
+            Color32::from_rgba_unmultiplied(60, 170, 90, 30),
+            Stroke::new(1.0, Color32::from_rgb(40, 140, 70)),
+        )
+    } else {
+        (
+            Color32::from_rgba_unmultiplied(40, 110, 220, 30),
+            Stroke::new(1.0, Color32::from_rgb(40, 110, 220)),
+        )
+    }
 }
 
 /// Join `ids` (what a drag or click took) to `sel` as `how` says.
@@ -139,30 +163,53 @@ pub fn draw_count(painter: &egui::Painter, now: Pos2, n: usize) {
     } else {
         format!("{n} selected")
     };
-    let font = egui::FontId::proportional(11.0);
-    let g = painter.layout_no_wrap(text, font, Color32::from_rgb(225, 232, 255));
+    // in the theme's panel and text, ringed in the selection colour, so it
+    // reads on any paper (MU39: grey on grey before)
+    let p = crate::theme::Palette::of(painter.ctx());
+    let ink = crate::theme::interaction();
+    let g = painter.layout_no_wrap(text, egui::FontId::proportional(12.5), p.text);
     let r = Rect::from_min_size(
-        now + egui::vec2(14.0, 12.0),
-        g.size() + egui::vec2(12.0, 6.0),
+        now + egui::vec2(16.0, 14.0),
+        g.size() + egui::vec2(24.0, 8.0),
+    );
+    painter.rect(
+        r.translate(egui::vec2(0.0, 2.0)),
+        9.0,
+        Color32::from_black_alpha(60),
+        Stroke::NONE,
+        egui::StrokeKind::Middle,
     );
     painter.rect(
         r,
-        8.0,
-        Color32::from_rgba_unmultiplied(30, 32, 38, 230),
-        Stroke::new(0.8, Color32::from_rgb(90, 140, 255)),
+        9.0,
+        p.panel,
+        Stroke::new(1.5, ink),
         egui::StrokeKind::Middle,
     );
-    painter.galley(r.min + egui::vec2(6.0, 3.0), g, Color32::WHITE);
+    painter.circle_filled(egui::pos2(r.left() + 9.0, r.center().y), 3.0, ink);
+    painter.galley(r.min + egui::vec2(16.0, 4.0), g, p.text);
 }
 
 /// Draw the box (solid for inside, dashed for touching), the circle or
 /// the lasso.
 pub fn draw(painter: &egui::Painter, start: Pos2, now: Pos2) {
-    let blue = Stroke::new(1.0, Color32::from_rgb(40, 110, 220));
-    let fill = Color32::from_rgba_unmultiplied(40, 110, 220, 30);
+    let (fill, line) = look(start, now);
+    let dashed = crossing(start, now);
     match shape() {
         Shape::Circle => {
-            painter.circle(start, start.distance(now), fill, blue);
+            let r = start.distance(now);
+            painter.circle_filled(start, r, fill);
+            if dashed {
+                let pts: Vec<Pos2> = (0..=64)
+                    .map(|k| {
+                        let t = k as f32 / 64.0 * std::f32::consts::TAU;
+                        start + egui::vec2(t.cos(), t.sin()) * r
+                    })
+                    .collect();
+                painter.extend(egui::Shape::dashed_line(&pts, line, 6.0, 4.0));
+            } else {
+                painter.circle_stroke(start, r, line);
+            }
             return;
         }
         Shape::Lasso => {
@@ -178,7 +225,11 @@ pub fn draw(painter: &egui::Painter, start: Pos2, now: Pos2) {
             if let Some(f) = l.first().copied() {
                 l.push(f);
             }
-            painter.extend(egui::Shape::dashed_line(&l, blue, 6.0, 4.0));
+            if dashed {
+                painter.extend(egui::Shape::dashed_line(&l, line, 6.0, 4.0));
+            } else {
+                painter.add(egui::Shape::line(l, line));
+            }
             return;
         }
         Shape::Box => {}
@@ -242,6 +293,7 @@ pub fn pick(
                 p.left_bottom(),
             ];
             s.0 |= pts.iter().any(|q| covers(start, now, *q));
+            s.1 &= pts[1..].iter().all(|q| covers(start, now, *q));
         }
     }
     seen.into_iter()
@@ -284,6 +336,7 @@ pub fn pick_triangles(
                 );
                 s.0 = t.iter().chain([&c]).any(|q| covers(start, now, *q));
             }
+            s.1 &= t.iter().all(|q| covers(start, now, *q));
             continue;
         }
         if !s.0 {

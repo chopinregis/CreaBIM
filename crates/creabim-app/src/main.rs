@@ -22,7 +22,6 @@ mod handles;
 mod help;
 mod hoverpick;
 mod icons;
-mod keyhook;
 mod memberstool;
 mod modal;
 mod modguides;

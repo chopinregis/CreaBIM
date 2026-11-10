@@ -3466,7 +3466,36 @@ pub fn interact(
                     ctx.set_cursor_icon(egui::CursorIcon::Move);
                     continue;
                 }
+                // Edges picked (2): every edge shows, to grab (MU39)
+                HandleKind::MeshEdge(a, b) if pick() == 2 => {
+                    if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+                        let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+                        let p = |i: u32| {
+                            (input.project)(base + m.to_model(m.mesh.vertices[i as usize]))
+                        };
+                        if let (Some(pa), Some(pb)) = (p(a), p(b)) {
+                            painter.line_segment(
+                                [pa, pb],
+                                Stroke::new(wire_w + 1.0, accent.gamma_multiply(0.55)),
+                            );
+                        }
+                    }
+                    continue;
+                }
                 HandleKind::MeshEdge(..) => continue,
+                // Faces picked (3): a small square at each face's middle,
+                // as Blender's face dots
+                HandleKind::Face(_) if state == GripState::Rest && pick() == 3 => {
+                    let r = egui::Rect::from_center_size(c, egui::vec2(dot + 2.0, dot + 2.0));
+                    painter.rect(
+                        r,
+                        1.0,
+                        accent.gamma_multiply(0.35),
+                        Stroke::new(1.0, accent),
+                        egui::StrokeKind::Middle,
+                    );
+                    continue;
+                }
                 HandleKind::Face(_) if state == GripState::Rest => continue,
                 _ => {}
             }

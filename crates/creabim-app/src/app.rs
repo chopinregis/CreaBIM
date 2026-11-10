@@ -314,9 +314,7 @@ impl CreaBimApp {
         let theme = crate::theme::Theme::from_id(&settings.theme).unwrap_or_default();
         crate::handles::set_grip_style(settings.grips);
         crate::modal::set_bar_by_pointer(settings.edit_bar == "pointer");
-        crate::keyhook::set_on(settings.keep_alt_a);
         crate::handles::set_edit_display(settings.edit_edge_width, settings.edit_vertex_size);
-        crate::keyhook::install(&cc.egui_ctx);
         shell::style(&cc.egui_ctx, theme);
         let viewport = cc
             .wgpu_render_state
@@ -2044,8 +2042,22 @@ impl CreaBimApp {
         self.status = format!("Random: {} kept.", self.selection.len());
     }
 
+    /// Select every element of one kind (walls, doors…), as Blender's
+    /// Select All by Type (MU39).
+    pub(super) fn select_kind(&mut self, kind: &str) {
+        let model = self.doc.model();
+        let ids: Vec<ElementId> = self
+            .selectable_ids()
+            .into_iter()
+            .filter(|id| model.get(*id).is_some_and(|e| kind_word(&e.kind) == kind))
+            .collect();
+        self.selection.extend(ids, false);
+        self.face = None;
+        self.status = format!("{} selected.", self.selection.len());
+    }
+
     /// Everything Select all takes.
-    fn selectable_ids(&self) -> Vec<ElementId> {
+    pub(super) fn selectable_ids(&self) -> Vec<ElementId> {
         self.doc
             .model()
             .iter()
@@ -10474,11 +10486,11 @@ impl eframe::App for CreaBimApp {
         let _perf = Perf::new("frame");
         let ctx = ui.ctx().clone();
         crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
-        // Alt+A kept from another app's hotkey: select nothing (MU39)
-        if crate::keyhook::take_alt_a() {
-            self.run_command(&ctx, crate::commands::Command::SelectNone, None);
-            self.status = "Nothing selected.".into();
-        }
+        let m = ctx.input(|i| i.modifiers);
+        shell::MODS.store(
+            m.shift as u8 | (m.command as u8) << 1 | (m.alt as u8) << 2,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         // the colour of what is worked on: orange, or the theme's accent;
         // the 3D view's highlight is built again when it changes (MU39)
         let ink = if self.shell.settings.interaction == "theme" {
