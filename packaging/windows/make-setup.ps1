@@ -3,7 +3,9 @@
 #   powershell -File packaging\windows\make-setup.ps1 -Out C:\path\to\folder
 param(
     [string]$Out = ".",
-    [string]$Target = "target\release"
+    [string]$Target = "target\release",
+    # the release day, so every file of a release carries the same date
+    [string]$Date = ""
 )
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
