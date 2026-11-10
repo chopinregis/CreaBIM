@@ -222,6 +222,7 @@ impl CreaBimApp {
                     None => "There is no activity log on this computer.".into(),
                 };
             }
+            "app.report" => self.report_problem(),
             "app.settings" => self.settings_open = true,
             "app.exit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             "units.kind" => {

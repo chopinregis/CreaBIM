@@ -21,6 +21,37 @@ struct Log {
 
 static LOG: Mutex<Option<Log>> = Mutex::new(None);
 
+/// The last lines, for the Log view (MU40): what the file holds lately,
+/// without reading it back.
+static RECENT: Mutex<std::collections::VecDeque<String>> =
+    Mutex::new(std::collections::VecDeque::new());
+
+/// How many lines the Log view keeps.
+const KEEP: usize = 4000;
+
+/// The lines written lately, oldest first, and how many were ever written
+/// (so a view can tell whether there is anything new).
+pub fn recent() -> (Vec<String>, usize) {
+    let r = RECENT.lock().unwrap_or_else(|e| e.into_inner());
+    (
+        r.iter().cloned().collect(),
+        WRITTEN.load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
+static WRITTEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Is this line about something going wrong?
+pub fn is_problem(line: &str) -> bool {
+    let l = line.to_lowercase();
+    l.contains("crash")
+        || l.contains("couldn't")
+        || l.contains("error")
+        || l.contains("failed")
+        || l.contains("not changed")
+        || l.contains("panicked")
+}
+
 /// Largest the log grows before it starts again.
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
 
@@ -78,9 +109,19 @@ pub fn line(text: impl AsRef<str>) {
         return;
     };
     let t = log.start.elapsed().as_secs_f64();
+    let row = format!("{t:10.3}  {}", text.as_ref());
     if let Some(f) = &mut log.file {
-        let _ = writeln!(f, "{t:10.3}  {}", text.as_ref());
+        let _ = writeln!(f, "{row}");
     }
+    let mut r = RECENT.lock().unwrap_or_else(|e| e.into_inner());
+    // a crash's trace is many lines: each its own row in the view
+    for l in row.lines() {
+        if r.len() >= KEEP {
+            r.pop_front();
+        }
+        r.push_back(l.to_string());
+    }
+    WRITTEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// A length in millimetres, for the log.

@@ -29,6 +29,8 @@ pub enum Shows {
     Profiles,
     /// The sheet masters (title blocks) and their editor (MU40).
     Masters,
+    /// The activity log as it is written, and Report a problem (MU40).
+    Log,
 }
 
 /// A layout of areas: one area, or two side by side (`across`) or one

@@ -399,6 +399,9 @@ impl CreaBimApp {
                 Shows::Masters => {
                     ui.push_id(("area", i), |ui| self.masters_area(ui, body));
                 }
+                Shows::Log => {
+                    ui.push_id(("area", i), |ui| self.log_area(ui, body));
+                }
                 _ => {
                     let p = self.shell.theme.palette();
                     ui.painter().rect_filled(body, 0.0, p.panel2);
@@ -726,6 +729,7 @@ impl CreaBimApp {
                     .unwrap_or_else(|| "Pick a profile".to_string()),
             ),
             Shows::Masters => ("sheet-template", "Masters", self.master_title()),
+            Shows::Log => ("file-text", "Log", "Activity log".to_string()),
             _ => ("box", "3D view", "Model".to_string()),
         };
         let mut asks: Vec<Ask> = vec![];
@@ -988,6 +992,12 @@ impl CreaBimApp {
                         .checked(here == Shows::Masters)
                         .hint("The sheet masters (title blocks and frames) and their editor: draw lines, text and fields"),
                 );
+                items.push(
+                    Item::new("area.show:log", "Log")
+                        .icon("file-text")
+                        .checked(here == Shows::Log)
+                        .hint("What CreaBIM did, as it happens, problems in red; copy it, or save a problem report"),
+                );
                 items
             }
             "area.views" => {
@@ -1194,6 +1204,8 @@ impl CreaBimApp {
                     Shows::Profiles
                 } else if arg == "masters" {
                     Shows::Masters
+                } else if arg == "log" {
+                    Shows::Log
                 } else {
                     match self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
                         Some(e) => Shows::View(e.id),

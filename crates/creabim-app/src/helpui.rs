@@ -61,6 +61,13 @@ impl CreaBimApp {
             Item::new("help:shortcuts", "Keyboard shortcuts").icon("keyboard"),
             Item::new("help:glossary", "BIM words explained").icon("info"),
             Item::Separator,
+            Item::new("app.report", "Report a problem…")
+                .icon("file-text")
+                .hint("Save one file to attach to a bug report: what CreaBIM did lately, your settings and, if you like, the project. Nothing is sent anywhere"),
+            Item::new("area.show:log", "Show the log")
+                .icon("file-text")
+                .hint("The activity log in a view of its own, problems in red"),
+            Item::Separator,
             Item::new("help:about", "About CreaBIM").icon("info"),
         ]
     }

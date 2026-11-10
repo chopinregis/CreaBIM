@@ -61,6 +61,8 @@ mod materials;
 mod objectsui;
 #[path = "profilesui.rs"]
 mod profilesui;
+#[path = "reportui.rs"]
+mod reportui;
 #[path = "selectsimilar.rs"]
 mod selectsimilar;
 #[path = "shell.rs"]
@@ -143,6 +145,7 @@ pub struct CreaBimApp {
     /// The profile library window (MU27 block 5).
     profiles: profilesui::ProfilesUi,
     masters: mastersui::MastersUi,
+    log_ui: reportui::LogUi,
     /// What the area in front showed last frame: a Masters or Profile view
     /// coming forward brings its own Properties tab (MU40).
     prop_front: Option<crate::areas::Shows>,
@@ -375,6 +378,7 @@ impl CreaBimApp {
             divide: Default::default(),
             profiles: Default::default(),
             masters: Default::default(),
+            log_ui: Default::default(),
             prop_front: None,
             camera: OrbitCamera::default(),
             cube: Default::default(),

@@ -56,7 +56,7 @@ fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     out.extend_from_slice(&crc.to_be_bytes());
 }
 
-fn crc32(data: &[u8]) -> u32 {
+pub fn crc32(data: &[u8]) -> u32 {
     let mut c = 0xffff_ffffu32;
     for &b in data {
         c ^= b as u32;
