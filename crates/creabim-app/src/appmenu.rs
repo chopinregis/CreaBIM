@@ -264,6 +264,8 @@ impl CreaBimApp {
         let mut axis_lines = self.shell.settings.axis_lines;
         let mut interaction = self.shell.settings.interaction.clone();
         let mut keep_alt_a = self.shell.settings.keep_alt_a;
+        let mut edge_w = self.shell.settings.edit_edge_width;
+        let mut vert_s = self.shell.settings.edit_vertex_size;
         let theme_accent = self.shell.theme.selection();
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         // as Blender's Preferences (MU39): its categories down the left, the
@@ -423,6 +425,13 @@ impl CreaBimApp {
                                                 grip_hover = Some(g);
                                             }
                                         }
+                                        crate::props::section(ui, "Edit mode");
+                                        crate::props::row(ui, "Edge width", |ui| {
+                                            ui.add(egui::Slider::new(&mut edge_w, 0.5..=3.0).step_by(0.25).suffix(" px"))
+                                        });
+                                        crate::props::row(ui, "Vertex size", |ui| {
+                                            ui.add(egui::Slider::new(&mut vert_s, 2.0..=10.0).step_by(1.0).suffix(" px"))
+                                        });
                                         crate::props::section(ui, "3D view");
                                         ui.checkbox(&mut axis_lines, "X and Y axes on the grid")
                                             .on_hover_text("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it.");
@@ -517,6 +526,14 @@ impl CreaBimApp {
         self.settings_open = open;
         // resting on a grip look shows it at once; leaving puts yours back
         crate::handles::set_grip_style(grip_hover.filter(|_| open).unwrap_or(grips));
+        if edge_w != self.shell.settings.edit_edge_width
+            || vert_s != self.shell.settings.edit_vertex_size
+        {
+            crate::handles::set_edit_display(edge_w, vert_s);
+            self.shell.settings.edit_edge_width = edge_w;
+            self.shell.settings.edit_vertex_size = vert_s;
+            self.shell.settings.store();
+        }
         if keep_alt_a != self.shell.settings.keep_alt_a {
             crate::keyhook::set_on(keep_alt_a);
             self.shell.settings.keep_alt_a = keep_alt_a;

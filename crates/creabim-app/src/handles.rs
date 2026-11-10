@@ -2414,6 +2414,22 @@ impl GripStyle {
 static GRIP_STYLE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 /// Draw grips this way from now on.
+static EDGE_W: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F80_0000);
+static VERT_S: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x4080_0000);
+
+/// Edit mode's wire width and vertex dot size, in points (MU39).
+pub fn set_edit_display(edge: f32, vertex: f32) {
+    EDGE_W.store(edge.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    VERT_S.store(vertex.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
+fn edit_display() -> (f32, f32) {
+    (
+        f32::from_bits(EDGE_W.load(std::sync::atomic::Ordering::Relaxed)),
+        f32::from_bits(VERT_S.load(std::sync::atomic::Ordering::Relaxed)),
+    )
+}
+
 pub fn set_grip_style(s: GripStyle) {
     GRIP_STYLE.store(s as u8, std::sync::atomic::Ordering::Relaxed);
 }
@@ -3395,10 +3411,66 @@ pub fn interact(
         _ => None,
     };
     let look = GripLook::of(&ctx);
+    // a mass in Edit mode, as Blender's: its wires thin and dark, its
+    // corners small dots; edges and faces light up only under the pointer
+    // (MU39)
+    let mesh_edit = edit
+        && matches!(
+            element.as_ref().map(|e| &e.kind),
+            Some(ElementKind::FreeMesh(_))
+        );
+    let (wire_w, dot) = edit_display();
+    if mesh_edit {
+        if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+            let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+            let ink = Color32::from_gray(20);
+            for (a, b) in mesh_edges(&m.mesh) {
+                let p = |i: u32| (input.project)(base + m.to_model(m.mesh.vertices[i as usize]));
+                if let (Some(pa), Some(pb)) = (p(a), p(b)) {
+                    painter.line_segment([pa, pb], Stroke::new(wire_w, ink));
+                }
+            }
+        }
+    }
     for h in &shown {
         let Some(c) = screen(h) else {
             continue;
         };
+        if mesh_edit {
+            let state = if hot == Some(h.kind) || held == Some(h.kind) {
+                GripState::Hover
+            } else {
+                GripState::Rest
+            };
+            let accent = crate::theme::interaction();
+            match h.kind {
+                HandleKind::MeshVertex(_) => {
+                    let lit = state == GripState::Hover;
+                    let ink = if lit { accent } else { Color32::from_gray(15) };
+                    painter.circle_filled(c, dot / 2.0 + if lit { 1.0 } else { 0.0 }, ink);
+                    if lit {
+                        ctx.set_cursor_icon(egui::CursorIcon::Move);
+                    }
+                    continue;
+                }
+                HandleKind::MeshEdge(a, b) if state == GripState::Hover => {
+                    if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+                        let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+                        let p = |i: u32| {
+                            (input.project)(base + m.to_model(m.mesh.vertices[i as usize]))
+                        };
+                        if let (Some(pa), Some(pb)) = (p(a), p(b)) {
+                            painter.line_segment([pa, pb], Stroke::new(wire_w + 1.5, accent));
+                        }
+                    }
+                    ctx.set_cursor_icon(egui::CursorIcon::Move);
+                    continue;
+                }
+                HandleKind::MeshEdge(..) => continue,
+                HandleKind::Face(_) if state == GripState::Rest => continue,
+                _ => {}
+            }
+        }
         let state = if held == Some(h.kind) {
             GripState::Held
         } else if held.is_some() {

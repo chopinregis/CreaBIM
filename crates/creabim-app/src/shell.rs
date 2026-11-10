@@ -540,7 +540,7 @@ impl CreaBimApp {
                     }
                     // cutting it up first, where they are found (MU39): Split
                     // for anything, Divide for what has a length
-                    items.push(Item::new("split", "Split…").icon("scissors").hint(
+                    items.push(Item::new("split", "Split…").icon("split").hint(
                         "Cut it along a guide, a line or two points you click; keep the side you click",
                     ));
                     if self.selection.active.is_some_and(|id| {
@@ -839,7 +839,7 @@ impl CreaBimApp {
                     .is_some_and(|id| creabim_core::divide::span(self.doc.model(), id).is_some());
                 items.push(
                     Item::new("split", "Split…")
-                        .icon("scissors")
+                        .icon("split")
                         .enabled(some)
                         .hint("Cut the selection along a guide, a line or two points; keep the side you click"),
                 );
@@ -2903,6 +2903,17 @@ impl CreaBimApp {
             None => Value::Null,
         })
         .collect();
+        // Split beside the other edits (MU39), its own picture
+        let mut quick = quick;
+        if let Some(i) = quick
+            .iter()
+            .position(|q| q["id"] == "ctx:Duplicate" || q["label"] == "Duplicate")
+        {
+            quick.insert(
+                i + 1,
+                json!({"id": "split", "label": "Split", "key": "", "enabled": !self.selection.is_empty(), "icon": "split"}),
+            );
+        }
         let tab = self
             .shell
             .settings

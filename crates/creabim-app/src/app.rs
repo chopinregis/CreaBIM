@@ -315,6 +315,7 @@ impl CreaBimApp {
         crate::handles::set_grip_style(settings.grips);
         crate::modal::set_bar_by_pointer(settings.edit_bar == "pointer");
         crate::keyhook::set_on(settings.keep_alt_a);
+        crate::handles::set_edit_display(settings.edit_edge_width, settings.edit_vertex_size);
         crate::keyhook::install(&cc.egui_ctx);
         shell::style(&cc.egui_ctx, theme);
         let viewport = cc
@@ -985,6 +986,7 @@ impl CreaBimApp {
 
     /// Split's clicks as they come, and what it shows meanwhile.
     fn split_steps(&mut self, ctx: &egui::Context) {
+        self.plan.point_from = None;
         let Some(mut run) = self.split.take() else {
             return;
         };
@@ -1025,6 +1027,7 @@ impl CreaBimApp {
             self.plan.point_lines = false;
             self.status = "Split: click the side to keep selected. Esc leaves.".into();
         }
+        self.plan.point_from = run.a;
         self.plan.mod_guides = self.split_guides(&run);
         self.split = Some(run);
     }

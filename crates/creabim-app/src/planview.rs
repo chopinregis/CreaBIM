@@ -338,6 +338,8 @@ pub struct PlanState {
     /// `point_lines`) the drawing's straight line under it, which a click
     /// takes instead of a point (Split's cutting line, MU39).
     pub point_hover: Option<DVec2>,
+    /// The first point of a line being picked (Split's), for tracking.
+    pub point_from: Option<DVec2>,
     pub point_lines: bool,
     pub point_line_picked: Option<(DVec2, DVec2)>,
     /// Lines and see-through planes a modifier being set shows in the
@@ -600,6 +602,7 @@ impl Default for PlanState {
             point_pick: false,
             point_picked: None,
             point_hover: None,
+            point_from: None,
             point_lines: false,
             point_line_picked: None,
             mod_guides: Default::default(),
@@ -959,19 +962,41 @@ pub fn show(
         if let Some(h) = response.hover_pos() {
             let w = xf.to_world(h);
             let step = crate::snaps::current_step();
-            // a corner of the drawing near the pointer, else the grid step
-            let near_px = 10.0 / scale as f64;
-            let corner = plan
-                .items
-                .iter()
-                .flat_map(|it| match it {
-                    PlanItem::Line { a, b, .. } => vec![*a, *b],
-                    PlanItem::Polygon { points, .. } => points.clone(),
-                    _ => vec![],
-                })
-                .filter(|p| p.distance(w) < near_px)
-                .min_by(|p, q| p.distance(w).total_cmp(&q.distance(w)));
-            let w = match corner {
+            // the drawing tools' snaps (MU39): corners, middles, where
+            // guides and lines cross, along a guide; else the grid step
+            let cfg = state.snap.live(ui.input(|i| i.modifiers.alt));
+            let from = state.point_from.map(|f| f.extend(0.0));
+            let snapped = state.snaps.get(&view).and_then(|(_, _, sn)| {
+                sn.snap(
+                    &cfg,
+                    h,
+                    &|p: DVec3| Some(xf.to_screen(p.truncate())),
+                    from,
+                    Some(w.extend(0.0)),
+                )
+            });
+            if let Some(sn) = snapped {
+                let top = ui
+                    .ctx()
+                    .layer_painter(egui::LayerId::new(
+                        egui::Order::Foreground,
+                        ui.id().with("picksnap"),
+                    ))
+                    .with_clip_rect(rect);
+                crate::snaps::draw(
+                    &top,
+                    sn,
+                    xf.to_screen(sn.p.truncate()),
+                    from.map(|f| xf.to_screen(f.truncate())),
+                );
+            }
+            let corner = snapped
+                .filter(|s| s.kind.is_point())
+                .map(|s| s.p.truncate());
+            let along = snapped
+                .filter(|s| !s.kind.is_point())
+                .map(|s| s.p.truncate());
+            let w = match corner.or(if state.point_lines { None } else { along }) {
                 Some(c) => c,
                 None if step > 0.0 => (w / step).round() * step,
                 None => w,
