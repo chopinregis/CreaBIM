@@ -53,6 +53,7 @@ pub const PAGES: &[(&str, &str, &str)] = &[
     page!("Selecting and editing", "align"),
     page!("Selecting and editing", "handles"),
     page!("Selecting and editing", "edit-mode"),
+    page!("Selecting and editing", "divide"),
     page!("Selecting and editing", "edit"),
     page!("Building the model", "levels"),
     page!("Building the model", "walls"),

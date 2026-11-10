@@ -47,6 +47,12 @@ To keep an end free:
 - right-click near the end and pick *Disallow join at its end*, or clear *Joins at start / end* in *Properties*. The end stays square and isn't pulled along;
 - or hold `Ctrl` or `Alt` while dragging an end grip to drag that end free.
 
+## Overlapping walls
+
+Walls drawn on top of each other look like one wall in plan, but stay two solids in 3D and in quantities. After an edit, the status bar says when a selected wall now overlaps another. *Manage › Overlapping walls* selects every such pair; click it again to merge each pair into the thicker wall, stretched over both (one undo step). *Manage › Copies on originals* finds and removes elements sitting exactly on a copy of themselves.
+
+To split a wall into even parts, side by side or stacked, use [Divide](divide).
+
 ## Base and top
 
 A wall starts at its **base level** plus a **base offset**. Its **Top** is either:

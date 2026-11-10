@@ -8,7 +8,13 @@ A **tag** is a label that reads from the element it points at: a door's [mark](m
 2. Click a door, window, wall, slab, roof, column, beam, stair, railing, piece of furniture or fixture.
 3. Click where its tag goes.
 
-**Tag openings** in the top bar tags every door and window in the view that has no tag yet. On a plan, **Tag fixtures** tags every socket, switch, light, drain, radiator and other services fixture on its level; tag furniture and sanitary ware one by one.
+With nothing selected, `T` picks the Tag tool.
+
+**Tag all** (*Annotate* tab, `Shift+T`) tags every door, window, fixture and room in the view in front that has no tag yet. **Tag openings** in a view's header tags the doors and windows alone, and **Tag fixtures** every socket, switch, light, drain, radiator and other services fixture on its level; tag furniture and sanitary ware one by one.
+
+## Material tags
+
+**Reads** in the tool options chooses what a tag says: **Mark** (the element's mark, or its size) or **Material**. A material tag reads its element's material, or for a layered wall, slab or roof its layers, one line each with its thickness, outside to inside. It follows the model when the build-up changes. A placed tag's *Properties* switch it either way.
 
 An object's mark belongs to its type, so every double socket reads the same mark. Marks start with a letter for the category: E electrical, L lighting, P plumbing, M heating and ventilation, S sanitary ware, K kitchen, F furniture. They are numbered in type name order. The [furniture and fixture schedules](schedules) show the same marks.
 
