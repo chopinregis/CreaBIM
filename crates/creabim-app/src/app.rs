@@ -877,48 +877,16 @@ impl CreaBimApp {
         painter: &egui::Painter,
         project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
     ) {
-        use creabim_core::divide::{self, Dir, Make};
-        if !self.divide.open {
-            return;
+        let accent = crate::planview::ACCENT_SELECTED;
+        for (a, b, _) in &self.plan.divide_marks {
+            if let (Some(pa), Some(pb)) = (project(*a), project(*b)) {
+                painter.line_segment([pa, pb], egui::Stroke::new(2.0, accent));
+            }
         }
-        let model = self.doc.model();
-        let Some(h) = self.selection.all().first().copied() else {
-            return;
-        };
-        let Some(s) = divide::span(model, h) else {
-            return;
-        };
-        let d = &self.divide;
-        let lift = s
-            .level
-            .and_then(|l| model.level(l))
-            .map_or(0.0, |l| l.elevation);
-        let total = match d.dir {
-            Dir::Along => s.len,
-            Dir::Up => s.z1 - s.z0,
-        };
-        let gap = if d.make == Make::Cuts { d.gap } else { 0.0 };
-        let Some(parts) = divide::parts(total, d.parts, gap) else {
-            return;
-        };
-        let accent = Color32::from_rgb(230, 120, 30);
-        let stroke = egui::Stroke::new(2.0, accent);
-        let mid = s.o + s.v * (s.width / 2.0);
-        for (t, size) in &parts[1..] {
-            let t = *t - gap / 2.0;
-            let _ = size;
-            let (a, b) = match d.dir {
-                Dir::Along => {
-                    let p = mid + s.u * t;
-                    (p.extend(lift + s.z0), p.extend(lift + s.z1.max(s.z0 + 0.3)))
-                }
-                Dir::Up => {
-                    let z = lift + s.z0 + t;
-                    (mid.extend(z), (mid + s.u * s.len).extend(z))
-                }
-            };
-            if let (Some(pa), Some(pb)) = (project(a), project(b)) {
-                painter.line_segment([pa, pb], stroke);
+        let mut taken = vec![];
+        for (at, text) in &self.plan.divide_labels {
+            if let Some(q) = project(*at) {
+                crate::planview::divide_label(painter, q, text, accent, &mut taken);
             }
         }
     }
@@ -7663,7 +7631,7 @@ impl CreaBimApp {
             )
             .clicked()
         {
-            self.divide.open = true;
+            self.open_divide();
         }
         // the type picker may have changed it
         let Some(e) = self.doc.model().get(id).cloned() else {
@@ -9830,6 +9798,8 @@ impl eframe::App for CreaBimApp {
         let _perf = Perf::new("frame");
         let ctx = ui.ctx().clone();
         crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
+        // Divide's marks, for every view to draw this frame (MU38)
+        (self.plan.divide_marks, self.plan.divide_labels) = self.divide_marks();
         // R draws a rectangle while sketching, not a rotate (MU38)
         crate::sketch::set_sketching(&ctx, self.plan.tool == Tool::Sketch);
         // the activity log: what the status bar said (it names every edit

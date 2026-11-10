@@ -127,6 +127,85 @@ pub fn parts(len: f64, n: usize, gap: f64) -> Option<Vec<(f64, f64)>> {
     (size > 1e-4).then(|| (0..n).map(|k| (k as f64 * (size + gap), size)).collect())
 }
 
+/// Where what is left over goes when a length is divided by a size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rest {
+    /// Shared between the two ends: the parts sit centred.
+    Ends,
+    /// One short part at the start.
+    Start,
+    /// One short part at the end.
+    End,
+    /// Nothing left over: as many parts as are nearest the size, all equal.
+    Spread,
+}
+
+/// How a length is divided: into a number of equal parts, or into parts of
+/// a size with the rest put somewhere (MU38).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum By {
+    Count(usize),
+    Size(f64, Rest),
+}
+
+/// The parts' (start, size) along `len`, `gap` apart.
+pub fn split(len: f64, by: By, gap: f64) -> Option<Vec<(f64, f64)>> {
+    let gap = gap.max(0.0);
+    match by {
+        By::Count(n) => parts(len, n, gap),
+        By::Size(size, rest) => {
+            if size <= 1e-4 || len <= 1e-6 {
+                return None;
+            }
+            if rest == Rest::Spread {
+                let n = (((len + gap) / (size + gap)).round() as usize).max(1);
+                return parts(len, n, gap);
+            }
+            let k = ((len + gap) / (size + gap) + 1e-9).floor() as usize;
+            if k == 0 {
+                return Some(vec![(0.0, len)]);
+            }
+            let left = len - k as f64 * size - (k as f64 - 1.0) * gap;
+            let mut sizes = vec![size; k];
+            if left > 1e-4 {
+                // a leftover too small for a part of its own (and its gap)
+                // joins its neighbour
+                match rest {
+                    Rest::Start => match left - gap {
+                        r if r > 1e-4 => sizes.insert(0, r),
+                        _ => sizes[0] += left,
+                    },
+                    Rest::End => match left - gap {
+                        r if r > 1e-4 => sizes.push(r),
+                        _ => sizes[k - 1] += left,
+                    },
+                    _ => match (left - 2.0 * gap) / 2.0 {
+                        r if r > 1e-4 => {
+                            sizes.insert(0, r);
+                            sizes.push(r);
+                        }
+                        _ => {
+                            sizes[0] += left / 2.0;
+                            sizes[k - 1] += left / 2.0;
+                        }
+                    },
+                }
+            }
+            let mut t = 0.0;
+            Some(
+                sizes
+                    .into_iter()
+                    .map(|z| {
+                        let p = (t, z);
+                        t += z + gap;
+                        p
+                    })
+                    .collect(),
+            )
+        }
+    }
+}
+
 /// Divide `id` into `n` parts `dir`, making `make` (`item`: what Copies
 /// copies). One undo step.
 pub fn divide(
@@ -141,60 +220,106 @@ pub fn divide(
     if n < 2 {
         return Err("Divide into two parts or more.".into());
     }
-    let e = model.get(id).ok_or("It is gone.")?;
-    let s = span(model, id).ok_or_else(|| {
-        format!("{} has no straight length to divide: pick a wall, a beam, a guide or a part drawn from a plan outline.", e.name)
-    })?;
+    let s = span(model, id).ok_or("It has no straight length to divide.")?;
     let total = match dir {
         Dir::Along => s.len,
         Dir::Up => s.z1 - s.z0,
     };
-    if total < 1e-6 {
-        return Err(format!("{} has no height to divide.", e.name));
-    }
     let gap = if make == Make::Cuts {
         gap.max(0.0)
     } else {
         0.0
     };
     let ps = parts(total, n, gap).ok_or("The gaps leave no room for the parts.")?;
+    match dir {
+        Dir::Along => divide_grid(model, id, Some(&ps), None, make, gap, item),
+        Dir::Up => divide_grid(model, id, None, Some(&ps), make, gap, item),
+    }
+}
+
+/// Divide `id` along its length into the parts `along` and/or up its
+/// height into `up` (both: a grid of panels), making `make`. One undo step.
+pub fn divide_grid(
+    model: &Model,
+    id: ElementId,
+    along: Option<&[(f64, f64)]>,
+    up: Option<&[(f64, f64)]>,
+    make: Make,
+    gap: f64,
+    item: Option<ElementId>,
+) -> Result<Transaction, String> {
+    let e = model.get(id).ok_or("It is gone.")?;
+    let s = span(model, id).ok_or_else(|| {
+        format!("{} has no straight length to divide: pick a wall, a beam, a guide or a part drawn from a plan outline.", e.name)
+    })?;
+    if up.is_some() && s.z1 - s.z0 < 1e-6 {
+        return Err(format!("{} has no height to divide.", e.name));
+    }
+    let whole_a = [(0.0, s.len)];
+    let whole_u = [(0.0, s.z1 - s.z0)];
+    let a_parts = along.unwrap_or(&whole_a);
+    let u_parts = up.unwrap_or(&whole_u);
+    let n = a_parts.len() * u_parts.len();
+    if n < 2 {
+        return Err("Divide into two parts or more.".into());
+    }
+    let gap = if make == Make::Cuts {
+        gap.max(0.0)
+    } else {
+        0.0
+    };
+    // each cell: its part along, its part up, and whether it is on top
+    type Cell = ((f64, f64), (f64, f64), bool);
+    let cells: Vec<Cell> = u_parts
+        .iter()
+        .enumerate()
+        .flat_map(|(j, u)| {
+            a_parts
+                .iter()
+                .map(move |a| (*a, *u, j + 1 == u_parts.len()))
+        })
+        .collect();
     let mut tx = Transaction::new(format!("Divide {} in {n}", e.name));
+    let put = |tx: Transaction, k: usize, now: Element| {
+        if k == 0 {
+            tx.replace(e.clone(), now)
+        } else {
+            tx.insert(now)
+        }
+    };
+    let named = |k: usize| {
+        if k == 0 {
+            e.clone()
+        } else {
+            Element::new(format!("{} {}", e.name, k + 1), e.kind.clone())
+        }
+    };
     match make {
-        // a wall cut into walls: side by side along it, or stacked up it
-        // (a base course, bands), each a wall of its own (MU37)
+        // a wall cut into walls: side by side along it, stacked up it (a
+        // base course, bands), or both (panels), each a wall of its own
         Make::Cuts if matches!(e.kind, ElementKind::Wall(_)) => {
             let ElementKind::Wall(w0) = &e.kind else {
                 unreachable!()
             };
-            for (k, (t, size)) in ps.iter().enumerate() {
-                let mut now = if k == 0 {
-                    e.clone()
-                } else {
-                    Element::new(format!("{} {}", e.name, k + 1), e.kind.clone())
-                };
+            for (k, ((t, size), (tz, sz), top)) in cells.iter().enumerate() {
+                let mut now = named(k);
                 if let ElementKind::Wall(w) = &mut now.kind {
-                    match dir {
-                        Dir::Along => {
-                            let d = w0.direction();
-                            w.start = w0.start + d * *t;
-                            w.end = w.start + d * *size;
-                        }
-                        Dir::Up => {
-                            w.base_offset = w0.base_offset + t;
-                            w.height = *size;
-                            // the lower walls end at their own height
-                            if k + 1 < ps.len() {
-                                w.top = crate::WallTop::Unconnected;
-                                w.attach_top.clear();
-                            }
+                    if along.is_some() {
+                        let d = w0.direction();
+                        w.start = w0.start + d * *t;
+                        w.end = w.start + d * *size;
+                    }
+                    if up.is_some() {
+                        w.base_offset = w0.base_offset + tz;
+                        w.height = *sz;
+                        // the lower walls end at their own height
+                        if !top {
+                            w.top = crate::WallTop::Unconnected;
+                            w.attach_top.clear();
                         }
                     }
                 }
-                tx = if k == 0 {
-                    tx.replace(e.clone(), now)
-                } else {
-                    tx.insert(now)
-                };
+                tx = put(tx, k, now);
             }
         }
         Make::Cuts => {
@@ -204,12 +329,8 @@ pub fn divide(
             let crate::parts::Form::Extrusion { base, .. } = &p.form else {
                 return Err("Only a part pulled up from a plan outline can be cut.".into());
             };
-            for (k, (t, size)) in ps.iter().enumerate() {
-                let mut now = if k == 0 {
-                    e.clone()
-                } else {
-                    Element::new(format!("{} {}", e.name, k + 1), e.kind.clone())
-                };
+            for (k, ((t, size), (tz, sz), _)) in cells.iter().enumerate() {
+                let mut now = named(k);
                 if let ElementKind::Part(q) = &mut now.kind {
                     if let crate::parts::Form::Extrusion {
                         outline,
@@ -218,53 +339,47 @@ pub fn divide(
                         ..
                     } = &mut q.form
                     {
-                        match dir {
-                            Dir::Along => {
-                                let a = s.o + s.u * *t;
-                                let b2 = a + s.u * *size;
-                                *outline = vec![a, b2, b2 + s.v * s.width, a + s.v * s.width];
-                                // anticlockwise, as outlines are
-                                if crate::polygon::signed_area2(outline) < 0.0 {
-                                    outline.reverse();
-                                }
+                        if along.is_some() {
+                            let a = s.o + s.u * *t;
+                            let b2 = a + s.u * *size;
+                            *outline = vec![a, b2, b2 + s.v * s.width, a + s.v * s.width];
+                            // anticlockwise, as outlines are
+                            if crate::polygon::signed_area2(outline) < 0.0 {
+                                outline.reverse();
                             }
-                            Dir::Up => {
-                                *b = base + t;
-                                *height = *size;
-                            }
+                        }
+                        if up.is_some() {
+                            *b = base + tz;
+                            *height = *sz;
                         }
                     }
                 }
-                tx = if k == 0 {
-                    tx.replace(e.clone(), now)
-                } else {
-                    tx.insert(now)
-                };
+                tx = put(tx, k, now);
             }
         }
         Make::Guides => {
-            for part in &ps[1..] {
-                let t = part.0 - gap / 2.0;
-                let g = match dir {
-                    Dir::Along => {
-                        let p = s.o + s.u * t;
-                        let reach = s.width.max(1.0);
-                        crate::Guide {
-                            level: s.level,
-                            a: (p - s.v * 0.5).extend(s.z0),
-                            b: (p + s.v * (reach + 0.5)).extend(s.z0),
-                        }
-                    }
-                    Dir::Up => {
-                        let z = s.z0 + t;
-                        crate::Guide {
-                            level: s.level,
-                            a: s.o.extend(z),
-                            b: (s.o + s.u * s.len).extend(z),
-                        }
-                    }
-                };
-                tx = tx.insert(Element::new("Guide", ElementKind::Guide(g)));
+            if let Some(ps) = along {
+                for part in &ps[1..] {
+                    let p = s.o + s.u * (part.0 - gap / 2.0);
+                    let reach = s.width.max(1.0);
+                    let g = crate::Guide {
+                        level: s.level,
+                        a: (p - s.v * 0.5).extend(s.z0),
+                        b: (p + s.v * (reach + 0.5)).extend(s.z0),
+                    };
+                    tx = tx.insert(Element::new("Guide", ElementKind::Guide(g)));
+                }
+            }
+            if let Some(ps) = up {
+                for part in &ps[1..] {
+                    let z = s.z0 + part.0 - gap / 2.0;
+                    let g = crate::Guide {
+                        level: s.level,
+                        a: s.o.extend(z),
+                        b: (s.o + s.u * s.len).extend(z),
+                    };
+                    tx = tx.insert(Element::new("Guide", ElementKind::Guide(g)));
+                }
             }
         }
         Make::Copies => {
@@ -274,31 +389,46 @@ pub fn divide(
                 .ok_or_else(|| format!("{} can't be placed.", it.name))?;
             let base = crate::members::elevation(model, s.level.unwrap_or(item));
             let base = if s.level.is_some() { base } else { 0.0 };
-            // along: each part's middle; up: each division
-            let spots: Vec<f64> = match dir {
-                Dir::Along => ps.iter().map(|(t, size)| t + size / 2.0).collect(),
-                Dir::Up => ps[1..].iter().map(|p| p.0).collect(),
+            // along: each part's middle; up: each division (a shelf at
+            // each); both: every pair
+            let xs: Vec<Option<f64>> = match along {
+                Some(ps) => ps.iter().map(|(t, size)| Some(t + size / 2.0)).collect(),
+                None => vec![None],
             };
-            for (k, t) in spots.iter().enumerate() {
-                let d = match dir {
-                    Dir::Along => (s.u * (t - (at.truncate() - s.o).dot(s.u))).extend(0.0),
-                    Dir::Up => DVec3::Z * (base + s.z0 + t - at.z),
-                };
-                if k == 0 {
-                    let moved =
-                        crate::transform::transformed(model, it, &crate::transform::Xform::Move(d))
-                            .ok_or_else(|| format!("{} doesn't move that way.", it.name))?;
-                    tx = tx.replace(it.clone(), moved);
-                } else {
-                    for c in crate::transform::duplicate(model, item) {
+            let zs: Vec<Option<f64>> = match up {
+                Some(ps) => ps[1..].iter().map(|p| Some(p.0)).collect(),
+                None => vec![None],
+            };
+            let mut k = 0;
+            for z in &zs {
+                for x in &xs {
+                    let mut d = DVec3::ZERO;
+                    if let Some(t) = x {
+                        d += (s.u * (t - (at.truncate() - s.o).dot(s.u))).extend(0.0);
+                    }
+                    if let Some(t) = z {
+                        d += DVec3::Z * (base + s.z0 + t - at.z);
+                    }
+                    if k == 0 {
                         let moved = crate::transform::transformed(
                             model,
-                            &c,
+                            it,
                             &crate::transform::Xform::Move(d),
                         )
-                        .unwrap_or(c);
-                        tx = tx.insert(moved);
+                        .ok_or_else(|| format!("{} doesn't move that way.", it.name))?;
+                        tx = tx.replace(it.clone(), moved);
+                    } else {
+                        for c in crate::transform::duplicate(model, item) {
+                            let moved = crate::transform::transformed(
+                                model,
+                                &c,
+                                &crate::transform::Xform::Move(d),
+                            )
+                            .unwrap_or(c);
+                            tx = tx.insert(moved);
+                        }
                     }
+                    k += 1;
                 }
             }
         }
@@ -309,6 +439,26 @@ pub fn divide(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn by_size_puts_the_rest_where_asked() {
+        let sizes = |r| -> Vec<f64> {
+            split(10.0, By::Size(3.0, r), 0.0)
+                .unwrap()
+                .iter()
+                .map(|p| (p.1 * 1000.0).round() / 1000.0)
+                .collect()
+        };
+        assert_eq!(sizes(Rest::Ends), vec![0.5, 3.0, 3.0, 3.0, 0.5]);
+        assert_eq!(sizes(Rest::Start), vec![1.0, 3.0, 3.0, 3.0]);
+        assert_eq!(sizes(Rest::End), vec![3.0, 3.0, 3.0, 1.0]);
+        assert_eq!(sizes(Rest::Spread), vec![3.333; 3]);
+        // with gaps the parts and gaps still fill the length
+        let g = split(10.0, By::Size(3.0, Rest::Ends), 0.1).unwrap();
+        let last = g.last().unwrap();
+        assert!((last.0 + last.1 - 10.0).abs() < 1e-9);
+        assert_eq!(split(10.0, By::Count(4), 0.0).unwrap().len(), 4);
+    }
     use crate::{Document, Level};
 
     fn setup(outline: Vec<DVec2>) -> (Document, ElementId) {
@@ -437,6 +587,65 @@ mod tests {
                 .len(),
             3
         );
+    }
+
+    #[test]
+    fn a_grid_cuts_a_wall_into_panels_in_one_step() {
+        let l = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let lid = l.id;
+        let w = Element::new(
+            "W",
+            ElementKind::Wall(crate::Wall::new(
+                lid,
+                DVec2::ZERO,
+                DVec2::new(4.0, 0.0),
+                0.2,
+                3.0,
+            )),
+        );
+        let wid = w.id;
+        let mut doc = Document::new();
+        doc.commit(Transaction::new("setup").insert(l).insert(w))
+            .unwrap();
+        let a = split(4.0, By::Count(2), 0.0).unwrap();
+        let u = split(3.0, By::Size(1.0, Rest::Ends), 0.0).unwrap();
+        let tx = divide_grid(doc.model(), wid, Some(&a), Some(&u), Make::Cuts, 0.0, None).unwrap();
+        doc.commit(tx).unwrap();
+        let walls: Vec<_> = doc
+            .model()
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Wall(w) => Some(w.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(walls.len(), 6);
+        assert!(
+            walls
+                .iter()
+                .all(|w| (w.start.distance(w.end) - 2.0).abs() < 1e-9
+                    && (w.height - 1.0).abs() < 1e-9)
+        );
+        // stacked panels touch, they don't overlap
+        assert!(crate::checks::overlapping_walls(doc.model()).is_empty());
+        // guides both ways: one along, two up
+        let g = divide_grid(
+            doc.model(),
+            wid,
+            Some(&a),
+            Some(&u),
+            Make::Guides,
+            0.0,
+            None,
+        )
+        .unwrap();
+        assert_eq!(g.ops.len(), 3);
     }
 
     #[test]

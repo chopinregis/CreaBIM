@@ -314,6 +314,10 @@ enum Handle {
 pub struct PlanState {
     /// Pan and zoom per view: centre in drawing units, pixels per metre.
     pub cameras: HashMap<ElementId, (DVec2, f32)>,
+    /// While Divide is open: where it will divide (model lines; true: plans
+    /// show it), and each part's size at its middle (MU38).
+    pub divide_marks: Vec<(DVec3, DVec3, bool)>,
+    pub divide_labels: Vec<(DVec3, String)>,
     /// A view to show at its drawing scale on the next frame: 1 paper mm
     /// on 1 screen mm (A5-7, the view's More menu).
     pub zoom_to_scale: Option<ElementId>,
@@ -562,6 +566,8 @@ impl Default for PlanState {
     fn default() -> Self {
         Self {
             cameras: HashMap::new(),
+            divide_marks: vec![],
+            divide_labels: vec![],
             zoom_to_scale: None,
             edit_note: None,
             sheet_guides: false,
@@ -1509,6 +1515,34 @@ pub fn show(
             Some(pane_to_model(space, xf.to_world(pos), pivot.z))
         };
         let project = |p: DVec3| Some(xf.to_screen(model_to_pane(space, p)));
+        // Divide's marks: ticks across in plans, lines standing in sections
+        for (a, b, plan) in &state.divide_marks {
+            if *plan != matches!(space, Space::Plan) {
+                continue;
+            }
+            let (pa, pb) = (
+                xf.to_screen(model_to_pane(space, *a)),
+                xf.to_screen(model_to_pane(space, *b)),
+            );
+            if pa.distance(pb) > 1.0 {
+                painter.line_segment([pa, pb], Stroke::new(2.0, ACCENT_SELECTED));
+            }
+        }
+        let mut taken = vec![];
+        for (at, text) in &state.divide_labels {
+            let plan_label =
+                (at.z - state.divide_marks.first().map_or(at.z, |m| m.0.z)).abs() < 1e-6;
+            if matches!(space, Space::Plan) && !plan_label {
+                continue;
+            }
+            divide_label(
+                &painter,
+                xf.to_screen(model_to_pane(space, *at)),
+                text,
+                ACCENT_SELECTED,
+                &mut taken,
+            );
+        }
         // the pane's snaps, lent out while a move or rotate runs here
         let lent = std::mem::take(&mut state.snaps);
         let plane_z = match kind {
@@ -3670,6 +3704,33 @@ fn pane_to_model(space: Space, w: DVec2, z: f64) -> DVec3 {
         }
         Space::Plan | Space::Model => w.extend(z),
     }
+}
+
+/// A part's size while Divide is open: small, on a paper chip.
+/// None is drawn over one already in `taken`: zoomed out, sizes thin out
+/// rather than pile up.
+pub fn divide_label(
+    painter: &egui::Painter,
+    at: Pos2,
+    text: &str,
+    ink: Color32,
+    taken: &mut Vec<egui::Rect>,
+) {
+    let font = egui::FontId::proportional(11.0);
+    let g = painter.layout_no_wrap(text.to_string(), font, ink);
+    let r = egui::Rect::from_center_size(at, g.size() + egui::vec2(8.0, 4.0));
+    if taken.iter().any(|t| t.expand(2.0).intersects(r)) {
+        return;
+    }
+    taken.push(r);
+    painter.rect(
+        r,
+        4.0,
+        Color32::from_black_alpha(170),
+        Stroke::new(1.0, ink.gamma_multiply(0.6)),
+        egui::StrokeKind::Middle,
+    );
+    painter.galley(r.min + egui::vec2(4.0, 2.0), g, ink);
 }
 
 fn model_to_pane(space: Space, p: DVec3) -> DVec2 {

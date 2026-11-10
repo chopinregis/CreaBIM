@@ -553,6 +553,16 @@ impl CreaBimApp {
                         &[Command::Hide, Command::Isolate],
                     ] {
                         items.extend(group.iter().map(|c| ctx(*c)));
+                        // Divide sits with the edits, for what it can divide
+                        if group.contains(&Command::Duplicate)
+                            && self.selection.active.is_some_and(|id| {
+                                creabim_core::divide::span(self.doc.model(), id).is_some()
+                            })
+                        {
+                            items.push(Item::new("divide", "Divide…").icon("mod-array").hint(
+                                "Into parts along it, up it or both: cuts, guides or copies",
+                            ));
+                        }
                         items.push(Item::Separator);
                     }
                     if !self.shell.context_3d {
@@ -1619,6 +1629,7 @@ impl CreaBimApp {
                 }
             }
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
+            "divide" => self.open_divide(),
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
             "sched.csv" => self.schedule_export = Some("csv".into()),

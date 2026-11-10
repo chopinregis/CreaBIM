@@ -155,6 +155,15 @@ pub fn overlapping_walls(model: &Model) -> Vec<(crate::ElementId, crate::Element
             if wa.level != wb.level || d.perp_dot(wb.direction()).abs() > 1e-3 {
                 continue;
             }
+            // one stacked on the other (courses, bands: Divide up) shares
+            // no height, so it doesn't overlap (MU38)
+            let (za, zb) = (
+                (wa.base_offset, wa.base_offset + wa.height),
+                (wb.base_offset, wb.base_offset + wb.height),
+            );
+            if za.1.min(zb.1) - za.0.max(zb.0) < 1e-3 {
+                continue;
+            }
             let off = (wb.start - wa.start).perp_dot(d).abs();
             if off >= (wa.thickness + wb.thickness) / 2.0 - 1e-6 {
                 continue;
