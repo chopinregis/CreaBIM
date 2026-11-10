@@ -163,6 +163,12 @@ impl EditMesh {
     /// One level of Catmull-Clark subdivision. Every face becomes quads, which
     /// is the basis for SubD modelling.
     pub fn subdivide(&self) -> EditMesh {
+        self.subdivide_with(true)
+    }
+
+    /// One level of subdivision: every face into quads, rounded
+    /// (Catmull-Clark) when `smooth`, else left where it was.
+    pub fn subdivide_with(&self, smooth: bool) -> EditMesh {
         use std::collections::HashMap;
         let nv = self.vertices.len();
         let face_points: Vec<DVec3> = (0..self.faces.len()).map(|f| self.face_center(f)).collect();
@@ -188,7 +194,7 @@ impl EditMesh {
             let faces = &edge_faces[&key];
             let (a, b) = (self.vertices[key.0 as usize], self.vertices[key.1 as usize]);
             edge_mid.insert(key, (a + b) / 2.0);
-            let p = if faces.len() == 2 {
+            let p = if faces.len() == 2 && smooth {
                 (a + b + face_points[faces[0]] + face_points[faces[1]]) / 4.0
             } else {
                 (a + b) / 2.0 // boundary edge
@@ -209,7 +215,7 @@ impl EditMesh {
             v_edges[key.0 as usize].push(key);
             v_edges[key.1 as usize].push(key);
         }
-        for v in 0..nv {
+        for v in (0..nv).filter(|_| smooth) {
             let p = self.vertices[v];
             let boundary: Vec<_> = v_edges[v]
                 .iter()

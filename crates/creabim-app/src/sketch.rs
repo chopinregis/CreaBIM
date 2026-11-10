@@ -19,16 +19,24 @@ pub enum Shape {
     Line,
     Arc,
     Circle,
+    /// Two opposite corners, square to the plane (MU38).
+    Rectangle,
 }
 
 impl Shape {
-    pub const ALL: [Shape; 3] = [Shape::Line, Shape::Arc, Shape::Circle];
+    pub const ALL: [Shape; 4] = [Shape::Line, Shape::Rectangle, Shape::Arc, Shape::Circle];
+
+    /// Drawn whole from its first point: a sketch of its own.
+    fn own_sketch(self) -> bool {
+        matches!(self, Shape::Circle | Shape::Rectangle)
+    }
 
     pub fn label(self) -> &'static str {
         match self {
             Shape::Line => "Line (L)",
             Shape::Arc => "Arc (A)",
             Shape::Circle => "Circle (C)",
+            Shape::Rectangle => "Rectangle (R)",
         }
     }
 
@@ -37,8 +45,20 @@ impl Shape {
             Shape::Line => egui::Key::L,
             Shape::Arc => egui::Key::A,
             Shape::Circle => egui::Key::C,
+            Shape::Rectangle => egui::Key::R,
         }
     }
+}
+
+/// Set each frame: whether the Sketch tool is the one in hand, so its
+/// shape keys (R: Rectangle) don't also start a rotate.
+pub fn set_sketching(ctx: &egui::Context, on: bool) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("sketching"), on));
+}
+
+pub fn sketching(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp(egui::Id::new("sketching")))
+        .unwrap_or(false)
 }
 
 fn shape_id() -> egui::Id {
@@ -100,11 +120,17 @@ pub fn shape_controls(
     }
     let before = shape(&ctx);
     let mut msg = None;
-    // a circle is a sketch of its own
-    if chosen == Shape::Circle && draft.as_ref().is_some_and(|d| d.points.len() > 1) {
-        if before != Shape::Circle {
-            msg = Some("A circle is a sketch of its own: finish this one first (Enter).".into());
-        }
+    // a circle or a rectangle is a sketch of its own
+    if chosen.own_sketch() && chosen != before && draft.as_ref().is_some_and(|d| d.points.len() > 1)
+    {
+        msg = Some(format!(
+            "A {} is a sketch of its own: finish this one first (Enter).",
+            if chosen == Shape::Circle {
+                "circle"
+            } else {
+                "rectangle"
+            }
+        ));
         chosen = before;
     }
     if chosen != before {
@@ -137,6 +163,8 @@ pub fn hint(shape: Shape, draft: Option<&SketchDraft>) -> String {
         }
         (Shape::Circle, _) if started => "Click a point on the circle.",
         (Shape::Circle, _) => "Click the circle's centre, then a point on it.",
+        (Shape::Rectangle, _) if started => "Click its opposite corner.",
+        (Shape::Rectangle, _) => "Click a corner, then the opposite corner.",
     }
     .into()
 }
@@ -183,7 +211,7 @@ impl SketchDraft {
         match self.shape {
             Shape::Line => self.points.len() >= 3,
             Shape::Arc => self.points.len() >= 2 && self.arc_end.is_none(),
-            Shape::Circle => false,
+            Shape::Circle | Shape::Rectangle => false,
         }
     }
 
@@ -213,6 +241,15 @@ impl SketchDraft {
         let last = *self.points.last()?;
         let first = self.points[0];
         match self.shape {
+            Shape::Rectangle => {
+                let d = p - first;
+                if self.points.len() != 1 || d.x.abs() < 1e-6 || d.y.abs() < 1e-6 {
+                    return None;
+                }
+                self.points = rectangle(first, p).to_vec();
+                self.kinds = vec![SegmentKind::Line; 4];
+                Some(Click::Closed)
+            }
             Shape::Circle => {
                 let r = p.distance(first);
                 if self.points.len() != 1 || r < 1e-6 {
@@ -517,7 +554,21 @@ impl SketchDraft {
             }
             _ => (Curve::Line(last, h), crate::units::len(h.distance(last))),
         });
-        if let Some((c, _)) = &ghost {
+        // a rectangle shows whole, with its two sides
+        let boxed = self.shape == Shape::Rectangle && self.points.len() == 1;
+        let ghost = match (boxed, hover) {
+            (true, Some(h)) => {
+                let c = rectangle(self.points[0], h);
+                line(&[c[0], c[1], c[2], c[3], c[0]]);
+                let d = (h - self.points[0]).abs();
+                Some((
+                    Curve::Line(h, h),
+                    format!("{} × {}", crate::units::len(d.x), crate::units::len(d.y)),
+                ))
+            }
+            _ => ghost,
+        };
+        if let (false, Some((c, _))) = (boxed, &ghost) {
             line(&c.points());
         }
         if let Some(e) = self.arc_end.and_then(at) {
@@ -538,6 +589,13 @@ impl SketchDraft {
         }
         draw_plane(painter, project, &self.plane, accent);
     }
+}
+
+/// The corners of the rectangle from `a` to its opposite corner `b`,
+/// square to the plane, anticlockwise.
+fn rectangle(a: DVec2, b: DVec2) -> [DVec2; 4] {
+    let (lo, hi) = (a.min(b), a.max(b));
+    [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)]
 }
 
 /// A small square showing where a workplane lies.
@@ -1117,6 +1175,25 @@ mod tests {
         assert!(matches!(d.click(DVec2::new(1.0, 1.5)), Some(Click::Closed)));
         let s = d.sketch(true);
         assert!(s.closed && s.check().is_ok());
+    }
+
+    #[test]
+    fn a_rectangle_is_two_opposite_corners() {
+        let mut d = draft();
+        d.shape = Shape::Rectangle;
+        assert!(
+            d.click(DVec2::new(3.0, 0.0)).is_none(),
+            "no width or no height"
+        );
+        assert!(matches!(
+            d.click(DVec2::new(-2.0, 1.5)),
+            Some(Click::Closed)
+        ));
+        let s = d.sketch(true);
+        assert!(s.closed && s.check().is_ok());
+        assert_eq!(s.points.len(), 4);
+        assert!(s.points.contains(&DVec2::new(-2.0, 0.0)));
+        assert!(s.points.contains(&DVec2::new(0.0, 1.5)));
     }
 
     #[test]

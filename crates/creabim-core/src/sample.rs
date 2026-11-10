@@ -220,6 +220,10 @@ pub fn sample_house() -> Model {
         Modifier::new(ModifierKind::Array {
             count,
             offset: DVec3::new(x, y, 0.0),
+            relative: false,
+            fit_length: None,
+            turn: 0.0,
+            grow: 1.0,
         })
     };
     let pergola = DVec3::new(6.5, -5.4, 0.0);

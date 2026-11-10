@@ -152,6 +152,8 @@ pub struct CreaBimApp {
     sheets_export: SheetsExport,
     /// A reference to take away, asked from its Properties (MU23).
     remove_ref: Option<ElementId>,
+    /// Copy to view…: the reference, and the view its copy goes to (MU38).
+    copy_ref: Option<(ElementId, ElementId)>,
     /// Shift+A's Add menu, open, with what is typed in it (MU24).
     add_menu: Option<String>,
     scene: Vec<SceneItem>,
@@ -349,6 +351,7 @@ impl CreaBimApp {
             sheets_export_open: false,
             sheets_export: SheetsExport::default(),
             remove_ref: None,
+            copy_ref: None,
             add_menu: None,
             scene: vec![],
             plan: PlanState::default(),
@@ -874,48 +877,16 @@ impl CreaBimApp {
         painter: &egui::Painter,
         project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
     ) {
-        use creabim_core::divide::{self, Dir, Make};
-        if !self.divide.open {
-            return;
+        let accent = crate::planview::ACCENT_SELECTED;
+        for (a, b, _) in &self.plan.divide_marks {
+            if let (Some(pa), Some(pb)) = (project(*a), project(*b)) {
+                painter.line_segment([pa, pb], egui::Stroke::new(2.0, accent));
+            }
         }
-        let model = self.doc.model();
-        let Some(h) = self.selection.all().first().copied() else {
-            return;
-        };
-        let Some(s) = divide::span(model, h) else {
-            return;
-        };
-        let d = &self.divide;
-        let lift = s
-            .level
-            .and_then(|l| model.level(l))
-            .map_or(0.0, |l| l.elevation);
-        let total = match d.dir {
-            Dir::Along => s.len,
-            Dir::Up => s.z1 - s.z0,
-        };
-        let gap = if d.make == Make::Cuts { d.gap } else { 0.0 };
-        let Some(parts) = divide::parts(total, d.parts, gap) else {
-            return;
-        };
-        let accent = Color32::from_rgb(230, 120, 30);
-        let stroke = egui::Stroke::new(2.0, accent);
-        let mid = s.o + s.v * (s.width / 2.0);
-        for (t, size) in &parts[1..] {
-            let t = *t - gap / 2.0;
-            let _ = size;
-            let (a, b) = match d.dir {
-                Dir::Along => {
-                    let p = mid + s.u * t;
-                    (p.extend(lift + s.z0), p.extend(lift + s.z1.max(s.z0 + 0.3)))
-                }
-                Dir::Up => {
-                    let z = lift + s.z0 + t;
-                    (mid.extend(z), (mid + s.u * s.len).extend(z))
-                }
-            };
-            if let (Some(pa), Some(pb)) = (project(a), project(b)) {
-                painter.line_segment([pa, pb], stroke);
+        let mut taken = vec![];
+        for (at, text) in &self.plan.divide_labels {
+            if let Some(q) = project(*at) {
+                crate::planview::divide_label(painter, q, text, accent, &mut taken);
             }
         }
     }
@@ -927,8 +898,7 @@ impl CreaBimApp {
             .iter()
             .filter_map(|e| match &e.kind {
                 ElementKind::Reference(r)
-                    if !r.hidden
-                        && r.in_3d
+                    if r.shows_in_3d()
                         && (if self.camera.ortho {
                             r.in_orthographic
                         } else {
@@ -987,6 +957,40 @@ impl CreaBimApp {
         project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
     ) {
         let refs = self.refs_in_3d();
+        // a picked one is outlined as the plans outline it: dashed, in the
+        // selection orange, on its own plane (MU38)
+        let picked: Vec<Vec<egui::Pos2>> = refs
+            .iter()
+            .filter(|(id, _)| self.selection.contains(*id))
+            .filter_map(|(_, r)| {
+                let c = r.outline()?;
+                let model = self.doc.model();
+                let pts: Vec<egui::Pos2> = c
+                    .iter()
+                    .chain(c.first())
+                    .filter_map(|p| project(crate::handles::ref_world(model, r, *p)))
+                    .collect();
+                (pts.len() == 5).then_some(pts)
+            })
+            .collect();
+        self.draw_reference_lines_3d(painter, project, refs);
+        for pts in picked {
+            crate::snaps::dashed_clipped(
+                painter,
+                &pts,
+                egui::Stroke::new(1.5, crate::planview::ACCENT_SELECTED),
+                6.0,
+                4.0,
+            );
+        }
+    }
+
+    fn draw_reference_lines_3d(
+        &mut self,
+        painter: &egui::Painter,
+        project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+        refs: Vec<(ElementId, creabim_core::Reference)>,
+    ) {
         // a huge drawing is cut short rather than slowing the 3D view
         let mut budget = 30_000usize;
         for (id, r) in refs {
@@ -3944,20 +3948,99 @@ impl CreaBimApp {
         };
         let mut m = before.clone();
         let mut label: &'static str = "";
+        // what the modifiers can reach in the model: paths to follow,
+        // levels to slice at, in the mesh's own axes
+        let model = self.doc.model();
+        let lift = |level: Option<ElementId>| {
+            level
+                .and_then(|l| model.level(l))
+                .map_or(0.0, |l| l.elevation)
+        };
+        let home = m.origin + DVec3::Z * lift(m.level);
+        let local = |w: DVec3| m.to_local(w - home);
+        let paths: Vec<(String, Vec<DVec3>)> = model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Sketch(sk) => {
+                    let z = DVec3::Z * lift(sk.level);
+                    let mut pts: Vec<DVec3> = sk.segments().iter().map(|(a, _)| *a + z).collect();
+                    if let Some((_, b)) = sk.segments().last() {
+                        pts.push(*b + z);
+                    }
+                    Some((e.name.clone(), pts.into_iter().map(local).collect()))
+                }
+                ElementKind::Guide(g) => {
+                    let z = DVec3::Z * lift(g.level);
+                    Some((e.name.clone(), vec![local(g.a + z), local(g.b + z)]))
+                }
+                _ => None,
+            })
+            .filter(|(_, p)| p.len() >= 2)
+            .collect();
+        let level_heights: Vec<f64> = {
+            let mut h: Vec<f64> = model
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ElementKind::Level(l) => Some(local(DVec3::Z * l.elevation).z),
+                    _ => None,
+                })
+                .collect();
+            h.sort_by(f64::total_cmp);
+            h
+        };
+        let (lo, hi) = creabim_core::modgen::bounds(&m.mesh);
+        let middle = (lo + hi) / 2.0;
+        // + Add modifier: grouped, each with its icon and what it is for
         egui::ComboBox::from_id_salt(("add_modifier", id))
             .icon(crate::props::combo_icon)
             .selected_text("+ Add modifier")
             .width(ui.available_width())
+            .height(600.0)
             .show_ui(ui, |ui| {
-                for k in ModifierKind::presets() {
-                    if ui.selectable_label(false, k.label()).clicked() {
+                ui.set_min_width(260.0);
+                let mut group = "";
+                for (g, k, hint) in ModifierKind::menu() {
+                    if g != group {
+                        group = g;
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new(g.to_uppercase()).small().weak());
+                    }
+                    let r = ui
+                        .horizontal(|ui| {
+                            let (ir, _) = ui
+                                .allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+                            crate::svgicon::paint(
+                                ui.painter(),
+                                ir,
+                                k.icon(),
+                                ui.visuals().text_color(),
+                            );
+                            let r = ui.selectable_label(false, k.label());
+                            ui.label(egui::RichText::new(hint).small().weak());
+                            r
+                        })
+                        .inner;
+                    if r.clicked() {
+                        let mut k = k;
+                        // a sensible start for this mesh: round its middle,
+                        // mirrored at its middle, cut at the project's levels
+                        match &mut k {
+                            ModifierKind::RadialArray { center, .. } => {
+                                *center = glam::DVec2::new(hi.x + (hi.x - lo.x), middle.y);
+                            }
+                            ModifierKind::Mirror { plane, .. } => *plane = hi.x,
+                            ModifierKind::Slice { heights, .. } if !level_heights.is_empty() => {
+                                *heights = level_heights.clone();
+                            }
+                            _ => {}
+                        }
                         m.modifiers.push(Modifier::new(k));
                         label = "Add modifier";
                     }
                 }
             });
         if m.modifiers.is_empty() {
-            ui.label(egui::RichText::new("None yet. A modifier changes the shape without touching the mesh: array, mirror, solidify, subdivide.").weak());
+            ui.label(egui::RichText::new("None yet. A modifier changes the shape without touching the mesh: repeat it, panel it, round its corners, slice it into floors. Switch it off or apply it any time.").weak());
         }
         let count = m.modifiers.len();
         let mut action: Option<(usize, i32)> = None;
@@ -3971,7 +4054,11 @@ impl CreaBimApp {
                 .corner_radius(6.0)
                 .inner_margin(egui::Margin::symmetric(6, 4))
                 .show(ui, |ui| {
-                    crate::props::flow(ui, |ui| {
+                    // folded or open, a card is as wide as the panel
+                    ui.set_min_width(ui.available_width());
+                    // one row that never wraps: the title gives way instead
+                    ui.horizontal(|ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                         let chev = if open {
                             "chevron-down"
                         } else {
@@ -3982,12 +4069,65 @@ impl CreaBimApp {
                         {
                             ui.ctx().data_mut(|d| d.insert_temp(key, !open));
                         }
-                        ui.label(egui::RichText::new(md.kind.label()).strong());
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if crate::props::icon_button(ui, "x", "Remove").clicked() {
-                                action = Some((i, 0));
-                            }
-                            ui.menu_button("\u{22ef}", |ui| {
+                        // its icon is its switch: lit while it shows, grey
+                        // when off (one button less in a narrow panel)
+                        let (ir, sw) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+                        let ink = if md.enabled {
+                            p.accent
+                        } else {
+                            ui.visuals().weak_text_color()
+                        };
+                        if sw.hovered() {
+                            ui.painter().rect_filled(ir, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+                        }
+                        crate::svgicon::paint(ui.painter(), ir.shrink(1.0), md.kind.icon(), ink);
+                        if sw
+                            .on_hover_text(if md.enabled {
+                                "Showing: click to switch it off (the mesh without it)"
+                            } else {
+                                "Off: click to show it again"
+                            })
+                            .clicked()
+                        {
+                            md.enabled = !md.enabled;
+                            label = "Switch modifier";
+                        }
+                        // its name (and, folded, its main settings) in what
+                        // the three buttons leave, cut short, never under them
+                        let mut job = egui::text::LayoutJob::default();
+                        let font = egui::TextStyle::Body.resolve(ui.style());
+                        job.append(
+                            md.kind.label(),
+                            0.0,
+                            egui::TextFormat::simple(font.clone(), ui.visuals().strong_text_color()),
+                        );
+                        if !open {
+                            job.append(
+                                &format!("  {}", md.kind.summary()),
+                                0.0,
+                                egui::TextFormat::simple(
+                                    egui::FontId::proportional(font.size - 1.5),
+                                    ui.visuals().weak_text_color(),
+                                ),
+                            );
+                        }
+                        // the title in a box of its own, then ⋯ and ×, one
+                        // after the other: nothing drawn over the title
+                        let w = (ui.available_width() - 2.0 * (20.0 + ui.spacing().item_spacing.x) - 4.0).max(24.0);
+                        let (tr, tresp) = ui.allocate_exact_size(egui::vec2(w, 20.0), egui::Sense::hover());
+                        let galley = ui.fonts_mut(|f| {
+                            job.wrap = egui::text::TextWrapping::truncate_at_width(w);
+                            f.layout_job(job)
+                        });
+                        ui.painter().galley(
+                            egui::pos2(tr.min.x, tr.center().y - galley.size().y / 2.0),
+                            galley,
+                            ui.visuals().text_color(),
+                        );
+                        tresp.on_hover_text(md.kind.summary());
+                        {
+                            let more = crate::props::icon_button(ui, "ellipsis", "Apply, duplicate, move");
+                            egui::Popup::menu(&more).show(|ui| {
                                 if i == 0
                                     && ui
                                         .button("Apply")
@@ -3999,6 +4139,10 @@ impl CreaBimApp {
                                     action = Some((i, 2));
                                     ui.close();
                                 }
+                                if ui.button("Duplicate").clicked() {
+                                    action = Some((i, 3));
+                                    ui.close();
+                                }
                                 if i > 0 && ui.button("Move up").clicked() {
                                     action = Some((i, -1));
                                     ui.close();
@@ -4008,77 +4152,246 @@ impl CreaBimApp {
                                     ui.close();
                                 }
                             });
-                            let eye = if md.enabled { "eye" } else { "eye-off" };
-                            if crate::props::icon_button(
-                                ui,
-                                eye,
-                                "Show it in the views (off: the mesh without it)",
-                            )
-                            .clicked()
-                            {
-                                md.enabled = !md.enabled;
-                                label = "Switch modifier";
+                            if crate::props::icon_button(ui, "x", "Remove").clicked() {
+                                action = Some((i, 0));
                             }
-                        });
+                        }
                     });
                     if !open {
                         return;
                     }
-                    let num = |ui: &mut egui::Ui, name: &str, v: &mut f64| {
-                        crate::props::row(ui, name, |ui| {
-                            crate::props::fill(ui, crate::units::drag(v)).changed()
-                        })
-                    };
+                    fn changed(ui: &mut egui::Ui, name: &str, w: egui::DragValue) -> bool {
+                        crate::props::row(ui, name, |ui| crate::props::fill(ui, w).changed())
+                    }
+                    fn len(v: &mut f64) -> egui::DragValue<'_> {
+                        crate::units::drag(v)
+                    }
+                    fn deg(v: &mut f64) -> egui::DragValue<'_> {
+                        egui::DragValue::new(v).speed(0.5).suffix("°")
+                    }
+                    fn factor(v: &mut f64) -> egui::DragValue<'_> {
+                        egui::DragValue::new(v).speed(0.01).range(0.0..=10.0).max_decimals(3)
+                    }
+                    fn two(ui: &mut egui::Ui, a: (&str, &str), b: (&str, &str)) -> Option<usize> {
+                        match crate::props::actions2(ui, "", (a.0, a.1, true), (b.0, b.1, true)) {
+                            (true, _) => Some(0),
+                            (_, true) => Some(1),
+                            _ => None,
+                        }
+                    }
+                    let what = md.kind.label();
+                    let mut edited = false;
                     match &mut md.kind {
-                        ModifierKind::Array { count, offset } => {
-                            crate::props::row(ui, "Count", |ui| {
-                                if crate::props::fill(
-                                    ui,
-                                    egui::DragValue::new(count).speed(0.1).range(1..=200),
-                                )
-                                .changed()
-                                {
-                                    label = "Array count";
-                                }
-                            });
-                            if num(ui, "Offset X", &mut offset.x)
-                                | num(ui, "Offset Y", &mut offset.y)
-                                | num(ui, "Offset Z", &mut offset.z)
-                            {
-                                label = "Array offset";
+                        ModifierKind::Array {
+                            count,
+                            offset,
+                            relative,
+                            fit_length,
+                            turn,
+                            grow,
+                        } => {
+                            let mut fit = fit_length.is_some();
+                            if crate::props::choice(ui, "Fit", &mut fit, &[(false, "Count", "A number of copies"), (true, "Length", "As many as fit a length")]) {
+                                *fit_length = fit.then_some(10.0);
+                                edited = true;
                             }
+                            match fit_length {
+                                Some(l) => edited |= changed(ui, "Length", len(l)),
+                                None => edited |= changed(ui, "Count", egui::DragValue::new(count).speed(0.1).range(1..=200)),
+                            }
+                            if crate::props::choice(ui, "Step", relative, &[(false, "Fixed", "A distance"), (true, "× size", "In multiples of its own size: 1 puts copies end to end")]) {
+                                edited = true;
+                            }
+                            for (n, v) in [("Step X", &mut offset.x), ("Step Y", &mut offset.y), ("Step Z", &mut offset.z)] {
+                                edited |= if *relative {
+                                    changed(ui, n, egui::DragValue::new(v).speed(0.01).suffix(" ×").max_decimals(3))
+                                } else {
+                                    changed(ui, n, len(v))
+                                };
+                            }
+                            edited |= changed(ui, "Turn each", deg(turn));
+                            edited |= changed(ui, "Grow each", factor(grow));
+                        }
+                        ModifierKind::RadialArray {
+                            count,
+                            angle,
+                            center,
+                            turn_copies,
+                        } => {
+                            edited |= changed(ui, "Count", egui::DragValue::new(count).speed(0.1).range(1..=360));
+                            edited |= changed(ui, "Over", egui::DragValue::new(angle).speed(1.0).range(-360.0..=360.0).suffix("°"));
+                            edited |= changed(ui, "Centre X", len(&mut center.x));
+                            edited |= changed(ui, "Centre Y", len(&mut center.y));
+                            if crate::props::switch(ui, turn_copies, "Turn each copy to face the centre").changed() {
+                                edited = true;
+                            }
+                        }
+                        ModifierKind::PathArray { path, count, align } => {
+                            crate::props::row(ui, "Path", |ui| {
+                                egui::ComboBox::from_id_salt(("mod.path", id, i))
+                                    .icon(crate::props::combo_icon)
+                                    .selected_text(if path.len() < 2 { "Pick a sketch or guide".to_string() } else { format!("{} points", path.len()) })
+                                    .width(ui.available_width())
+                                    .show_ui(ui, |ui| {
+                                        for (name, pts) in &paths {
+                                            if ui.selectable_label(false, name).clicked() {
+                                                *path = pts.clone();
+                                                edited = true;
+                                            }
+                                        }
+                                    });
+                            });
+                            edited |= changed(ui, "Count", egui::DragValue::new(count).speed(0.1).range(1..=500));
+                            if crate::props::switch(ui, align, "Turn each copy along the path").changed() {
+                                edited = true;
+                            }
+                            crate::props::note(ui, "Copies its shape to evenly spaced points on the path, its own origin on each. The path is copied in: change it and pick it again.");
                         }
                         ModifierKind::Mirror { axis, plane } => {
                             crate::props::row(ui, "Across", |ui| {
                                 crate::props::flow(ui, |ui| {
                                     for a in Axis::ALL {
                                         if ui.selectable_value(axis, a, a.label()).changed() {
-                                            label = "Mirror axis";
+                                            edited = true;
                                         }
                                     }
                                 })
                             });
-                            if num(ui, "Plane at", plane) {
-                                label = "Mirror plane";
+                            edited |= changed(ui, "Plane at", len(plane));
+                            let k = axis.index();
+                            if let Some(w) = two(ui, ("At its middle", "The plane through the middle of the mesh"), ("At its edge", "The plane on its far side: a mirrored twin")) {
+                                *plane = if w == 0 { middle[k] } else { hi[k] };
+                                edited = true;
+                            }
+                        }
+                        ModifierKind::Panelize {
+                            width,
+                            height,
+                            joint,
+                            depth,
+                        } => {
+                            edited |= changed(ui, "Panel width", len(width));
+                            edited |= changed(ui, "Panel height", len(height));
+                            edited |= changed(ui, "Joint", len(joint));
+                            edited |= changed(ui, "Proud by", len(depth));
+                            crate::props::note(ui, "On its upright rectangular faces, as near that size as fits evenly.");
+                        }
+                        ModifierKind::Louvres {
+                            sides,
+                            upright,
+                            spacing,
+                            depth,
+                            thickness,
+                            angle,
+                        } => {
+                            crate::props::row(ui, "On sides", |ui| {
+                                crate::props::flow(ui, |ui| {
+                                    for (k, n) in ["N", "E", "S", "W"].iter().enumerate() {
+                                        if ui.selectable_label(sides[k], *n).clicked() {
+                                            sides[k] = !sides[k];
+                                            edited = true;
+                                        }
+                                    }
+                                })
+                            });
+                            if crate::props::choice(ui, "Run", upright, &[(true, "Fins", "Upright fins"), (false, "Slats", "Level louvres")]) {
+                                edited = true;
+                            }
+                            edited |= changed(ui, "Spacing", len(spacing));
+                            edited |= changed(ui, "Depth", len(depth));
+                            edited |= changed(ui, "Thickness", len(thickness));
+                            edited |= changed(ui, "Angle", deg(angle));
+                            crate::props::note(ui, "North is the mesh's +Y before it is turned.");
+                        }
+                        ModifierKind::Bevel {
+                            radius,
+                            segments,
+                            chamfer,
+                            corners,
+                        } => {
+                            if crate::props::choice(ui, "Kind", chamfer, &[(false, "Round", "A fillet: rounded"), (true, "Cut", "A chamfer: cut straight")]) {
+                                edited = true;
+                            }
+                            edited |= changed(ui, if *chamfer { "Setback" } else { "Radius" }, len(radius));
+                            if !*chamfer {
+                                edited |= changed(ui, "Segments", egui::DragValue::new(segments).speed(0.1).range(1..=32));
+                            }
+                            if crate::props::choice(ui, "Corners", corners, &[(creabim_core::modifiers::Corners::All, "All", "Every corner"), (creabim_core::modifiers::Corners::Convex, "Out", "Outside corners only"), (creabim_core::modifiers::Corners::Concave, "In", "Inside corners only")]) {
+                                edited = true;
+                            }
+                            crate::props::note(ui, "Rounds the upright corners of a shape drawn from a plan outline and extruded (a slab, a counter, a mass).");
+                        }
+                        ModifierKind::Shell { thickness, open } => {
+                            use creabim_core::modifiers::OpenFaces as O;
+                            edited |= changed(ui, "Thickness", len(thickness));
+                            if crate::props::choice(ui, "Open", open, &[(O::None, "None", "Closed: hollow inside"), (O::Top, "Top", "A tub, a planter, a pool"), (O::Bottom, "Bottom", "A shade, a cover"), (O::Both, "Both", "A tube, a chimney")]) {
+                                edited = true;
                             }
                         }
                         ModifierKind::Solidify { thickness } => {
-                            if num(ui, "Thickness", thickness) {
-                                label = "Solidify thickness";
+                            let mut out = *thickness < 0.0;
+                            let mut t = thickness.abs();
+                            if changed(ui, "Thickness", len(&mut t)) {
+                                edited = true;
+                            }
+                            if crate::props::choice(ui, "Grows", &mut out, &[(false, "In", "Behind the faces"), (true, "Out", "In front of the faces")]) {
+                                edited = true;
+                            }
+                            *thickness = if out { -t } else { t };
+                        }
+                        ModifierKind::Slice { heights, gap } => {
+                            edited |= changed(ui, "Gap", len(gap));
+                            let mut gone = None;
+                            for (k, h) in heights.iter_mut().enumerate() {
+                                crate::props::row(ui, &format!("Cut {}", k + 1), |ui| {
+                                    crate::props::flow(ui, |ui| {
+                                        let w = (ui.available_width() - 24.0).max(40.0);
+                                        if ui.add_sized([w, 20.0], len(h)).changed() {
+                                            edited = true;
+                                        }
+                                        if crate::props::icon_button(ui, "x", "Take this cut away").clicked() {
+                                            gone = Some(k);
+                                        }
+                                    })
+                                });
+                            }
+                            if let Some(k) = gone {
+                                heights.remove(k);
+                                edited = true;
+                            }
+                            if let Some(w) = two(ui, ("+ A cut", "Another cut, 3 m above the last"), ("At the levels", "A cut at each of the project's levels")) {
+                                if w == 0 {
+                                    let next = heights.last().copied().unwrap_or(lo.z) + 3.0;
+                                    heights.push(next);
+                                } else {
+                                    *heights = level_heights.clone();
+                                }
+                                edited = true;
+                            }
+                            crate::props::note(ui, "Heights above the mesh's own base point. The gap is left between floors: a slab's depth, a shadow joint.");
+                        }
+                        ModifierKind::Taper { x, y } => {
+                            edited |= changed(ui, "Top width ×", factor(x));
+                            edited |= changed(ui, "Top depth ×", factor(y));
+                            crate::props::note(ui, "1 keeps the top as wide as the bottom; 0.5 halves it; above 1 it flares.");
+                        }
+                        ModifierKind::Twist { angle } => {
+                            edited |= changed(ui, "Turn", deg(angle));
+                            crate::props::note(ui, "Turns the top that far about the middle, the bottom staying put. Give it more floors (Slice, Smooth split) for an even curve.");
+                        }
+                        ModifierKind::Subdivision { levels, simple } => {
+                            edited |= changed(ui, "Levels", egui::DragValue::new(levels).speed(0.05).range(0..=4));
+                            if crate::props::choice(ui, "Kind", simple, &[(false, "Smooth", "Rounded, for soft organic forms"), (true, "Split", "Finer faces in the same shape, to edit, panel or twist")]) {
+                                edited = true;
                             }
                         }
-                        ModifierKind::Subdivision { levels } => {
-                            crate::props::row(ui, "Levels", |ui| {
-                                if crate::props::fill(
-                                    ui,
-                                    egui::DragValue::new(levels).speed(0.05).range(0..=4),
-                                )
-                                .changed()
-                                {
-                                    label = "Subdivision levels";
-                                }
-                            });
-                        }
+                    }
+                    if edited {
+                        label = match what {
+                            "Array" => "Array settings",
+                            "Mirror" => "Mirror settings",
+                            _ => "Modifier settings",
+                        };
                     }
                 });
             ui.add_space(3.0);
@@ -4095,6 +4408,11 @@ impl CreaBimApp {
             Some((i, -1)) => {
                 m.modifiers.swap(i, i - 1);
                 label = "Reorder modifiers";
+            }
+            Some((i, 3)) => {
+                let copy = m.modifiers[i].clone();
+                m.modifiers.insert(i + 1, copy);
+                label = "Duplicate modifier";
             }
             Some((_, _)) => {
                 let first = m.modifiers.remove(0);
@@ -5674,9 +5992,21 @@ impl CreaBimApp {
         ui.label("Booleans");
         let mut remove = None;
         let mut select = None;
+        let mut set_op = None;
         for (cid, c, name) in &existing {
             crate::props::flow(ui, |ui| {
-                ui.label(format!("{} {name}", c.op.label()));
+                // cut away, joined on, or only what both hold (MU38)
+                egui::ComboBox::from_id_salt(("cut.op", *cid))
+                    .icon(crate::props::combo_icon)
+                    .selected_text(c.op.label())
+                    .show_ui(ui, |ui| {
+                        for op in BoolOp::ALL {
+                            if ui.selectable_label(op == c.op, op.label()).clicked() && op != c.op {
+                                set_op = Some((*cid, op));
+                            }
+                        }
+                    });
+                ui.label(name.as_str());
                 if ui.small_button("Select").clicked() {
                     select = Some(*cid);
                 }
@@ -5702,6 +6032,14 @@ impl CreaBimApp {
             )
             .weak(),
         );
+        if let Some((c, op)) = set_op {
+            let r = self.doc.edit_merged(c, "Boolean kind", |e| {
+                if let ElementKind::Cut(k) = &mut e.kind {
+                    k.op = op;
+                }
+            });
+            self.report(r, format!("Boolean: {}.", op.label()));
+        }
         if let Some(c) = remove {
             let r = self
                 .doc
@@ -6609,33 +6947,74 @@ impl CreaBimApp {
                 _ => None,
             })
             .collect();
-        let n = r.shown_in.len();
-        crate::props::row(ui, "Shown in", |ui| {
-            egui::ComboBox::from_id_salt(("ref.views", id))
-                .icon(crate::props::combo_icon)
-                .selected_text(match n {
-                    0 => "No view".to_string(),
-                    1 => views
-                        .iter()
-                        .find(|(v, _)| r.shown_in.contains(v))
-                        .map_or("1 view".into(), |(_, n)| n.clone()),
-                    n => format!("{n} views"),
-                })
-                .width(ui.available_width())
-                .show_ui(ui, |ui| {
-                    for (v, name) in &views {
-                        let mut on = r.shown_in.contains(v);
-                        if ui.checkbox(&mut on, name).changed() {
-                            if on {
-                                r.shown_in.push(*v);
-                            } else {
-                                r.shown_in.retain(|x| x != v);
-                            }
-                            label = Some("Reference views");
-                        }
+        // and the profiles, each by its trace view (MU38)
+        let profs: Vec<(ElementId, String)> = creabim_core::profiles::project_profiles(model)
+            .iter()
+            .map(|p| (creabim_core::profiles::trace_view(&p.name), p.name.clone()))
+            .collect();
+        let on_profile = profs
+            .iter()
+            .find(|(v, _)| r.shown_in.contains(v))
+            .map(|(v, n)| (*v, n.clone()));
+        let mut views = views;
+        views.extend(profs.iter().map(|(v, n)| (*v, format!("Profile {n}"))));
+        if let Some((pv, pname)) = &on_profile {
+            crate::props::row(ui, "Shown in", |ui| {
+                if ui
+                    .checkbox(&mut r.only_profile, "Only in this profile")
+                    .on_hover_text(
+                        "Kept to this profile: not in the plans, sections or 3D. \
+                         Untick it to show it in other views too.",
+                    )
+                    .changed()
+                {
+                    if r.only_profile {
+                        r.shown_in = vec![*pv];
                     }
-                })
-        });
+                    label = Some(if r.only_profile {
+                        "Reference only in its profile"
+                    } else {
+                        "Reference shared"
+                    });
+                }
+            });
+            if r.only_profile {
+                crate::props::row(ui, "", |ui| {
+                    ui.label(egui::RichText::new(format!("Profile: {pname}")).weak());
+                });
+            }
+        }
+        let n = r.shown_in.len();
+        if !r.only_profile {
+            // under the checkbox, the list needs no second label
+            let title = if on_profile.is_some() { "" } else { "Shown in" };
+            crate::props::row(ui, title, |ui| {
+                egui::ComboBox::from_id_salt(("ref.views", id))
+                    .icon(crate::props::combo_icon)
+                    .selected_text(match n {
+                        0 => "No view".to_string(),
+                        1 => views
+                            .iter()
+                            .find(|(v, _)| r.shown_in.contains(v))
+                            .map_or("1 view".into(), |(_, n)| n.clone()),
+                        n => format!("{n} views"),
+                    })
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for (v, name) in &views {
+                            let mut on = r.shown_in.contains(v);
+                            if ui.checkbox(&mut on, name).changed() {
+                                if on {
+                                    r.shown_in.push(*v);
+                                } else {
+                                    r.shown_in.retain(|x| x != v);
+                                }
+                                label = Some("Reference views");
+                            }
+                        }
+                    })
+            });
+        }
         // narrow, the swatches wrap rather than run off the panel (MU34)
         crate::props::row(ui, "Colour", |ui| {
             crate::props::flow(ui, |ui| {
@@ -6716,7 +7095,7 @@ impl CreaBimApp {
         }
         // its 3D view, apart from its views', as Blender's image empties
         // (MU34)
-        if crate::props::subsection(ui, "ref.3d", "In 3D", true) {
+        if !r.only_profile && crate::props::subsection(ui, "ref.3d", "In 3D", true) {
             if crate::props::switch(ui, &mut r.in_3d, "Shown")
                 .on_hover_text(
                     "Shown in the 3D view too, where its views are; off, only in its views",
@@ -6837,6 +7216,29 @@ impl CreaBimApp {
                 }
             }
         });
+        // the same drawing in another view, placed apart from this one
+        // (MU38): moving one never moves the other
+        let mut copy_to = None;
+        let copy_btn = ui
+            .add_sized(
+                [ui.available_width(), 24.0],
+                egui::Button::new("Copy to view…").truncate(),
+            )
+            .on_hover_text("A copy of it in another view, with its own place, size and settings");
+        egui::Popup::menu(&copy_btn).show(|ui| {
+            for (v, name) in &views {
+                if r.shown_in.contains(v) {
+                    continue;
+                }
+                if ui.button(name).clicked() {
+                    copy_to = Some(*v);
+                    ui.close();
+                }
+            }
+        });
+        if let Some(v) = copy_to {
+            self.copy_ref = Some((id, v));
+        }
         match pressed {
             Some(0) => {
                 self.plan.calibrate = Some((id, vec![]));
@@ -6875,6 +7277,34 @@ impl CreaBimApp {
             if self.selection.active != Some(id) {
                 self.selection.only(id);
                 self.prop_tab = PropTab::Element;
+            }
+        }
+        if let Some((id, v)) = self.copy_ref.take() {
+            if let Some(e) = self.doc.model().get(id).cloned() {
+                if let ElementKind::Reference(r) = &e.kind {
+                    let mut r = r.clone();
+                    let to_profile = !matches!(
+                        self.doc.model().get(v).map(|x| &x.kind),
+                        Some(ElementKind::View(_))
+                    );
+                    r.shown_in = vec![v];
+                    r.only_profile = to_profile;
+                    r.hidden = false;
+                    let name = e.name.clone();
+                    let copy = Element::new(name.clone(), ElementKind::Reference(r));
+                    let cid = copy.id;
+                    let res = self.doc.commit(
+                        creabim_core::Transaction::new(format!("Copy {name} to a view"))
+                            .insert(copy),
+                    );
+                    if res.is_ok() {
+                        self.selection.only(cid);
+                    }
+                    self.report(
+                        res,
+                        format!("{name} copied: the copy moves and scales apart from the first."),
+                    );
+                }
             }
         }
         if let Some(id) = self.remove_ref.take() {
@@ -7201,7 +7631,7 @@ impl CreaBimApp {
             )
             .clicked()
         {
-            self.divide.open = true;
+            self.open_divide();
         }
         // the type picker may have changed it
         let Some(e) = self.doc.model().get(id).cloned() else {
@@ -9367,6 +9797,11 @@ impl eframe::App for CreaBimApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let _perf = Perf::new("frame");
         let ctx = ui.ctx().clone();
+        crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
+        // Divide's marks, for every view to draw this frame (MU38)
+        (self.plan.divide_marks, self.plan.divide_labels) = self.divide_marks();
+        // R draws a rectangle while sketching, not a rotate (MU38)
+        crate::sketch::set_sketching(&ctx, self.plan.tool == Tool::Sketch);
         // the activity log: what the status bar said (it names every edit
         // and undo) and the tool, when they change
         if self.status != self.logged.0 {
