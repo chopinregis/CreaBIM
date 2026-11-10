@@ -541,6 +541,7 @@ pub fn builtin_template() -> SheetTemplate {
         border: true,
         fields: vec![],
         paper: None,
+        guides: vec![],
     }
 }
 
@@ -947,6 +948,7 @@ mod tests {
                 ("status".into(), "Draft".into()),
             ],
             paper: None,
+            guides: vec![],
         };
         let (_, s) = sheets(&m).into_iter().next().unwrap();
         let mut s = s.clone();
@@ -1172,6 +1174,7 @@ mod tests {
             border: false,
             fields: vec![("client".into(), "Client".into())],
             paper: None,
+            guides: vec![],
         };
         let te = Element::new("Office", ElementKind::SheetTemplate(t));
         let tid = te.id;

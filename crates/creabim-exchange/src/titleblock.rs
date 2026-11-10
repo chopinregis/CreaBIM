@@ -45,6 +45,7 @@ pub fn from_items(items: Vec<TitleItem>) -> Result<SheetTemplate, String> {
         border: true,
         fields: vec![],
         paper: None,
+        guides: vec![],
     };
     let (lo, hi) = t.bounds().unwrap_or_default();
     let size = hi - lo;

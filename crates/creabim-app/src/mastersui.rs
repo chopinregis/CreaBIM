@@ -28,6 +28,9 @@ pub enum MTool {
     Text,
     /// Click where a field goes: the sheet fills it in.
     Field,
+    /// Two clicks: a guide through them, to snap to (MU40, as profiles'
+    /// guides); nearly level or upright, it goes straight.
+    Guide,
 }
 
 /// A drag of the picked item: moving it, or resizing it by a corner.
@@ -61,6 +64,42 @@ pub struct MastersUi {
     hovered_pass: u64,
     /// The view's size last frame: a new size fits the sheet again.
     seen: egui::Vec2,
+    /// The Guide tool's first click (paper mm).
+    guide_from: Option<DVec2>,
+    /// The guide picked, and one being dragged: (it, grabbed at, gone).
+    guide_sel: Option<usize>,
+    guide_drag: Option<(usize, DVec2, DVec2)>,
+    /// Guides hidden (and not snapped to) while looking at the result.
+    pub hide_guides: bool,
+}
+
+/// The guide's colour: a cyan apart from ink, fields and the selection.
+const GUIDE: egui::Color32 = egui::Color32::from_rgb(0, 168, 196);
+
+/// Where lines `a`→`b` and `c`→`d` cross, if they do.
+fn cross(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> Option<DVec2> {
+    let (r, s) = (b - a, d - c);
+    let den = r.perp_dot(s);
+    (den.abs() > 1e-9).then(|| a + r * ((c - a).perp_dot(s) / den))
+}
+
+/// `p` brought onto the line through `a` and `b`, and how far it moved.
+fn onto(p: DVec2, a: DVec2, b: DVec2) -> (DVec2, f64) {
+    let d = (b - a).normalize_or_zero();
+    let q = a + d * (p - a).dot(d);
+    (q, q.distance(p))
+}
+
+/// A guide's second point, straightened when it is nearly level or
+/// upright.
+fn straighten(a: DVec2, mut b: DVec2) -> DVec2 {
+    let d = b - a;
+    if d.y.abs() < d.x.abs() * 0.035 {
+        b.y = a.y;
+    } else if d.x.abs() < d.y.abs() * 0.035 {
+        b.x = a.x;
+    }
+    b
 }
 
 /// Sheet sizes, mm, landscape.
@@ -438,6 +477,8 @@ impl CreaBimApp {
                    "hint": "Text: click where it goes, then type it in Properties"}),
             json!({"kind": "menu", "key": "master.field", "icon": "field", "label": "Field", "value": format!("{{{field}}}"), "on": t == MTool::Field,
                    "hint": "A field: what each sheet fills in (project, sheet, number, scale, date, or one of the master's own). Pick one, then click where it goes"}),
+            json!({"kind": "toggle", "id": "master.tool:guide", "icon": "guides", "label": "Guide", "on": t == MTool::Guide,
+                   "hint": "A guide: two clicks, a line to draw by and snap to; nearly level or upright, it goes straight. Kept with the master, never printed"}),
             json!({"kind": "button", "id": "master.picture", "icon": "image", "label": "Picture",
                    "hint": "A picture: your logo, a stamp, a background (PNG or JPEG). As many as you like; drag its corners to size it"}),
         ]
@@ -560,6 +601,7 @@ impl CreaBimApp {
                             border: true,
                             fields: vec![],
                             paper: Some(DVec2::new(420.0, 297.0)),
+                            guides: vec![],
                         },
                     ),
                 };
@@ -637,6 +679,7 @@ impl CreaBimApp {
                     "rect" => MTool::Rect,
                     "text" => MTool::Text,
                     "field" => MTool::Field,
+                    "guide" => MTool::Guide,
                     _ => MTool::Select,
                 };
                 self.masters.drawing.clear();
@@ -647,6 +690,7 @@ impl CreaBimApp {
                     MTool::Rect => "Rectangle: click two corners.",
                     MTool::Text => "Text: click where it goes.",
                     MTool::Field => "Field: click where it goes.",
+                    MTool::Guide => "Guide: click two points it runs through.",
                 }
                 .into();
             }
@@ -1063,6 +1107,35 @@ impl CreaBimApp {
                 }
             }
         }
+        // the guides, dashed, across the whole view
+        let guides: Vec<(DVec2, DVec2)> = if self.masters.hide_guides {
+            vec![]
+        } else {
+            t.guides
+                .iter()
+                .enumerate()
+                .map(|(g, (a, b))| match self.masters.guide_drag {
+                    Some((k, _, d)) if k == g => (o + *a + d, o + *b + d),
+                    _ => (o + *a, o + *b),
+                })
+                .collect()
+        };
+        let reach = (body.width() + body.height()) as f64 / scale as f64;
+        for (g, (a, b)) in guides.iter().enumerate() {
+            let d = (*b - *a).normalize_or(DVec2::X);
+            let ends = [to_s(*a - d * reach), to_s(*a + d * reach)];
+            let ink_g = if self.masters.guide_sel == Some(g) {
+                accent
+            } else {
+                GUIDE
+            };
+            painter.extend(egui::Shape::dashed_line(
+                &ends,
+                egui::Stroke::new(1.0, ink_g),
+                7.0,
+                4.0,
+            ));
+        }
         // the picked item's box and corner handles
         let mut handles: Vec<(egui::Pos2, DVec2, DVec2)> = vec![];
         if let Some(it) = self.masters.sel.and_then(|i| items.get(i)) {
@@ -1109,6 +1182,21 @@ impl CreaBimApp {
             }
         }
         targets.extend(self.masters.drawing.iter().copied());
+        // where guides cross each other
+        let dragged_guide = self.masters.guide_drag.map(|g| g.0);
+        for (k, (a, b)) in guides.iter().enumerate() {
+            if Some(k) == dragged_guide {
+                continue;
+            }
+            for (_, (c, d)) in guides
+                .iter()
+                .enumerate()
+                .skip(k + 1)
+                .filter(|(j, _)| Some(*j) != dragged_guide)
+            {
+                targets.extend(cross(*a, *b, *c, *d));
+            }
+        }
         let xs: Vec<f64> = [0.0, 20.0, paper.x - 10.0, paper.x]
             .into_iter()
             .chain(targets.iter().map(|p| p.x))
@@ -1126,6 +1214,17 @@ impl CreaBimApp {
                     .min_by(|a, b| a.distance(w).total_cmp(&b.distance(w)))
                 {
                     return (*p, true);
+                }
+                // onto the nearest guide, then the grid along it
+                if let Some(q) = guides
+                    .iter()
+                    .enumerate()
+                    .filter(|(g, _)| Some(*g) != dragged_guide)
+                    .map(|(_, (a, b))| onto(w, *a, *b))
+                    .filter(|(_, d)| *d < tol)
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                {
+                    return (q.0, true);
                 }
             }
             let near = |v: f64, all: &[f64]| {
@@ -1199,6 +1298,16 @@ impl CreaBimApp {
                             .min_by(|a, b| a.1.total_cmp(&b.1))
                             .map(|(i, _)| i)
                     };
+                    // a guide near the pointer, when nothing drawn is
+                    let guide_at = |p: DVec2| {
+                        guides
+                            .iter()
+                            .enumerate()
+                            .map(|(g, (a, b))| (g, onto(p, *a, *b).1))
+                            .filter(|(_, d)| *d < 5.0 / scale as f64)
+                            .min_by(|a, b| a.1.total_cmp(&b.1))
+                            .map(|(g, _)| g)
+                    };
                     if response.drag_started_by(egui::PointerButton::Primary) {
                         // where the button went down: by the time a drag
                         // starts the pointer has left a small handle
@@ -1214,7 +1323,28 @@ impl CreaBimApp {
                                 self.masters.drag = Some(Drag::Size(*far, *c, *c));
                             } else if let Some(i) = picked_at(w) {
                                 self.masters.sel = Some(i);
+                                self.masters.guide_sel = None;
                                 self.masters.drag = Some(Drag::Move(w, DVec2::ZERO));
+                            } else if let Some(g) = guide_at(w) {
+                                self.masters.guide_sel = Some(g);
+                                self.masters.sel = None;
+                                self.masters.guide_drag = Some((g, w, DVec2::ZERO));
+                            }
+                        }
+                    }
+                    // a guide dragged goes with the pointer, snapping
+                    if let (Some((g, from, _)), Some(w)) = (self.masters.guide_drag, here_raw) {
+                        let d = snap(w).0 - snap(from).0;
+                        self.masters.guide_drag = Some((g, from, d));
+                        if response.drag_stopped_by(egui::PointerButton::Primary) {
+                            self.masters.guide_drag = None;
+                            if d.length() > 1e-9 {
+                                self.edit_master("Move guide", |t| {
+                                    if let Some((a, b)) = t.guides.get_mut(g) {
+                                        *a += d;
+                                        *b += d;
+                                    }
+                                });
                             }
                         }
                     }
@@ -1271,9 +1401,27 @@ impl CreaBimApp {
                         }
                     }
                     if response.clicked() {
-                        self.masters.sel = response
-                            .interact_pointer_pos()
-                            .and_then(|p| picked_at(to_w(p)));
+                        let at = response.interact_pointer_pos().map(to_w);
+                        self.masters.sel = at.and_then(picked_at);
+                        self.masters.guide_sel = if self.masters.sel.is_none() {
+                            at.and_then(guide_at)
+                        } else {
+                            None
+                        };
+                    }
+                    // a guide picked: Delete takes it away, Esc lets go
+                    if let (Some(g), true) = (self.masters.guide_sel, hovered && !typing) {
+                        if keys(egui::Key::Delete) || keys(egui::Key::Backspace) {
+                            self.edit_master("Delete guide", |t| {
+                                if g < t.guides.len() {
+                                    t.guides.remove(g);
+                                }
+                            });
+                            self.masters.guide_sel = None;
+                            self.status = "Guide deleted. Ctrl+Z brings it back.".into();
+                        } else if keys(egui::Key::Escape) {
+                            self.masters.guide_sel = None;
+                        }
                     }
                     if self.masters.sel.is_some() && hovered && !typing {
                         let i = self.masters.sel.unwrap_or(0);
@@ -1395,6 +1543,44 @@ impl CreaBimApp {
                         }
                     }
                 }
+                MTool::Guide => {
+                    if let (Some(a), Some((w, _))) = (self.masters.guide_from, here) {
+                        let b = straighten(a, w);
+                        let d = (b - a).normalize_or(DVec2::X);
+                        painter.extend(egui::Shape::dashed_line(
+                            &[to_s(a - d * reach), to_s(a + d * reach)],
+                            egui::Stroke::new(1.0, accent),
+                            7.0,
+                            4.0,
+                        ));
+                    }
+                    if response.clicked() {
+                        if let Some((w, _)) = here {
+                            match self.masters.guide_from.take() {
+                                None => {
+                                    self.masters.guide_from = Some(w);
+                                    self.status =
+                                        "Guide: click a second point it runs through.".into();
+                                }
+                                Some(a) => {
+                                    let b = straighten(a, w);
+                                    if a.distance(b) > 0.1 {
+                                        self.masters.hide_guides = false;
+                                        self.edit_master("Guide", |t| {
+                                            t.guides.push((a - o, b - o))
+                                        });
+                                        self.status = "Guide added: lines, text and pictures snap to it. Another two clicks make another.".into();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (keys(egui::Key::Escape) || response.secondary_clicked())
+                        && self.masters.guide_from.take().is_none()
+                    {
+                        self.masters.tool = MTool::Select;
+                    }
+                }
                 MTool::Text | MTool::Field => {
                     if response.clicked() {
                         if let Some((w, _)) = here {
@@ -1440,6 +1626,7 @@ impl CreaBimApp {
                 MTool::Rect => "Click two corners",
                 MTool::Text => "Click where the text goes; Esc back to Select",
                 MTool::Field => "Click where the field goes: each sheet fills it in; Esc back to Select",
+                MTool::Guide => "Click two points the guide runs through; nearly level or upright, it goes straight. Esc back to Select",
             }
         };
         painter.text(
@@ -1530,6 +1717,10 @@ impl CreaBimApp {
                 self.edit_master("Master corner", |t| {
                     t.corner = corner;
                     t.items.iter_mut().for_each(|it| it.shift(d));
+                    t.guides.iter_mut().for_each(|(a, b)| {
+                        *a += d;
+                        *b += d;
+                    });
                 });
             }
             let mut border = t.border;
@@ -1630,6 +1821,40 @@ impl CreaBimApp {
             crate::props::note(
                 ui,
                 "Every sheet fills in {sheet}, {number}, {project}, {scale} and {date} itself.",
+            );
+        }
+        // the guides it is drawn by
+        if self.prop_header(ui, "master.guides", "Guides", true, None) {
+            let n = t.guides.len();
+            crate::props::row(ui, "Guides", |ui| {
+                ui.label(match n {
+                    0 => "None yet".to_string(),
+                    1 => "1 guide".to_string(),
+                    n => format!("{n} guides"),
+                })
+            });
+            let mut show = !self.masters.hide_guides;
+            if crate::props::check(ui, "Show", &mut show, "Shown and snapped to").changed() {
+                self.masters.hide_guides = !show;
+            }
+            let (add, clear) = crate::props::actions2(
+                ui,
+                "",
+                ("Draw one", "The Guide tool: two clicks", true),
+                ("Clear all", "Take every guide away (one undo step)", n > 0),
+            );
+            if add {
+                self.masters.tool = MTool::Guide;
+                self.masters.guide_from = None;
+                self.status = "Guide: click two points it runs through.".into();
+            }
+            if clear {
+                self.edit_master("Clear guides", |t| t.guides.clear());
+                self.masters.guide_sel = None;
+            }
+            crate::props::note(
+                ui,
+                "Guides are kept with the master and never printed. Pick one to drag it; Delete removes it.",
             );
         }
         // what is picked
@@ -1979,6 +2204,33 @@ mod tests {
         assert!(
             (lo - DVec2::new(5.0, -5.0)).length() < 1e-9
                 && (hi - DVec2::new(5.0, 5.0)).length() < 1e-9
+        );
+    }
+
+    #[test]
+    fn guides_cross_take_points_onto_them_and_go_straight_when_nearly_so() {
+        let x = cross(
+            DVec2::ZERO,
+            DVec2::new(10.0, 0.0),
+            DVec2::new(3.0, -5.0),
+            DVec2::new(3.0, 5.0),
+        );
+        assert_eq!(x, Some(DVec2::new(3.0, 0.0)));
+        assert!(cross(DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::new(1.0, 1.0)).is_none());
+        let (q, d) = onto(DVec2::new(4.0, 2.0), DVec2::ZERO, DVec2::new(10.0, 0.0));
+        assert_eq!((q, d), (DVec2::new(4.0, 0.0), 2.0));
+        // a hair off level is level; a real slope stays
+        assert_eq!(
+            straighten(DVec2::ZERO, DVec2::new(100.0, 2.0)),
+            DVec2::new(100.0, 0.0)
+        );
+        assert_eq!(
+            straighten(DVec2::ZERO, DVec2::new(1.0, 80.0)),
+            DVec2::new(0.0, 80.0)
+        );
+        assert_eq!(
+            straighten(DVec2::ZERO, DVec2::new(10.0, 10.0)),
+            DVec2::new(10.0, 10.0)
         );
     }
 }

@@ -164,6 +164,10 @@ pub struct SheetTemplate {
     /// The paper size new sheets made from it get, mm; none keeps A3.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paper: Option<DVec2>,
+    /// Guides to draw it by, each a line through two points (paper mm
+    /// from its corner): kept with it, never printed (MU40).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub guides: Vec<(DVec2, DVec2)>,
 }
 
 fn yes() -> bool {
@@ -390,6 +394,7 @@ pub fn standard_strip() -> SheetTemplate {
         border: true,
         fields: vec![("client".into(), String::new()), ("rev".into(), "-".into())],
         paper: Some(DVec2::new(420.0, 297.0)),
+        guides: vec![],
     }
 }
 
@@ -415,6 +420,7 @@ pub fn minimal_band() -> SheetTemplate {
         border: true,
         fields: vec![],
         paper: Some(DVec2::new(420.0, 297.0)),
+        guides: vec![],
     }
 }
 
@@ -494,6 +500,7 @@ mod tests {
             border: true,
             fields: vec![("client".into(), "Client name".into())],
             paper: None,
+            guides: vec![],
         }
     }
 
