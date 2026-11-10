@@ -4286,9 +4286,23 @@ impl CreaBimApp {
         if a.distance(at) < 1e-3 {
             return;
         }
-        // its top line stands off the face by its depth, so it sits on it
-        let (ta, tb) = (a + n * set.beam_depth, at + n * set.beam_depth);
+        // its top line stands off the face by its section's own height,
+        // so it sits on it (MU40: a library section floated by the beam
+        // depth instead)
         let model = self.doc.model();
+        let section = set
+            .beam_section
+            .as_deref()
+            .and_then(|nm| creabim_core::profiles::find(model, nm));
+        let height = match &section {
+            Some(pts) if !pts.is_empty() => {
+                let lo = pts.iter().map(|p| p.y).fold(f64::MAX, f64::min);
+                let hi = pts.iter().map(|p| p.y).fold(f64::MIN, f64::max);
+                hi - lo
+            }
+            _ => set.beam_depth,
+        };
+        let (ta, tb) = (a + n * height, at + n * height);
         let top0 = creabim_core::members::elevation(model, level)
             + creabim_core::members::storey_height(model, level);
         let mut b = creabim_core::Beam::new(level, ta.truncate(), tb.truncate());

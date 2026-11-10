@@ -54,12 +54,16 @@ pub fn beam_mesh(model: &Model, b: &creabim_core::Beam) -> TriMesh {
         if along.abs() < 0.05 {
             continue;
         }
+        // the mesh is in f32: far from the origin an end's vertices sit a
+        // few hundredths of a millimetre off it, and a tight test left
+        // some of them uncut (MU40: ragged mitres)
+        let tol = 1e-4 * (1.0 + a.length().max(z.length()));
         let at_end = |p: DVec3| {
             let s = (p - a).dot(dir);
             if k == 0 {
-                s.abs() < 1e-6
+                s.abs() < tol
             } else {
-                (s - len).abs() < 1e-6
+                (s - len).abs() < tol
             }
         };
         let out = if k == 0 { -dir } else { dir };
@@ -754,6 +758,61 @@ mod tests {
                 (p - corner).truncate().dot(n.truncate()).abs() < 1e-6,
                 "{p}"
             );
+        }
+        // far from the origin, where f32 rounds the mesh, every end vertex
+        // is still cut (MU40: ragged mitres at about 17 m out)
+        let off = DVec2::new(16.919, -6.502);
+        let mut fa = Beam::new(lv.id, off, off + DVec2::new(4.0, 0.0));
+        let mut fb = Beam::new(
+            lv.id,
+            off + DVec2::new(4.0, 0.0),
+            off + DVec2::new(1.0, 3.0),
+        );
+        join_beams(&mut fa, &mut fb, BeamCorner::Mitred);
+        let corner = (off + DVec2::new(4.0, 0.0)).extend(0.0);
+        let da = DVec2::X;
+        let db = (DVec2::new(-3.0, 3.0)).normalize();
+        let nn = (da + db).normalize();
+        for p in beam_mesh(&m, &fa).positions {
+            let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+            if q.x - off.x > 3.0 {
+                assert!((q - corner).truncate().dot(nn).abs() < 1e-3, "{q}");
+            }
+        }
+        // and the second's start, cut on the same plane
+        for p in beam_mesh(&m, &fb).positions {
+            let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+            if (q - corner).truncate().length() < 0.5 {
+                assert!((q - corner).truncate().dot(nn).abs() < 1e-3, "start {q}");
+            }
+        }
+        // a library section hung off its insertion point (a channel)
+        let chan = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(0.1, 0.0),
+            DVec2::new(0.1, 0.2),
+            DVec2::new(0.09, 0.2),
+            DVec2::new(0.09, 0.01),
+            DVec2::new(0.0, 0.01),
+        ];
+        let sec = creabim_core::members::Section {
+            name: "C".into(),
+            points: chan,
+        };
+        let (mut ca, mut cb) = (fa.clone(), fb.clone());
+        ca.section = Some(sec.clone());
+        cb.section = Some(sec);
+        join_beams(&mut ca, &mut cb, BeamCorner::Mitred);
+        for (k, bm) in [(1, &ca), (0, &cb)] {
+            for p in beam_mesh(&m, bm).positions {
+                let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+                if (q - corner).truncate().length() < 0.5 {
+                    assert!(
+                        (q - corner).truncate().dot(nn).abs() < 1e-3,
+                        "channel end {k} {q}"
+                    );
+                }
+            }
         }
         // butt: the first runs through to the second's far face
         let (mut a, mut b) = (a.clone(), b.clone());

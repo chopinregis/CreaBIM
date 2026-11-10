@@ -786,7 +786,9 @@ impl CreaBimApp {
             let r = ui
                 .add_enabled(
                     mine,
-                    egui::TextEdit::singleline(&mut self.profiles.name).desired_width(84.0),
+                    egui::TextEdit::singleline(&mut self.profiles.name)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(84.0),
                 )
                 .on_hover_text(if mine {
                     "The profile's name: type a new one, then Enter"
@@ -989,7 +991,9 @@ impl CreaBimApp {
         }
         let r = crate::props::fill(
             ui,
-            egui::TextEdit::singleline(&mut self.profiles.name).interactive(mine),
+            egui::TextEdit::singleline(&mut self.profiles.name)
+                .vertical_align(egui::Align::Center)
+                .interactive(mine),
         );
         if r.lost_focus() {
             let new = self.profiles.name.trim().to_string();
@@ -2870,6 +2874,7 @@ impl CreaBimApp {
                                         ui.label("Really");
                                         let r = ui.add(
                                             egui::TextEdit::singleline(&mut text)
+                                                .vertical_align(egui::Align::Center)
                                                 .desired_width(70.0),
                                         );
                                         r.request_focus();
@@ -2978,8 +2983,11 @@ impl CreaBimApp {
                         egui::Frame::popup(ui.style()).show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 ui.label("Length");
-                                let r = ui
-                                    .add(egui::TextEdit::singleline(&mut text).desired_width(70.0));
+                                let r = ui.add(
+                                    egui::TextEdit::singleline(&mut text)
+                                        .vertical_align(egui::Align::Center)
+                                        .desired_width(70.0),
+                                );
                                 r.request_focus();
                                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                     done = true;

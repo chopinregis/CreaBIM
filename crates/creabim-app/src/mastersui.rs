@@ -2011,6 +2011,7 @@ impl CreaBimApp {
                         ui.label(egui::RichText::new("Your own field").strong());
                         let r = ui.add(
                             egui::TextEdit::singleline(&mut name)
+                                .vertical_align(egui::Align::Center)
                                 .hint_text("client, drawn by, checked…")
                                 .desired_width(200.0),
                         );
@@ -2072,7 +2073,10 @@ impl CreaBimApp {
         if self.prop_header(ui, "master_about", "Master", true, None) {
             let mut n = name.clone();
             let r = crate::props::row(ui, "Name", |ui| {
-                crate::props::fill(ui, egui::TextEdit::singleline(&mut n))
+                crate::props::fill(
+                    ui,
+                    egui::TextEdit::singleline(&mut n).vertical_align(egui::Align::Center),
+                )
             });
             if r.lost_focus() && !n.trim().is_empty() && n.trim() != name {
                 let new = n.trim().to_string();
@@ -2191,6 +2195,7 @@ impl CreaBimApp {
                         changed |= ui
                             .add(
                                 egui::TextEdit::singleline(v)
+                                    .vertical_align(egui::Align::Center)
                                     .desired_width(w)
                                     .hint_text("Until a sheet fills it"),
                             )
@@ -2213,6 +2218,7 @@ impl CreaBimApp {
             let add = crate::props::row(ui, "New field", |ui| {
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut new)
+                        .vertical_align(egui::Align::Center)
                         .desired_width(ui.available_width())
                         .hint_text("client, drawn by, revision…"),
                 );
@@ -2391,7 +2397,10 @@ impl CreaBimApp {
                 angle,
             } => {
                 let r = crate::props::row(ui, "Words", |ui| {
-                    crate::props::fill(ui, egui::TextEdit::singleline(text))
+                    crate::props::fill(
+                        ui,
+                        egui::TextEdit::singleline(text).vertical_align(egui::Align::Center),
+                    )
                 });
                 if r.lost_focus() {
                     label = Some("Master text");
