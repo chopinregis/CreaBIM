@@ -386,9 +386,12 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
             }
         }
         ElementKind::Beam(b) => {
-            let top = b.top(model);
+            // a sloped beam spans from its lowest to its highest point
+            let base = b.top(model);
+            let top = base + b.rise[0].max(b.rise[1]);
+            let bottom = base + b.rise[0].min(b.rise[1]) - b.depth;
             let pts = b.outline();
-            if top - b.depth < z && z < top {
+            if bottom < z && z < top {
                 items.push(PlanItem::Polygon {
                     id: e.id,
                     pen: Pen::Cut,

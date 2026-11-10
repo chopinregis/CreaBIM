@@ -4322,6 +4322,16 @@ impl CreaBimApp {
             _ => set.beam_depth,
         };
         let (ta, tb) = (a + n * height, at + n * height);
+        // it belongs to the level it sits on, the highest one at or below
+        // its lowest point, not the plan that was open (MU40: drawn on the
+        // roof, it was on the ground floor and the roof plan never showed
+        // it)
+        let low = ta.z.min(tb.z) - height;
+        let level = model
+            .levels()
+            .filter(|(_, l)| l.elevation <= low + 1e-6)
+            .max_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation))
+            .map_or(level, |(e, _)| e.id);
         let top0 = creabim_core::members::elevation(model, level)
             + creabim_core::members::storey_height(model, level);
         let mut b = creabim_core::Beam::new(level, ta.truncate(), tb.truncate());
