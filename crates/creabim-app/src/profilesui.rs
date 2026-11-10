@@ -805,7 +805,7 @@ impl CreaBimApp {
             .into_iter()
             .find(|p| p.name == cur);
         let users = profiles::users(model, &cur).len();
-        if self.prop_header(ui, "prof.about", "Profile", true, Some("profiles")) {
+        if self.prop_header(ui, "prof_about", "Profile", true, Some("profiles")) {
             crate::props::row(ui, "Name", |ui| self.profile_name_field_bare(ui));
             let pts: Vec<DVec2> = match &mine {
                 Some(p) => p.shapes().iter().flat_map(|s| s.points.clone()).collect(),
@@ -846,7 +846,7 @@ impl CreaBimApp {
             .map(|f| f.sample)
             .collect();
         let filled = faces.len() - voids.len();
-        if self.prop_header(ui, "prof.faces", "Faces", true, None) {
+        if self.prop_header(ui, "prof_faces", "Faces", true, None) {
             crate::props::row(ui, "Faces", |ui| {
                 ui.label(format!(
                     "{filled} filled, {} void{}",
@@ -891,7 +891,7 @@ impl CreaBimApp {
                     "Click a face to turn it over: a void filled, a fill made void.".into();
             }
         }
-        if self.prop_header(ui, "prof.flip", "Flip", true, None) {
+        if self.prop_header(ui, "prof_flip", "Flip", true, None) {
             let (across, up) = crate::props::actions2(
                 ui,
                 "",
@@ -932,7 +932,7 @@ impl CreaBimApp {
         if let Some(PSel::Corner(si, ci)) = self.profiles.sel {
             let at = p.shapes().get(si).and_then(|s| s.points.get(ci)).copied();
             if let Some(at) = at {
-                if self.prop_header(ui, "prof.picked", "Picked corner", true, None) {
+                if self.prop_header(ui, "prof_picked", "Picked corner", true, None) {
                     let (mut x, mut y) = (at.x * 1000.0, at.y * 1000.0);
                     let cx = crate::props::row(ui, "X", |ui| {
                         crate::props::fill(
@@ -1331,7 +1331,23 @@ impl CreaBimApp {
                 }
             }
         }
-        if response.dragged_by(egui::PointerButton::Secondary)
+        // Ctrl + middle-drag zooms about where the drag began, as in the
+        // drawings (MU40); otherwise right or middle drag pans
+        let ctrl_zoom =
+            response.dragged_by(egui::PointerButton::Middle) && ui.input(|i| i.modifiers.command);
+        if ctrl_zoom {
+            let dy = response.drag_delta().y;
+            if let Some(h) = ui.input(|i| i.pointer.press_origin()) {
+                let k = (1.0 - dy / 200.0).clamp(0.5, 2.0);
+                let off = DVec2::new(
+                    (h.x - body.center().x) as f64,
+                    -(h.y - body.center().y) as f64,
+                );
+                let w = center + off / scale as f64;
+                scale = (scale * k).clamp(1.0, 1e6);
+                center = w - off / scale as f64;
+            }
+        } else if response.dragged_by(egui::PointerButton::Secondary)
             || response.dragged_by(egui::PointerButton::Middle)
         {
             let d = response.drag_delta();

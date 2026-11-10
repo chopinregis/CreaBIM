@@ -318,11 +318,20 @@ pub fn draw_template(
 ) {
     let o = t.corner.at(sheet.width, sheet.height);
     if t.border {
-        let lo = DVec2::new(BINDING, MARGIN);
-        let hi = DVec2::new(sheet.width - MARGIN, sheet.height - MARGIN);
+        // where its margins put it (MU40: the border stretches)
+        let (lo, hi) = t.border_box(DVec2::new(sheet.width, sheet.height));
         c.rect(lo, hi, Stroke::solid(0.5, 0.0));
     }
-    for it in &t.items {
+    // a logo is drawn as the shapes it holds, laid over its box
+    let laid: Vec<TitleItem> = t
+        .items
+        .iter()
+        .flat_map(|it| match it {
+            TitleItem::Logo { .. } => it.logo_shapes(),
+            _ => vec![it.clone()],
+        })
+        .collect();
+    for it in &laid {
         match it {
             TitleItem::Line { points, width } => {
                 let pts: Vec<DVec2> = points.iter().map(|p| *p + o).collect();
@@ -374,11 +383,14 @@ pub fn draw_template(
                 width,
                 height,
                 rgba,
+                opacity,
             } => {
                 if let Some(r) = crate::raster::stored_image(*width, *height, rgba) {
+                    let r = crate::raster::faded(&r, *opacity);
                     c.image(*lo + o, *hi + o, None, &r);
                 }
             }
+            TitleItem::Logo { .. } => {}
         }
     }
 }
@@ -542,6 +554,7 @@ pub fn builtin_template() -> SheetTemplate {
         fields: vec![],
         paper: None,
         guides: vec![],
+        margins: None,
     }
 }
 
@@ -949,6 +962,7 @@ mod tests {
             ],
             paper: None,
             guides: vec![],
+            margins: None,
         };
         let (_, s) = sheets(&m).into_iter().next().unwrap();
         let mut s = s.clone();
@@ -1175,6 +1189,7 @@ mod tests {
             fields: vec![("client".into(), "Client".into())],
             paper: None,
             guides: vec![],
+            margins: None,
         };
         let te = Element::new("Office", ElementKind::SheetTemplate(t));
         let tid = te.id;

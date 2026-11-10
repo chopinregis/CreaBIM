@@ -46,6 +46,7 @@ pub fn from_items(items: Vec<TitleItem>) -> Result<SheetTemplate, String> {
         fields: vec![],
         paper: None,
         guides: vec![],
+        margins: None,
     };
     let (lo, hi) = t.bounds().unwrap_or_default();
     let size = hi - lo;
@@ -473,7 +474,13 @@ fn path_polylines(d: &str) -> Vec<(Vec<DVec2>, bool)> {
             cur.clear();
         }
     };
+    // the last curve's second control point, for S and T
+    let mut last_ctrl: Option<DVec2> = None;
     for (k, v) in cmds {
+        let reflects = matches!(k.to_ascii_uppercase(), 'C' | 'S' | 'Q' | 'T');
+        if !reflects {
+            last_ctrl = None;
+        }
         let rel = k.is_ascii_lowercase();
         let base = |pos: DVec2| if rel { pos } else { DVec2::ZERO };
         match k.to_ascii_uppercase() {
@@ -487,7 +494,7 @@ fn path_polylines(d: &str) -> Vec<(Vec<DVec2>, bool)> {
                     cur.push(pos);
                 }
             }
-            'L' | 'T' => {
+            'L' => {
                 for xy in v.chunks(2).filter(|c| c.len() == 2) {
                     pos = base(pos) + DVec2::new(xy[0], xy[1]);
                     cur.push(pos);
@@ -505,16 +512,59 @@ fn path_polylines(d: &str) -> Vec<(Vec<DVec2>, bool)> {
                     cur.push(pos);
                 }
             }
-            // curves and arcs: by where each piece ends
-            'C' | 'S' | 'Q' | 'A' => {
-                let n = match k.to_ascii_uppercase() {
+            // curves and arcs, followed by points along them (MU40: a
+            // logo's curves came in as straight cuts between their ends)
+            'C' | 'S' | 'Q' | 'T' => {
+                let up = k.to_ascii_uppercase();
+                let n = match up {
                     'C' => 6,
                     'S' | 'Q' => 4,
-                    _ => 7,
+                    _ => 2,
                 };
                 for piece in v.chunks(n).filter(|c| c.len() == n) {
-                    pos = base(pos) + DVec2::new(piece[n - 2], piece[n - 1]);
-                    cur.push(pos);
+                    let b = base(pos);
+                    let p = |i: usize| b + DVec2::new(piece[i], piece[i + 1]);
+                    // the first control point: given, or the last one
+                    // mirrored for the smooth forms
+                    let mirror = 2.0 * pos - last_ctrl.unwrap_or(pos);
+                    let (c1, c2, end) = match up {
+                        'C' => (p(0), Some(p(2)), p(4)),
+                        'S' => (mirror, Some(p(0)), p(2)),
+                        'Q' => (p(0), None, p(2)),
+                        _ => (mirror, None, p(0)),
+                    };
+                    let a = pos;
+                    for s in 1..=16 {
+                        let t = s as f64 / 16.0;
+                        let u = 1.0 - t;
+                        cur.push(match c2 {
+                            Some(c2) => {
+                                a * u * u * u
+                                    + c1 * 3.0 * u * u * t
+                                    + c2 * 3.0 * u * t * t
+                                    + end * t * t * t
+                            }
+                            None => a * u * u + c1 * 2.0 * u * t + end * t * t,
+                        });
+                    }
+                    last_ctrl = Some(c2.unwrap_or(c1));
+                    pos = end;
+                }
+                continue;
+            }
+            'A' => {
+                for piece in v.chunks(7).filter(|c| c.len() == 7) {
+                    let end = base(pos) + DVec2::new(piece[5], piece[6]);
+                    cur.extend(arc_points(
+                        pos,
+                        end,
+                        piece[0],
+                        piece[1],
+                        piece[2],
+                        piece[3] != 0.0,
+                        piece[4] != 0.0,
+                    ));
+                    pos = end;
                 }
             }
             'Z' => {
@@ -527,6 +577,352 @@ fn path_polylines(d: &str) -> Vec<(Vec<DVec2>, bool)> {
     }
     finish(&mut cur, &mut out, false);
     out
+}
+
+/// An SVG elliptical arc from `a` to `b` as points along it (not `a`),
+/// by the SVG specification's centre parameterisation.
+fn arc_points(
+    a: DVec2,
+    b: DVec2,
+    rx: f64,
+    ry: f64,
+    rot: f64,
+    large: bool,
+    sweep: bool,
+) -> Vec<DVec2> {
+    let (mut rx, mut ry) = (rx.abs(), ry.abs());
+    if rx < 1e-12 || ry < 1e-12 || a.distance(b) < 1e-12 {
+        return vec![b];
+    }
+    let phi = rot.to_radians();
+    let (s, c) = phi.sin_cos();
+    let d = (a - b) / 2.0;
+    let p = DVec2::new(c * d.x + s * d.y, -s * d.x + c * d.y);
+    let l = p.x * p.x / (rx * rx) + p.y * p.y / (ry * ry);
+    if l > 1.0 {
+        rx *= l.sqrt();
+        ry *= l.sqrt();
+    }
+    let num = rx * rx * ry * ry - rx * rx * p.y * p.y - ry * ry * p.x * p.x;
+    let den = rx * rx * p.y * p.y + ry * ry * p.x * p.x;
+    let mut k = (num / den).max(0.0).sqrt();
+    if large == sweep {
+        k = -k;
+    }
+    let cp = DVec2::new(k * rx * p.y / ry, -k * ry * p.x / rx);
+    let centre = DVec2::new(c * cp.x - s * cp.y, s * cp.x + c * cp.y) + (a + b) / 2.0;
+    let ang = |u: DVec2| u.y.atan2(u.x);
+    let t0 = ang(DVec2::new((p.x - cp.x) / rx, (p.y - cp.y) / ry));
+    let mut dt = ang(DVec2::new((-p.x - cp.x) / rx, (-p.y - cp.y) / ry)) - t0;
+    let tau = std::f64::consts::TAU;
+    if sweep && dt < 0.0 {
+        dt += tau;
+    } else if !sweep && dt > 0.0 {
+        dt -= tau;
+    }
+    let n = ((dt.abs() / tau * 48.0).ceil() as usize).max(4);
+    (1..=n)
+        .map(|i| {
+            if i == n {
+                return b;
+            }
+            let t = t0 + dt * i as f64 / n as f64;
+            let q = DVec2::new(rx * t.cos(), ry * t.sin());
+            centre + DVec2::new(c * q.x - s * q.y, s * q.x + c * q.y)
+        })
+        .collect()
+}
+
+/// An SVG colour: `#rgb`, `#rrggbb`, `rgb(…)` or a common name; none for
+/// `none`, black for what is not understood (a gradient's url, say).
+fn colour(v: &str) -> Option<[f32; 3]> {
+    let v = v.trim().to_ascii_lowercase();
+    let hex = |s: &str| u8::from_str_radix(s, 16).ok().map(|b| b as f32 / 255.0);
+    Some(match v.as_str() {
+        "none" | "transparent" => return None,
+        "white" => [1.0; 3],
+        "red" => [1.0, 0.0, 0.0],
+        "green" => [0.0, 0.5, 0.0],
+        "blue" => [0.0, 0.0, 1.0],
+        "yellow" => [1.0, 1.0, 0.0],
+        "orange" => [1.0, 0.65, 0.0],
+        "gray" | "grey" => [0.5; 3],
+        "silver" => [0.75; 3],
+        _ if v.starts_with('#') && v.len() == 7 => [
+            hex(&v[1..3]).unwrap_or(0.0),
+            hex(&v[3..5]).unwrap_or(0.0),
+            hex(&v[5..7]).unwrap_or(0.0),
+        ],
+        _ if v.starts_with('#') && v.len() == 4 => {
+            let d = |i: usize| hex(&v[i..i + 1].repeat(2)).unwrap_or(0.0);
+            [d(1), d(2), d(3)]
+        }
+        _ if v.starts_with("rgb") => {
+            let inner = v
+                .trim_start_matches("rgba")
+                .trim_start_matches("rgb")
+                .trim_matches(|c| c == '(' || c == ')' || c == ' ');
+            let parts: Vec<f32> = inner
+                .split([',', ' '])
+                .filter(|p| !p.is_empty())
+                .take(3)
+                .map(|p| match p.strip_suffix('%') {
+                    Some(q) => q.parse::<f32>().unwrap_or(0.0) / 100.0,
+                    None => p.parse::<f32>().unwrap_or(0.0) / 255.0,
+                })
+                .collect();
+            if parts.len() == 3 {
+                [parts[0], parts[1], parts[2]]
+            } else {
+                [0.0; 3]
+            }
+        }
+        _ => [0.0; 3],
+    })
+}
+
+/// A vector logo from an SVG drawing (MU40: logos crisp, not pictures):
+/// its paths, rectangles, circles, ellipses, polygons and lines, curves
+/// followed closely, fills with their holes, strokes, colours and
+/// opacity, as [`TitleItem::Shape`]s in a unit box (0..1, y up, pens in
+/// widths of the box), and the drawing's width over its height. Text,
+/// pictures, gradients (drawn black) and clip paths are not read.
+pub fn svg_logo(text: &str) -> Result<(Vec<TitleItem>, f64), String> {
+    let open = text.find("<svg").ok_or("that is not an SVG file")?;
+    let head_end = text[open..].find('>').ok_or("that is not an SVG file")? + open;
+    // what fills and strokes, inherited down the groups
+    #[derive(Clone)]
+    struct Paint {
+        fill: Option<[f32; 3]>,
+        stroke: Option<[f32; 3]>,
+        width: f64,
+        opacity: f64,
+    }
+    let read_paint = |tag: &str, up: &Paint| -> Paint {
+        let get = |n: &str| style_attr(tag, n);
+        let op = |n: &str| get(n).and_then(|v| v.parse::<f64>().ok()).unwrap_or(1.0);
+        Paint {
+            fill: match get("fill") {
+                Some(v) => colour(&v),
+                None => up.fill,
+            },
+            stroke: match get("stroke") {
+                Some(v) => colour(&v),
+                None => up.stroke,
+            },
+            width: get("stroke-width")
+                .and_then(|v| numbers(&v).first().copied())
+                .unwrap_or(up.width),
+            opacity: up.opacity * op("opacity") * op("fill-opacity").min(op("stroke-opacity")),
+        }
+    };
+    let root = Paint {
+        fill: Some([0.0; 3]),
+        stroke: None,
+        width: 1.0,
+        opacity: 1.0,
+    };
+    let mut stack: Vec<(Affine, Paint)> =
+        vec![(IDENTITY, read_paint(&text[open..head_end], &root))];
+    // what is drawn, in the drawing's own units, y down
+    // each element: its subpaths (points, closed), its paint, its scale
+    type Drawn = (Vec<(Vec<DVec2>, bool)>, Paint, f64);
+    let mut drawn: Vec<Drawn> = vec![];
+    let mut rest = &text[head_end + 1..];
+    let mut skip = 0usize;
+    while let Some(lt) = rest.find('<') {
+        let after = &rest[lt + 1..];
+        let Some(gt) = after.find('>') else { break };
+        let tag = &after[..gt];
+        rest = &after[gt + 1..];
+        if tag.starts_with('!') || tag.starts_with('?') {
+            continue;
+        }
+        let name = tag
+            .trim_start_matches('/')
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_end_matches('/');
+        let selfclose = tag.ends_with('/');
+        // definitions, clip paths, masks and the like are not drawn
+        let hidden = matches!(
+            name,
+            "defs"
+                | "clipPath"
+                | "mask"
+                | "pattern"
+                | "symbol"
+                | "marker"
+                | "linearGradient"
+                | "radialGradient"
+                | "style"
+                | "title"
+                | "desc"
+                | "metadata"
+        );
+        if tag.starts_with('/') {
+            if hidden {
+                skip = skip.saturating_sub(1);
+            } else if name == "g" && stack.len() > 1 {
+                stack.pop();
+            }
+            continue;
+        }
+        if hidden {
+            if !selfclose {
+                skip += 1;
+            }
+            continue;
+        }
+        if skip > 0 {
+            continue;
+        }
+        let (m0, p0) = stack.last().cloned().unwrap_or((IDENTITY, root.clone()));
+        let m = compose(&m0, &attr(tag, "transform").map_or(IDENTITY, transform));
+        let paint = read_paint(tag, &p0);
+        if name == "g" {
+            if !selfclose {
+                stack.push((m, paint));
+            }
+            continue;
+        }
+        let num = |n: &str| len_attr(tag, n).unwrap_or(0.0);
+        let subpaths: Vec<(Vec<DVec2>, bool)> = match name {
+            "path" => path_polylines(attr(tag, "d").unwrap_or("")),
+            "rect" => {
+                let (x, y, w, h) = (num("x"), num("y"), num("width"), num("height"));
+                vec![(
+                    vec![
+                        DVec2::new(x, y),
+                        DVec2::new(x + w, y),
+                        DVec2::new(x + w, y + h),
+                        DVec2::new(x, y + h),
+                    ],
+                    true,
+                )]
+            }
+            "circle" | "ellipse" => {
+                let c = DVec2::new(num("cx"), num("cy"));
+                let (rx, ry) = if name == "circle" {
+                    (num("r"), num("r"))
+                } else {
+                    (num("rx"), num("ry"))
+                };
+                vec![(
+                    (0..72)
+                        .map(|i| {
+                            let t = i as f64 / 72.0 * std::f64::consts::TAU;
+                            c + DVec2::new(t.cos() * rx, t.sin() * ry)
+                        })
+                        .collect(),
+                    true,
+                )]
+            }
+            "polygon" | "polyline" => {
+                let v = numbers(attr(tag, "points").unwrap_or(""));
+                vec![(
+                    v.chunks(2)
+                        .filter(|c| c.len() == 2)
+                        .map(|c| DVec2::new(c[0], c[1]))
+                        .collect(),
+                    name == "polygon",
+                )]
+            }
+            "line" => vec![(
+                vec![
+                    DVec2::new(num("x1"), num("y1")),
+                    DVec2::new(num("x2"), num("y2")),
+                ],
+                false,
+            )],
+            _ => continue,
+        };
+        // the stroke grows with the shape's own scale
+        let k = ((m[0] * m[3] - m[1] * m[2]).abs()).sqrt();
+        let placed = subpaths
+            .into_iter()
+            .map(|(pts, closed)| (pts.iter().map(|p| apply(&m, *p)).collect(), closed))
+            .collect();
+        drawn.push((placed, paint, k));
+    }
+    // the box round all of it
+    let all = drawn
+        .iter()
+        .flat_map(|(s, _, _)| s.iter().flat_map(|(p, _)| p.iter().copied()));
+    let (lo, hi) = all.fold(
+        (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+        |(lo, hi), p| (lo.min(p), hi.max(p)),
+    );
+    let span = hi - lo;
+    if !(span.x > 1e-9 && span.y > 1e-9) {
+        return Err("found no shapes to make a logo from".into());
+    }
+    // into the unit box, y up
+    let unit = |p: DVec2| DVec2::new((p.x - lo.x) / span.x, (hi.y - p.y) / span.y);
+    let mut out = vec![];
+    for (subs, paint, k) in drawn {
+        let loops: Vec<Vec<DVec2>> = subs
+            .iter()
+            .map(|(p, _)| p.iter().map(|q| unit(*q)).collect())
+            .collect();
+        if let Some(f) = paint.fill {
+            // what the path fills, holes and all (even-odd), each piece
+            // one outline with its holes joined in
+            let filled = creabim_core::regions::filled(
+                &loops
+                    .iter()
+                    .filter(|l| l.len() >= 3)
+                    .map(|l| creabim_core::regions::Loop {
+                        points: l.clone(),
+                        solid: false,
+                    })
+                    .collect::<Vec<_>>(),
+                &[],
+            );
+            let area = creabim_core::polygon::signed_area2;
+            let (outers, holes): (Vec<Vec<DVec2>>, Vec<Vec<DVec2>>) =
+                filled.into_iter().partition(|l| area(l) > 0.0);
+            for o in &outers {
+                let mine: Vec<Vec<DVec2>> = holes
+                    .iter()
+                    .filter(|h| {
+                        creabim_core::polygon::contains(o, h[0])
+                            && !outers.iter().any(|o2| {
+                                area(o2) < area(o) && creabim_core::polygon::contains(o2, h[0])
+                            })
+                    })
+                    .cloned()
+                    .collect();
+                out.push(TitleItem::Shape {
+                    points: creabim_core::profiles::merge_as_is(o.clone(), &mine),
+                    closed: true,
+                    pen: None,
+                    colour: f,
+                    fill: Some(f),
+                    opacity: paint.opacity.clamp(0.0, 1.0),
+                });
+            }
+        }
+        if let Some(sc) = paint.stroke {
+            for (l, (_, closed)) in loops.iter().zip(&subs) {
+                if l.len() >= 2 {
+                    out.push(TitleItem::Shape {
+                        points: l.clone(),
+                        closed: *closed,
+                        pen: Some((paint.width * k / span.x).max(1e-4)),
+                        colour: sc,
+                        fill: None,
+                        opacity: paint.opacity.clamp(0.0, 1.0),
+                    });
+                }
+            }
+        }
+    }
+    if out.is_empty() {
+        return Err("found nothing filled or stroked to make a logo from".into());
+    }
+    Ok((out, span.x / span.y))
 }
 
 /// The lines, shapes and text of an SVG drawing, in mm with y up.
@@ -747,14 +1143,26 @@ pub fn to_svg(t: &SheetTemplate) -> String {
 ",
     );
     if t.border {
+        let (lo, hi) = t.border_box(paper);
         out.push_str(&format!(
-            "<rect x=\"20\" y=\"{MARGIN}\" width=\"{:.3}\" height=\"{:.3}\" stroke-width=\"0.5\"/>
+            "<rect x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" stroke-width=\"0.5\"/>
 ",
-            paper.x - 20.0 - MARGIN,
-            paper.y - 2.0 * MARGIN
+            lo.x,
+            paper.y - hi.y,
+            hi.x - lo.x,
+            hi.y - lo.y
         ));
     }
-    for it in &t.items {
+    // a logo as the shapes it holds, laid over its box
+    let laid: Vec<TitleItem> = t
+        .items
+        .iter()
+        .flat_map(|it| match it {
+            TitleItem::Logo { .. } => it.logo_shapes(),
+            _ => vec![it.clone()],
+        })
+        .collect();
+    for it in &laid {
         match it {
             TitleItem::Line { points, width } => out.push_str(&format!(
                 "<polyline points=\"{}\" stroke-width=\"{:.3}\"/>
@@ -798,11 +1206,12 @@ pub fn to_svg(t: &SheetTemplate) -> String {
                 width,
                 height,
                 rgba,
+                opacity,
             } => {
                 if let Some(r) = creabim_geom::raster::stored_image(*width, *height, rgba) {
                     let (a, b) = (svg(o + *lo), svg(o + *hi));
                     out.push_str(&format!(
-                        "<image x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" preserveAspectRatio=\"none\" href=\"data:image/png;base64,{}\"/>\n",
+                        "<image opacity=\"{opacity:.3}\" x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" preserveAspectRatio=\"none\" href=\"data:image/png;base64,{}\"/>\n",
                         a.x.min(b.x),
                         a.y.min(b.y),
                         (b.x - a.x).abs(),
@@ -811,7 +1220,7 @@ pub fn to_svg(t: &SheetTemplate) -> String {
                     ));
                 }
             }
-            TitleItem::Text { .. } => {}
+            TitleItem::Text { .. } | TitleItem::Logo { .. } => {}
         }
     }
     out.push_str(
@@ -1000,5 +1409,53 @@ mod tests {
             );
         }
         assert!(svg.contains("{project}") && svg.contains("<rect"));
+    }
+
+    #[test]
+    fn an_svg_logo_keeps_its_curves_holes_and_colours() {
+        // a red ring (a circle with a hole, even-odd) and a blue curved stroke
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50">
+          <defs><clipPath id="c"><rect width="1" height="1"/></clipPath></defs>
+          <g fill="#ff0000">
+            <path d="M25 5 A20 20 0 1 1 25 45 A20 20 0 1 1 25 5 Z M25 15 A10 10 0 1 0 25 35 A10 10 0 1 0 25 15 Z"/>
+          </g>
+          <path d="M60 40 C70 0 90 0 100 40" fill="none" stroke="#0000ff" stroke-width="2"/>
+        </svg>"##;
+        let (shapes, aspect) = svg_logo(svg).unwrap();
+        // cropped to what is drawn: x 5..100, y 5..45
+        assert!((aspect - 95.0 / 40.0).abs() < 0.02, "{aspect}");
+        let fills: Vec<&TitleItem> = shapes
+            .iter()
+            .filter(|s| matches!(s, TitleItem::Shape { fill: Some(_), .. }))
+            .collect();
+        let strokes: Vec<&TitleItem> = shapes
+            .iter()
+            .filter(|s| matches!(s, TitleItem::Shape { pen: Some(_), .. }))
+            .collect();
+        assert_eq!(
+            fills.len(),
+            1,
+            "the ring is one outline with its hole joined in"
+        );
+        assert_eq!(strokes.len(), 1);
+        let TitleItem::Shape { points, colour, .. } = fills[0] else {
+            unreachable!()
+        };
+        assert_eq!(*colour, [1.0, 0.0, 0.0]);
+        // its area is the ring's: the hole is empty (the unit box is
+        // 95 x 40 units)
+        let a = creabim_core::polygon::signed_area2(points).abs() / 2.0 * 95.0 * 40.0;
+        let ring = std::f64::consts::PI * (20.0f64.powi(2) - 10.0f64.powi(2));
+        assert!((a - ring).abs() / ring < 0.05, "{a} vs {ring}");
+        // the curve is followed, not cut straight between its ends
+        let TitleItem::Shape { points, colour, .. } = strokes[0] else {
+            unreachable!()
+        };
+        assert_eq!(*colour, [0.0, 0.0, 1.0]);
+        assert!(points.len() > 10);
+        assert!(
+            points.iter().any(|p| p.y > 0.5),
+            "it rises toward its middle"
+        );
     }
 }

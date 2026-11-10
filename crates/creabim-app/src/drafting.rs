@@ -1121,7 +1121,7 @@ fn template_preview(ui: &mut egui::Ui, t: &SheetTemplate) {
                 }
                 painter.add(egui::Shape::line(pts, egui::Stroke::new(0.8, ink)));
             }
-            TitleItem::Image { lo, hi, .. } => {
+            TitleItem::Image { lo, hi, .. } | TitleItem::Logo { lo, hi, .. } => {
                 painter.rect_stroke(
                     egui::Rect::from_two_pos(to(o + *lo), to(o + *hi)),
                     0.0,

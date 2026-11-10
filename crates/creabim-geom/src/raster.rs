@@ -127,6 +127,38 @@ pub fn stored_image(width: u32, height: u32, data: &str) -> Option<std::sync::Ar
     Some(r)
 }
 
+/// `r` see-through by `opacity` (1 as it is): its alpha scaled, kept by
+/// the two.
+pub fn faded(r: &std::sync::Arc<Raster>, opacity: f64) -> std::sync::Arc<Raster> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    let o = opacity.clamp(0.0, 1.0);
+    if o >= 0.999 {
+        return r.clone();
+    }
+    type Faded = HashMap<(u64, u16), Arc<Raster>>;
+    static SEEN: OnceLock<Mutex<Faded>> = OnceLock::new();
+    let key = (r.key, (o * 1000.0).round() as u16);
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some(f) = seen.lock().ok().and_then(|s| s.get(&key).cloned()) {
+        return f;
+    }
+    let mut rgba = r.rgba.clone();
+    for a in rgba.iter_mut().skip(3).step_by(4) {
+        *a = (*a as f64 * o).round() as u8;
+    }
+    let f = Arc::new(Raster {
+        width: r.width,
+        height: r.height,
+        rgba,
+        key: r.key ^ (key.1 as u64).rotate_left(48) ^ 0x9e37_79b9,
+    });
+    if let Ok(mut s) = seen.lock() {
+        s.insert(key, f.clone());
+    }
+    f
+}
+
 /// RGBA pixels as a title block keeps them: deflated, in base64.
 pub fn store_image(rgba: &[u8]) -> String {
     base64(&deflate(rgba))

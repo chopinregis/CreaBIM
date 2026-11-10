@@ -2556,6 +2556,7 @@ fn title_block() -> SheetTemplate {
         ],
         paper: None,
         guides: vec![],
+        margins: None,
     }
 }
 

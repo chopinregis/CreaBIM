@@ -112,6 +112,17 @@ pub enum TitleItem {
         width: u32,
         height: u32,
         rgba: String,
+        /// 1 solid, 0 gone (MU40: a picture as a faint background).
+        #[serde(default = "one")]
+        opacity: f64,
+    },
+    /// A vector logo from an SVG, crisp at any size (MU40): its shapes
+    /// ([`TitleItem::Shape`]s) in a unit box, 0..1 each way with y up and
+    /// pens in widths of the box, drawn stretched over `lo`..`hi`.
+    Logo {
+        lo: DVec2,
+        hi: DVec2,
+        shapes: Vec<TitleItem>,
     },
 }
 
@@ -128,8 +139,38 @@ impl TitleItem {
             | TitleItem::Fill { points, .. }
             | TitleItem::Shape { points, .. } => points.clone(),
             TitleItem::Text { at, .. } => vec![*at],
-            TitleItem::Image { lo, hi, .. } => vec![*lo, *hi],
+            TitleItem::Image { lo, hi, .. } | TitleItem::Logo { lo, hi, .. } => vec![*lo, *hi],
         }
+    }
+
+    /// A logo's shapes laid over its box, in mm from the corner; none for
+    /// anything else.
+    pub fn logo_shapes(&self) -> Vec<TitleItem> {
+        let TitleItem::Logo { lo, hi, shapes } = self else {
+            return vec![];
+        };
+        let span = *hi - *lo;
+        shapes
+            .iter()
+            .filter_map(|s| match s {
+                TitleItem::Shape {
+                    points,
+                    closed,
+                    pen,
+                    colour,
+                    fill,
+                    opacity,
+                } => Some(TitleItem::Shape {
+                    points: points.iter().map(|p| *lo + *p * span).collect(),
+                    closed: *closed,
+                    pen: pen.map(|w| w * span.x.abs()),
+                    colour: *colour,
+                    fill: *fill,
+                    opacity: *opacity,
+                }),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Move it by `d` mm.
@@ -139,7 +180,7 @@ impl TitleItem {
             | TitleItem::Fill { points, .. }
             | TitleItem::Shape { points, .. } => points.iter_mut().for_each(|p| *p += d),
             TitleItem::Text { at, .. } => *at += d,
-            TitleItem::Image { lo, hi, .. } => {
+            TitleItem::Image { lo, hi, .. } | TitleItem::Logo { lo, hi, .. } => {
                 *lo += d;
                 *hi += d;
             }
@@ -168,6 +209,23 @@ pub struct SheetTemplate {
     /// from its corner): kept with it, never printed (MU40).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub guides: Vec<(DVec2, DVec2)>,
+    /// Its border's margins from the paper's edges, mm: left (the binding
+    /// side), bottom, right, top; none, the usual 20, 10, 10, 10 (MU40:
+    /// the border could not be picked or stretched).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub margins: Option<[f64; 4]>,
+}
+
+/// The usual margins: left (binding), bottom, right, top, mm.
+pub const MARGINS: [f64; 4] = [20.0, 10.0, 10.0, 10.0];
+
+impl SheetTemplate {
+    /// Its border's corners on a `paper`-sized sheet, mm from the lower
+    /// left.
+    pub fn border_box(&self, paper: DVec2) -> (DVec2, DVec2) {
+        let m = self.margins.unwrap_or(MARGINS);
+        (DVec2::new(m[0], m[1]), paper - DVec2::new(m[2], m[3]))
+    }
 }
 
 fn yes() -> bool {
@@ -214,6 +272,13 @@ impl SheetTemplate {
                     height,
                     ..
                 } => lo.is_finite() && hi.is_finite() && *width > 0 && *height > 0,
+                TitleItem::Logo { lo, hi, shapes } => {
+                    lo.is_finite()
+                        && hi.is_finite()
+                        && shapes.iter().all(|s| {
+                            matches!(s, TitleItem::Shape { points, .. } if points.iter().all(finite))
+                        })
+                }
             };
             if !ok {
                 return Err("title block items must be finite, with positive text sizes".into());
@@ -395,6 +460,7 @@ pub fn standard_strip() -> SheetTemplate {
         fields: vec![("client".into(), String::new()), ("rev".into(), "-".into())],
         paper: Some(DVec2::new(420.0, 297.0)),
         guides: vec![],
+        margins: None,
     }
 }
 
@@ -421,6 +487,7 @@ pub fn minimal_band() -> SheetTemplate {
         fields: vec![],
         paper: Some(DVec2::new(420.0, 297.0)),
         guides: vec![],
+        margins: None,
     }
 }
 
@@ -501,6 +568,7 @@ mod tests {
             fields: vec![("client".into(), "Client name".into())],
             paper: None,
             guides: vec![],
+            margins: None,
         }
     }
 

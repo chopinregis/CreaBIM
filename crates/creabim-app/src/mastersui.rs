@@ -71,6 +71,12 @@ pub struct MastersUi {
     guide_drag: Option<(usize, DVec2, DVec2)>,
     /// Guides hidden (and not snapped to) while looking at the result.
     pub hide_guides: bool,
+    /// A field of your own being named, from the Field menu.
+    asking_field: Option<String>,
+    /// The border picked (its margins in Properties), and an edge being
+    /// dragged: (0 left, 1 bottom, 2 right, 3 top; where it is now, mm).
+    pub border_sel: bool,
+    border_drag: Option<(usize, f64)>,
 }
 
 /// The guide's colour: a cyan apart from ink, fields and the selection.
@@ -188,7 +194,7 @@ fn item_dist(it: &TitleItem, p: DVec2) -> f64 {
                 edges(points, *closed)
             }
         }
-        TitleItem::Text { .. } | TitleItem::Image { .. } => {
+        TitleItem::Text { .. } | TitleItem::Image { .. } | TitleItem::Logo { .. } => {
             let (lo, hi) = item_box(it);
             p.distance(p.clamp(lo, hi))
         }
@@ -207,7 +213,7 @@ fn scale_item(it: &mut TitleItem, anchor: DVec2, k: DVec2) {
             f(at);
             *size = (*size * k.y.abs()).clamp(0.5, 200.0);
         }
-        TitleItem::Image { lo, hi, .. } => {
+        TitleItem::Image { lo, hi, .. } | TitleItem::Logo { lo, hi, .. } => {
             f(lo);
             f(hi);
             let (a, b) = (lo.min(*hi), lo.max(*hi));
@@ -237,6 +243,20 @@ fn quarter_turn(it: &mut TitleItem) {
             r(&mut a);
             r(&mut b);
             (*lo, *hi) = (a.min(b), a.max(b));
+        }
+        // a logo turns whole: its box, and its shapes inside it
+        TitleItem::Logo { lo, hi, shapes } => {
+            let (mut a, mut b) = (*lo, *hi);
+            r(&mut a);
+            r(&mut b);
+            (*lo, *hi) = (a.min(b), a.max(b));
+            for s in shapes.iter_mut() {
+                if let TitleItem::Shape { points, .. } = s {
+                    for p in points.iter_mut() {
+                        *p = DVec2::new(1.0 - p.y, p.x);
+                    }
+                }
+            }
         }
     }
 }
@@ -480,7 +500,7 @@ impl CreaBimApp {
             json!({"kind": "toggle", "id": "master.tool:guide", "icon": "guides", "label": "Guide", "on": t == MTool::Guide,
                    "hint": "A guide: two clicks, a line to draw by and snap to; nearly level or upright, it goes straight. Kept with the master, never printed"}),
             json!({"kind": "button", "id": "master.picture", "icon": "image", "label": "Picture",
-                   "hint": "A picture: your logo, a stamp, a background (PNG or JPEG). As many as you like; drag its corners to size it"}),
+                   "hint": "A logo or picture: an SVG comes in as a crisp vector logo, a PNG or JPEG as a picture. As many as you like; drag its corners to size it"}),
         ]
     }
 
@@ -523,6 +543,14 @@ impl CreaBimApp {
                         );
                     }
                 }
+                // one not in the list: typed, added to the master's own
+                // fields and placed (MU40)
+                v.push(Item::Separator);
+                v.push(
+                    Item::new("master.newfield", "Your own field…")
+                        .icon("plus")
+                        .hint("Name a field of your own (client, drawn by, checked…): each sheet fills it in"),
+                );
                 v
             }
             _ => return None,
@@ -602,6 +630,7 @@ impl CreaBimApp {
                             fields: vec![],
                             paper: Some(DVec2::new(420.0, 297.0)),
                             guides: vec![],
+                            margins: None,
                         },
                     ),
                 };
@@ -694,6 +723,9 @@ impl CreaBimApp {
                 }
                 .into();
             }
+            "master.newfield" => {
+                self.masters.asking_field = Some(String::new());
+            }
             "master.field" => {
                 self.masters.field = arg.to_string();
                 self.masters.tool = MTool::Field;
@@ -709,11 +741,51 @@ impl CreaBimApp {
     fn add_master_picture(&mut self) {
         let Some(p) = rfd::FileDialog::new()
             .set_title("A picture for the master: a logo, a stamp, a background")
-            .add_filter("Pictures", &["png", "jpg", "jpeg", "bmp", "gif", "webp"])
+            .add_filter(
+                "Logos and pictures",
+                &["svg", "png", "jpg", "jpeg", "bmp", "gif", "webp"],
+            )
             .pick_file()
         else {
             return;
         };
+        // an SVG comes in as a vector logo: crisp at any size (MU40)
+        if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
+            let read = std::fs::read_to_string(&p)
+                .map_err(|e| e.to_string())
+                .and_then(|t| creabim_exchange::titleblock::svg_logo(&t));
+            let (shapes, aspect) = match read {
+                Ok(x) => x,
+                Err(e) => {
+                    self.status = format!("Couldn't read {} as a logo: {e}", p.display());
+                    return;
+                }
+            };
+            let Some((_, _, t)) = self.master() else {
+                self.status = "Make a master first: + in the header.".into();
+                return;
+            };
+            let paper = t.paper.unwrap_or(DVec2::new(420.0, 297.0));
+            let o = t.corner.at(paper.x, paper.y);
+            let mid = self.masters.camera.map_or(paper / 2.0, |(c, _)| c) - o;
+            let size = DVec2::new(40.0, 40.0 / aspect.max(1e-6));
+            let n = t.items.len();
+            let count = shapes.len();
+            self.edit_master("Logo", |t| {
+                t.items.push(TitleItem::Logo {
+                    lo: mid - size / 2.0,
+                    hi: mid + size / 2.0,
+                    shapes,
+                })
+            });
+            self.masters.sel = Some(n);
+            self.masters.tool = MTool::Select;
+            self.prop_tab = PropTab::Master;
+            self.status = format!(
+                "Logo placed ({count} shapes, crisp at any size): drag it into place, its corners size it."
+            );
+            return;
+        }
         let img = match image::open(&p) {
             Ok(i) => i,
             Err(e) => {
@@ -746,6 +818,7 @@ impl CreaBimApp {
                 width: w,
                 height: h,
                 rgba: data,
+                opacity: 1.0,
             })
         });
         self.masters.sel = Some(n);
@@ -768,6 +841,23 @@ impl CreaBimApp {
             .expect("unbounded")
     }
 
+    /// Bring item `i` over everything (`front`) or under it.
+    fn master_order(&mut self, i: usize, front: bool) {
+        let mut to = 0;
+        self.edit_master(if front { "To front" } else { "To back" }, |t| {
+            if i < t.items.len() {
+                let it = t.items.remove(i);
+                if front {
+                    t.items.push(it);
+                    to = t.items.len() - 1;
+                } else {
+                    t.items.insert(0, it);
+                }
+            }
+        });
+        self.masters.sel = Some(to);
+    }
+
     fn add_master(&mut self, name: String, t: SheetTemplate) {
         let e = Element::new(name.clone(), ElementKind::SheetTemplate(t));
         let id = e.id;
@@ -787,7 +877,21 @@ impl CreaBimApp {
         let pal = self.shell.theme.palette();
         let dark = self.dark_paper(ui.ctx());
         let painter = ui.painter_at(body);
-        painter.rect_filled(body, 0.0, pal.panel2);
+        // the desk the sheet lies on: a step darker than the panel in the
+        // theme's own hue, so a white sheet stands out in light themes
+        // without a harsh frame (MU40: white on light green read as one)
+        let desk = if dark {
+            pal.panel2
+        } else {
+            let k = 0.88;
+            let c = pal.panel2;
+            egui::Color32::from_rgb(
+                (c.r() as f32 * k) as u8,
+                (c.g() as f32 * k) as u8,
+                (c.b() as f32 * k) as u8,
+            )
+        };
+        painter.rect_filled(body, 0.0, desk);
         let response = ui.interact(
             body,
             ui.id().with("masters.view"),
@@ -835,7 +939,23 @@ impl CreaBimApp {
                 }
             }
         }
-        if response.dragged_by(egui::PointerButton::Secondary)
+        // Ctrl + middle-drag zooms about where the drag began, as in the
+        // drawings (MU40); otherwise right or middle drag pans
+        let ctrl_zoom =
+            response.dragged_by(egui::PointerButton::Middle) && ui.input(|i| i.modifiers.command);
+        if ctrl_zoom {
+            let dy = response.drag_delta().y;
+            if let Some(h) = ui.input(|i| i.pointer.press_origin()) {
+                let k = (1.0 - dy / 200.0).clamp(0.5, 2.0);
+                let off = DVec2::new(
+                    (h.x - body.center().x) as f64,
+                    -(h.y - body.center().y) as f64,
+                );
+                let w = center + off / scale as f64;
+                scale = (scale * k).clamp(0.2, 200.0);
+                center = w - off / scale as f64;
+            }
+        } else if response.dragged_by(egui::PointerButton::Secondary)
             || response.dragged_by(egui::PointerButton::Middle)
         {
             let d = response.drag_delta();
@@ -901,7 +1021,22 @@ impl CreaBimApp {
             2.0,
             egui::Color32::from_black_alpha(40),
         );
+        painter.rect_filled(
+            sheet.translate(egui::vec2(0.0, 6.0)).expand(2.0),
+            4.0,
+            egui::Color32::from_black_alpha(if dark { 40 } else { 26 }),
+        );
         painter.rect_filled(sheet, 0.0, sheet_fill);
+        // its edge, fine and a shade of the desk
+        painter.rect_stroke(
+            sheet,
+            0.0,
+            egui::Stroke::new(
+                1.0,
+                egui::Color32::from_black_alpha(if dark { 90 } else { 60 }),
+            ),
+            egui::StrokeKind::Outside,
+        );
         // its millimetre grid, the finest step at least 8 px apart
         let step = [1.0, 5.0, 10.0, 50.0]
             .into_iter()
@@ -932,7 +1067,14 @@ impl CreaBimApp {
         let pen =
             |w: f64, c: egui::Color32| egui::Stroke::new(((w * scale as f64) as f32).max(1.0), c);
         // the margins, dashed, and the border if it has one
-        let (blo, bhi) = (DVec2::new(20.0, 10.0), paper - DVec2::splat(10.0));
+        let (mut blo, mut bhi) = t.border_box(paper);
+        match self.masters.border_drag {
+            Some((0, v)) => blo.x = v,
+            Some((1, v)) => blo.y = v,
+            Some((2, v)) => bhi.x = v,
+            Some((3, v)) => bhi.y = v,
+            _ => {}
+        }
         let margin = [
             blo,
             DVec2::new(bhi.x, blo.y),
@@ -954,6 +1096,44 @@ impl CreaBimApp {
                 4.0,
             ));
         }
+        // the border picked: in the accent, a grip on each edge to drag
+        let edge_mids = [
+            DVec2::new(blo.x, (blo.y + bhi.y) / 2.0),
+            DVec2::new((blo.x + bhi.x) / 2.0, blo.y),
+            DVec2::new(bhi.x, (blo.y + bhi.y) / 2.0),
+            DVec2::new((blo.x + bhi.x) / 2.0, bhi.y),
+        ];
+        if self.masters.border_sel {
+            let accent = crate::theme::interaction();
+            painter.add(egui::Shape::line(
+                margin.iter().map(|p| to_s(*p)).collect(),
+                egui::Stroke::new(2.0, accent),
+            ));
+            for m in edge_mids {
+                painter.rect_filled(
+                    Rect::from_center_size(to_s(m), egui::vec2(9.0, 9.0)),
+                    2.0,
+                    accent,
+                );
+            }
+        }
+        // which border edge is near a point on screen, if any
+        let border_edge = |s: egui::Pos2| -> Option<usize> {
+            let (a, b) = (to_s(blo), to_s(bhi));
+            let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
+            let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
+            let along_x = s.x > x0 - 6.0 && s.x < x1 + 6.0;
+            let along_y = s.y > y0 - 6.0 && s.y < y1 + 6.0;
+            [
+                (0, (s.x - a.x).abs() < 5.0 && along_y),
+                (1, (s.y - a.y).abs() < 5.0 && along_x),
+                (2, (s.x - b.x).abs() < 5.0 && along_y),
+                (3, (s.y - b.y).abs() < 5.0 && along_x),
+            ]
+            .into_iter()
+            .find(|(_, near)| *near)
+            .map(|(e, _)| e)
+        };
         // the picked item as a drag, a resize or a Move leaves it
         let here_raw = response.hover_pos().map(to_w);
         let mut items = t.items.clone();
@@ -978,132 +1158,147 @@ impl CreaBimApp {
             }
         }
         let accent = crate::theme::interaction();
-        for it in &items {
-            match it {
-                TitleItem::Line { points, width } => {
-                    painter.add(egui::Shape::line(
-                        points.iter().map(|p| to_s(o + *p)).collect(),
-                        pen(*width, ink),
-                    ));
-                }
-                TitleItem::Fill { points, gray } => {
-                    let g = (gray.clamp(0.0, 1.0) * 255.0) as u8;
-                    let c = if dark {
-                        egui::Color32::from_gray(255 - g)
-                    } else {
-                        egui::Color32::from_gray(g)
-                    };
-                    painter.add(egui::Shape::convex_polygon(
-                        points.iter().map(|p| to_s(o + *p)).collect(),
-                        c,
-                        egui::Stroke::NONE,
-                    ));
-                }
-                TitleItem::Shape {
-                    points,
-                    closed,
-                    pen: w,
-                    colour,
-                    fill,
-                    opacity,
-                } => {
-                    let pts: Vec<egui::Pos2> = points.iter().map(|p| to_s(o + *p)).collect();
-                    let a = *opacity as f32;
-                    if let (Some(f), true) = (fill, pts.len() >= 3) {
-                        // any outline, not only a convex one, as one mesh:
-                        // triangles drawn one by one showed their seams
-                        let mut mesh = egui::Mesh::default();
-                        let c = ink_of(*f, a);
-                        for p in &pts {
-                            mesh.colored_vertex(*p, c);
-                        }
-                        for tri in creabim_geom::triangulate::triangulate(points) {
-                            mesh.add_triangle(tri[0] as u32, tri[1] as u32, tri[2] as u32);
-                        }
-                        painter.add(egui::Shape::mesh(mesh));
+        // where each text is on screen, as drawn: the pick box follows it
+        // (MU40: the box sat off its field)
+        let mut text_rects: Vec<(usize, Rect)> = vec![];
+        for (idx, item) in items.iter().enumerate() {
+            let laid = match item {
+                TitleItem::Logo { .. } => item.logo_shapes(),
+                _ => vec![item.clone()],
+            };
+            for it in &laid {
+                match it {
+                    TitleItem::Logo { .. } => {}
+                    TitleItem::Line { points, width } => {
+                        painter.add(egui::Shape::line(
+                            points.iter().map(|p| to_s(o + *p)).collect(),
+                            pen(*width, ink),
+                        ));
                     }
-                    if let Some(w) = w {
-                        let mut line = pts.clone();
-                        if *closed && line.len() >= 2 {
-                            line.push(line[0]);
-                        }
-                        painter.add(egui::Shape::line(line, pen(*w, ink_of(*colour, a))));
-                    }
-                }
-                TitleItem::Image {
-                    lo,
-                    hi,
-                    width,
-                    height,
-                    rgba,
-                } => {
-                    let r = Rect::from_two_pos(to_s(o + *lo), to_s(o + *hi));
-                    match creabim_geom::raster::stored_image(*width, *height, rgba) {
-                        Some(ras) => {
-                            let tex = texture(ui.ctx(), &ras);
-                            painter.image(
-                                tex,
-                                r,
-                                Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                                egui::Color32::WHITE,
-                            );
-                        }
-                        None => {
-                            painter.rect_stroke(
-                                r,
-                                0.0,
-                                egui::Stroke::new(1.0, pal.muted),
-                                egui::StrokeKind::Middle,
-                            );
-                        }
-                    }
-                }
-                TitleItem::Text {
-                    at,
-                    size,
-                    text,
-                    align,
-                    angle,
-                } => {
-                    // as sheets draw it: the size is the font's, in mm
-                    let px = (*size as f32 * scale).max(4.0);
-                    let field = text.contains('{');
-                    let colour = if field {
-                        if dark {
-                            egui::Color32::from_rgb(120, 170, 240)
+                    TitleItem::Fill { points, gray } => {
+                        let g = (gray.clamp(0.0, 1.0) * 255.0) as u8;
+                        let c = if dark {
+                            egui::Color32::from_gray(255 - g)
                         } else {
-                            egui::Color32::from_rgb(30, 90, 170)
-                        }
-                    } else {
-                        ink
-                    };
-                    let g = painter.layout_no_wrap(
-                        text.clone(),
-                        egui::FontId::proportional(px),
-                        colour,
-                    );
-                    let sz = g.size();
-                    let dx = match align {
-                        TextAlign::Start => 0.0,
-                        TextAlign::Middle => sz.x / 2.0,
-                        TextAlign::End => sz.x,
-                    };
-                    let a = -(*angle as f32);
-                    let rot = |v: egui::Vec2| {
-                        let (s, c) = a.sin_cos();
-                        egui::vec2(v.x * c - v.y * s, v.x * s + v.y * c)
-                    };
-                    let p = to_s(o + *at);
-                    let top_left = p + rot(egui::vec2(-dx, -sz.y / 2.0));
-                    // a field is a chip: what each sheet fills in
-                    if field && a == 0.0 {
-                        painter.rect_filled(
-                            Rect::from_min_size(top_left, sz).expand(1.5),
-                            3.0,
-                            egui::Color32::from_rgba_unmultiplied(40, 110, 220, 30),
-                        );
+                            egui::Color32::from_gray(g)
+                        };
+                        painter.add(egui::Shape::convex_polygon(
+                            points.iter().map(|p| to_s(o + *p)).collect(),
+                            c,
+                            egui::Stroke::NONE,
+                        ));
                     }
-                    painter.add(egui::epaint::TextShape::new(top_left, g, colour).with_angle(a));
+                    TitleItem::Shape {
+                        points,
+                        closed,
+                        pen: w,
+                        colour,
+                        fill,
+                        opacity,
+                    } => {
+                        let pts: Vec<egui::Pos2> = points.iter().map(|p| to_s(o + *p)).collect();
+                        let a = *opacity as f32;
+                        if let (Some(f), true) = (fill, pts.len() >= 3) {
+                            // any outline, not only a convex one, as one mesh:
+                            // triangles drawn one by one showed their seams
+                            let mut mesh = egui::Mesh::default();
+                            let c = ink_of(*f, a);
+                            for p in &pts {
+                                mesh.colored_vertex(*p, c);
+                            }
+                            for tri in creabim_geom::triangulate::triangulate(points) {
+                                mesh.add_triangle(tri[0] as u32, tri[1] as u32, tri[2] as u32);
+                            }
+                            painter.add(egui::Shape::mesh(mesh));
+                        }
+                        if let Some(w) = w {
+                            let mut line = pts.clone();
+                            if *closed && line.len() >= 2 {
+                                line.push(line[0]);
+                            }
+                            painter.add(egui::Shape::line(line, pen(*w, ink_of(*colour, a))));
+                        }
+                    }
+                    TitleItem::Image {
+                        lo,
+                        hi,
+                        width,
+                        height,
+                        rgba,
+                        opacity,
+                    } => {
+                        let r = Rect::from_two_pos(to_s(o + *lo), to_s(o + *hi));
+                        match creabim_geom::raster::stored_image(*width, *height, rgba) {
+                            Some(ras) => {
+                                let tex = texture(ui.ctx(), &ras);
+                                painter.image(
+                                    tex,
+                                    r,
+                                    Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                    egui::Color32::WHITE.gamma_multiply(*opacity as f32),
+                                );
+                            }
+                            None => {
+                                painter.rect_stroke(
+                                    r,
+                                    0.0,
+                                    egui::Stroke::new(1.0, pal.muted),
+                                    egui::StrokeKind::Middle,
+                                );
+                            }
+                        }
+                    }
+                    TitleItem::Text {
+                        at,
+                        size,
+                        text,
+                        align,
+                        angle,
+                    } => {
+                        // as sheets draw it: the size is the font's, in mm
+                        let px = (*size as f32 * scale).max(4.0);
+                        let field = text.contains('{');
+                        let colour = if field {
+                            if dark {
+                                egui::Color32::from_rgb(120, 170, 240)
+                            } else {
+                                egui::Color32::from_rgb(30, 90, 170)
+                            }
+                        } else {
+                            ink
+                        };
+                        let g = painter.layout_no_wrap(
+                            text.clone(),
+                            egui::FontId::proportional(px),
+                            colour,
+                        );
+                        let sz = g.size();
+                        let dx = match align {
+                            TextAlign::Start => 0.0,
+                            TextAlign::Middle => sz.x / 2.0,
+                            TextAlign::End => sz.x,
+                        };
+                        let a = -(*angle as f32);
+                        let rot = |v: egui::Vec2| {
+                            let (s, c) = a.sin_cos();
+                            egui::vec2(v.x * c - v.y * s, v.x * s + v.y * c)
+                        };
+                        let p = to_s(o + *at);
+                        let top_left = p + rot(egui::vec2(-dx, -sz.y / 2.0));
+                        if a == 0.0 {
+                            text_rects.push((idx, Rect::from_min_size(top_left, sz)));
+                        }
+                        // a field is a chip: what each sheet fills in
+                        if field && a == 0.0 {
+                            painter.rect_filled(
+                                Rect::from_min_size(top_left, sz).expand(1.5),
+                                3.0,
+                                egui::Color32::from_rgba_unmultiplied(40, 110, 220, 30),
+                            );
+                        }
+                        painter
+                            .add(egui::epaint::TextShape::new(top_left, g, colour).with_angle(a));
+                    }
                 }
             }
         }
@@ -1139,7 +1334,13 @@ impl CreaBimApp {
         // the picked item's box and corner handles
         let mut handles: Vec<(egui::Pos2, DVec2, DVec2)> = vec![];
         if let Some(it) = self.masters.sel.and_then(|i| items.get(i)) {
-            let (lo, hi) = item_box(it);
+            let (lo, hi) = match text_rects
+                .iter()
+                .find(|(k, _)| Some(*k) == self.masters.sel)
+            {
+                Some((_, r)) => (to_w(r.left_bottom()) - o, to_w(r.right_top()) - o),
+                None => item_box(it),
+            };
             let r = Rect::from_two_pos(to_s(o + lo), to_s(o + hi)).expand(3.0);
             painter.rect_stroke(
                 r,
@@ -1197,11 +1398,11 @@ impl CreaBimApp {
                 targets.extend(cross(*a, *b, *c, *d));
             }
         }
-        let xs: Vec<f64> = [0.0, 20.0, paper.x - 10.0, paper.x]
+        let xs: Vec<f64> = [0.0, blo.x, bhi.x, paper.x]
             .into_iter()
             .chain(targets.iter().map(|p| p.x))
             .collect();
-        let ys: Vec<f64> = [0.0, 10.0, paper.y - 10.0, paper.y]
+        let ys: Vec<f64> = [0.0, blo.y, bhi.y, paper.y]
             .into_iter()
             .chain(targets.iter().map(|p| p.y))
             .collect();
@@ -1289,6 +1490,15 @@ impl CreaBimApp {
             match self.masters.tool {
                 MTool::Select => {
                     let picked_at = |p: DVec2| {
+                        // a text where it is drawn
+                        let s = to_s(p);
+                        if let Some((k, _)) = text_rects
+                            .iter()
+                            .rev()
+                            .find(|(_, r)| r.expand(2.0).contains(s))
+                        {
+                            return Some(*k);
+                        }
                         t.items
                             .iter()
                             .enumerate()
@@ -1329,7 +1539,43 @@ impl CreaBimApp {
                                 self.masters.guide_sel = Some(g);
                                 self.masters.sel = None;
                                 self.masters.guide_drag = Some((g, w, DVec2::ZERO));
+                            } else if let Some(e) = border_edge(p) {
+                                // the border's edge, dragged: its margin
+                                self.masters.border_sel = true;
+                                self.masters.sel = None;
+                                self.masters.guide_sel = None;
+                                let v = [blo.x, blo.y, bhi.x, bhi.y][e];
+                                self.masters.border_drag = Some((e, v));
                             }
+                        }
+                    }
+                    if let (Some((e, _)), Some(w)) = (self.masters.border_drag, here_raw) {
+                        let at = snap(w).0;
+                        let v = if e % 2 == 0 { at.x } else { at.y };
+                        // never past the paper, nor across the other edge
+                        let v = match e {
+                            0 => v.clamp(0.0, bhi.x - 10.0),
+                            1 => v.clamp(0.0, bhi.y - 10.0),
+                            2 => v.clamp(blo.x + 10.0, paper.x),
+                            _ => v.clamp(blo.y + 10.0, paper.y),
+                        };
+                        self.masters.border_drag = Some((e, v));
+                        if response.drag_stopped_by(egui::PointerButton::Primary) {
+                            self.masters.border_drag = None;
+                            let (lo, hi) = t.border_box(paper);
+                            let mut m = [lo.x, lo.y, paper.x - hi.x, paper.y - hi.y];
+                            m[e] = if e < 2 {
+                                v
+                            } else if e == 2 {
+                                paper.x - v
+                            } else {
+                                paper.y - v
+                            };
+                            self.edit_master("Border margin", |t| t.margins = Some(m));
+                            self.status = format!(
+                                "Margins {:.0}, {:.0}, {:.0}, {:.0} mm (left, bottom, right, top).",
+                                m[0], m[1], m[2], m[3]
+                            );
                         }
                     }
                     // a guide dragged goes with the pointer, snapping
@@ -1401,13 +1647,21 @@ impl CreaBimApp {
                         }
                     }
                     if response.clicked() {
-                        let at = response.interact_pointer_pos().map(to_w);
+                        let s = response.interact_pointer_pos();
+                        let at = s.map(to_w);
                         self.masters.sel = at.and_then(picked_at);
                         self.masters.guide_sel = if self.masters.sel.is_none() {
                             at.and_then(guide_at)
                         } else {
                             None
                         };
+                        // nothing else there: the border's edge picks it
+                        self.masters.border_sel = self.masters.sel.is_none()
+                            && self.masters.guide_sel.is_none()
+                            && s.and_then(border_edge).is_some();
+                        if self.masters.border_sel {
+                            self.status = "The border: drag an edge to move its margin, or type them in Properties.".into();
+                        }
                     }
                     // a guide picked: Delete takes it away, Esc lets go
                     if let (Some(g), true) = (self.masters.guide_sel, hovered && !typing) {
@@ -1449,6 +1703,10 @@ impl CreaBimApp {
                             self.masters_command(Command::Delete);
                         } else if cmd && keys(egui::Key::D) {
                             self.masters_command(Command::Duplicate);
+                        } else if cmd && keys(egui::Key::CloseBracket) {
+                            self.master_order(i, true);
+                        } else if cmd && keys(egui::Key::OpenBracket) {
+                            self.master_order(i, false);
                         } else if !cmd && keys(egui::Key::M) {
                             self.masters_command(Command::Move);
                         } else if !cmd && keys(egui::Key::R) {
@@ -1514,12 +1772,24 @@ impl CreaBimApp {
                             }
                         }
                     }
-                    // Enter or a right-click ends the line where it is;
-                    // Esc drops it (MU40: how to finish)
+                    // one rule for every tool (MU40): Enter or a right-click
+                    // ends what is being drawn and keeps what you see; Esc
+                    // drops the piece not yet made; either, with nothing
+                    // going, puts the tool down (back to Select)
+                    let idle = self.masters.drawing.is_empty();
                     if keys(egui::Key::Enter) || response.secondary_clicked() {
-                        finish = true;
+                        if idle {
+                            self.masters.tool = MTool::Select;
+                        } else if rect_tool {
+                            self.masters.drawing.clear();
+                        } else {
+                            finish = true;
+                        }
                     }
                     if keys(egui::Key::Escape) {
+                        if idle {
+                            self.masters.tool = MTool::Select;
+                        }
                         self.masters.drawing.clear();
                     }
                     if finish {
@@ -1610,8 +1880,10 @@ impl CreaBimApp {
                                 "Placed. Its words, size and alignment are in Properties.".into();
                         }
                     }
-                    if keys(egui::Key::Escape) {
+                    // a right-click or Esc ends the tool: what is placed stays
+                    if keys(egui::Key::Escape) || response.secondary_clicked() {
                         self.masters.tool = MTool::Select;
+                        self.status = "Select.".into();
                     }
                 }
             }
@@ -1639,10 +1911,67 @@ impl CreaBimApp {
         if let Some(look) = look {
             crate::planview::nav_draw(ui, &look);
         }
+        // naming a field of your own, over the view's top left
+        if let Some(mut name) = self.masters.asking_field.take() {
+            let mut keep = true;
+            let mut add = false;
+            egui::Area::new(egui::Id::new("master.newfield"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(body.left_top() + egui::vec2(16.0, 12.0))
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.label(egui::RichText::new("Your own field").strong());
+                        let r = ui.add(
+                            egui::TextEdit::singleline(&mut name)
+                                .hint_text("client, drawn by, checked…")
+                                .desired_width(200.0),
+                        );
+                        r.request_focus();
+                        ui.horizontal(|ui| {
+                            add = ui.button("Add and place").clicked()
+                                || (r.lost_focus()
+                                    && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+                            if ui.button("Cancel").clicked()
+                                || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                            {
+                                keep = false;
+                            }
+                        });
+                        ui.label(
+                            egui::RichText::new(
+                                "Each sheet fills it in; it shows its default until then.",
+                            )
+                            .small()
+                            .weak(),
+                        );
+                    });
+                });
+            let clean: String = name
+                .trim()
+                .to_lowercase()
+                .chars()
+                .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                .collect();
+            if add && !clean.is_empty() {
+                let builtin = tb::BUILT_IN_FIELDS.iter().any(|(b, _)| *b == clean);
+                let have = t.fields.iter().any(|(f, _)| *f == clean);
+                if !builtin && !have {
+                    let c = clean.clone();
+                    self.edit_master("Master field", |t| t.fields.push((c, String::new())));
+                }
+                self.masters.field = clean.clone();
+                self.masters.tool = MTool::Field;
+                self.status = format!("Click where {{{clean}}} goes: each sheet fills it in.");
+            } else if keep && !add {
+                self.masters.asking_field = Some(name);
+            }
+        }
     }
 
     /// The Master tab of Properties while a Masters view is in front.
     pub(super) fn master_props(&mut self, ui: &mut egui::Ui) {
+        // colours are the print's; dark paper shows black light
+        let dark = self.dark_paper(ui.ctx());
         let Some((id, name, t)) = self.master() else {
             crate::props::section(ui, "Master");
             crate::props::note(
@@ -1652,7 +1981,7 @@ impl CreaBimApp {
             return;
         };
         let users = super::drafting::template_users(self.doc.model(), id);
-        if self.prop_header(ui, "master.about", "Master", true, None) {
+        if self.prop_header(ui, "master_about", "Master", true, None) {
             let mut n = name.clone();
             let r = crate::props::row(ui, "Name", |ui| {
                 crate::props::fill(ui, egui::TextEdit::singleline(&mut n))
@@ -1763,7 +2092,7 @@ impl CreaBimApp {
         }
         // its own fields: what each sheet can fill in beyond the built-in
         // ones, and what shows until it does
-        if self.prop_header(ui, "master.fields", "Its own fields", true, None) {
+        if self.prop_header(ui, "master_fields", "Its own fields", true, None) {
             let mut fields = t.fields.clone();
             let mut changed = false;
             let mut remove = None;
@@ -1824,7 +2153,7 @@ impl CreaBimApp {
             );
         }
         // the guides it is drawn by
-        if self.prop_header(ui, "master.guides", "Guides", true, None) {
+        if self.prop_header(ui, "master_guides", "Guides", true, None) {
             let n = t.guides.len();
             crate::props::row(ui, "Guides", |ui| {
                 ui.label(match n {
@@ -1862,6 +2191,86 @@ impl CreaBimApp {
                 "Guides are kept with the master and never printed. Pick one to drag it; Delete removes it.",
             );
         }
+        // its pictures and logos, each to pick (MU40: one place for them)
+        let pics: Vec<(usize, String)> = t
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(k, it)| match it {
+                TitleItem::Image { lo, hi, .. } => Some((
+                    k,
+                    format!("Picture, {:.0} × {:.0} mm", hi.x - lo.x, hi.y - lo.y),
+                )),
+                TitleItem::Logo { lo, hi, .. } => Some((
+                    k,
+                    format!("Logo, {:.0} × {:.0} mm", hi.x - lo.x, hi.y - lo.y),
+                )),
+                _ => None,
+            })
+            .collect();
+        if self.prop_header(ui, "master_pictures", "Pictures and logos", true, None) {
+            for (k, label) in &pics {
+                let on = self.masters.sel == Some(*k);
+                if crate::props::row(ui, "", |ui| {
+                    ui.add_sized(
+                        [ui.available_width(), ui.spacing().interact_size.y],
+                        egui::Button::selectable(on, label.as_str()),
+                    )
+                })
+                .clicked()
+                {
+                    self.masters.sel = Some(*k);
+                    self.masters.border_sel = false;
+                    self.masters.guide_sel = None;
+                }
+            }
+            if crate::props::action(
+                ui,
+                "",
+                "Add a logo or picture…",
+                "An SVG comes in as a crisp vector logo, a PNG or JPEG as a picture",
+                true,
+            )
+            .clicked()
+            {
+                self.add_master_picture();
+            }
+        }
+        // the border picked: its margins to type
+        if self.masters.border_sel
+            && self.prop_header(ui, "master_border", "Picked border", true, None)
+        {
+            let paper = t.paper.unwrap_or(DVec2::new(420.0, 297.0));
+            let mut m = t.margins.unwrap_or(tb::MARGINS);
+            let mut changed = false;
+            for (k, name) in ["Left", "Bottom", "Right", "Top"].into_iter().enumerate() {
+                let max = if k % 2 == 0 { paper.x } else { paper.y } / 2.0;
+                changed |= crate::props::row(ui, name, |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut m[k])
+                            .range(0.0..=max)
+                            .speed(0.5)
+                            .suffix(" mm"),
+                    )
+                })
+                .changed();
+            }
+            if changed {
+                self.edit_master("Border margins", |t| t.margins = Some(m));
+            }
+            if crate::props::action(
+                ui,
+                "",
+                "Usual margins",
+                "20 mm at the binding side, 10 mm the others",
+                t.margins.is_some_and(|x| x != tb::MARGINS),
+            )
+            .clicked()
+            {
+                self.edit_master("Border margins", |t| t.margins = None);
+            }
+        }
         // what is picked
         let Some(i) = self.masters.sel.filter(|i| *i < t.items.len()) else {
             return;
@@ -1875,8 +2284,9 @@ impl CreaBimApp {
             TitleItem::Shape { closed: true, .. } => "Picked shape",
             TitleItem::Shape { .. } => "Picked line",
             TitleItem::Image { .. } => "Picked picture",
+            TitleItem::Logo { .. } => "Picked logo",
         };
-        if !self.prop_header(ui, "master.picked", title, true, None) {
+        if !self.prop_header(ui, "master_picked", title, true, None) {
             return;
         }
         let mut edited = it.clone();
@@ -2007,6 +2417,12 @@ impl CreaBimApp {
                     if colour_row(ui, "Pen colour", colour) {
                         label = Some("Pen colour");
                     }
+                    if dark && colour.iter().all(|v| *v < 0.12) {
+                        crate::props::note(
+                            ui,
+                            "Prints black. On dark paper black shows light, so you can see it as you work.",
+                        );
+                    }
                 }
                 // the fill: closed shapes only
                 if *closed {
@@ -2048,13 +2464,80 @@ impl CreaBimApp {
                     label = Some("Opacity");
                 }
             }
+            TitleItem::Logo { lo, hi, shapes } => {
+                // its size, its proportions kept as either changes
+                let (mut w, mut h) = (hi.x - lo.x, hi.y - lo.y);
+                let aspect = h / w.max(1e-9);
+                let cw = crate::props::row(ui, "Width", |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut w)
+                            .range(1.0..=1200.0)
+                            .speed(0.5)
+                            .suffix(" mm"),
+                    )
+                });
+                let ch = crate::props::row(ui, "Height", |ui| {
+                    crate::props::fill(
+                        ui,
+                        egui::DragValue::new(&mut h)
+                            .range(1.0..=1200.0)
+                            .speed(0.5)
+                            .suffix(" mm"),
+                    )
+                });
+                if cw.changed() {
+                    *hi = *lo + DVec2::new(w, w * aspect);
+                    label = Some("Logo size");
+                } else if ch.changed() {
+                    *hi = *lo + DVec2::new(h / aspect, h);
+                    label = Some("Logo size");
+                }
+                crate::props::row(ui, "Shapes", |ui| ui.label(format!("{}", shapes.len())));
+                // one colour for all of it: a logo in the title block's ink
+                let mut one = match shapes.first() {
+                    Some(TitleItem::Shape { fill: Some(c), .. })
+                    | Some(TitleItem::Shape { colour: c, .. }) => *c,
+                    _ => [0.0; 3],
+                };
+                if colour_row(ui, "One colour", &mut one) {
+                    for sh in shapes.iter_mut() {
+                        if let TitleItem::Shape { colour, fill, .. } = sh {
+                            *colour = one;
+                            if fill.is_some() {
+                                *fill = Some(one);
+                            }
+                        }
+                    }
+                    label = Some("Logo colour");
+                }
+                crate::props::note(
+                    ui,
+                    "A vector logo: crisp on sheets and in PDF at any size. Its corners size it.",
+                );
+            }
             TitleItem::Image {
                 lo,
                 hi,
                 width,
                 height,
+                opacity,
                 ..
             } => {
+                let mut pct = *opacity * 100.0;
+                if crate::props::row(ui, "Opacity", |ui| {
+                    ui.spacing_mut().slider_width = (ui.available_width() - 64.0).max(40.0);
+                    ui.add(
+                        egui::Slider::new(&mut pct, 0.0..=100.0)
+                            .suffix(" %")
+                            .max_decimals(0),
+                    )
+                })
+                .changed()
+                {
+                    *opacity = (pct / 100.0).clamp(0.0, 1.0);
+                    label = Some("Picture opacity");
+                }
                 let (mut w, mut h) = (hi.x - lo.x, hi.y - lo.y);
                 let aspect = *height as f64 / (*width).max(1) as f64;
                 let cw = crate::props::row(ui, "Width", |ui| {
@@ -2097,6 +2580,18 @@ impl CreaBimApp {
                     label = Some("Picture proportions");
                 }
             }
+        }
+        // what lies over what: drawn in order, the last on top (MU40)
+        let last = t.items.len().saturating_sub(1);
+        let (front, back) = crate::props::actions2(
+            ui,
+            "Order",
+            ("To front", "Over everything else (Ctrl+])", i < last),
+            ("To back", "Under everything else (Ctrl+[)", i > 0),
+        );
+        if front || back {
+            self.master_order(i, front);
+            return;
         }
         let dup = crate::props::action(ui, "", "Duplicate", "A copy, 5 mm along (Ctrl+D)", true)
             .clicked();
@@ -2171,6 +2666,7 @@ mod tests {
             width: 2,
             height: 1,
             rgba: String::new(),
+            opacity: 1.0,
         };
         assert_eq!(item_dist(&pic, DVec2::new(20.0, 10.0)), 0.0);
     }
@@ -2183,6 +2679,7 @@ mod tests {
             width: 2,
             height: 1,
             rgba: String::new(),
+            opacity: 1.0,
         };
         // the top right corner dragged to (80, 40): twice the size
         scale_item(&mut pic, DVec2::ZERO, DVec2::splat(2.0));
