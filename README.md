@@ -2,6 +2,8 @@
 
 # CreaBIM
 
+**CreaBIM is developed and designed by Regis Benoit Brice Nde Tene.** This repository, [github.com/chopinregis/CreaBIM](https://github.com/chopinregis/CreaBIM), is its official source; forks and changes are welcome under the GPL.
+
 CreaBIM is an open-source, BIM-native architectural modeler: one model for freeform concept design and permit drawings, with Blender-style modeling, live 2D views and native IFC.
 
 ![CreaBIM with the starter house's garden side in 3D beside its ground-floor plan](docs/screenshot.png)

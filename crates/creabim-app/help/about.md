@@ -4,6 +4,8 @@
 
 CreaBIM {version} (build {build}) is an open-source, BIM-native architectural modeller: one model for freeform concept design and permit drawings, with Blender-style modelling, live 2D views and native IFC.
 
+**CreaBIM is developed and designed by Regis Benoit Brice Nde Tene.** The official source is [github.com/chopinregis/CreaBIM](https://github.com/chopinregis/CreaBIM).
+
 It is free software under the GNU General Public License, version 3 or later. You may use it for any purpose, study and change its source code, and share it, with or without your changes, under the same licence.
 
 Its interface icons come from Lucide (ISC licence). The logo is the weaver and its nest: the weaver, native to Cameroon and much of Africa, is nature's architect, and sits beside the woven nest it built, the designer beside the model. The wordmark is set in Nunito ExtraBold (SIL Open Font License).
