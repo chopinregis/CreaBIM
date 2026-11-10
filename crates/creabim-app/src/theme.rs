@@ -218,6 +218,37 @@ impl Palette {
     }
 }
 
+static INTERACTION: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0xE6781E);
+
+/// The colour of what is being worked on: the selection, grips, ghosts,
+/// cutting planes' outlines (MU39): the orange it always was, or the
+/// theme's accent when Settings says to follow the theme.
+pub fn interaction() -> eframe::egui::Color32 {
+    let v = INTERACTION.load(std::sync::atomic::Ordering::Relaxed);
+    eframe::egui::Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
+}
+
+/// Set the interaction colour.
+pub fn set_interaction(c: eframe::egui::Color32) {
+    let v = (c.r() as u32) << 16 | (c.g() as u32) << 8 | c.b() as u32;
+    INTERACTION.store(v, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The orange the selection has always been.
+pub const ORANGE: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(230, 120, 30);
+
+/// A theme's accent made bright enough to work with: its hue kept, its
+/// colour and lightness raised, so a dark accent (Sage's deep green) reads
+/// against black linework and light or dark paper alike (MU39).
+pub fn vivid(c: eframe::egui::Color32) -> eframe::egui::Color32 {
+    // in gamma space, as the eye sees it: a mid-tone, so it reads on
+    // light paper and against dark lines alike
+    let mut h = eframe::egui::ecolor::HsvaGamma::from(c);
+    h.s = h.s.clamp(0.65, 0.85);
+    h.v = h.v.clamp(0.68, 0.78);
+    h.into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,35 +310,4 @@ mod tests {
             );
         }
     }
-}
-
-static INTERACTION: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0xE6781E);
-
-/// The colour of what is being worked on: the selection, grips, ghosts,
-/// cutting planes' outlines (MU39): the orange it always was, or the
-/// theme's accent when Settings says to follow the theme.
-pub fn interaction() -> eframe::egui::Color32 {
-    let v = INTERACTION.load(std::sync::atomic::Ordering::Relaxed);
-    eframe::egui::Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
-}
-
-/// Set the interaction colour.
-pub fn set_interaction(c: eframe::egui::Color32) {
-    let v = (c.r() as u32) << 16 | (c.g() as u32) << 8 | c.b() as u32;
-    INTERACTION.store(v, std::sync::atomic::Ordering::Relaxed);
-}
-
-/// The orange the selection has always been.
-pub const ORANGE: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(230, 120, 30);
-
-/// A theme's accent made bright enough to work with: its hue kept, its
-/// colour and lightness raised, so a dark accent (Sage's deep green) reads
-/// against black linework and light or dark paper alike (MU39).
-pub fn vivid(c: eframe::egui::Color32) -> eframe::egui::Color32 {
-    // in gamma space, as the eye sees it: a mid-tone, so it reads on
-    // light paper and against dark lines alike
-    let mut h = eframe::egui::ecolor::HsvaGamma::from(c);
-    h.s = h.s.clamp(0.65, 0.85);
-    h.v = h.v.clamp(0.68, 0.78);
-    h.into()
 }
