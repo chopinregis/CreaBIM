@@ -16,6 +16,8 @@ pub struct Guides {
     pub lines: Vec<(DVec3, DVec3)>,
     /// Points marked with a cross: a centre.
     pub points: Vec<DVec3>,
+    /// Their colour, when not the selection's (Split's red).
+    pub ink: Option<Color32>,
 }
 
 /// The guides of `md` on mass `m`, whose own axes reach the model through

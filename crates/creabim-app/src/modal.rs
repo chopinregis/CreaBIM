@@ -411,6 +411,13 @@ pub const STILL: f32 = 4.0;
 /// A move, rotate or scale in progress, from a key or a tool.
 static BAR_BY_POINTER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Where the edit bar was dragged to, from its own place.
+fn bar_offset(ctx: &egui::Context) -> egui::Vec2 {
+    ctx.data_mut(|m| {
+        *m.get_persisted_mut_or_default::<egui::Vec2>(egui::Id::new("modal_bar_offset"))
+    })
+}
+
 /// Show the edit bar by the pointer (true) or over the top of the view.
 pub fn set_bar_by_pointer(on: bool) {
     BAR_BY_POINTER.store(on, std::sync::atomic::Ordering::Relaxed);
@@ -1525,7 +1532,7 @@ impl Modal {
         egui::Area::new(egui::Id::new("modal_panel"))
             .order(egui::Order::Foreground)
             .pivot(at.1)
-            .fixed_pos(at.0)
+            .fixed_pos(at.0 + bar_offset(ctx))
             // clear of the view's zoom and fit column at its right (MU39)
             .constrain_to(egui::Rect::from_min_max(
                 rect.min + egui::vec2(6.0, 6.0),
@@ -1547,12 +1554,44 @@ impl Modal {
 
     fn bar_row(&mut self, ui: &mut egui::Ui, compact: bool, p: &crate::theme::Palette) {
         ui.spacing_mut().item_spacing.x = 3.0;
+        // a grip to carry the bar out of the way (MU39); double-click
+        // puts it back
+        let (gr, grip) =
+            ui.allocate_exact_size(egui::vec2(10.0, 20.0), egui::Sense::click_and_drag());
+        let dot = if grip.hovered() || grip.dragged() {
+            p.text
+        } else {
+            p.muted
+        };
+        for (x, y) in [
+            (-2.0, -5.0),
+            (2.0, -5.0),
+            (-2.0, 0.0),
+            (2.0, 0.0),
+            (-2.0, 5.0),
+            (2.0, 5.0),
+        ] {
+            ui.painter()
+                .circle_filled(gr.center() + egui::vec2(x, y), 1.2, dot);
+        }
+        let key = egui::Id::new("modal_bar_offset");
+        if grip.dragged() {
+            let d = grip.drag_delta();
+            ui.ctx()
+                .data_mut(|m| *m.get_persisted_mut_or_default::<egui::Vec2>(key) += d);
+        }
+        if grip.double_clicked() {
+            ui.ctx()
+                .data_mut(|m| m.insert_persisted(key, egui::Vec2::ZERO));
+        }
+        grip.on_hover_cursor(egui::CursorIcon::Grab)
+            .on_hover_text("Drag to move the bar; double-click puts it back");
         let icon = match self.mode {
             Mode::Move => "move",
             Mode::Rotate => "rotate-cw",
             Mode::Scale => "scaling",
             Mode::Mirror => "flip-horizontal-2",
-            Mode::Offset => "spline",
+            Mode::Offset => "offset",
             Mode::Grip => "maximize-2",
         };
         let (ir, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
@@ -1663,15 +1702,22 @@ impl Modal {
             Mode::Scale => "Factor",
         };
         let letter = &what[..1];
+        // a help mark, not a button: it lights as the ? marks do (MU39)
         let (br, badge) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+        let lit = badge.hovered();
+        if lit {
+            ui.painter()
+                .circle_filled(br.center(), 8.0, p.accent.gamma_multiply(0.25));
+        }
+        let ink = if lit { p.accent } else { muted };
         ui.painter()
-            .circle_stroke(br.center(), 8.0, egui::Stroke::new(1.0, muted));
+            .circle_stroke(br.center(), 8.0, egui::Stroke::new(1.0, ink));
         ui.painter().text(
             br.center(),
             egui::Align2::CENTER_CENTER,
             letter,
             egui::FontId::proportional(10.5),
-            muted,
+            ink,
         );
         badge.on_hover_text(match self.mode {
             Mode::Move | Mode::Offset | Mode::Grip => "Distance: type how far, then Enter",

@@ -60,6 +60,17 @@ fn app_icon() -> std::sync::Arc<eframe::egui::IconData> {
 }
 
 fn main() -> eframe::Result {
+    // a crash says why in the activity log, with where it happened (MU39:
+    // one closed the app with nothing to go on)
+    let before = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let trace = std::backtrace::Backtrace::force_capture();
+        actlog::line(format!(
+            "CRASH: {info}
+{trace}"
+        ));
+        before(info);
+    }));
     #[cfg(target_os = "linux")]
     linux_setup();
     let options = eframe::NativeOptions {

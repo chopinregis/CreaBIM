@@ -76,6 +76,15 @@ mod wallsui;
 /// ((model revision, hidden revision), selection, selected face, drawing
 /// shown in 3D, active view)
 /// How a workplane is being picked in the 3D view.
+/// Split while it runs (MU39): what it cuts, the first point of a line
+/// being drawn, then the cutting line.
+#[derive(Clone, Debug)]
+struct SplitRun {
+    targets: Vec<ElementId>,
+    a: Option<DVec2>,
+    line: Option<creabim_core::split::Line>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum PlanePick {
     /// Click a face.
@@ -139,6 +148,12 @@ pub struct CreaBimApp {
     geometry_key: Option<GeometryKey>,
     /// How far Inset draws a face inside its edges.
     inset_by: f64,
+    /// Split while it runs: what it cuts, the first point of a line being
+    /// drawn, the cutting line once there is one (MU39).
+    split: Option<SplitRun>,
+    /// The selection when a point was first asked for: kept while points
+    /// are picked, so a click in a view never changes it (MU39).
+    pick_selection: Option<Selection>,
     /// Bumped at each rebuild of the model's 3D buffers.
     geometry_gen: u64,
     /// What the selection highlight was last built for.
@@ -355,7 +370,9 @@ impl CreaBimApp {
             viewport,
             geometry_key: None,
             geometry_gen: 0,
+            pick_selection: None,
             inset_by: 0.1,
+            split: None,
             selection_key: None,
             paper_is_dark: false,
             prop_tab: PropTab::Element,
@@ -934,6 +951,161 @@ impl CreaBimApp {
             .map_or(0.0, |l| l.elevation);
         let base = m.origin + DVec3::Z * z;
         crate::modguides::of(m, &md.kind, &|v| base + m.to_model(v))
+    }
+
+    /// Start Split on the selection (MU39): next, a line to cut along.
+    pub(super) fn start_split(&mut self) {
+        let targets = self.selection.all();
+        if targets.is_empty() {
+            self.status =
+                "Split: select what to cut first (walls, slabs, parts, sketches, masses).".into();
+            return;
+        }
+        self.split = Some(SplitRun {
+            targets,
+            a: None,
+            line: None,
+        });
+        self.plan.point_pick = true;
+        self.plan.point_lines = true;
+        self.status = "Split: click a guide, a line or an edge to cut along, or click two points. Esc leaves.".into();
+    }
+
+    /// Split's clicks as they come, and what it shows meanwhile.
+    fn split_steps(&mut self, ctx: &egui::Context) {
+        let Some(mut run) = self.split.take() else {
+            return;
+        };
+        let picked = self.plan.point_picked.take();
+        let line = self.plan.point_line_picked.take();
+        // Esc or a right-click in a view ends it (a click taken this frame
+        // is not a leaving)
+        let left = !self.plan.point_pick && picked.is_none() && line.is_none();
+        if left || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.plan.point_pick = false;
+            self.plan.point_lines = false;
+            self.plan.mod_guides = Default::default();
+            self.status = "Split left.".into();
+            return;
+        }
+        self.plan.point_pick = true;
+        use creabim_core::split::Line;
+        match (run.line, run.a, line, picked) {
+            (None, _, Some((a, b)), _) => {
+                run.line = Some(Line { a, b });
+                run.a = None;
+            }
+            (None, None, None, Some(p)) => {
+                run.a = Some(p);
+                self.status = "Split: click the line's second point.".into();
+            }
+            (None, Some(a), None, Some(p)) if p.distance(a) > 1e-6 => {
+                run.line = Some(Line { a, b: p });
+                run.a = None;
+            }
+            (Some(cut), _, _, Some(p)) => {
+                self.do_split(&run, cut, p);
+                return;
+            }
+            _ => {}
+        }
+        if run.line.is_some() {
+            self.plan.point_lines = false;
+            self.status = "Split: click the side to keep selected. Esc leaves.".into();
+        }
+        self.plan.mod_guides = self.split_guides(&run);
+        self.split = Some(run);
+    }
+
+    /// The cutting plane in red, or the line being drawn.
+    fn split_guides(&self, run: &SplitRun) -> crate::modguides::Guides {
+        let mut g = crate::modguides::Guides {
+            ink: Some(crate::planview::SPLIT_RED),
+            ..Default::default()
+        };
+        // as high and as far as what it cuts, and a little more
+        let (mut lo, mut hi) = (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN));
+        for item in self.scene.iter().filter(|i| run.targets.contains(&i.id)) {
+            if let Some((a, b)) = item.mesh.bounds() {
+                lo = lo.min(a.as_dvec3());
+                hi = hi.max(b.as_dvec3());
+            }
+        }
+        if lo.x > hi.x {
+            let z = self.work_level().map_or(0.0, |(_, z)| z);
+            lo = DVec3::new(-5.0, -5.0, z);
+            hi = DVec3::new(5.0, 5.0, z + 3.0);
+        }
+        let (z0, z1) = (lo.z - 0.3, hi.z + 0.3);
+        let reach = (hi - lo).truncate().length() / 2.0 + 1.0;
+        let mid = ((lo + hi) / 2.0).truncate();
+        match (run.line, run.a, self.plan.point_hover) {
+            (Some(l), _, _) => {
+                let d = (l.b - l.a).normalize_or_zero();
+                let c = l.a + d * d.dot(mid - l.a);
+                let (p, q) = (c - d * reach, c + d * reach);
+                g.planes
+                    .push([p.extend(z0), q.extend(z0), q.extend(z1), p.extend(z1)]);
+                g.lines.push((p.extend(z0), q.extend(z0)));
+            }
+            (None, Some(a), Some(h)) => {
+                g.lines
+                    .push((a.extend(z0.max(lo.z)), h.extend(z0.max(lo.z))));
+                g.points.push(a.extend(lo.z));
+            }
+            _ => {}
+        }
+        g
+    }
+
+    /// Cut, then keep selected what lies on the side clicked.
+    fn do_split(&mut self, run: &SplitRun, cut: creabim_core::split::Line, side_at: DVec2) {
+        self.plan.point_pick = false;
+        self.plan.point_lines = false;
+        self.plan.mod_guides = Default::default();
+        match creabim_core::split::split(self.doc.model(), &run.targets, cut) {
+            Ok(s) => {
+                let mut pieces: Vec<ElementId> = run.targets.clone();
+                for op in &s.tx.ops {
+                    if let creabim_core::Op::Insert(e) = op {
+                        pieces.push(e.id);
+                    }
+                }
+                let label = s.tx.label.clone();
+                if let Err(e) = self.doc.commit(s.tx) {
+                    self.status = format!("Couldn't split: {e}");
+                    return;
+                }
+                let want = cut.side(side_at) > 0.0;
+                let model = self.doc.model();
+                let kept: Vec<ElementId> = pieces
+                    .into_iter()
+                    .filter(|id| {
+                        creabim_core::transform::pivot(model, *id)
+                            .is_some_and(|p| (cut.side(p.truncate()) > 0.0) == want)
+                    })
+                    .collect();
+                self.selection.clear();
+                for id in &kept {
+                    self.selection.toggle(*id);
+                }
+                self.face = None;
+                self.status = format!(
+                    "{label}: the {} on the side you clicked selected. Ctrl+Z to undo.{}",
+                    if kept.len() == 1 {
+                        "piece".to_string()
+                    } else {
+                        format!("{} pieces", kept.len())
+                    },
+                    if s.skipped.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" Not cut: {}.", s.skipped.join("; "))
+                    }
+                );
+            }
+            Err(e) => self.status = e,
+        }
     }
 
     /// A centre picked in a plan for the radial array being set.
@@ -2875,6 +3047,9 @@ impl CreaBimApp {
             }
         }
 
+        if self.point_pick_3d(ui, &response, &painter, &project, &ray) {
+            return;
+        }
         if self.pick_plane_3d(ui, &response, &painter, &project, &ray) {
             return;
         }
@@ -3274,6 +3449,78 @@ impl CreaBimApp {
                 self.face = hit.and_then(|h| self.face_of_hit(&h));
             }
         }
+    }
+
+    /// A point (or, for Split, a guide) asked for, picked in 3D: on the
+    /// working level under the pointer. True while it takes the clicks.
+    fn point_pick_3d(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        painter: &egui::Painter,
+        project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+        ray: &dyn Fn(egui::Pos2) -> (DVec3, DVec3),
+    ) -> bool {
+        if !self.plan.point_pick {
+            return false;
+        }
+        if response.secondary_clicked() {
+            self.plan.point_pick = false;
+            return true;
+        }
+        let Some(h) = response.hover_pos() else {
+            return true;
+        };
+        let z = self.work_level().map_or(0.0, |(_, z)| z);
+        let (o, d) = ray(h);
+        let Some(p) = Workplane::ground(z).intersect(o, d) else {
+            return true;
+        };
+        let step = crate::snaps::current_step();
+        let w = if step > 0.0 {
+            (p.truncate() / step).round() * step
+        } else {
+            p.truncate()
+        };
+        self.plan.point_hover = Some(w);
+        // a guide under the pointer, for Split's line
+        let guide = self
+            .plan
+            .point_lines
+            .then(|| self.guide_near(h, project))
+            .flatten()
+            .and_then(|id| match self.doc.model().get(id).map(|e| &e.kind) {
+                Some(ElementKind::Guide(g)) => Some((g.a.truncate(), g.b.truncate())),
+                _ => None,
+            });
+        let red = egui::Stroke::new(1.6, crate::planview::SPLIT_RED);
+        match guide {
+            Some((a, b)) => {
+                if let (Some(pa), Some(pb)) = (project(a.extend(z)), project(b.extend(z))) {
+                    painter
+                        .line_segment([pa, pb], egui::Stroke::new(3.0, crate::planview::SPLIT_RED));
+                }
+            }
+            None => {
+                if let Some(c) = project(w.extend(z)) {
+                    let s = egui::Stroke::new(1.5, crate::planview::ACCENT_SELECTED);
+                    painter.line_segment([c - egui::vec2(12.0, 0.0), c + egui::vec2(12.0, 0.0)], s);
+                    painter.line_segment([c - egui::vec2(0.0, 12.0), c + egui::vec2(0.0, 12.0)], s);
+                    painter.circle_stroke(c, 5.0, if self.split.is_some() { red } else { s });
+                }
+            }
+        }
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        if response.clicked() {
+            match guide {
+                Some(l) => self.plan.point_line_picked = Some(l),
+                None => self.plan.point_picked = Some(w),
+            }
+            if !self.plan.point_lines && self.split.is_none() {
+                self.plan.point_pick = false;
+            }
+        }
+        true
     }
 
     /// The face of a mass a hit lands on.
@@ -10114,9 +10361,24 @@ impl eframe::App for CreaBimApp {
         // Divide's marks, for every view to draw this frame (MU38)
         (self.plan.divide_marks, self.plan.divide_labels) = self.divide_marks();
         self.plan.divide_guides = self.divide.s.make == creabim_core::divide::Make::Guides;
-        // what the modifier being set shows, and a centre picked for it
-        self.take_picked_centre();
-        self.plan.mod_guides = self.modifier_guides();
+        // while a point is asked for, the selection stays as it was
+        if self.plan.point_pick {
+            match &self.pick_selection {
+                Some(s) if *s != self.selection => self.selection = s.clone(),
+                Some(_) => {}
+                None => self.pick_selection = Some(self.selection.clone()),
+            }
+        } else {
+            self.pick_selection = None;
+        }
+        // Split's clicks, else what the modifier being set shows, and a
+        // centre picked for it
+        if self.split.is_some() {
+            self.split_steps(&ctx);
+        } else {
+            self.take_picked_centre();
+            self.plan.mod_guides = self.modifier_guides();
+        }
         // R draws a rectangle while sketching, not a rotate (MU38)
         crate::sketch::set_sketching(&ctx, self.plan.tool == Tool::Sketch);
         // the activity log: what the status bar said (it names every edit

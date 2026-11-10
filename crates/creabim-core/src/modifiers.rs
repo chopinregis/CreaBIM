@@ -714,6 +714,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_modifier_takes_a_reshaped_tall_mass() {
+        // a box pulled up tall, one corner dragged off square (MU39 crash)
+        let mut m = EditMesh::cuboid(DVec3::new(4.0, 3.0, 3.0));
+        let top = (0..m.faces.len())
+            .find(|f| m.face_normal(*f).z > 0.9)
+            .unwrap();
+        m.extrude_face(top, 14.0);
+        m.vertices[1] += DVec3::new(0.7, -0.4, 0.0);
+        for k in ModifierKind::presets() {
+            let e = evaluate(&m, &[Modifier::new(k.clone())]);
+            assert_eq!(e.source.len(), e.mesh.faces.len(), "{k:?}");
+            for f in &e.mesh.faces {
+                assert!(
+                    f.iter().all(|v| (*v as usize) < e.mesh.vertices.len()),
+                    "{k:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn an_array_fits_a_length_in_steps_of_its_own_size() {
         let e = evaluate(
             &cube(),

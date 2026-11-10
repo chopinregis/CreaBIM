@@ -239,6 +239,7 @@ window.ICONS = {
 "mod-louvres": "<path d=\"M4 3v18\" /><path d=\"M4 5l10 3M4 11l10 3M4 17l10 3\" />",
 "mod-bevel": "<path d=\"M4 21V11l7-7h9\" />",
 "mod-shell": "<path d=\"M3 4h18v16H3z\" /><path d=\"M7 4v12h10V4\" />",
+"offset": "<rect x=\"8\" y=\"8\" width=\"8\" height=\"8\" /><path d=\"M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5\" />",
 "shell-closed": "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" /><rect x=\"7\" y=\"8\" width=\"10\" height=\"8\" />",
 "shell-top": "<path d=\"M3 4v16h18V4\" /><path d=\"M7 4v12h10V4\" />",
 "shell-bottom": "<path d=\"M3 20V4h18v16\" /><path d=\"M7 20V8h10v12\" />",

@@ -324,6 +324,12 @@ pub struct PlanState {
     /// click in a plan gives it, in model x and y (MU39).
     pub point_pick: bool,
     pub point_picked: Option<DVec2>,
+    /// While a point is asked for: where the pointer is, and (when
+    /// `point_lines`) the drawing's straight line under it, which a click
+    /// takes instead of a point (Split's cutting line, MU39).
+    pub point_hover: Option<DVec2>,
+    pub point_lines: bool,
+    pub point_line_picked: Option<(DVec2, DVec2)>,
     /// Lines and see-through planes a modifier being set shows in the
     /// views (its centre, its mirror plane, its cuts), in model space.
     pub mod_guides: crate::modguides::Guides,
@@ -580,6 +586,9 @@ impl Default for PlanState {
             divide_guides: false,
             point_pick: false,
             point_picked: None,
+            point_hover: None,
+            point_lines: false,
+            point_line_picked: None,
             mod_guides: Default::default(),
             zoom_to_scale: None,
             edit_note: None,
@@ -937,11 +946,60 @@ pub fn show(
         if let Some(h) = response.hover_pos() {
             let w = xf.to_world(h);
             let step = crate::snaps::current_step();
-            let w = if step > 0.0 {
-                (w / step).round() * step
-            } else {
-                w
+            // a corner of the drawing near the pointer, else the grid step
+            let near_px = 10.0 / scale as f64;
+            let corner = plan
+                .items
+                .iter()
+                .flat_map(|it| match it {
+                    PlanItem::Line { a, b, .. } => vec![*a, *b],
+                    PlanItem::Polygon { points, .. } => points.clone(),
+                    _ => vec![],
+                })
+                .filter(|p| p.distance(w) < near_px)
+                .min_by(|p, q| p.distance(w).total_cmp(&q.distance(w)));
+            let w = match corner {
+                Some(c) => c,
+                None if step > 0.0 => (w / step).round() * step,
+                None => w,
             };
+            state.point_hover = Some(w);
+            // a straight line of the drawing under the pointer: a guide, a
+            // wall's face, an edge
+            let line = if state.point_lines && corner.is_none() {
+                let reach = 6.0 / scale as f64;
+                let to_seg = |a: DVec2, b: DVec2| {
+                    let ab = b - a;
+                    let t = ((w - a).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+                    (a + ab * t).distance(w)
+                };
+                plan.items
+                    .iter()
+                    .flat_map(|it| match it {
+                        PlanItem::Line { a, b, .. } => vec![(*a, *b)],
+                        PlanItem::Polygon { points, .. } => (0..points.len())
+                            .map(|i| (points[i], points[(i + 1) % points.len()]))
+                            .collect(),
+                        _ => vec![],
+                    })
+                    .filter(|(a, b)| a.distance(*b) > 1e-6 && to_seg(*a, *b) < reach)
+                    .min_by(|p, q| to_seg(p.0, p.1).total_cmp(&to_seg(q.0, q.1)))
+            } else {
+                None
+            };
+            if let Some((a, b)) = line {
+                let top = ui
+                    .ctx()
+                    .layer_painter(egui::LayerId::new(
+                        egui::Order::Foreground,
+                        ui.id().with("pickline"),
+                    ))
+                    .with_clip_rect(rect);
+                top.line_segment(
+                    [xf.to_screen(a), xf.to_screen(b)],
+                    Stroke::new(3.0, SPLIT_RED),
+                );
+            }
             let c = xf.to_screen(w);
             let top = ui
                 .ctx()
@@ -956,8 +1014,13 @@ pub fn show(
             top.circle_stroke(c, 5.0, s);
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             if ui.input(|i| i.pointer.primary_clicked()) {
-                state.point_picked = Some(w);
-                state.point_pick = false;
+                match line {
+                    Some(l) => state.point_line_picked = Some(l),
+                    None => state.point_picked = Some(w),
+                }
+                if !state.point_lines {
+                    state.point_pick = false;
+                }
             }
         }
         if ui.input(|i| i.pointer.secondary_clicked() || i.key_pressed(egui::Key::Escape)) {
@@ -1571,7 +1634,7 @@ pub fn show(
         crate::modguides::draw(
             &painter,
             &state.mod_guides,
-            ACCENT_SELECTED,
+            state.mod_guides.ink.unwrap_or(ACCENT_SELECTED),
             matches!(space, Space::Plan),
             &project,
         );
@@ -2829,6 +2892,9 @@ fn drag_level(
 }
 
 /// Guides are drawn in this colour, in every pane.
+/// Split's cutting line and plane (MU39).
+pub const SPLIT_RED: Color32 = Color32::from_rgb(222, 60, 60);
+
 pub const GUIDE_COLOR: Color32 = Color32::from_rgb(190, 60, 170);
 
 /// The part of the screen segment ab inside `r`.

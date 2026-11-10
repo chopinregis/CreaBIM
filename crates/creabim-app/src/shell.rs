@@ -306,7 +306,7 @@ fn command_icon(c: Command) -> &'static str {
         Command::Rotate => "rotate-cw",
         Command::Scale => "scaling",
         Command::Mirror => "flip-horizontal-2",
-        Command::Offset => "copy-plus",
+        Command::Offset => "offset",
         Command::Duplicate => "duplicate",
         Command::Copy => "copy",
         Command::Cut => "scissors",
@@ -537,6 +537,21 @@ impl CreaBimApp {
                         );
                         items.push(Item::Separator);
                     }
+                    // cutting it up first, where they are found (MU39): Split
+                    // for anything, Divide for what has a length
+                    items.push(Item::new("split", "Split…").icon("scissors").hint(
+                        "Cut it along a guide, a line or two points you click; keep the side you click",
+                    ));
+                    if self.selection.active.is_some_and(|id| {
+                        creabim_core::divide::span(self.doc.model(), id).is_some()
+                    }) {
+                        items.push(
+                            Item::new("divide", "Divide…")
+                                .icon("mod-array")
+                                .hint("Into parts along it, up it or both: cuts, guides or copies"),
+                        );
+                    }
+                    items.push(Item::Separator);
                     items.extend(self.wall_menu_items());
                     items.extend(self.join_menu_items());
                     items.extend(self.level_menu_items());
@@ -553,16 +568,6 @@ impl CreaBimApp {
                         &[Command::Hide, Command::Isolate],
                     ] {
                         items.extend(group.iter().map(|c| ctx(*c)));
-                        // Divide sits with the edits, for what it can divide
-                        if group.contains(&Command::Duplicate)
-                            && self.selection.active.is_some_and(|id| {
-                                creabim_core::divide::span(self.doc.model(), id).is_some()
-                            })
-                        {
-                            items.push(Item::new("divide", "Divide…").icon("mod-array").hint(
-                                "Into parts along it, up it or both: cuts, guides or copies",
-                            ));
-                        }
                         items.push(Item::Separator);
                     }
                     if !self.shell.context_3d {
@@ -1630,6 +1635,7 @@ impl CreaBimApp {
             }
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
             "divide" => self.open_divide(),
+            "split" => self.start_split(),
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
             "sched.csv" => self.schedule_export = Some("csv".into()),
@@ -2447,7 +2453,7 @@ impl CreaBimApp {
                 crate::modal::Mode::Rotate => "rotate-cw",
                 crate::modal::Mode::Scale => "scaling",
                 crate::modal::Mode::Mirror => "flip-horizontal-2",
-                crate::modal::Mode::Offset => "copy-plus",
+                crate::modal::Mode::Offset => "offset",
                 crate::modal::Mode::Grip => "spline",
             };
             return (json!({"label": verb, "icon": icon}), options);
@@ -2459,7 +2465,7 @@ impl CreaBimApp {
                 crate::modal::Mode::Rotate => "rotate-cw",
                 crate::modal::Mode::Scale => "scaling",
                 crate::modal::Mode::Mirror => "flip-horizontal-2",
-                crate::modal::Mode::Offset => "copy-plus",
+                crate::modal::Mode::Offset => "offset",
                 crate::modal::Mode::Grip => "spline",
             };
             return (

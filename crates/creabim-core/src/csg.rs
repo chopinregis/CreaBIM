@@ -230,7 +230,18 @@ impl Node {
     }
 
     fn build(&mut self, polys: Vec<Polygon>) {
+        self.build_at(polys, 0);
+    }
+
+    /// As [`Node::build`], `depth` deep: past a depth no sound solid
+    /// needs, what is left stays in this node rather than recursing on
+    /// until the stack runs out.
+    fn build_at(&mut self, polys: Vec<Polygon>, depth: usize) {
         if polys.is_empty() {
+            return;
+        }
+        if depth > 600 {
+            self.polygons.extend(polys);
             return;
         }
         let plane = *self.plane.get_or_insert(polys[0].plane);
@@ -242,10 +253,14 @@ impl Node {
         self.polygons.extend(cf);
         self.polygons.extend(cb);
         if !front.is_empty() {
-            self.front.get_or_insert_with(Default::default).build(front);
+            self.front
+                .get_or_insert_with(Default::default)
+                .build_at(front, depth + 1);
         }
         if !back.is_empty() {
-            self.back.get_or_insert_with(Default::default).build(back);
+            self.back
+                .get_or_insert_with(Default::default)
+                .build_at(back, depth + 1);
         }
     }
 }
@@ -290,10 +305,27 @@ pub fn boolean(a: Vec<Polygon>, b: Vec<Polygon>, op: BoolOp) -> Vec<Polygon> {
 
 /// Polygons of an edit mesh, moved by `offset`.
 pub fn from_mesh(m: &crate::EditMesh, offset: DVec3) -> Vec<Polygon> {
-    m.faces
-        .iter()
-        .filter_map(|f| Polygon::new(f.iter().map(|&v| m.vertices[v as usize] + offset).collect()))
-        .collect()
+    let mut out = vec![];
+    for f in &m.faces {
+        let pts: Vec<DVec3> = f.iter().map(|&v| m.vertices[v as usize] + offset).collect();
+        let Some(p) = Polygon::new(pts.clone()) else {
+            continue;
+        };
+        // a face no longer flat (a corner dragged off its plane) goes in as
+        // triangles, which always are: cut as one, it split without end
+        // and the stack ran out (MU39 crash)
+        let bent = pts
+            .iter()
+            .any(|q| (p.plane.n.dot(*q) - p.plane.w).abs() > 1e-7);
+        if bent && pts.len() > 3 {
+            for i in 1..pts.len() - 1 {
+                out.extend(Polygon::new(vec![pts[0], pts[i], pts[i + 1]]));
+            }
+        } else {
+            out.push(p);
+        }
+    }
+    out
 }
 
 /// An edit mesh from polygons, welding corners that coincide.
