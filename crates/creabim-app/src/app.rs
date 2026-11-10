@@ -10375,7 +10375,7 @@ impl eframe::App for CreaBimApp {
         // the colour of what is worked on: orange, or the theme's accent;
         // the 3D view's highlight is built again when it changes (MU39)
         let ink = if self.shell.settings.interaction == "theme" {
-            crate::theme::Palette::of(&ctx).accent
+            crate::theme::vivid(crate::theme::Palette::of(&ctx).accent)
         } else {
             crate::theme::ORANGE
         };

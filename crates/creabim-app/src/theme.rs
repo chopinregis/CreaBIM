@@ -223,6 +223,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_dark_accent_followed_stands_off_the_linework() {
+        // Sage's deep green was nearly black on its plans (MU39)
+        let sage = vivid(Color32::from_rgb(0x4F, 0x6B, 0x4C));
+        let black = Color32::from_rgb(0x22, 0x26, 0x1F);
+        eprintln!("sage followed: {sage:?}");
+        assert!(contrast_ratio(sage, black) >= 3.0, "{sage:?}");
+        // and still shows on white paper
+        assert!(contrast_ratio(sage, Color32::WHITE) >= 2.2, "{sage:?}");
+        // its hue is kept: still green
+        assert!(sage.g() > sage.r() && sage.g() > sage.b());
+    }
+
+    #[test]
     fn every_theme_round_trips_by_id_and_cycles() {
         for t in Theme::ALL {
             assert_eq!(Theme::from_id(t.id()), Some(t));
@@ -286,3 +299,15 @@ pub fn set_interaction(c: eframe::egui::Color32) {
 
 /// The orange the selection has always been.
 pub const ORANGE: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(230, 120, 30);
+
+/// A theme's accent made bright enough to work with: its hue kept, its
+/// colour and lightness raised, so a dark accent (Sage's deep green) reads
+/// against black linework and light or dark paper alike (MU39).
+pub fn vivid(c: eframe::egui::Color32) -> eframe::egui::Color32 {
+    // in gamma space, as the eye sees it: a mid-tone, so it reads on
+    // light paper and against dark lines alike
+    let mut h = eframe::egui::ecolor::HsvaGamma::from(c);
+    h.s = h.s.clamp(0.65, 0.85);
+    h.v = h.v.clamp(0.68, 0.78);
+    h.into()
+}
