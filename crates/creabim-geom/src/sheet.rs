@@ -785,6 +785,41 @@ fn draw_revision_table(
 pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_north: f64) {
     use creabim_core::PaperMarkKind;
     match &m.kind {
+        PaperMarkKind::Picture {
+            width,
+            height,
+            rgba,
+            opacity,
+            ..
+        } => {
+            let (lo, hi) = m.bounds();
+            if let Some(r) = crate::raster::stored_image(*width, *height, rgba) {
+                c.image(lo, hi, None, &crate::raster::faded(&r, *opacity));
+            }
+            return;
+        }
+        PaperMarkKind::Vector { shapes, .. } => {
+            // drawn as a master's logo is, from the sheet's lower left
+            let (lo, hi) = m.bounds();
+            let t = SheetTemplate {
+                corner: creabim_core::titleblock::Corner::BottomLeft,
+                items: vec![TitleItem::Logo {
+                    lo,
+                    hi,
+                    shapes: shapes.clone(),
+                }],
+                border: false,
+                fields: vec![],
+                paper: None,
+                guides: vec![],
+                margins: None,
+            };
+            draw_template(c, &Sheet::a("", "A3"), &t, &BTreeMap::new());
+            return;
+        }
+        _ => {}
+    }
+    match &m.kind {
         PaperMarkKind::NorthArrow { .. } => {
             let s = m.size;
             let turn = DVec2::from_angle(m.north_angle(true_north).to_radians());
@@ -858,7 +893,9 @@ pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_nor
                 Anchor::Middle,
             );
         }
-        PaperMarkKind::RevisionTable => {}
+        PaperMarkKind::RevisionTable
+        | PaperMarkKind::Picture { .. }
+        | PaperMarkKind::Vector { .. } => {}
         PaperMarkKind::ScaleBar {
             scale,
             length,

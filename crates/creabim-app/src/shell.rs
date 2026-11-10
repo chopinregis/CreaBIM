@@ -2431,6 +2431,11 @@ impl CreaBimApp {
                 self.plan.cancel();
                 self.status = "Text on the sheet: click where it starts, then type.".into();
             }
+            "sheet.picture" => {
+                if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
+                    self.add_sheet_picture(sheet);
+                }
+            }
             "sheet.north" | "sheet.scalebar" => {
                 if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
                     self.add_paper_mark(sheet, what == "sheet.north");
@@ -3307,6 +3312,10 @@ impl CreaBimApp {
             options.push(json!({
                 "kind": "button", "id": "sheet.text", "label": "Text", "icon": "text",
                 "hint": "Text on the sheet: click where it goes (N)",
+            }));
+            options.push(json!({
+                "kind": "button", "id": "sheet.picture", "label": "Picture", "icon": "image",
+                "hint": "A picture on the sheet: a collage, site context, a mood board (PNG, JPEG; an SVG stays crisp). Drag its grips to size it",
             }));
             options.push(json!({
                 "kind": "button", "id": "sheet.north", "label": "North arrow", "icon": "north-arrow",

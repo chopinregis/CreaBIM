@@ -8614,6 +8614,8 @@ impl CreaBimApp {
                     creabim_core::PaperMarkKind::ScaleBar { .. } => "Scale bar",
                     creabim_core::PaperMarkKind::Cloud { .. } => "Revision cloud",
                     creabim_core::PaperMarkKind::RevisionTable => "Revisions table",
+                    creabim_core::PaperMarkKind::Picture { .. } => "Picture",
+                    creabim_core::PaperMarkKind::Vector { .. } => "Vector picture",
                 },
                 _ => "Settings",
             }
@@ -10326,6 +10328,48 @@ pub(crate) struct SheetsExport {
     chosen: std::collections::BTreeSet<ElementId>,
 }
 
+/// Width and height rows for a sheet picture, its proportions kept when
+/// `aspect` (height over width) is given. True when changed.
+fn sheet_size_rows(ui: &mut egui::Ui, w: &mut f64, h: &mut f64, aspect: Option<f64>) -> bool {
+    let (mut nw, mut nh) = (*w, *h);
+    let cw = crate::props::row(ui, "Width", |ui| {
+        crate::props::fill(
+            ui,
+            egui::DragValue::new(&mut nw)
+                .range(2.0..=2000.0)
+                .speed(0.5)
+                .suffix(" mm"),
+        )
+    })
+    .changed();
+    let ch = crate::props::row(ui, "Height", |ui| {
+        crate::props::fill(
+            ui,
+            egui::DragValue::new(&mut nh)
+                .range(2.0..=2000.0)
+                .speed(0.5)
+                .suffix(" mm"),
+        )
+    })
+    .changed();
+    match (cw, ch, aspect) {
+        (true, _, Some(a)) => {
+            *w = nw;
+            *h = nw * a;
+        }
+        (false, true, Some(a)) => {
+            *h = nh;
+            *w = nh / a.max(1e-9);
+        }
+        (true, _, None) | (_, true, None) => {
+            *w = nw;
+            *h = nh;
+        }
+        _ => return false,
+    }
+    true
+}
+
 /// A north arrow's or a scale bar's settings (MU22). The undo label of a
 /// change.
 fn paper_mark_fields(
@@ -10443,6 +10487,73 @@ fn paper_mark_fields(
             } else {
                 ui.label(egui::RichText::new(format!("{} points: drag one to move it, drag a + to add one, right-click one to remove it.", points.len())).weak());
             }
+        }
+        PaperMarkKind::Picture {
+            w,
+            h,
+            width,
+            height,
+            opacity,
+            ..
+        } => {
+            let aspect = *height as f64 / (*width).max(1) as f64;
+            if sheet_size_rows(ui, w, h, Some(aspect)) {
+                label = Some("Picture size");
+            }
+            let mut pct = *opacity * 100.0;
+            if crate::props::row(ui, "Opacity", |ui| {
+                ui.spacing_mut().slider_width = (ui.available_width() - 64.0).max(40.0);
+                ui.add(
+                    egui::Slider::new(&mut pct, 0.0..=100.0)
+                        .suffix(" %")
+                        .max_decimals(0),
+                )
+            })
+            .changed()
+            {
+                *opacity = (pct / 100.0).clamp(0.0, 1.0);
+                label = Some("Picture opacity");
+            }
+            crate::props::row(ui, "Pixels", |ui| ui.label(format!("{width} × {height}")));
+            if crate::props::action(
+                ui,
+                "",
+                "Its own proportions",
+                "Undo any stretching: its height from its width",
+                ((*h / *w) - aspect).abs() > 1e-3,
+            )
+            .clicked()
+            {
+                *h = *w * aspect;
+                label = Some("Picture proportions");
+            }
+            crate::props::note(ui, "Drag its grips to size it: the corners keep its proportions, the edges stretch it.");
+        }
+        PaperMarkKind::Vector { w, h, shapes } => {
+            let aspect = *h / w.max(1e-9);
+            if sheet_size_rows(ui, w, h, Some(aspect)) {
+                label = Some("Picture size");
+            }
+            crate::props::row(ui, "Shapes", |ui| ui.label(format!("{}", shapes.len())));
+            let mut one = match shapes.first() {
+                Some(creabim_core::titleblock::TitleItem::Shape { fill: Some(c), .. })
+                | Some(creabim_core::titleblock::TitleItem::Shape { colour: c, .. }) => *c,
+                _ => [0.0; 3],
+            };
+            if crate::props::row(ui, "One colour", |ui| ui.color_edit_button_rgb(&mut one))
+                .changed()
+            {
+                for s in shapes.iter_mut() {
+                    if let creabim_core::titleblock::TitleItem::Shape { colour, fill, .. } = s {
+                        *colour = one;
+                        if fill.is_some() {
+                            *fill = Some(one);
+                        }
+                    }
+                }
+                label = Some("Picture colour");
+            }
+            crate::props::note(ui, "From an SVG: crisp at any size, on screen and in PDF.");
         }
         PaperMarkKind::RevisionTable => {
             crate::props::row(ui, "Text", |ui| {

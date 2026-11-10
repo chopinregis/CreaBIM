@@ -4973,13 +4973,16 @@ pub(crate) fn nav_input(
     let size = 28.0;
     let x = rect.right() - size - 10.0;
     let y0 = rect.top() + 10.0;
-    if rect.width() < 200.0 || rect.height() < 5.0 * size + 30.0 {
+    // a short area cuts the column off at its edge rather than taking it
+    // away (MU40, as Blender's)
+    if rect.width() < 200.0 || rect.height() < size + 20.0 {
         return (None, None);
     }
     let column = Rect::from_min_size(
         egui::pos2(x - 3.0, y0 - 3.0),
         egui::vec2(size + 6.0, 5.0 * size + 6.0),
-    );
+    )
+    .intersect(rect);
     let near = ui
         .input(|i| i.pointer.hover_pos())
         .is_some_and(|h| column.expand(40.0).contains(h));
@@ -5000,6 +5003,10 @@ pub(crate) fn nav_input(
     ];
     for (i, (icon, tip)) in buttons.iter().enumerate() {
         let r = Rect::from_min_size(egui::pos2(x, y0 + i as f32 * size), egui::vec2(size, size));
+        // one cut off by a short area is not there to click
+        if r.bottom() > rect.bottom() {
+            continue;
+        }
         let resp = ui
             .interact(
                 r,

@@ -808,6 +808,84 @@ impl CreaBimApp {
         true
     }
 
+    /// Pictures from files onto `sheet` (MU40: collages, site context,
+    /// mood boards): as many as picked at once, side by side; an SVG as
+    /// crisp vector shapes, a PNG or JPEG as a picture.
+    pub(super) fn add_sheet_picture(&mut self, sheet: ElementId) {
+        let Some(files) = rfd::FileDialog::new()
+            .set_title("Pictures for the sheet: pick one or several")
+            .add_filter(
+                "Pictures",
+                &["png", "jpg", "jpeg", "bmp", "gif", "webp", "svg"],
+            )
+            .pick_files()
+        else {
+            return;
+        };
+        let Some(s) = creabim_geom::sheet::sheet_of(self.doc.model(), sheet) else {
+            return;
+        };
+        let (sw, sh) = (s.width, s.height);
+        let n = files.len().max(1);
+        let cols = (n as f64).sqrt().ceil() as usize;
+        let rows = n.div_ceil(cols);
+        let cell = ((sw - 60.0) / cols as f64).min(120.0);
+        let mut tx = Transaction::new(if n == 1 {
+            "Picture on sheet"
+        } else {
+            "Pictures on sheet"
+        });
+        let mut ids = vec![];
+        let mut failed = vec![];
+        for (k, p) in files.iter().enumerate() {
+            let (c, r) = ((k % cols) as f64, (k / cols) as f64);
+            let mid = DVec2::new(
+                sw / 2.0 + (c - (cols as f64 - 1.0) / 2.0) * (cell + 6.0),
+                sh / 2.0 - (r - (rows as f64 - 1.0) / 2.0) * (cell * 0.75 + 6.0),
+            );
+            match sheet_picture_kind(p, cell) {
+                Ok(kind) => {
+                    let name = p
+                        .file_stem()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("Picture")
+                        .to_string();
+                    let e = Element::new(
+                        name,
+                        ElementKind::PaperMark(creabim_core::PaperMark {
+                            sheet,
+                            at: mid,
+                            size: 1.0,
+                            kind,
+                            color: None,
+                        }),
+                    );
+                    ids.push(e.id);
+                    tx = tx.insert(e);
+                }
+                Err(e) => failed.push(format!("{}: {e}", p.display())),
+            }
+        }
+        if ids.is_empty() {
+            self.status = format!("Couldn't read {}", failed.join("; "));
+            return;
+        }
+        let r = self.doc.commit(tx);
+        self.selection.extend(ids.iter().copied(), false);
+        let mut msg = if ids.len() == 1 {
+            "Picture placed".to_string()
+        } else {
+            format!("{} pictures placed", ids.len())
+        };
+        msg.push_str(
+            ": drag each where it goes; its corner grips size it, its opacity is in Properties.",
+        );
+        if !failed.is_empty() {
+            msg.push_str(&format!(" Couldn't read {}.", failed.join("; ")));
+        }
+        self.report(r, msg);
+    }
+
     /// A picture from a file onto the master, 40 mm across in the middle
     /// of the view, picked to size and place (MU40: a logo, or several).
     fn add_master_picture(&mut self) {
@@ -2712,6 +2790,36 @@ impl CreaBimApp {
             }
         }
     }
+}
+
+/// A sheet picture from file `p`, `w` mm wide: an SVG as vector shapes,
+/// a PNG or JPEG as pixels (at most 2400 across: sharp at A3, light).
+fn sheet_picture_kind(p: &std::path::Path, w: f64) -> Result<creabim_core::PaperMarkKind, String> {
+    if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
+        let text = std::fs::read_to_string(p).map_err(|e| e.to_string())?;
+        let (shapes, aspect) = creabim_exchange::titleblock::svg_logo(&text)?;
+        return Ok(creabim_core::PaperMarkKind::Vector {
+            w,
+            h: w / aspect.max(1e-6),
+            shapes,
+        });
+    }
+    let img = image::open(p).map_err(|e| e.to_string())?;
+    let img = if img.width().max(img.height()) > 2400 {
+        img.resize(2400, 2400, image::imageops::FilterType::Triangle)
+    } else {
+        img
+    };
+    let rgba = img.to_rgba8();
+    let (pw, ph) = (rgba.width(), rgba.height());
+    Ok(creabim_core::PaperMarkKind::Picture {
+        w,
+        h: w * ph as f64 / pw.max(1) as f64,
+        width: pw,
+        height: ph,
+        rgba: creabim_geom::raster::store_image(rgba.as_raw()),
+        opacity: 1.0,
+    })
 }
 
 #[cfg(test)]

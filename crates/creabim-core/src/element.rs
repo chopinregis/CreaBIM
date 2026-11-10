@@ -523,6 +523,8 @@ impl ElementKind {
                 crate::papermark::PaperMarkKind::ScaleBar { .. } => "Scale bar",
                 crate::papermark::PaperMarkKind::Cloud { .. } => "Revision cloud",
                 crate::papermark::PaperMarkKind::RevisionTable => "Revisions table",
+                crate::papermark::PaperMarkKind::Picture { .. } => "Picture",
+                crate::papermark::PaperMarkKind::Vector { .. } => "Vector picture",
             },
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",

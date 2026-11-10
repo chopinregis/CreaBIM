@@ -423,11 +423,15 @@ impl ViewCube {
             // eight buttons now (MU24): the column reaches 250 px down
             Pos2::new(rect.right() - 4.0, rect.top() + 250.0),
         );
-        if !rect.contains_rect(area) {
+        // a short area cuts them off at its edge, as Blender's do, rather
+        // than taking them away (MU40); only one too narrow for the cube
+        // goes without
+        if rect.width() < area.width() + 8.0 || rect.height() < 60.0 {
             self.area = None;
             self.hot = None;
             return (None, None);
         }
+        let area = area.intersect(rect);
         self.area = Some(area);
         // only the cube's disc and the button column take the pointer: the
         // empty corners of the box pan and pick as the rest of the view
@@ -435,7 +439,8 @@ impl ViewCube {
         let column = Rect::from_min_size(
             Pos2::new(col_x - 17.0, rect.top() + 7.0),
             Vec2::new(34.0, 8.0 * 28.0 + 6.0),
-        );
+        )
+        .intersect(rect);
         self.hot = Some((c, 2.05 * s + 8.0, column));
         let hot = move |p: Pos2| p.distance(c) < 2.05 * s + 8.0 || column.expand(2.0).contains(p);
         let over = ui.input(|i| i.pointer.hover_pos()).is_some_and(hot);

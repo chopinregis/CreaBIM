@@ -39,6 +39,29 @@ pub enum PaperMarkKind {
     /// The sheet's revisions: one row per revision cloud on it, from `at`
     /// (its lower left), `size` mm text.
     RevisionTable,
+    /// A picture on the sheet (MU40: collages, site context, mood
+    /// boards): `w` by `h` mm about `at`, its pixels kept in the project
+    /// as a master's are (RGBA rows from the top, deflated, base64).
+    Picture {
+        w: f64,
+        h: f64,
+        width: u32,
+        height: u32,
+        rgba: String,
+        #[serde(default = "one")]
+        opacity: f64,
+    },
+    /// A vector logo or drawing from an SVG, crisp at any size: its shapes
+    /// in a unit box (as a master's logo), `w` by `h` mm about `at`.
+    Vector {
+        w: f64,
+        h: f64,
+        shapes: Vec<crate::titleblock::TitleItem>,
+    },
+}
+
+fn one() -> f64 {
+    1.0
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -133,6 +156,10 @@ impl PaperMark {
             }
             PaperMarkKind::RevisionTable => {
                 (self.at, self.at + DVec2::new(110.0, self.size * 2.4 * 5.0))
+            }
+            PaperMarkKind::Picture { w, h, .. } | PaperMarkKind::Vector { w, h, .. } => {
+                let half = DVec2::new(*w, *h) / 2.0;
+                (self.at - half, self.at + half)
             }
             PaperMarkKind::NorthArrow { .. } => {
                 let r = self.size * 0.6;

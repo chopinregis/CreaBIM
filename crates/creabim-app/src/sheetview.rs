@@ -86,8 +86,13 @@ enum CloudGrip {
 
 /// The grips of a selected cloud, on paper.
 fn cloud_grips(m: &creabim_core::PaperMark) -> Vec<(CloudGrip, DVec2)> {
-    let creabim_core::PaperMarkKind::Cloud { w, h, points, .. } = &m.kind else {
-        return vec![];
+    use creabim_core::PaperMarkKind as K;
+    // a picture sizes by the same box grips (MU40)
+    let none: Vec<DVec2> = vec![];
+    let (w, h, points) = match &m.kind {
+        K::Cloud { w, h, points, .. } => (w, h, points),
+        K::Picture { w, h, .. } | K::Vector { w, h, .. } => (w, h, &none),
+        _ => return vec![],
     };
     if points.len() >= 3 {
         let pts: Vec<DVec2> = points.iter().map(|p| m.at + *p).collect();
@@ -117,6 +122,48 @@ fn cloud_grips(m: &creabim_core::PaperMark) -> Vec<(CloudGrip, DVec2)> {
 fn drag_cloud(was: &creabim_core::PaperMark, g: CloudGrip, to: DVec2) -> creabim_core::PaperMark {
     let mut m = was.clone();
     let at = m.at;
+    // a picture: its corners keep its proportions, its edges stretch it
+    let picture = match &mut m.kind {
+        creabim_core::PaperMarkKind::Picture { w, h, .. }
+        | creabim_core::PaperMarkKind::Vector { w, h, .. } => Some((w, h)),
+        _ => None,
+    };
+    if let (Some((w, h)), CloudGrip::Side(sx, sy)) = (picture, g) {
+        let (lo, hi) = (at - DVec2::new(*w, *h) / 2.0, at + DVec2::new(*w, *h) / 2.0);
+        let fixed = DVec2::new(
+            if sx < 0 { hi.x } else { lo.x },
+            if sy < 0 { hi.y } else { lo.y },
+        );
+        let (mut nw, mut nh) = (*w, *h);
+        if sx != 0 {
+            nw = ((to.x - fixed.x) * sx as f64).max(2.0);
+        }
+        if sy != 0 {
+            nh = ((to.y - fixed.y) * sy as f64).max(2.0);
+        }
+        if sx != 0 && sy != 0 {
+            let k = (nw / *w).max(nh / *h);
+            nw = *w * k;
+            nh = *h * k;
+        }
+        // the far side stays put; an axis not dragged stays centred
+        let lo2 = DVec2::new(
+            match sx {
+                0 => at.x - nw / 2.0,
+                s if s < 0 => hi.x - nw,
+                _ => lo.x,
+            },
+            match sy {
+                0 => at.y - nh / 2.0,
+                s if s < 0 => hi.y - nh,
+                _ => lo.y,
+            },
+        );
+        *w = nw;
+        *h = nh;
+        m.at = lo2 + DVec2::new(nw, nh) / 2.0;
+        return m;
+    }
     if let creabim_core::PaperMarkKind::Cloud { w, h, points, .. } = &mut m.kind {
         match g {
             CloudGrip::Side(sx, sy) => {
@@ -1308,7 +1355,9 @@ pub fn show(
         let cloud = selection.active.filter(|_| selection.len() == 1).and_then(|id| {
             doc.model().get(id).filter(|e| {
                 matches!(&e.kind, ElementKind::PaperMark(m)
-                    if m.sheet == sheet_id && matches!(m.kind, creabim_core::PaperMarkKind::Cloud { .. }))
+                    if m.sheet == sheet_id && matches!(m.kind, creabim_core::PaperMarkKind::Cloud { .. }
+                        | creabim_core::PaperMarkKind::Picture { .. }
+                        | creabim_core::PaperMarkKind::Vector { .. }))
             })
         });
         if let Some(e) = cloud.cloned() {
