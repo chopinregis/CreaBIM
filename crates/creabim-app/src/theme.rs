@@ -7,7 +7,6 @@ use eframe::egui::{self, Color32};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Theme {
     /// The original dark look.
-    #[default]
     Dark,
     /// The original light look.
     Light,
@@ -17,7 +16,9 @@ pub enum Theme {
     Paper,
     /// Deep blue, like a blueprint.
     Blueprint,
-    /// Pale green-grey.
+    /// Pale green-grey: the first-run look, as the settings' default and
+    /// the guide's pictures (MU39).
+    #[default]
     Sage,
     /// Near black with a gold accent, for high contrast.
     Ink,
