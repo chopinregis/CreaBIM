@@ -318,6 +318,12 @@ pub struct PlanState {
     /// show it), and each part's size at its middle (MU38).
     pub divide_marks: Vec<(DVec3, DVec3, bool)>,
     pub divide_labels: Vec<(DVec3, String)>,
+    /// The element a click would place, from the view the pointer is in
+    /// (its view, or None for 3D): set as it is drawn there, and shown a
+    /// frame later in every other view, so placing a mass in 3D shows it
+    /// in the plans too (MU39).
+    pub ghost_now: Option<(Option<ElementId>, crate::ghost::Ghost)>,
+    pub ghost_shared: Option<(Option<ElementId>, crate::ghost::Ghost)>,
     /// Divide is making guides: its marks show as guides do (MU39).
     pub divide_guides: bool,
     /// While a point is asked for (a radial array's centre): the next
@@ -584,6 +590,8 @@ impl Default for PlanState {
             divide_marks: vec![],
             divide_labels: vec![],
             divide_guides: false,
+            ghost_now: None,
+            ghost_shared: None,
             point_pick: false,
             point_picked: None,
             point_hover: None,
@@ -1630,6 +1638,12 @@ pub fn show(
             Some(pane_to_model(space, xf.to_world(pos), pivot.z))
         };
         let project = |p: DVec3| Some(xf.to_screen(model_to_pane(space, p)));
+        // the element another view's pointer would place, here too
+        if let Some((from, g)) = &state.ghost_shared {
+            if *from != Some(view) {
+                crate::ghost::draw(&painter, &project, g, ACCENT_SELECTED);
+            }
+        }
         // what the modifier being set shows: its centre, plane or cuts
         crate::modguides::draw(
             &painter,
@@ -2139,10 +2153,12 @@ pub fn show(
     // the element a click would place, as a ghost (A7-4)
     if let (PaneKind::Plan { level }, Some(h), true) = (kind, hover_world, response.hovered()) {
         if crate::ghost::shows(tool) {
-            let accent = crate::theme::Palette::of(ui.ctx()).accent;
+            // the interaction colour, as the 3D view's ghost (MU39)
+            let accent = ACCENT_SELECTED;
             match crate::ghost::cached(doc.model(), level, tool, h, state) {
                 Some(g) => {
-                    crate::ghost::draw(&painter, &|p| Some(xf.to_screen(p.truncate())), &g, accent)
+                    crate::ghost::draw(&painter, &|p| Some(xf.to_screen(p.truncate())), &g, accent);
+                    state.ghost_now = Some((Some(view), g));
                 }
                 None if matches!(tool, Tool::Door | Tool::Window | Tool::Opening) => {
                     if let Some(at) = response.hover_pos() {

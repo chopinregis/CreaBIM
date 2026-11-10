@@ -926,6 +926,10 @@ impl CreaBimApp {
             }
         }
         crate::modguides::draw(painter, &self.plan.mod_guides, accent, false, project);
+        // what a plan's pointer would place, here in 3D too
+        if let Some((Some(_), g)) = &self.plan.ghost_shared {
+            crate::ghost::draw(painter, project, g, egui::Color32::from_rgb(230, 120, 30));
+        }
     }
 
     /// The guides of the modifier card last worked in, while its mass is
@@ -4083,7 +4087,10 @@ impl CreaBimApp {
                 let at = o + d * h.t as f64;
                 // the window or door a click puts here (A7-4)
                 match crate::ghost::cached(self.doc.model(), wl, tool, at.truncate(), &self.plan) {
-                    Some(g) => crate::ghost::draw(painter, &project, &g, accent),
+                    Some(g) => {
+                        crate::ghost::draw(painter, &project, &g, accent);
+                        self.plan.ghost_now = Some((None, g));
+                    }
                     None => {
                         if let Some(c) = project(at) {
                             painter.circle_stroke(c, 6.0, stroke);
@@ -4189,6 +4196,7 @@ impl CreaBimApp {
         if from.is_none() && crate::ghost::shows(tool) {
             if let Some(g) = crate::ghost::cached(self.doc.model(), level, tool, p, &self.plan) {
                 crate::ghost::draw(painter, &project, &g, accent);
+                self.plan.ghost_now = Some((None, g));
             }
         }
         if tool == Tool::Object {
@@ -10358,6 +10366,17 @@ impl eframe::App for CreaBimApp {
         let _perf = Perf::new("frame");
         let ctx = ui.ctx().clone();
         crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
+        // the ghost the pointer's view drew last frame, for the others
+        let at = |g: &Option<(Option<ElementId>, crate::ghost::Ghost)>| {
+            g.as_ref()
+                .and_then(|(_, g)| g.parts.first()?.points.first().copied())
+        };
+        let moved = at(&self.plan.ghost_now) != at(&self.plan.ghost_shared);
+        self.plan.ghost_shared = self.plan.ghost_now.take();
+        // the other views catch up once the pointer stops
+        if moved {
+            ctx.request_repaint();
+        }
         // Divide's marks, for every view to draw this frame (MU38)
         (self.plan.divide_marks, self.plan.divide_labels) = self.divide_marks();
         self.plan.divide_guides = self.divide.s.make == creabim_core::divide::Make::Guides;
