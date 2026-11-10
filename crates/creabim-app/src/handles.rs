@@ -3970,7 +3970,7 @@ pub fn interact(
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         d.edit.cancel(doc);
         *drag = None;
-        *status = Some("Drag cancelled. Esc again finishes editing.".into());
+        *status = Some("Drag cancelled. Tab finishes editing.".into());
         return true;
     }
     if response.drag_stopped() || !response.dragged() {

@@ -137,11 +137,14 @@ mod tests {
         app.toggle_edit_mode();
         assert_eq!(app.plan.edit, Some(id));
         assert!(app.status.contains("Editing"), "{}", app.status);
-        // Esc steps out of it, keeping the selection
+        // Esc doesn't leave it, as Blender's (MU39); Tab does, keeping the
+        // selection
         assert!(app.plan.step_back());
+        assert_eq!(app.plan.edit, Some(id));
+        app.toggle_edit_mode();
         assert_eq!(app.plan.edit, None);
         assert!(app.selection.contains(id));
-        // and a click elsewhere doesn't end it, as Blender's (MU39)
+        // and a click elsewhere doesn't end it
         app.toggle_edit_mode();
         let slab = app
             .doc
@@ -273,11 +276,13 @@ mod tests {
         assert!(app.plan.grips.is_empty());
         // and still in Edit mode
         assert_eq!(app.plan.edit, Some(id));
-        // Esc drops picks first, then finishes editing
+        // Esc drops picks, and stays in Edit mode; Tab finishes
         app.plan.grips.pick(handles::Ring::Outline, 0, false);
         assert!(app.plan.step_back());
         assert_eq!(app.plan.edit, Some(id));
         assert!(app.plan.step_back());
+        assert_eq!(app.plan.edit, Some(id));
+        app.toggle_edit_mode();
         assert_eq!(app.plan.edit, None);
         // out of Edit mode Delete deletes the element, as it always did
         app.run_command(&ctx, Command::Delete, None);

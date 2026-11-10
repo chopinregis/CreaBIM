@@ -1661,9 +1661,11 @@ impl CreaBimApp {
             // Tab still cycles what lies under the pointer when there are
             // several things there (MU25); otherwise it switches the mode
             let cycling = self.plan.hover.as_ref().is_some_and(|h| h.under.len() >= 2);
+            // in Edit mode Tab always leaves it (a layered element's layers
+            // are Shift+Tab now, MU39)
+            let _ = layered;
             if free
-                && !layered
-                && !cycling
+                && (self.plan.edit.is_some() || !cycling)
                 && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab))
             {
                 self.toggle_edit_mode();
@@ -1686,9 +1688,11 @@ impl CreaBimApp {
                 }
             }
         }
-        // Enter opens the selected element in Edit mode, and closes it again
+        // Enter opens the selected element in Edit mode; only Tab (or the
+        // mode menu) closes it, as Blender's (MU39)
         let enter = ctx.input(|i| i.modifiers.is_none() && i.key_pressed(egui::Key::Enter));
         if enter
+            && self.plan.edit.is_none()
             && self.plan.tool == Tool::Select
             && self.plan.modal.is_none()
             && !self.plan.busy()
@@ -1770,14 +1774,14 @@ impl CreaBimApp {
                 && !self.plan.grips.typing
                 && !ctx.egui_wants_keyboard_input();
             if free && handles::has_layers(self.doc.model(), id) {
-                let tab = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab));
+                let tab = ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, egui::Key::Tab));
                 if tab {
                     let on = !handles::layers();
                     handles::set_layers(on);
                     self.status = if on {
                         match self.doc.model().get(id).map(|e| &e.kind) {
-                            Some(ElementKind::Wall(_)) => "Layers: drag a layer's end to run it on or hold it back. Tab: back to the element's grips.",
-                            _ => "Layers: drag a layer's edge to push it out past the edge or pull it in. Tab: back to the element's grips.",
+                            Some(ElementKind::Wall(_)) => "Layers: drag a layer's end to run it on or hold it back. Shift+Tab: back to the element's grips.",
+                            _ => "Layers: drag a layer's edge to push it out past the edge or pull it in. Shift+Tab: back to the element's grips.",
                         }
                         .into()
                     } else {
@@ -2463,11 +2467,13 @@ impl CreaBimApp {
         if self.shell.settings.ground_grid {
             // as far out as 50 lines each way, at least the old 50 m
             let reach = (spacing * 25.0).max(25.0);
+            // quiet: a little off the paper, so edges and vertex dots
+            // stand well clear of it (MU39: too strong)
             let color = match (self.paper_is_dark, face_plane) {
-                (false, true) => [0.88, 0.89, 0.91],
-                (false, false) => [0.80, 0.80, 0.82],
-                (true, true) => [0.18, 0.19, 0.21],
-                (true, false) => [0.26, 0.27, 0.30],
+                (false, true) => [0.91, 0.92, 0.93],
+                (false, false) => [0.865, 0.865, 0.88],
+                (true, true) => [0.165, 0.17, 0.185],
+                (true, false) => [0.215, 0.22, 0.245],
             };
             lines.extend(grid_lines(
                 level_plane,
@@ -8353,8 +8359,8 @@ impl CreaBimApp {
                     "Grips",
                     &mut on,
                     &[
-                        (false, "Element", "The element's own grips (Tab)"),
-                        (true, "Layers", "A grip at each layer's ends (Tab)"),
+                        (false, "Element", "The element's own grips (Shift+Tab)"),
+                        (true, "Layers", "A grip at each layer's ends (Shift+Tab)"),
                     ],
                 ) {
                     handles::set_layers(on);
@@ -11184,7 +11190,10 @@ fn window_title(path: &str, unsaved: bool) -> String {
         .file_stem()
         .map_or(path.to_string(), |n| n.to_string_lossy().into_owned());
     let version = env!("CARGO_PKG_VERSION");
+    // a build being worked on says so in full: which version it leads to
+    // (MU39: 1.0 showed while 1.0.1 was out and the next one in hand)
     let app = match version.split('.').collect::<Vec<_>>().as_slice() {
+        _ if version.contains('-') => format!("CreaBIM {version}"),
         ["0", minor, ..] => format!("CreaBIM 0.{minor} beta"),
         [major, minor, ..] => format!("CreaBIM {major}.{minor}"),
         _ => "CreaBIM".to_string(),

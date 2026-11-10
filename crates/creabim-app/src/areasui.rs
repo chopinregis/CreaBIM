@@ -11,7 +11,7 @@ use shell::icon_name;
 /// The height of an area's header, in points.
 /// A view area's header height (A4-2): 26 px controls with 4 px above and
 /// below.
-pub(super) const HEADER: f32 = 32.0;
+pub(super) const HEADER: f32 = 34.0;
 
 /// The areas as they are now.
 #[derive(Clone, Debug)]
@@ -728,7 +728,7 @@ impl CreaBimApp {
             egui::UiBuilder::new()
                 .id_salt(("area-head", i))
                 .max_rect(Rect::from_min_max(
-                    head.min + egui::vec2(14.0, 3.0),
+                    head.min + egui::vec2(14.0, 5.0),
                     head.max - egui::vec2(6.0, 3.0),
                 ))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),

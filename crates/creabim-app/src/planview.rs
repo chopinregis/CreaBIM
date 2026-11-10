@@ -768,11 +768,11 @@ impl PlanState {
             true
         } else if self.edit.is_some() && !self.grips.is_empty() {
             self.grips.clear();
-            self.status = Some("Corners deselected. Esc again finishes editing.".into());
+            self.status = Some("Nothing picked. Tab finishes editing.".into());
             true
-        } else if self.edit.take().is_some() {
-            self.grips.clear();
-            self.status = Some("Finished editing.".into());
+        } else if self.edit.is_some() {
+            // Esc never leaves Edit mode, as Blender's: Tab does (MU39)
+            self.status = Some("Still editing: Tab finishes.".into());
             true
         } else if self.tool != Tool::Select {
             self.tool = Tool::Select;
@@ -5032,7 +5032,9 @@ pub(crate) fn nav_draw(ui: &egui::Ui, look: &NavLook) {
     painter.rect(
         look.column,
         8.0,
-        p.panel.gamma_multiply(fade),
+        // all but solid, faded or not: the drawing's lines no longer run
+        // over its buttons (MU39); only its border and icons fade
+        p.panel.gamma_multiply(0.94),
         egui::Stroke::new(1.0, p.border.gamma_multiply(fade)),
         egui::StrokeKind::Inside,
     );
