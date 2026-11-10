@@ -341,3 +341,15 @@ td a{color:var(--sage-deep);font-weight:500;overflow-wrap:anywhere}
 
 @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}a.card,.course a{transition:none}}
 @media (max-width:480px){.pill-x{display:none}}
+
+/* workflow: Blender habits, an architect's subject */
+.habits{border:1px solid var(--night-line);border-radius:12px;overflow:hidden;align-self:start;min-width:0}
+.hrow{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:16px;padding:14px 20px;border-top:1px solid var(--night-line);align-items:baseline}
+.hrow:first-child{border-top:0}
+.hrow b{font-weight:600;color:var(--night-ink);font-size:15px}
+.hrow span{color:#c4cabd;font-size:15px}
+.hrow.hh{background:rgba(255,255,255,.03);padding-block:10px}
+.hrow.hh span{font:12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--night-muted)}
+.night kbd.k{font:600 12px var(--mono);color:var(--night-ink);background:#262d24;border:1px solid #3a4336;border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.habits .tm{margin:0;padding:12px 20px;font-size:12px;color:var(--night-muted);border-top:1px solid var(--night-line)}
+@media (max-width:480px){.hrow{grid-template-columns:1fr;gap:4px;padding:12px 16px}}
