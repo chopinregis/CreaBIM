@@ -51,6 +51,10 @@ pub struct Reference {
     /// Hidden for now (Alt+F2 in a view it shows in).
     #[serde(default)]
     pub hidden: bool,
+    /// Kept to the profile it was placed on: shown there only, never in
+    /// the plans, sections or 3D (MU38). Untick it to share it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub only_profile: bool,
     /// Off: shown in its views but not in 3D (MU33).
     #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
     pub in_3d: bool,
@@ -102,12 +106,18 @@ impl Reference {
             over: false,
             locked: false,
             hidden: false,
+            only_profile: false,
             in_3d: true,
             opacity_3d: None,
             in_perspective: true,
             in_orthographic: true,
             bounds: None,
         }
+    }
+
+    /// Shown in 3D: asked to be, and not kept to its profile.
+    pub fn shows_in_3d(&self) -> bool {
+        self.in_3d && !self.only_profile && !self.hidden
     }
 
     /// Shown where it was drawn: its middle at its own middle, upright,

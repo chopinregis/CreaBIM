@@ -3287,6 +3287,13 @@ pub fn interact(
     let elsewhere = match doc.model().get(id).map(|e| &e.kind) {
         Some(ElementKind::Detail(d)) => Some(d.view) != input.view,
         Some(ElementKind::View(v)) => v.callout.is_some_and(|c| Some(c.parent) != input.view),
+        // a reference has grips only where it is shown: in its views, or
+        // in 3D when it shows there (MU38: a profile's trace had grips in
+        // the plans)
+        Some(ElementKind::Reference(r)) => match input.view {
+            Some(v) => !r.shown_in.contains(&v),
+            None => !r.shows_in_3d(),
+        },
         _ => false,
     };
     let shown: Vec<Handle> = handles_in(doc.model(), id, face, edit)

@@ -152,6 +152,8 @@ pub struct CreaBimApp {
     sheets_export: SheetsExport,
     /// A reference to take away, asked from its Properties (MU23).
     remove_ref: Option<ElementId>,
+    /// Copy to view…: the reference, and the view its copy goes to (MU38).
+    copy_ref: Option<(ElementId, ElementId)>,
     /// Shift+A's Add menu, open, with what is typed in it (MU24).
     add_menu: Option<String>,
     scene: Vec<SceneItem>,
@@ -349,6 +351,7 @@ impl CreaBimApp {
             sheets_export_open: false,
             sheets_export: SheetsExport::default(),
             remove_ref: None,
+            copy_ref: None,
             add_menu: None,
             scene: vec![],
             plan: PlanState::default(),
@@ -927,8 +930,7 @@ impl CreaBimApp {
             .iter()
             .filter_map(|e| match &e.kind {
                 ElementKind::Reference(r)
-                    if !r.hidden
-                        && r.in_3d
+                    if r.shows_in_3d()
                         && (if self.camera.ortho {
                             r.in_orthographic
                         } else {
@@ -987,6 +989,40 @@ impl CreaBimApp {
         project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
     ) {
         let refs = self.refs_in_3d();
+        // a picked one is outlined as the plans outline it: dashed, in the
+        // selection orange, on its own plane (MU38)
+        let picked: Vec<Vec<egui::Pos2>> = refs
+            .iter()
+            .filter(|(id, _)| self.selection.contains(*id))
+            .filter_map(|(_, r)| {
+                let c = r.outline()?;
+                let model = self.doc.model();
+                let pts: Vec<egui::Pos2> = c
+                    .iter()
+                    .chain(c.first())
+                    .filter_map(|p| project(crate::handles::ref_world(model, r, *p)))
+                    .collect();
+                (pts.len() == 5).then_some(pts)
+            })
+            .collect();
+        self.draw_reference_lines_3d(painter, project, refs);
+        for pts in picked {
+            crate::snaps::dashed_clipped(
+                painter,
+                &pts,
+                egui::Stroke::new(1.5, crate::planview::ACCENT_SELECTED),
+                6.0,
+                4.0,
+            );
+        }
+    }
+
+    fn draw_reference_lines_3d(
+        &mut self,
+        painter: &egui::Painter,
+        project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+        refs: Vec<(ElementId, creabim_core::Reference)>,
+    ) {
         // a huge drawing is cut short rather than slowing the 3D view
         let mut budget = 30_000usize;
         for (id, r) in refs {
@@ -6609,33 +6645,74 @@ impl CreaBimApp {
                 _ => None,
             })
             .collect();
-        let n = r.shown_in.len();
-        crate::props::row(ui, "Shown in", |ui| {
-            egui::ComboBox::from_id_salt(("ref.views", id))
-                .icon(crate::props::combo_icon)
-                .selected_text(match n {
-                    0 => "No view".to_string(),
-                    1 => views
-                        .iter()
-                        .find(|(v, _)| r.shown_in.contains(v))
-                        .map_or("1 view".into(), |(_, n)| n.clone()),
-                    n => format!("{n} views"),
-                })
-                .width(ui.available_width())
-                .show_ui(ui, |ui| {
-                    for (v, name) in &views {
-                        let mut on = r.shown_in.contains(v);
-                        if ui.checkbox(&mut on, name).changed() {
-                            if on {
-                                r.shown_in.push(*v);
-                            } else {
-                                r.shown_in.retain(|x| x != v);
-                            }
-                            label = Some("Reference views");
-                        }
+        // and the profiles, each by its trace view (MU38)
+        let profs: Vec<(ElementId, String)> = creabim_core::profiles::project_profiles(model)
+            .iter()
+            .map(|p| (creabim_core::profiles::trace_view(&p.name), p.name.clone()))
+            .collect();
+        let on_profile = profs
+            .iter()
+            .find(|(v, _)| r.shown_in.contains(v))
+            .map(|(v, n)| (*v, n.clone()));
+        let mut views = views;
+        views.extend(profs.iter().map(|(v, n)| (*v, format!("Profile {n}"))));
+        if let Some((pv, pname)) = &on_profile {
+            crate::props::row(ui, "Shown in", |ui| {
+                if ui
+                    .checkbox(&mut r.only_profile, "Only in this profile")
+                    .on_hover_text(
+                        "Kept to this profile: not in the plans, sections or 3D. \
+                         Untick it to show it in other views too.",
+                    )
+                    .changed()
+                {
+                    if r.only_profile {
+                        r.shown_in = vec![*pv];
                     }
-                })
-        });
+                    label = Some(if r.only_profile {
+                        "Reference only in its profile"
+                    } else {
+                        "Reference shared"
+                    });
+                }
+            });
+            if r.only_profile {
+                crate::props::row(ui, "", |ui| {
+                    ui.label(egui::RichText::new(format!("Profile: {pname}")).weak());
+                });
+            }
+        }
+        let n = r.shown_in.len();
+        if !r.only_profile {
+            // under the checkbox, the list needs no second label
+            let title = if on_profile.is_some() { "" } else { "Shown in" };
+            crate::props::row(ui, title, |ui| {
+                egui::ComboBox::from_id_salt(("ref.views", id))
+                    .icon(crate::props::combo_icon)
+                    .selected_text(match n {
+                        0 => "No view".to_string(),
+                        1 => views
+                            .iter()
+                            .find(|(v, _)| r.shown_in.contains(v))
+                            .map_or("1 view".into(), |(_, n)| n.clone()),
+                        n => format!("{n} views"),
+                    })
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for (v, name) in &views {
+                            let mut on = r.shown_in.contains(v);
+                            if ui.checkbox(&mut on, name).changed() {
+                                if on {
+                                    r.shown_in.push(*v);
+                                } else {
+                                    r.shown_in.retain(|x| x != v);
+                                }
+                                label = Some("Reference views");
+                            }
+                        }
+                    })
+            });
+        }
         // narrow, the swatches wrap rather than run off the panel (MU34)
         crate::props::row(ui, "Colour", |ui| {
             crate::props::flow(ui, |ui| {
@@ -6716,7 +6793,7 @@ impl CreaBimApp {
         }
         // its 3D view, apart from its views', as Blender's image empties
         // (MU34)
-        if crate::props::subsection(ui, "ref.3d", "In 3D", true) {
+        if !r.only_profile && crate::props::subsection(ui, "ref.3d", "In 3D", true) {
             if crate::props::switch(ui, &mut r.in_3d, "Shown")
                 .on_hover_text(
                     "Shown in the 3D view too, where its views are; off, only in its views",
@@ -6837,6 +6914,29 @@ impl CreaBimApp {
                 }
             }
         });
+        // the same drawing in another view, placed apart from this one
+        // (MU38): moving one never moves the other
+        let mut copy_to = None;
+        let copy_btn = ui
+            .add_sized(
+                [ui.available_width(), 24.0],
+                egui::Button::new("Copy to view…").truncate(),
+            )
+            .on_hover_text("A copy of it in another view, with its own place, size and settings");
+        egui::Popup::menu(&copy_btn).show(|ui| {
+            for (v, name) in &views {
+                if r.shown_in.contains(v) {
+                    continue;
+                }
+                if ui.button(name).clicked() {
+                    copy_to = Some(*v);
+                    ui.close();
+                }
+            }
+        });
+        if let Some(v) = copy_to {
+            self.copy_ref = Some((id, v));
+        }
         match pressed {
             Some(0) => {
                 self.plan.calibrate = Some((id, vec![]));
@@ -6875,6 +6975,34 @@ impl CreaBimApp {
             if self.selection.active != Some(id) {
                 self.selection.only(id);
                 self.prop_tab = PropTab::Element;
+            }
+        }
+        if let Some((id, v)) = self.copy_ref.take() {
+            if let Some(e) = self.doc.model().get(id).cloned() {
+                if let ElementKind::Reference(r) = &e.kind {
+                    let mut r = r.clone();
+                    let to_profile = !matches!(
+                        self.doc.model().get(v).map(|x| &x.kind),
+                        Some(ElementKind::View(_))
+                    );
+                    r.shown_in = vec![v];
+                    r.only_profile = to_profile;
+                    r.hidden = false;
+                    let name = e.name.clone();
+                    let copy = Element::new(name.clone(), ElementKind::Reference(r));
+                    let cid = copy.id;
+                    let res = self.doc.commit(
+                        creabim_core::Transaction::new(format!("Copy {name} to a view"))
+                            .insert(copy),
+                    );
+                    if res.is_ok() {
+                        self.selection.only(cid);
+                    }
+                    self.report(
+                        res,
+                        format!("{name} copied: the copy moves and scales apart from the first."),
+                    );
+                }
             }
         }
         if let Some(id) = self.remove_ref.take() {

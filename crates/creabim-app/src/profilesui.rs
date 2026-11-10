@@ -614,6 +614,8 @@ impl CreaBimApp {
                 return;
             }
             let mut r = creabim_core::Reference::new(src, vec![pv]);
+            // kept to this profile until it is unticked (MU38)
+            r.only_profile = true;
             if let Some(b) = crate::trace::bounds_of(&r.source, &shown) {
                 r.in_place(b);
             }
