@@ -54,16 +54,16 @@ pub fn beam_mesh(model: &Model, b: &creabim_core::Beam) -> TriMesh {
         if along.abs() < 0.05 {
             continue;
         }
-        // the mesh is in f32: far from the origin an end's vertices sit a
-        // few hundredths of a millimetre off it, and a tight test left
-        // some of them uncut (MU40: ragged mitres)
-        let tol = 1e-4 * (1.0 + a.length().max(z.length()));
+        // a two-point sweep has only its two end rings: a vertex belongs
+        // to the end it is nearer (MU40: on a sloped beam the section's
+        // top and bottom sit off the end's plane square to the axis, and
+        // were left uncut, ragged)
         let at_end = |p: DVec3| {
             let s = (p - a).dot(dir);
             if k == 0 {
-                s.abs() < tol
+                s < len / 2.0
             } else {
-                (s - len).abs() < tol
+                s >= len / 2.0
             }
         };
         let out = if k == 0 { -dir } else { dir };
@@ -811,6 +811,71 @@ mod tests {
                         (q - corner).truncate().dot(nn).abs() < 1e-3,
                         "channel end {k} {q}"
                     );
+                }
+            }
+        }
+        // every preset, mitred both ways round a sharp and a gentle turn
+        for name in creabim_core::profiles::PRESETS {
+            let pts = creabim_core::profiles::preset(name).unwrap();
+            for to in [
+                DVec2::new(1.0, 3.0),
+                DVec2::new(7.0, 1.0),
+                DVec2::new(6.0, -2.5),
+            ] {
+                let sec = creabim_core::members::Section {
+                    name: name.to_string(),
+                    points: pts.clone(),
+                };
+                let mut pa = Beam::new(lv.id, off, off + DVec2::new(4.0, 0.0));
+                let mut pb = Beam::new(lv.id, off + DVec2::new(4.0, 0.0), off + to);
+                pa.section = Some(sec.clone());
+                pb.section = Some(sec);
+                join_beams(&mut pa, &mut pb, BeamCorner::Mitred);
+                let db = (to - DVec2::new(4.0, 0.0)).normalize();
+                let nn = (DVec2::X + db).normalize();
+                for (k, bm) in [(1, &pa), (0, &pb)] {
+                    let mesh = beam_mesh(&m, bm);
+                    let (ax, bx) = bm.axis(&m);
+                    let dir = (bx - ax).normalize();
+                    let len = ax.distance(bx);
+                    for p in &mesh.positions {
+                        let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+                        let s = (q - ax).dot(dir);
+                        // nothing of either beam crosses the mitre plane
+                        let side = (q - corner).truncate().dot(nn);
+                        if k == 1 {
+                            assert!(side < 1e-3, "{name} a past the cut {q} side {side}");
+                        } else {
+                            assert!(side > -1e-3, "{name} b before the cut {q} side {side}");
+                        }
+                        let _ = (s, len);
+                    }
+                }
+            }
+        }
+        // sloped beams (a roof's rafters), an I-section: every vertex
+        // of each end lies on the shared cut
+        let ipts = creabim_core::profiles::preset("I-section").unwrap();
+        let sec = creabim_core::members::Section {
+            name: "I".into(),
+            points: ipts,
+        };
+        let mut sa = Beam::new(lv.id, DVec2::ZERO, DVec2::new(4.0, 0.0));
+        let mut sb = Beam::new(lv.id, DVec2::new(4.0, 0.0), DVec2::new(4.0, 3.0));
+        sa.rise = [0.0, 1.5];
+        sb.rise = [1.5, 1.5];
+        sa.section = Some(sec.clone());
+        sb.section = Some(sec);
+        join_beams(&mut sa, &mut sb, BeamCorner::Mitred);
+        let n = sa.cuts[1].unwrap().normalize();
+        let c = sa.axis(&m).1;
+        for bm in [&sa, &sb] {
+            let (ax, bx) = bm.axis(&m);
+            for p in beam_mesh(&m, bm).positions {
+                let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+                let near = q.distance(c) < ax.distance(bx) / 2.0;
+                if near {
+                    assert!((q - c).dot(n).abs() < 1e-3, "sloped end {q}");
                 }
             }
         }

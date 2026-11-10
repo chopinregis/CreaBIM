@@ -323,11 +323,17 @@ pub fn join_beams(a: &mut Beam, b: &mut Beam, how: BeamCorner) {
             b.extend[0] = 0.0;
         }
         BeamCorner::Mitred => {
-            // the plane halfway between the two runs, through the corner
-            let n = (da + db).normalize_or(da);
+            // the plane halfway between the two runs in 3D, through the
+            // corner: on a roof slope it leans with the slope (MU40)
+            let run = |x: &Beam| {
+                (x.end - x.start)
+                    .extend(x.rise[1] - x.rise[0])
+                    .normalize_or(DVec3::X)
+            };
+            let n = (run(a) + run(b)).normalize_or(da.extend(0.0));
             // each end slid onto the cut, inside and outside of the turn
-            a.cuts[1] = Some(n.extend(0.0));
-            b.cuts[0] = Some(n.extend(0.0));
+            a.cuts[1] = Some(n);
+            b.cuts[0] = Some(n);
             a.extend[1] = 0.0;
             b.extend[0] = 0.0;
         }
