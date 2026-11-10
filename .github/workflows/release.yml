@@ -64,7 +64,7 @@ jobs:
           Compress-Archive -Path $name -DestinationPath "$name.zip"
       - name: Installer
         shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/make-setup.ps1 -Out . -Target target/release
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/make-setup.ps1 -Out . -Target target/release -Date ${{ needs.meta.outputs.date }}
       - uses: actions/upload-artifact@v4
         with:
           name: windows

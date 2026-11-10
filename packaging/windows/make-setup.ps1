@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $version = (Select-String -Path (Join-Path $root "Cargo.toml") -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
-$date = Get-Date -Format "yyyy-MM-dd"
+$date = if ($Date) { $Date } else { Get-Date -Format "yyyy-MM-dd" }
 $name = "CreaBIM-$version-$date-windows-x64-setup.exe"
 $stage = Join-Path $env:TEMP "creabim-setup-stage"
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
