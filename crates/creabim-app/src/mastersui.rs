@@ -1834,15 +1834,20 @@ impl CreaBimApp {
                 })
             });
             let mut show = !self.masters.hide_guides;
-            if crate::props::check(ui, "Show", &mut show, "Shown and snapped to").changed() {
+            if crate::props::check(ui, "Show", &mut show, "On").changed() {
                 self.masters.hide_guides = !show;
             }
-            let (add, clear) = crate::props::actions2(
+            let add =
+                crate::props::action(ui, "", "Draw a guide", "The Guide tool: two clicks", true)
+                    .clicked();
+            let clear = crate::props::action(
                 ui,
                 "",
-                ("Draw one", "The Guide tool: two clicks", true),
-                ("Clear all", "Take every guide away (one undo step)", n > 0),
-            );
+                "Clear all",
+                "Take every guide away (one undo step)",
+                n > 0,
+            )
+            .clicked();
             if add {
                 self.masters.tool = MTool::Guide;
                 self.masters.guide_from = None;
