@@ -834,7 +834,10 @@ impl CreaBimApp {
     /// worker builds the new one (see [`crate::builds`]). Exports and
     /// anything measured from a drawing use [`Self::drawing`].
     fn drawing_live(&mut self, id: ElementId) -> Option<Drawing> {
-        for b in self.builds.finished() {
+        let _pf = Perf::new("drawing_live: take finished");
+        let finished = self.builds.finished();
+        drop(_pf);
+        for b in finished {
             let cache = if b.key.1 {
                 &mut self.xray_drawings
             } else {
@@ -872,7 +875,10 @@ impl CreaBimApp {
                 self.builds.start(self.doc.model(), key);
                 Some(d)
             }
-            _ => self.drawing(id),
+            _ => {
+                let _pb = Perf::new("drawing_live: build here");
+                self.drawing(id)
+            }
         }
     }
 
@@ -6454,6 +6460,7 @@ impl CreaBimApp {
                 return;
             };
             drop(_pp);
+            let _pr = Perf::new("show_plan: hidden and guides");
             if !self.hidden.is_empty() {
                 drawing.items.retain(|it| !self.hidden.contains(&it.id()));
             }
@@ -6469,6 +6476,7 @@ impl CreaBimApp {
                     )
                 });
             }
+            drop(_pr);
             let style = PaneStyle {
                 background: Some(background),
                 decorations: true,
@@ -6493,11 +6501,14 @@ impl CreaBimApp {
                 &mut self.selection,
                 style,
             );
+            drop(_pp);
             if dark {
+                let _pd = Perf::new("show_plan: dark paper");
                 darken_shapes(ui.ctx(), layer, from);
             }
             r
         };
+        let _pt = Perf::new("show_plan: after");
         if let Some(err) = result {
             self.status = format!("Couldn't do that: {err}");
         } else if self.doc.model().revision() != revision {
