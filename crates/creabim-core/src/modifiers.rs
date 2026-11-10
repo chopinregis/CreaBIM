@@ -487,8 +487,43 @@ pub struct Evaluated {
     pub source: Vec<Option<usize>>,
 }
 
-/// Run the enabled modifiers over `mesh`, top to bottom.
+/// Run the enabled modifiers over `mesh`, top to bottom: remembered for
+/// the last shapes asked for, so the 3D view, picking under the pointer
+/// and the drawings of one shape evaluate its stack once, not on every
+/// mouse move (MU39: hovering a panelled, louvred mass re-ran it each
+/// frame).
 pub fn evaluate(mesh: &EditMesh, stack: &[Modifier]) -> Evaluated {
+    if !stack.iter().any(|m| m.enabled) {
+        return evaluate_now(mesh, stack);
+    }
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for v in &mesh.vertices {
+        v.to_array().map(f64::to_bits).hash(&mut h);
+    }
+    mesh.faces.hash(&mut h);
+    format!("{stack:?}").hash(&mut h);
+    let key = h.finish();
+    type Cache = Vec<(u64, std::sync::Arc<Evaluated>)>;
+    static CACHE: std::sync::Mutex<Cache> = std::sync::Mutex::new(Vec::new());
+    if let Some(hit) = CACHE
+        .lock()
+        .ok()
+        .and_then(|c| c.iter().find(|(k, _)| *k == key).map(|(_, e)| e.clone()))
+    {
+        return (*hit).clone();
+    }
+    let e = evaluate_now(mesh, stack);
+    if let Ok(mut c) = CACHE.lock() {
+        if c.len() >= 48 {
+            c.remove(0);
+        }
+        c.push((key, std::sync::Arc::new(e.clone())));
+    }
+    e
+}
+
+fn evaluate_now(mesh: &EditMesh, stack: &[Modifier]) -> Evaluated {
     let mut out = Evaluated {
         mesh: mesh.clone(),
         source: (0..mesh.faces.len()).map(Some).collect(),

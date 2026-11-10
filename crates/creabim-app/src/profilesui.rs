@@ -483,8 +483,11 @@ impl CreaBimApp {
         let now = self.profiles.current.clone();
         let mut items = vec![Item::Header("This project".into())];
         if own.is_empty() {
+            // none yet: making one, with an icon as the rows below (MU39)
             items.push(
-                Item::new("profiles.new", "None yet: + in the header makes one").enabled(false),
+                Item::new("profiles.new", "New profile")
+                    .icon("plus")
+                    .hint("None yet: start one here, a square to shape"),
             );
         }
         for p in &own {

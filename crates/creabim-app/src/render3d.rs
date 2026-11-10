@@ -179,6 +179,10 @@ pub struct Viewport3d {
     overlay_lines: wgpu::RenderPipeline,
     /// See-through surfaces drawn only where something nearer hides them.
     behind: wgpu::RenderPipeline,
+    /// The selection drawn again over itself, tinted: depth equal passes,
+    /// so it lies exactly on the element (MU39: a click no longer
+    /// rebuilds the whole model's buffers).
+    highlight: wgpu::RenderPipeline,
     uniforms: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     triangles: Option<Mesh>,
@@ -186,6 +190,9 @@ pub struct Viewport3d {
     line_mesh: Option<Mesh>,
     overlay_mesh: Option<Mesh>,
     behind_mesh: Option<Mesh>,
+    sel_mesh: Option<Mesh>,
+    sel_lines: Option<Mesh>,
+    sel_top: Option<Mesh>,
     targets: Option<Targets>,
     texture_id: Option<egui::TextureId>,
 }
@@ -312,6 +319,12 @@ impl Viewport3d {
                 wgpu::CompareFunction::Greater,
                 true,
             ),
+            highlight: pipeline(
+                wgpu::PrimitiveTopology::TriangleList,
+                "fs_shaded",
+                wgpu::CompareFunction::LessEqual,
+                true,
+            ),
             uniforms,
             bind_group,
             triangles: None,
@@ -319,6 +332,9 @@ impl Viewport3d {
             line_mesh: None,
             overlay_mesh: None,
             behind_mesh: None,
+            sel_mesh: None,
+            sel_lines: None,
+            sel_top: None,
             targets: None,
             texture_id: None,
         }
@@ -343,9 +359,11 @@ impl Viewport3d {
                 usage,
             })
         };
+        // one vertex buffer for the opaque and the see-through triangles
+        let shared = buffer(bytemuck::cast_slice(vertices), wgpu::BufferUsages::VERTEX);
         let tri_mesh = |indices: &[u32]| {
             (!indices.is_empty()).then(|| Mesh {
-                vertices: buffer(bytemuck::cast_slice(vertices), wgpu::BufferUsages::VERTEX),
+                vertices: shared.clone(),
                 indices: Some(buffer(
                     bytemuck::cast_slice(indices),
                     wgpu::BufferUsages::INDEX,
@@ -364,6 +382,32 @@ impl Viewport3d {
         };
         self.line_mesh = line_mesh(lines);
         self.overlay_mesh = line_mesh(overlay);
+    }
+
+    /// Replace the selection's highlight: its triangles (three vertices
+    /// each) tinted, its edges (depth-tested) and what shows through
+    /// everything (a selected cutter's outline). Small: the selection only.
+    pub fn set_selection(
+        &mut self,
+        device: &wgpu::Device,
+        triangles: &[Vertex],
+        lines: &[Vertex],
+        on_top: &[Vertex],
+    ) {
+        let mesh = |v: &[Vertex]| {
+            (!v.is_empty()).then(|| Mesh {
+                vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(v),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }),
+                indices: None,
+                count: v.len() as u32,
+            })
+        };
+        self.sel_mesh = mesh(triangles);
+        self.sel_lines = mesh(lines);
+        self.sel_top = mesh(on_top);
     }
 
     /// Replace the triangles (three vertices each) drawn see-through where
@@ -492,10 +536,13 @@ impl Viewport3d {
             pass.set_bind_group(0, &self.bind_group, &[]);
             for (pipeline, mesh) in [
                 (&self.shaded, &self.triangles),
+                (&self.highlight, &self.sel_mesh),
                 (&self.glass, &self.glass_mesh),
                 (&self.behind, &self.behind_mesh),
                 (&self.lines, &self.line_mesh),
+                (&self.lines, &self.sel_lines),
                 (&self.overlay_lines, &self.overlay_mesh),
+                (&self.overlay_lines, &self.sel_top),
             ] {
                 let Some(m) = mesh else { continue };
                 pass.set_pipeline(pipeline);

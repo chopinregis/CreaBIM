@@ -24,6 +24,7 @@ mod hoverpick;
 mod icons;
 mod memberstool;
 mod modal;
+mod modguides;
 mod multiedit;
 mod objecttool;
 mod optionbar;

@@ -571,7 +571,10 @@ html[data-pane="left"] body { border-right: 1px solid var(--border); }
 .search input::placeholder { color: var(--faint); }
 
 .tree { flex: 1; overflow-y: auto; padding: 2px 6px 12px; }
-.tree::-webkit-scrollbar { width: 8px; }
+/* where two scroll bars meet: the panel's colour, never the default
+   white square (MU39) */
+::-webkit-scrollbar-corner { background: transparent; }
+.tree::-webkit-scrollbar { width: 8px; height: 8px; }
 .tree::-webkit-scrollbar-thumb { background: var(--raise-2); border-radius: 8px; border: 2px solid var(--panel); }
 
 .group {

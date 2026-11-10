@@ -205,17 +205,24 @@ pub fn badge(
         .fixed_pos(pos)
         .interactable(true)
         .show(ctx, |ui| {
-            let fill = Color32::from_rgba_unmultiplied(255, 255, 255, 235);
+            // in the theme's own panel colours, dark or light (MU39)
+            let pal = crate::theme::Palette::of(ui.ctx());
+            let fill = pal.panel.gamma_multiply(0.96);
+            let blue = if ui.visuals().dark_mode {
+                Color32::from_rgb(120, 180, 250)
+            } else {
+                HOVER
+            };
             egui::Frame::new()
                 .fill(fill)
-                .stroke(egui::Stroke::new(1.0, HOVER.gamma_multiply(0.7)))
+                .stroke(egui::Stroke::new(1.0, blue.gamma_multiply(0.7)))
                 .corner_radius(8.0)
                 .inner_margin(egui::Margin::symmetric(6, 2))
                 .show(ui, |ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                     let text = egui::RichText::new(format!("{}/{n} · Tab", h.index + 1))
                         .size(11.0)
-                        .color(HOVER);
+                        .color(blue);
                     let r = ui
                         .add(egui::Label::new(text).sense(egui::Sense::click()))
                         .on_hover_text(format!(
@@ -230,9 +237,7 @@ pub fn badge(
                             let label = describe(model, *id);
                             let row = ui.selectable_label(
                                 i == h.index,
-                                egui::RichText::new(label)
-                                    .size(12.0)
-                                    .color(Color32::from_gray(35)),
+                                egui::RichText::new(label).size(12.0).color(pal.text),
                             );
                             if row.hovered() {
                                 hovered_row = Some(i);

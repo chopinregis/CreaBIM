@@ -3140,6 +3140,50 @@ fn grip_menu(
 /// lies under the pointer can be far away along the line being slid on.
 /// Where handle `h` shows on screen: at its point, or nudged out along
 /// its line.
+/// A mass's edit grips that would sit on top of each other on screen
+/// (a mass seen small, far off) are left out, so a few clear grips show
+/// instead of a cluster (MU39): its corners first, then its faces, then
+/// its edge middles; the move, lift and turn grips always stay.
+fn declutter(shown: Vec<Handle>, input: &PaneInput) -> Vec<Handle> {
+    let rank = |k: &HandleKind| match k {
+        HandleKind::MeshVertex(_) => 1,
+        HandleKind::Face(_) => 2,
+        HandleKind::MeshEdge(..) => 3,
+        _ => 0,
+    };
+    if !shown.iter().any(|h| rank(&h.kind) > 0) {
+        return shown;
+    }
+    // the grips that always stay, then the rest in their order
+    let mut order: Vec<usize> = (0..shown.len()).collect();
+    order.sort_by_key(|i| rank(&shown[*i].kind));
+    let mut placed: Vec<Pos2> = vec![];
+    let mut keep = vec![false; shown.len()];
+    for i in order {
+        let h = &shown[i];
+        let Some(c) = screen_at(h, input) else {
+            keep[i] = true;
+            continue;
+        };
+        // corners need room of their own; faces and edges a little more
+        let room = match rank(&h.kind) {
+            0 => 0.0,
+            1 => 14.0,
+            _ => 22.0,
+        };
+        if room > 0.0 && placed.iter().any(|p| p.distance(c) < room) {
+            continue;
+        }
+        placed.push(c);
+        keep[i] = true;
+    }
+    shown
+        .into_iter()
+        .zip(keep)
+        .filter_map(|(h, k)| k.then_some(h))
+        .collect()
+}
+
 fn screen_at(h: &Handle, input: &PaneInput) -> Option<Pos2> {
     let c = (input.project)(h.at)?;
     let Constraint::Line { dir, .. } = h.constraint else {
@@ -3304,6 +3348,7 @@ pub fn interact(
         // grips sit on the element: a wall slides by its body
         .filter(|h| h.kind != HandleKind::WallSlide)
         .collect();
+    let shown = declutter(shown, input);
     let screen = |h: &Handle| screen_at(h, input);
     let nearest = |p: Pos2| {
         shown

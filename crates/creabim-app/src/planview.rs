@@ -318,6 +318,15 @@ pub struct PlanState {
     /// show it), and each part's size at its middle (MU38).
     pub divide_marks: Vec<(DVec3, DVec3, bool)>,
     pub divide_labels: Vec<(DVec3, String)>,
+    /// Divide is making guides: its marks show as guides do (MU39).
+    pub divide_guides: bool,
+    /// While a point is asked for (a radial array's centre): the next
+    /// click in a plan gives it, in model x and y (MU39).
+    pub point_pick: bool,
+    pub point_picked: Option<DVec2>,
+    /// Lines and see-through planes a modifier being set shows in the
+    /// views (its centre, its mirror plane, its cuts), in model space.
+    pub mod_guides: crate::modguides::Guides,
     /// A view to show at its drawing scale on the next frame: 1 paper mm
     /// on 1 screen mm (A5-7, the view's More menu).
     pub zoom_to_scale: Option<ElementId>,
@@ -568,6 +577,10 @@ impl Default for PlanState {
             cameras: HashMap::new(),
             divide_marks: vec![],
             divide_labels: vec![],
+            divide_guides: false,
+            point_pick: false,
+            point_picked: None,
+            mod_guides: Default::default(),
             zoom_to_scale: None,
             edit_note: None,
             sheet_guides: false,
@@ -794,7 +807,14 @@ pub fn show(
     selection: &mut Selection,
     style: PaneStyle,
 ) -> Option<String> {
-    let response = ui.interact(rect, ui.id().with(("view", view)), Sense::click_and_drag());
+    // while a point is asked for, a click gives it and selects nothing
+    let picking = state.point_pick && matches!(kind, PaneKind::Plan { .. });
+    let sense = if picking {
+        Sense::drag()
+    } else {
+        Sense::click_and_drag()
+    };
+    let response = ui.interact(rect, ui.id().with(("view", view)), sense);
     let painter = ui.painter_at(rect);
     if let Some(bg) = style.background {
         painter.rect_filled(rect, 0.0, bg);
@@ -911,6 +931,38 @@ pub fn show(
 
     if style.decorations && kind != PaneKind::Schedule {
         draw_metric_grid(&painter, &xf);
+    }
+    // a point asked for: a cross follows the pointer, a click gives it
+    if picking {
+        if let Some(h) = response.hover_pos() {
+            let w = xf.to_world(h);
+            let step = crate::snaps::current_step();
+            let w = if step > 0.0 {
+                (w / step).round() * step
+            } else {
+                w
+            };
+            let c = xf.to_screen(w);
+            let top = ui
+                .ctx()
+                .layer_painter(egui::LayerId::new(
+                    egui::Order::Foreground,
+                    ui.id().with("pick"),
+                ))
+                .with_clip_rect(rect);
+            let s = Stroke::new(1.5, ACCENT_SELECTED);
+            top.line_segment([c - egui::vec2(12.0, 0.0), c + egui::vec2(12.0, 0.0)], s);
+            top.line_segment([c - egui::vec2(0.0, 12.0), c + egui::vec2(0.0, 12.0)], s);
+            top.circle_stroke(c, 5.0, s);
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            if ui.input(|i| i.pointer.primary_clicked()) {
+                state.point_picked = Some(w);
+                state.point_pick = false;
+            }
+        }
+        if ui.input(|i| i.pointer.secondary_clicked() || i.key_pressed(egui::Key::Escape)) {
+            state.point_pick = false;
+        }
     }
     // the references shown in this view, under the drawing (MU19)
     if style.decorations {
@@ -1515,6 +1567,14 @@ pub fn show(
             Some(pane_to_model(space, xf.to_world(pos), pivot.z))
         };
         let project = |p: DVec3| Some(xf.to_screen(model_to_pane(space, p)));
+        // what the modifier being set shows: its centre, plane or cuts
+        crate::modguides::draw(
+            &painter,
+            &state.mod_guides,
+            ACCENT_SELECTED,
+            matches!(space, Space::Plan),
+            &project,
+        );
         // Divide's marks: ticks across in plans, lines standing in sections
         for (a, b, plan) in &state.divide_marks {
             if *plan != matches!(space, Space::Plan) {
@@ -1525,7 +1585,17 @@ pub fn show(
                 xf.to_screen(model_to_pane(space, *b)),
             );
             if pa.distance(pb) > 1.0 {
-                painter.line_segment([pa, pb], Stroke::new(2.0, ACCENT_SELECTED));
+                if state.divide_guides {
+                    crate::snaps::dashed_clipped(
+                        &painter,
+                        &[pa, pb],
+                        Stroke::new(1.5, GUIDE_COLOR),
+                        8.0,
+                        5.0,
+                    );
+                } else {
+                    painter.line_segment([pa, pb], Stroke::new(2.0, ACCENT_SELECTED));
+                }
             }
         }
         let mut taken = vec![];
@@ -4160,15 +4230,23 @@ fn refresh_snaps(
             .modal
             .as_ref()
             .is_some_and(|m| m.pane == Some(view) && m.freezes_snaps());
+    // built once per model change with everything in it; what is left out
+    // (the selection) is only hidden, so selecting builds nothing (MU39)
     let fresh = state
         .snaps
         .get(&view)
-        .is_some_and(|(r, ex, _)| ex == exclude && (*r == revision || dragging));
+        .is_some_and(|(r, _, _)| *r == revision || dragging);
     if !fresh {
-        let mut s = Snapper::from_drawing(&plan.items, exclude);
+        let mut s = Snapper::from_drawing(&plan.items, &[]);
         s.add_underlay_centres(model, view);
         add_reference_snaps(&mut s, state, model, view);
-        state.snaps.insert(view, (revision, exclude.to_vec(), s));
+        state.snaps.insert(view, (revision, vec![], s));
+    }
+    if let Some((_, ex, s)) = state.snaps.get_mut(&view) {
+        if ex != exclude {
+            *ex = exclude.to_vec();
+            s.hide(exclude);
+        }
     }
 }
 

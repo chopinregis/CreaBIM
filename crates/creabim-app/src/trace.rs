@@ -22,6 +22,11 @@ use std::sync::Arc;
 static HOLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Hold (or release) the references' read drawings; see [`RefCache::get`].
+/// Is a pointer button down (a drag anywhere)?
+pub fn held() -> bool {
+    HOLD.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub fn hold(on: bool) {
     HOLD.store(on, std::sync::atomic::Ordering::Relaxed);
 }

@@ -260,6 +260,8 @@ impl CreaBimApp {
         let mut paper = self.shell.settings.drawing_paper.clone();
         let mut navigation = self.shell.settings.navigation.clone();
         let mut grip_hover = None;
+        let mut edit_bar = self.shell.settings.edit_bar.clone();
+        let mut axis_lines = self.shell.settings.axis_lines;
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         crate::app::shell::window("Settings")
             .open(&mut open)
@@ -294,6 +296,20 @@ impl CreaBimApp {
                         grips = g;
                     } else if r.hovered() {
                         grip_hover = Some(g);
+                    }
+                }
+                ui.checkbox(&mut axis_lines, "X and Y axes on the 3D grid")
+                    .on_hover_text("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it.");
+                ui.label("Move, Rotate and Scale bar");
+                for (k, name, note) in [
+                    ("top", "Over the view", "Default. A slim bar at the top of the view"),
+                    ("pointer", "By the pointer", "A small palette where you started"),
+                ] {
+                    let r = crate::choices::choice_row(ui, edit_bar == k, name, note, |p, r| {
+                        crate::choices::paint_edit_bar(p, r, k == "pointer")
+                    });
+                    if r.clicked() {
+                        edit_bar = k.to_string();
                     }
                 }
                 ui.label(
@@ -380,6 +396,16 @@ impl CreaBimApp {
         self.settings_open = open;
         // resting on a grip look shows it at once; leaving puts yours back
         crate::handles::set_grip_style(grip_hover.filter(|_| open).unwrap_or(grips));
+        if axis_lines != self.shell.settings.axis_lines {
+            self.shell.settings.axis_lines = axis_lines;
+            self.shell.settings.store();
+            self.geometry_key = None;
+        }
+        if edit_bar != self.shell.settings.edit_bar {
+            crate::modal::set_bar_by_pointer(edit_bar == "pointer");
+            self.shell.settings.edit_bar = edit_bar;
+            self.shell.settings.store();
+        }
         if navigation != self.shell.settings.navigation {
             self.shell.settings.navigation = navigation;
             self.shell.settings.store();
