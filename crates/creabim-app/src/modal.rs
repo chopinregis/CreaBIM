@@ -428,6 +428,9 @@ pub struct Modal {
     pub mode: Mode,
     /// A mesh face being edited instead of the whole element.
     pub face: Option<usize>,
+    /// A mass's picked vertices in Edit mode: what the edit moves, turns
+    /// or scales, about their middle (MU39).
+    pub verts: Option<Vec<u32>>,
     pub space: Space,
     /// The pane that runs it: a view, or `None` for the 3D view.
     pub pane: Option<ElementId>,
@@ -612,6 +615,7 @@ impl Modal {
         let blank = |pivot: DVec3, own: Vec<DVec3>, edit: LiveEdit| Modal {
             mode,
             face: None,
+            verts: None,
             space,
             pane,
             owner: None,
@@ -1755,6 +1759,26 @@ impl Modal {
         }
     }
 
+    /// Work on mass `id`'s vertices `vs` only, turning and scaling about
+    /// their middle (MU39).
+    pub fn set_verts(&mut self, doc: &Document, id: ElementId, vs: Vec<u32>) {
+        let model = doc.model();
+        if let Some(ElementKind::FreeMesh(m)) = model.get(id).map(|e| &e.kind) {
+            let z = m
+                .level
+                .and_then(|l| model.level(l))
+                .map_or(0.0, |l| l.elevation);
+            let n = vs.len().max(1) as f64;
+            let c = vs
+                .iter()
+                .map(|v| m.mesh.vertices[*v as usize])
+                .sum::<DVec3>()
+                / n;
+            self.pivot = m.origin + m.to_model(c) + DVec3::Z * z;
+            self.verts = Some(vs);
+        }
+    }
+
     fn toggle(&mut self, a: Axis) {
         if self.mode == Mode::Rotate && self.face.is_some() {
             return;
@@ -1951,6 +1975,35 @@ impl Modal {
             return c.update(doc, &|m, e| transform::transformed(m, e, &Xform::Move(d)));
         }
         let originals = self.edit.originals().to_vec();
+        if let (Some(vs), ElementKind::FreeMesh(m)) = (&self.verts, &originals[0].kind) {
+            let mut m = m.clone();
+            let n = vs.len().max(1) as f64;
+            let c = vs
+                .iter()
+                .map(|v| m.mesh.vertices[*v as usize])
+                .sum::<DVec3>()
+                / n;
+            match *t {
+                Xform::Move(d) => m.mesh.translate_vertices(vs, m.to_local(d)),
+                Xform::Scale { factor, .. } => {
+                    for v in vs {
+                        let p = &mut m.mesh.vertices[*v as usize];
+                        *p = c + (*p - c) * factor;
+                    }
+                }
+                Xform::Rotate { degrees, .. } => {
+                    let r = DVec2::from_angle(degrees.to_radians());
+                    for v in vs {
+                        let p = &mut m.mesh.vertices[*v as usize];
+                        *p = (c.truncate() + r.rotate(p.truncate() - c.truncate())).extend(p.z);
+                    }
+                }
+                Xform::Tilt { .. } | Xform::Stretch { .. } => {}
+            }
+            let mut e = originals[0].clone();
+            e.kind = ElementKind::FreeMesh(m);
+            return self.edit.update(doc, vec![e]).map_err(|e| e.to_string());
+        }
         let changed = match (self.face, &originals[0].kind) {
             (Some(f), ElementKind::FreeMesh(m)) => {
                 let mut m = m.clone();

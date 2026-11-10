@@ -69,6 +69,10 @@ pub struct ProfilesUi {
     shape: usize,
     /// Corners of a shape being drawn.
     drawing: Vec<DVec2>,
+    /// The next side drawn is an arc (A; L back to lines), and its end
+    /// once clicked: the next click is a point it passes through (MU39).
+    arc: bool,
+    arc_end: Option<DVec2>,
     /// The first click of a guide.
     guide_from: Option<DVec2>,
     /// Guides by profile: lines through two points.
@@ -116,6 +120,40 @@ pub struct ProfilesUi {
 
 /// What the profiles' trace references show, read once (a file's pixels
 /// or lines).
+/// An arc from `a` through `t` to `e` as points (not `a`, ending on `e`),
+/// `n` sides at most: the profile keeps arcs as points, so every sweep,
+/// extrusion and export takes them as it takes any shape (MU39). Three
+/// points in a line give the straight side.
+pub(crate) fn arc_points(a: DVec2, t: DVec2, e: DVec2, n: usize) -> Vec<DVec2> {
+    let d = 2.0 * (a.x * (t.y - e.y) + t.x * (e.y - a.y) + e.x * (a.y - t.y));
+    if d.abs() < 1e-12 {
+        return vec![e];
+    }
+    let sq = |p: DVec2| p.length_squared();
+    let c = DVec2::new(
+        (sq(a) * (t.y - e.y) + sq(t) * (e.y - a.y) + sq(e) * (a.y - t.y)) / d,
+        (sq(a) * (e.x - t.x) + sq(t) * (a.x - e.x) + sq(e) * (t.x - a.x)) / d,
+    );
+    let ang = |p: DVec2| (p - c).y.atan2((p - c).x);
+    let (a0, at, ae) = (ang(a), ang(t), ang(e));
+    let tau = std::f64::consts::TAU;
+    let norm = |x: f64| x.rem_euclid(tau);
+    // the way round from a to e that passes t
+    let ccw = norm(at - a0) < norm(ae - a0);
+    let sweep = if ccw { norm(ae - a0) } else { -norm(a0 - ae) };
+    let r = (a - c).length();
+    let k = ((sweep.abs() / (tau / 48.0)).ceil() as usize).clamp(2, n.max(2));
+    (1..=k)
+        .map(|i| {
+            if i == k {
+                e
+            } else {
+                c + DVec2::from_angle(a0 + sweep * i as f64 / k as f64) * r
+            }
+        })
+        .collect()
+}
+
 fn trace_cache() -> std::sync::MutexGuard<'static, crate::trace::RefCache> {
     static C: std::sync::OnceLock<std::sync::Mutex<crate::trace::RefCache>> =
         std::sync::OnceLock::new();
@@ -316,6 +354,16 @@ impl CreaBimApp {
             "profiles.apply" => self.apply_profile(),
             "prof.trace" => self.profile_trace(arg),
             "prof.dims" => self.profiles.hide_dims = !self.profiles.hide_dims,
+            "prof.arc" => {
+                self.profiles.tool = ProfTool::Draw;
+                self.profiles.arc = !self.profiles.arc;
+                self.profiles.arc_end = None;
+                self.status = if self.profiles.arc {
+                    "Arc: click where the arc ends, then a point it passes through. L goes back to straight sides.".into()
+                } else {
+                    "Straight sides.".into()
+                };
+            }
             "prof.tool" => {
                 self.profiles.tool = match arg {
                     "draw" => ProfTool::Draw,
@@ -885,6 +933,8 @@ impl CreaBimApp {
                    "hint": "Pick and drag corners, edges and guides; click an edge's length to type it; right-click for quick actions"}),
             json!({"kind": "toggle", "id": "prof.tool:draw", "icon": "pencil", "label": "Draw", "on": t == ProfTool::Draw,
                    "hint": "Draw a shape: click its corners; the first again closes it, Enter leaves it open"}),
+            json!({"kind": "toggle", "id": "prof.arc", "icon": "spline", "label": "Arc", "on": t == ProfTool::Draw && self.profiles.arc,
+                   "hint": "Arc (A): the next side is an arc: click its end, then a point it passes through. L goes back to straight sides"}),
             json!({"kind": "toggle", "id": "prof.tool:insert", "icon": "crosshair", "label": "Insertion", "on": t == ProfTool::Insertion,
                    "hint": "Place the insertion point: where the profile sits on its path"}),
             json!({"kind": "toggle", "id": "prof.tool:guide", "icon": "guides", "label": "Guide", "on": t == ProfTool::Guide,
@@ -2094,11 +2144,34 @@ impl CreaBimApp {
                 }
             }
             ProfTool::Draw if editable => {
+                // A and L switch the next side between an arc and a line
+                let (key_a, key_l) = ui.input(|i| {
+                    (
+                        i.modifiers.is_none() && i.key_pressed(egui::Key::A),
+                        i.modifiers.is_none() && i.key_pressed(egui::Key::L),
+                    )
+                });
+                if key_a && !ui.ctx().egui_wants_keyboard_input() {
+                    self.profiles.arc = true;
+                    self.profiles.arc_end = None;
+                }
+                if key_l && !ui.ctx().egui_wants_keyboard_input() {
+                    self.profiles.arc = false;
+                    self.profiles.arc_end = None;
+                }
+                let (arc, arc_end) = (self.profiles.arc, self.profiles.arc_end);
                 let d = &mut self.profiles.drawing;
                 if let Some((w, _)) = here {
                     let mut pts: Vec<egui::Pos2> = d.iter().map(|p| to_s(*p)).collect();
                     if !pts.is_empty() {
-                        pts.push(to_s(w));
+                        // the arc being drawn follows the pointer through
+                        // its middle
+                        match (arc, arc_end, d.last()) {
+                            (true, Some(e), Some(p0)) => {
+                                pts.extend(arc_points(*p0, w, e, 24).into_iter().map(&to_s))
+                            }
+                            _ => pts.push(to_s(w)),
+                        }
                         painter.add(egui::Shape::line(pts, egui::Stroke::new(1.6, accent)));
                     }
                 }
@@ -2183,6 +2256,15 @@ impl CreaBimApp {
                             // does) finishes the shape (MU37)
                             if let Some(all) = finish(d, false) {
                                 write = Some((all, "Draw profile shape", false));
+                            }
+                        } else if arc && !d.is_empty() {
+                            // an arc: its end, then a point it passes through
+                            match self.profiles.arc_end.take() {
+                                None => self.profiles.arc_end = Some(w),
+                                Some(e) => {
+                                    let p0 = d[d.len() - 1];
+                                    d.extend(arc_points(p0, w, e, 24));
+                                }
                             }
                         } else {
                             d.push(w);
@@ -3293,5 +3375,27 @@ fn point_mut(p: &mut NamedProfile, si: usize) -> Option<&mut Vec<DVec2>> {
         Some(&mut p.points)
     } else {
         p.more.get_mut(si - 1).map(|m| &mut m.points)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_arc_through_three_points_keeps_to_its_circle_and_ends_on_its_end() {
+        let (a, t, e) = (
+            DVec2::new(-1.0, 0.0),
+            DVec2::new(0.0, 1.0),
+            DVec2::new(1.0, 0.0),
+        );
+        let pts = arc_points(a, t, e, 24);
+        assert_eq!(*pts.last().unwrap(), e);
+        assert!(pts.len() >= 8);
+        assert!(pts
+            .iter()
+            .all(|p| (p.length() - 1.0).abs() < 1e-9 && p.y >= -1e-9));
+        // three in a line: the straight side
+        assert_eq!(arc_points(a, DVec2::ZERO, e, 24), vec![e]);
     }
 }

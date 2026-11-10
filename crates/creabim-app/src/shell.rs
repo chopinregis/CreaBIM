@@ -16,6 +16,11 @@ pub(super) const STATUS_H: f32 = 26.0;
 const NAV_W: f32 = 420.0;
 const NAV_H: f32 = 34.0;
 
+thread_local! {
+    static LEFT_CACHE: std::cell::RefCell<Option<(String, Value)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 pub(super) struct Shell {
     pub web: Option<WebUi>,
     /// Why the web interface couldn't start, when it couldn't.
@@ -3298,7 +3303,32 @@ impl CreaBimApp {
         options
     }
 
+    /// The browser's state, built again only when what it shows changed:
+    /// building its rows (every element, marks and hints) took ~5 ms a
+    /// frame, every frame (MU39: the app felt a tad slower).
     fn left_state(&self) -> Value {
+        let key = format!(
+            "{}|{:?}|{:?}|{}|{}|{:?}",
+            self.doc.model().revision(),
+            self.selection,
+            self.active_view,
+            self.shell.settings.left_folded,
+            self.theme(),
+            self.profiles.current,
+        );
+        LEFT_CACHE.with(|c| {
+            if let Some((k, v)) = c.borrow().as_ref() {
+                if *k == key {
+                    return v.clone();
+                }
+            }
+            let v = self.left_state_now();
+            *c.borrow_mut() = Some((key, v.clone()));
+            v
+        })
+    }
+
+    fn left_state_now(&self) -> Value {
         let model = self.doc.model();
         // the search finds elements by their marks (D01, W05) too
         let marks = creabim_core::marks::marks(model);
@@ -4066,8 +4096,14 @@ impl CreaBimApp {
                 })
             });
         let states = [
-            (Pane::Top, top, self.top_state(&ctx)),
-            (Pane::Left, left, self.left_state()),
+            (Pane::Top, top, {
+                let _p = crate::app::Perf::new("top_state");
+                self.top_state(&ctx)
+            }),
+            (Pane::Left, left, {
+                let _p = crate::app::Perf::new("left_state");
+                self.left_state()
+            }),
             (Pane::Status, status, self.status_state()),
         ];
         let nav_state = self.nav_state();

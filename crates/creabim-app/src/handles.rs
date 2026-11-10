@@ -1985,6 +1985,9 @@ pub struct GripSel {
     pub id: Option<ElementId>,
     pub corners: Vec<(Ring, usize)>,
     pub holes: Vec<usize>,
+    /// A mass's picked vertices in Edit mode (an edge picks its two ends,
+    /// a face its corners), kept lit until another pick (MU39).
+    pub mesh: Vec<u32>,
     /// The last click on a grip: which, when and where, so a double-click
     /// still counts when the pointer moved a little between the clicks.
     last_tap: Option<(HandleKind, f64, Pos2)>,
@@ -2061,9 +2064,45 @@ enum MenuOn {
 const DOUBLE_TAP: f64 = 0.5;
 const DOUBLE_TAP_PX: f32 = 8.0;
 
+thread_local! {
+    /// The mass vertices picked in Edit mode, for Move, Rotate and Scale.
+    static MESH_PICK: std::cell::RefCell<Option<(ElementId, Vec<u32>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The vertices picked on mass `id` in Edit mode, if any.
+pub fn mesh_pick(id: ElementId) -> Option<Vec<u32>> {
+    MESH_PICK.with(|p| {
+        p.borrow()
+            .as_ref()
+            .filter(|(i, v)| *i == id && !v.is_empty())
+            .map(|(_, v)| v.clone())
+    })
+}
+
 impl GripSel {
     pub fn is_empty(&self) -> bool {
-        self.corners.is_empty() && self.holes.is_empty()
+        self.corners.is_empty() && self.holes.is_empty() && self.mesh.is_empty()
+    }
+
+    /// Pick a mass's vertices `vs` (a vertex, an edge's ends, a face's
+    /// corners): only them, or with `add` (Shift) in, or out if they were
+    /// all in already.
+    pub fn pick_mesh(&mut self, vs: &[u32], add: bool) {
+        if !add {
+            self.mesh = vs.to_vec();
+            self.corners.clear();
+            self.holes.clear();
+        } else if vs.iter().all(|v| self.mesh.contains(v)) {
+            self.mesh.retain(|v| !vs.contains(v));
+        } else {
+            for v in vs {
+                if !self.mesh.contains(v) {
+                    self.mesh.push(*v);
+                }
+            }
+        }
+        MESH_PICK.with(|p| *p.borrow_mut() = self.id.map(|id| (id, self.mesh.clone())));
     }
 
     /// Drop the picks, and any box or menu. The last click is kept, so a
@@ -2071,6 +2110,8 @@ impl GripSel {
     pub fn clear(&mut self) {
         self.corners.clear();
         self.holes.clear();
+        self.mesh.clear();
+        MESH_PICK.with(|p| *p.borrow_mut() = None);
         self.boxsel = None;
         self.menu = None;
     }
@@ -3368,10 +3409,31 @@ pub fn interact(
         .collect();
     let shown = declutter(shown, input);
     let screen = |h: &Handle| screen_at(h, input);
+    // a mass's edge is taken anywhere along it, not only at its middle,
+    // as Blender's (MU39: edges were hard to pick)
+    let mesh_ends: Option<(DVec3, creabim_core::FreeMesh)> =
+        match doc.model().get(id).map(|e| &e.kind) {
+            Some(ElementKind::FreeMesh(m)) if edit => Some((
+                m.origin + DVec3::Z * elevation(doc.model(), m.level),
+                m.clone(),
+            )),
+            _ => None,
+        };
+    let along = |h: &Handle, p: Pos2| -> Option<f32> {
+        let HandleKind::MeshEdge(a, b) = h.kind else {
+            return None;
+        };
+        let (base, m) = mesh_ends.as_ref()?;
+        let s = |i: u32| (input.project)(*base + m.to_model(m.mesh.vertices[i as usize]));
+        let (pa, pb) = (s(a)?, s(b)?);
+        let ab = pb - pa;
+        let t = ((p - pa).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.08, 0.92);
+        Some((pa + ab * t).distance(p))
+    };
     let nearest = |p: Pos2| {
         shown
             .iter()
-            .filter_map(|h| Some((h, screen(h)?.distance(p))))
+            .filter_map(|h| Some((h, along(h, p).or_else(|| Some(screen(h)?.distance(p)))?)))
             // 8 px to see, 16 px to hit
             .filter(|(_, d)| *d < 8.0)
             // a corner wins over an add-corner grip or an edge's at the
@@ -3428,6 +3490,41 @@ pub fn interact(
                 let p = |i: u32| (input.project)(base + m.to_model(m.mesh.vertices[i as usize]));
                 if let (Some(pa), Some(pb)) = (p(a), p(b)) {
                     painter.line_segment([pa, pb], Stroke::new(wire_w, ink));
+                }
+            }
+        }
+    }
+    // what is picked on the mass: its faces tinted, its edges and points
+    // in the accent, lit until another pick (MU39)
+    if mesh_edit && !grips.mesh.is_empty() {
+        if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+            let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+            let accent = crate::theme::interaction();
+            let p = |i: u32| (input.project)(base + m.to_model(m.mesh.vertices[i as usize]));
+            let on = |v: &u32| grips.mesh.contains(v);
+            for f in &m.mesh.faces {
+                if f.iter().all(on) {
+                    let pts: Option<Vec<Pos2>> = f.iter().map(|v| p(*v)).collect();
+                    if let Some(pts) = pts {
+                        painter.add(egui::Shape::Path(egui::epaint::PathShape {
+                            points: pts,
+                            closed: true,
+                            fill: accent.gamma_multiply(0.28),
+                            stroke: Stroke::NONE.into(),
+                        }));
+                    }
+                }
+            }
+            for (a, b) in mesh_edges(&m.mesh) {
+                if on(&a) && on(&b) {
+                    if let (Some(pa), Some(pb)) = (p(a), p(b)) {
+                        painter.line_segment([pa, pb], Stroke::new(edit_display().0 + 1.5, accent));
+                    }
+                }
+            }
+            for v in &grips.mesh {
+                if let Some(c) = p(*v) {
+                    painter.circle_filled(c, edit_display().1 / 2.0 + 1.0, accent);
                 }
             }
         }
@@ -3707,12 +3804,32 @@ pub fn interact(
                     grips.corners.clear();
                     grips.holes.clear();
                 }
+                let mut mesh = vec![];
                 for h in &shown {
                     if let HandleKind::Vertex { ring, i } = h.kind {
                         if screen(h).is_some_and(|c| rect.contains(c)) && !grips.picked(ring, i) {
                             grips.corners.push((ring, i));
                         }
                     }
+                }
+                // a mass's vertices in the box, whichever grips show
+                if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+                    let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+                    for (i, v) in m.mesh.vertices.iter().enumerate() {
+                        if (input.project)(base + m.to_model(*v)).is_some_and(|c| rect.contains(c))
+                        {
+                            mesh.push(i as u32);
+                        }
+                    }
+                }
+                if !mesh.is_empty() || !grips.mesh.is_empty() {
+                    grips.pick_mesh(&mesh, shift);
+                    grips.boxsel = None;
+                    *status = Some(format!(
+                        "{} points picked: G or M moves them, R turns, S scales.",
+                        grips.mesh.len()
+                    ));
+                    return true;
                 }
                 grips.boxsel = None;
                 *status = Some(match grips.corners.len() {
@@ -4218,6 +4335,32 @@ fn tap_grip(
     grips: &mut GripSel,
 ) -> Option<String> {
     let double = grips.tap(kind, time, at);
+    // a mass in Edit mode: a click picks the vertex, the edge or the face,
+    // and it stays picked to act on, as in Blender (MU39)
+    if edit {
+        if let Some(ElementKind::FreeMesh(m)) = doc.model().get(id).map(|e| &e.kind) {
+            let vs: Option<Vec<u32>> = match kind {
+                HandleKind::MeshVertex(i) => Some(vec![i as u32]),
+                HandleKind::MeshEdge(a, b) => Some(vec![a, b]),
+                HandleKind::Face(f) => m.mesh.faces.get(f).cloned(),
+                _ => None,
+            };
+            if let Some(vs) = vs {
+                grips.pick_mesh(&vs, shift);
+                let what = match (crate::handles::pick(), kind) {
+                    (_, HandleKind::MeshEdge(..)) | (2, _) => "edge",
+                    (_, HandleKind::Face(_)) | (3, _) => "face",
+                    _ => "point",
+                };
+                return Some(match grips.mesh.len() {
+                    0 => "Nothing picked.".into(),
+                    n => format!(
+                        "{n} points picked ({what}): G or M moves them, R turns, S scales; Shift+click picks more."
+                    ),
+                });
+            }
+        }
+    }
     match kind {
         HandleKind::Vertex { ring, i } if edit => {
             if double && !shift {

@@ -4234,6 +4234,12 @@ pub fn start_modal(
     ) {
         Ok(mut m) => {
             m.duplicated = duplicate;
+            // a mass's picked vertices in Edit mode are what moves (MU39)
+            if let ([one], false) = (targets.as_slice(), duplicate) {
+                if let Some(vs) = crate::handles::mesh_pick(*one) {
+                    m.set_verts(doc, *one, vs);
+                }
+            }
             Ok((m.with_flow(flow).with_works_on(works_on), targets))
         }
         Err(e) => {

@@ -10432,7 +10432,14 @@ impl Drop for Perf {
         static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         if *ON.get_or_init(|| std::env::var_os("CREABIM_PERF").is_some()) {
             let ms = self.0.elapsed().as_secs_f64() * 1000.0;
-            if ms > 8.0 {
+            static MIN: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+            let min = *MIN.get_or_init(|| {
+                std::env::var("CREABIM_PERF_MS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(8.0)
+            });
+            if ms > min {
                 eprintln!("{}: {ms:.1} ms", self.1);
             }
         }
@@ -10521,6 +10528,7 @@ impl eframe::App for CreaBimApp {
             ctx.request_repaint();
         }
         // Divide's marks, for every view to draw this frame (MU38)
+        let _pd = Perf::new("pre-frame");
         (self.plan.divide_marks, self.plan.divide_labels) = self.divide_marks();
         self.plan.divide_guides = self.divide.s.make == creabim_core::divide::Make::Guides;
         // while a point is asked for, the selection stays as it was
@@ -10541,6 +10549,7 @@ impl eframe::App for CreaBimApp {
             self.take_picked_centre();
             self.plan.mod_guides = self.modifier_guides();
         }
+        drop(_pd);
         // R draws a rectangle while sketching, not a rotate (MU38)
         crate::sketch::set_sketching(&ctx, self.plan.tool == Tool::Sketch);
         // the activity log: what the status bar said (it names every edit
@@ -10597,7 +10606,9 @@ impl eframe::App for CreaBimApp {
             }
         }
 
+        let _pw = Perf::new("web_panels");
         let web = self.web_panels(ui, frame);
+        drop(_pw);
         // the panes say again this frame what the one under the pointer does
         self.plan.hint = None;
         self.rect_3d = None;
