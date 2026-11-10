@@ -337,7 +337,7 @@ impl CreaBimApp {
                     self.profiles.boxsel = None;
                 }
                 self.status = match self.profiles.tool {
-                    ProfTool::Draw => "Draw: click the corners of a shape; click the first to close it, Enter leaves it open, a right-click cancels. It snaps to corners, guides and the grid.".into(),
+                    ProfTool::Draw => "Draw: click the corners of a shape; click the first to close it; double-click (or click the last corner again) or Enter finishes (it closes by itself when its ends meet, or rest on another shape); a right-click cancels. It snaps to corners, guides and the grid.".into(),
                     ProfTool::Insertion => "Insertion: click where the profile sits on its path (it snaps to corners and guides).".into(),
                     ProfTool::Guide => "Guide: click two points for a guide through them.".into(),
                     ProfTool::Select => "Click a corner, an edge, a guide or inside a shape to pick it; drag corners and edges; click an edge's length to type it.".into(),
@@ -1061,8 +1061,53 @@ impl CreaBimApp {
             let d = response.drag_delta();
             center -= DVec2::new(d.x as f64, -d.y as f64) / scale as f64;
         }
+        // the zoom column's frame-selection button: what is picked here (MU37)
+        let fit_picked = {
+            let gl = self
+                .profiles
+                .guides
+                .get(&prof.name)
+                .cloned()
+                .unwrap_or_default();
+            let mut pts: Vec<DVec2> = vec![];
+            for p in self
+                .profiles
+                .sel
+                .into_iter()
+                .chain(self.profiles.extra.iter().copied())
+            {
+                match p {
+                    PSel::Corner(si, ci) => {
+                        pts.extend(shapes.get(si).and_then(|s| s.points.get(ci)).copied())
+                    }
+                    PSel::Edge(si, e) => {
+                        if let Some(s) = shapes.get(si).filter(|s| s.points.len() >= 2) {
+                            let n = s.points.len();
+                            pts.push(s.points[e % n]);
+                            pts.push(s.points[(e + 1) % n]);
+                        }
+                    }
+                    PSel::Shape(si) => {
+                        pts.extend(shapes.get(si).map(|s| s.points.clone()).unwrap_or_default())
+                    }
+                    PSel::Guide(i) => {
+                        pts.extend(gl.get(i).map(|(a, b)| vec![*a, *b]).unwrap_or_default())
+                    }
+                    PSel::Trace(_) => {}
+                }
+            }
+            (!pts.is_empty()).then(|| {
+                let lo = pts.iter().fold(DVec2::splat(f64::MAX), |a, p| a.min(*p));
+                let hi = pts.iter().fold(DVec2::splat(f64::MIN), |a, p| a.max(*p));
+                let span = (hi - lo).max(DVec2::splat(0.005));
+                let k = ((body.width() - 160.0).max(60.0) as f64 / span.x)
+                    .min((body.height() - 120.0).max(60.0) as f64 / span.y)
+                    as f32;
+                ((lo + hi) / 2.0, k.clamp(1.0, 1e6))
+            })
+        };
         let (nav, look) =
-            crate::planview::nav_input(ui, body, ElementId::NIL, fit, None, center, scale);
+            crate::planview::nav_input(ui, body, ElementId::NIL, fit, fit_picked, center, scale);
         if let Some((c, k)) = nav {
             center = c;
             scale = k;
@@ -1401,14 +1446,44 @@ impl CreaBimApp {
         } else {
             egui::Color32::from_rgb(59, 111, 214)
         };
-        let outline = prof.outline();
-        if outline.len() >= 3 {
+        {
             let xf = crate::planview::Xf {
                 rect: body,
                 center,
                 scale,
             };
-            crate::planview::fill_polygon(&painter, &xf, &outline, accent.gamma_multiply(0.10));
+            if prof.more.is_empty() && prof.flips.is_empty() {
+                let outline = prof.outline();
+                if outline.len() >= 3 {
+                    crate::planview::fill_polygon(
+                        &painter,
+                        &xf,
+                        &outline,
+                        accent.gamma_multiply(0.10),
+                    );
+                }
+            } else {
+                let mut faces = prof.faces();
+                faces.sort_by(|a, b| {
+                    let (fa, fb) = (
+                        creabim_core::polygon::signed_area2(&a.outer).abs(),
+                        creabim_core::polygon::signed_area2(&b.outer).abs(),
+                    );
+                    fb.total_cmp(&fa)
+                });
+                let fill = accent.gamma_multiply(0.10);
+                for (i, f) in faces.iter().enumerate() {
+                    if f.outer.len() < 3 {
+                        continue;
+                    }
+                    if f.filled {
+                        crate::planview::fill_polygon(&painter, &xf, &f.outer, fill);
+                    } else if faces[..i].iter().any(|g| g.filled && g.holds(f.sample)) {
+                        // a void in a fill: the paper shows through
+                        crate::planview::fill_polygon(&painter, &xf, &f.outer, paper);
+                    }
+                }
+            }
         }
         let picked = self.profiles.shape.min(shapes.len().saturating_sub(1));
         let mut clicked_len: Option<(usize, usize, f64)> = None;
@@ -1945,8 +2020,35 @@ impl CreaBimApp {
                         painter.add(egui::Shape::line(pts, egui::Stroke::new(1.6, accent)));
                     }
                 }
+                let tol = 9.0 / scale as f64;
+                let on_shape = |q: DVec2| {
+                    shapes.iter().any(|sh| {
+                        let n = sh.points.len();
+                        let k = if sh.open { n.saturating_sub(1) } else { n };
+                        (0..k).any(|e| {
+                            let (a, b) = (sh.points[e], sh.points[(e + 1) % n]);
+                            let ab = b - a;
+                            let t =
+                                ((q - a).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+                            (a + ab * t).distance(q) < tol
+                        })
+                    })
+                };
                 let finish = |d: &mut Vec<DVec2>, closed: bool| -> Option<Vec<NamedProfile>> {
-                    let pts = std::mem::take(d);
+                    let mut pts = std::mem::take(d);
+                    // the same corner twice in a row (a double-click) counts once
+                    pts.dedup_by(|a, b| a.distance(*b) < 1e-9);
+                    let mut closed = closed;
+                    if !closed && pts.len() >= 3 {
+                        let (first, last) = (pts[0], pts[pts.len() - 1]);
+                        if first.distance(last) < tol {
+                            pts.pop();
+                            closed = true;
+                        } else if on_shape(first) && on_shape(last) {
+                            // its ends rest on another shape: it closes against it
+                            closed = true;
+                        }
+                    }
                     if pts.len() < if closed { 3 } else { 2 } {
                         return None;
                     }
@@ -1960,10 +2062,44 @@ impl CreaBimApp {
                 };
                 // a click, or a press let go after a small slip, places a
                 // corner (MU37: quick clicks were lost)
-                if response.clicked() || response.drag_stopped_by(egui::PointerButton::Primary) {
+                let dbl = response.double_clicked()
+                    || (response.hovered()
+                        && ui.input(|i| {
+                            i.pointer
+                                .button_double_clicked(egui::PointerButton::Primary)
+                        }));
+                if dbl {
+                    // a double-click finishes the shape where it is
+                    if let Some(all) = finish(d, false) {
+                        let closed = all
+                            .iter()
+                            .find(|x| Some(x.name.as_str()) == cur.as_deref())
+                            .and_then(|x| x.more.last())
+                            .is_some_and(|m| !m.open);
+                        write = Some((
+                            all,
+                            if closed {
+                                "Draw profile shape"
+                            } else {
+                                "Draw profile wire"
+                            },
+                            false,
+                        ));
+                    }
+                } else if response.clicked()
+                    || response.drag_stopped_by(egui::PointerButton::Primary)
+                {
                     if let Some((w, _)) = here {
                         if d.len() >= 3 && to_s(d[0]).distance(to_s(w)) < 9.0 {
                             if let Some(all) = finish(d, true) {
+                                write = Some((all, "Draw profile shape", false));
+                            }
+                        } else if d.len() >= 2
+                            && d.last().is_some_and(|l| to_s(*l).distance(to_s(w)) < 6.0)
+                        {
+                            // the last corner clicked again (as a double-click
+                            // does) finishes the shape (MU37)
+                            if let Some(all) = finish(d, false) {
                                 write = Some((all, "Draw profile shape", false));
                             }
                         } else {
@@ -1973,7 +2109,7 @@ impl CreaBimApp {
                 }
                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     if let Some(all) = finish(d, false) {
-                        write = Some((all, "Draw profile wire", false));
+                        write = Some((all, "Draw profile shape", false));
                     }
                 }
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
