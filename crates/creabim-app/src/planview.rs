@@ -368,6 +368,11 @@ pub struct PlanState {
     /// is on (the right of the direction drawn, or flipped its left).
     pub wall_location: creabim_core::LocationLine,
     pub wall_flip: bool,
+    /// What the Wall tool draws (MU40): 0 straight, 1 an arc (start, end,
+    /// then a point it passes through), 2 a circle (centre, then radius).
+    pub wall_shape: u8,
+    /// An arc wall's end, once clicked: the next click bends it.
+    pub wall_arc_end: Option<DVec2>,
     /// Section line handle being dragged, and the line when the drag began.
     drag: Option<(Handle, DVec2, DVec2, DVec2)>,
     /// Dimension being drawn: its points so far, attached and as drawn.
@@ -618,6 +623,8 @@ impl Default for PlanState {
             wall_thickness: 0.2,
             wall_location: Default::default(),
             wall_flip: false,
+            wall_shape: 0,
+            wall_arc_end: None,
             drag: None,
             dim: vec![],
             tag_host: None,
@@ -2406,7 +2413,26 @@ pub fn show(
                     b.extend(0.0),
                 );
                 painter.line_segment([xf.to_screen(a), xf.to_screen(b)], accent);
-                if tool == Tool::Wall && matches!(kind, PaneKind::Plan { .. }) {
+                // an arc or circle wall being drawn: its curve (MU40)
+                let curve = match (tool, state.wall_shape, state.wall_arc_end) {
+                    (Tool::Wall, 1, Some(e)) => bulge_through(a, b, e)
+                        .map(|k| creabim_core::sketch::Curve::arc(a, e, k).points()),
+                    (Tool::Wall, 2, _) if a.distance(b) > 1e-6 => Some(
+                        (0..=72)
+                            .map(|i| {
+                                a + DVec2::from_angle(i as f64 / 72.0 * std::f64::consts::TAU)
+                                    * a.distance(b)
+                            })
+                            .collect(),
+                    ),
+                    _ => None,
+                };
+                if let Some(pts) = curve {
+                    painter.add(egui::Shape::line(
+                        pts.iter().map(|p| xf.to_screen(*p)).collect(),
+                        Stroke::new(2.0, accent.color),
+                    ));
+                } else if tool == Tool::Wall && matches!(kind, PaneKind::Plan { .. }) {
                     // the wall's faces about the line it is drawn along
                     if let Some(faces) = wall_preview(doc.model(), state, a, b) {
                         let thin = Stroke::new(1.0, accent.color);
@@ -3062,6 +3088,31 @@ pub fn new_wall(
     w
 }
 
+/// The bulge of the arc from `a` through `t` to `b` (as [`Wall::bulge`]);
+/// none when the three are in a line.
+pub fn bulge_through(a: DVec2, t: DVec2, b: DVec2) -> Option<f64> {
+    let d = 2.0 * (a.x * (t.y - b.y) + t.x * (b.y - a.y) + b.x * (a.y - t.y));
+    if d.abs() < 1e-9 {
+        return None;
+    }
+    let sq = |p: DVec2| p.length_squared();
+    let c = DVec2::new(
+        (sq(a) * (t.y - b.y) + sq(t) * (b.y - a.y) + sq(b) * (a.y - t.y)) / d,
+        (sq(a) * (b.x - t.x) + sq(t) * (a.x - b.x) + sq(b) * (t.x - a.x)) / d,
+    );
+    let tau = std::f64::consts::TAU;
+    let ang = |p: DVec2| (p - c).y.atan2((p - c).x);
+    let norm = |x: f64| x.rem_euclid(tau);
+    let (a0, at, ae) = (ang(a), ang(t), ang(b));
+    let sweep = if norm(at - a0) < norm(ae - a0) {
+        norm(ae - a0)
+    } else {
+        -norm(a0 - ae)
+    };
+    // Curve::arc's bulge: tan(sweep / 4), anticlockwise positive
+    Some((sweep / 4.0).tan())
+}
+
 /// The faces of the wall being drawn from `a` to `b`, and where its
 /// exterior is, for the preview.
 pub fn wall_preview(
@@ -3111,6 +3162,68 @@ fn plan_click(
                 add_section_view(doc, a, p, tool == Tool::Section, selection)
             }
             Some(_) => Ok(()),
+        },
+        // a circle: its centre, then a point on it; two half walls (MU40)
+        Tool::Wall if state.wall_shape == 2 => match state.pending.take() {
+            None => {
+                state.pending = Some(p);
+                state.status = Some("Circle wall: click a point on it (its radius).".into());
+                Ok(())
+            }
+            Some(c) if c.distance(p) > 0.1 => {
+                let a = p;
+                let b = c - (p - c);
+                let mut w1 = new_wall(doc.model(), level, state, a, b);
+                let mut w2 = new_wall(doc.model(), level, state, b, a);
+                for (w, s, e) in [(&mut w1, a, b), (&mut w2, b, a)] {
+                    // on its centreline: a curve's location line is its middle
+                    w.start = s;
+                    w.end = e;
+                    w.bulge = 1.0;
+                }
+                let e1 = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w1)));
+                let e2 = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w2)));
+                selection.only(e1.id);
+                state.status = Some(format!(
+                    "Circle wall, radius {}: two half walls. Click a centre for another.",
+                    crate::units::len(c.distance(p))
+                ));
+                doc.commit(Transaction::new("Draw circle wall").insert(e1).insert(e2))
+            }
+            Some(_) => Ok(()),
+        },
+        // an arc: its start, its end, then a point it passes through
+        Tool::Wall if state.wall_shape == 1 => match (state.pending, state.wall_arc_end) {
+            (None, _) => {
+                state.pending = Some(p);
+                state.wall_arc_end = None;
+                state.status = Some("Arc wall: click its end.".into());
+                Ok(())
+            }
+            (Some(a), None) if a.distance(p) > 0.05 => {
+                state.wall_arc_end = Some(p);
+                state.status = Some("Arc wall: click a point it passes through.".into());
+                Ok(())
+            }
+            (Some(a), Some(b)) => {
+                let Some(bulge) = bulge_through(a, p, b) else {
+                    state.status =
+                        Some("That point is on the straight line: pick one off it.".into());
+                    return Ok(());
+                };
+                let mut w = new_wall(doc.model(), level, state, a, b);
+                w.start = a;
+                w.end = b;
+                w.bulge = bulge;
+                let e = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w)));
+                selection.only(e.id);
+                // the next arc starts where this one ends
+                state.pending = Some(b);
+                state.wall_arc_end = None;
+                state.status = Some("Arc wall placed. Click the next one's end, or Esc.".into());
+                doc.commit(Transaction::new("Draw arc wall").insert(e))
+            }
+            _ => Ok(()),
         },
         Tool::Wall => match state.pending {
             None => {
@@ -3623,6 +3736,7 @@ fn section_tool(
                         attach_top: vec![],
                         curtain: None,
                         layer_ends: vec![],
+                        bulge: 0.0,
                     }),
                 );
                 // its type's thickness, but its drawn height
@@ -5380,11 +5494,18 @@ pub fn draw_item_with(
                     } else {
                         Color32::from_gray(150)
                     };
-                    painter.add(egui::Shape::convex_polygon(
-                        pts,
-                        fill,
-                        Stroke::new(1.6 * o.cut, ink),
-                    ));
+                    // any outline, a curved wall's too (MU40): filled as a
+                    // mesh, then its edge
+                    if pts.len() > 4 {
+                        fill_polygon(painter, xf, points, fill);
+                        painter.add(egui::Shape::closed_line(pts, Stroke::new(1.6 * o.cut, ink)));
+                    } else {
+                        painter.add(egui::Shape::convex_polygon(
+                            pts,
+                            fill,
+                            Stroke::new(1.6 * o.cut, ink),
+                        ));
+                    }
                 }
                 _ => {
                     let (w, c) = if selected {
@@ -7293,6 +7414,25 @@ mod dimension_chain_tests {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_arc_wall_passes_through_the_point_clicked() {
+        let (a, b) = (DVec2::new(3.0, 0.0), DVec2::new(-3.0, 0.0));
+        for t in [
+            DVec2::new(0.0, 3.0),
+            DVec2::new(0.0, -3.0),
+            DVec2::new(2.0, 1.0),
+        ] {
+            let k = bulge_through(a, t, b).unwrap();
+            let c = creabim_core::sketch::Curve::arc(a, b, k);
+            let pts = c.points();
+            let near = pts.iter().map(|p| p.distance(t)).fold(f64::MAX, f64::min);
+            // within a step of the arc's own drawing
+            assert!(near < 0.25, "{t}: {near}");
+        }
+        assert!(bulge_through(a, DVec2::ZERO, b).is_none());
+    }
+
     /// Two areas showing the same plan, side by side, share the drag; a
     /// drag started in one goes on every frame until the button is let go
     /// (the owner's MU16 report: in plan the drag only moved at the press

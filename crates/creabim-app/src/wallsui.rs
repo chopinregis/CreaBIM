@@ -647,6 +647,17 @@ impl CreaBimApp {
                         format!("New walls are drawn on their {}.", l.label().to_lowercase());
                 }
             }
+            "wall.shape" => {
+                self.plan.wall_shape = arg.parse().unwrap_or(0);
+                self.plan.pending = None;
+                self.plan.wall_arc_end = None;
+                self.status = match self.plan.wall_shape {
+                    1 => "Arc wall: click its start, its end, then a point it passes through.",
+                    2 => "Circle wall: click its centre, then a point on it.",
+                    _ => "Straight walls: click to start, click for each corner.",
+                }
+                .into();
+            }
             "wall.flipnew" => {
                 self.plan.wall_flip = !self.plan.wall_flip;
                 self.status = format!(

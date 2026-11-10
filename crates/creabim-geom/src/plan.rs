@@ -1012,7 +1012,14 @@ pub fn plan_view_with(
                 let ends = joins.get(&e.id).cloned().unwrap_or_default();
                 // wall-local point; the wall's own ends and the sides of the
                 // gaps crossing walls leave follow its joins
-                let at = |u: f64, s: f64| w.start + d * ends.place(w, u, s, false) + n * s;
+                // a curved wall is laid round its arc, its ends square
+                let at = |u: f64, s: f64| {
+                    if w.is_arc() {
+                        w.place(u, s)
+                    } else {
+                        w.start + d * ends.place(w, u, s, false) + n * s
+                    }
+                };
                 let cut_v = cut_height - w.base_offset;
                 let top_v = wall_top_height(model, w);
                 if cut_v <= 0.0 || cut_v >= top_v {
@@ -1021,7 +1028,11 @@ pub fn plan_view_with(
                         items.push(PlanItem::Polygon {
                             id: e.id,
                             pen: Pen::Projection,
-                            points: ends.footprint(w).to_vec(),
+                            points: if w.is_arc() {
+                                wall_band(w, &at, 0.0, w.length(), -t, t)
+                            } else {
+                                ends.footprint(w).to_vec()
+                            },
                         });
                     }
                     continue;
@@ -1106,17 +1117,16 @@ pub fn plan_view_with(
                     // each layer between its own ends: a core runs on at a T
                     for band in creabim_core::assembly::wall_bands(asm, w) {
                         let at = |u: f64, s: f64| {
-                            w.start + d * ends.place_layer(w, u, s, band.core, band.ext) + n * s
+                            if w.is_arc() {
+                                w.place(u, s)
+                            } else {
+                                w.start + d * ends.place_layer(w, u, s, band.core, band.ext) + n * s
+                            }
                         };
                         for &(a, b) in &pieces {
                             layers.push(CutPiece {
                                 id: e.id,
-                                points: vec![
-                                    at(a, band.s0),
-                                    at(b, band.s0),
-                                    at(b, band.s1),
-                                    at(a, band.s1),
-                                ],
+                                points: wall_band(w, &at, a, b, band.s0, band.s1),
                                 layer: Some(crate::scene::LayerPart::of(&band)),
                             });
                         }
@@ -1127,7 +1137,7 @@ pub fn plan_view_with(
                     items.push(PlanItem::Polygon {
                         id: e.id,
                         pen: Pen::Cut,
-                        points: vec![at(a, -t), at(b, -t), at(b, t), at(a, t)],
+                        points: wall_band(w, &at, a, b, -t, t),
                     });
                 }
             }
@@ -1496,6 +1506,29 @@ fn mesh_shade(
         })
     })
     .collect()
+}
+
+/// The band of wall `w` from `a` to `b` along it and `s0` to `s1` across,
+/// as an outline: four corners on a straight wall, bending round a
+/// curved one (MU40).
+fn wall_band(
+    w: &creabim_core::Wall,
+    at: &dyn Fn(f64, f64) -> DVec2,
+    a: f64,
+    b: f64,
+    s0: f64,
+    s1: f64,
+) -> Vec<DVec2> {
+    let mut us = vec![a];
+    us.extend(
+        w.bends()
+            .into_iter()
+            .filter(|u| *u > a + 1e-9 && *u < b - 1e-9),
+    );
+    us.push(b);
+    let mut pts: Vec<DVec2> = us.iter().map(|u| at(*u, s0)).collect();
+    pts.extend(us.iter().rev().map(|u| at(*u, s1)));
+    pts
 }
 
 /// The height of a wall's top above its base where it is highest. A top

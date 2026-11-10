@@ -144,7 +144,9 @@ pub fn overlapping_walls(model: &Model) -> Vec<(crate::ElementId, crate::Element
     let walls: Vec<(crate::ElementId, &crate::Wall)> = model
         .iter()
         .filter_map(|e| match &e.kind {
-            K::Wall(w) if w.length() > 1e-6 => Some((e.id, w)),
+            // a curved wall's straight chord says nothing about overlap
+            // (MU40: the two halves of a circle share theirs)
+            K::Wall(w) if w.length() > 1e-6 && !w.is_arc() => Some((e.id, w)),
             _ => None,
         })
         .collect();

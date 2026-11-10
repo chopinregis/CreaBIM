@@ -142,6 +142,7 @@ pub fn fit(
                 attach_top: vec![],
                 curtain: None,
                 layer_ends: vec![],
+                bulge: 0.0,
             }))
         }
         Assign::Slab => {

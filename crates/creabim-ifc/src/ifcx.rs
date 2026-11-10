@@ -1119,6 +1119,7 @@ impl Builder {
                             attach_top: vec![],
                             curtain: None,
                             layer_ends: vec![],
+                            bulge: 0.0,
                         }),
                         of_type: None,
                     });

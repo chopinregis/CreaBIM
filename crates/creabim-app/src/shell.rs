@@ -2608,6 +2608,31 @@ impl CreaBimApp {
             }));
         }
         if tool == Tool::Wall {
+            // straight, an arc, or a circle (MU40)
+            options.push(seg([
+                (
+                    "wall.shape:0",
+                    "Straight",
+                    "Click to start, click for each corner",
+                ),
+                (
+                    "wall.shape:1",
+                    "Arc",
+                    "Its start, its end, then a point it passes through",
+                ),
+                ("wall.shape:2", "Circle", "Its centre, then a point on it"),
+            ]
+            .iter()
+            .enumerate()
+            .map(|(i, (id, label, hint))| {
+                opt(
+                    id.to_string(),
+                    label,
+                    self.plan.wall_shape as usize == i,
+                    hint,
+                )
+            })
+            .collect()));
             options.push(json!({
                 "kind": "number", "key": "wall.thickness", "label": "Thickness",
                 "value": self.plan.wall_thickness, "unit": "m", "step": 0.01, "min": 0.05, "max": 1.0,
