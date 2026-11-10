@@ -29,6 +29,15 @@ fn exe_icon() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         let mut res = winresource::WindowsResource::new();
         res.set_icon("assets/logo/creabim.ico");
+        // who made it, in the .exe's Properties › Details
+        res.set("ProductName", "CreaBIM");
+        res.set("FileDescription", "CreaBIM, open-source BIM modeller");
+        res.set("CompanyName", "Regis Benoit Brice Nde Tene");
+        res.set(
+            "LegalCopyright",
+            "Copyright 2026 Regis Benoit Brice Nde Tene. GPL-3.0-or-later.",
+        );
+        res.set("OriginalFilename", "CreaBIM.exe");
         if let Err(e) = res.compile() {
             println!("cargo:warning=the .exe icon was not embedded: {e}");
         }

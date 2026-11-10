@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use or refer to CreaBIM, please cite it as below."
+title: "CreaBIM"
+abstract: "An open-source, BIM-native architectural modeller: one model for 3D, plans, sections, sheets, schedules, quantities and IFC."
+type: software
+authors:
+  - given-names: "Regis Benoit Brice"
+    family-names: "Nde Tene"
+repository-code: "https://github.com/chopinregis/CreaBIM"
+license: GPL-3.0-or-later
+version: "1.0.0"
+date-released: "2026-11-09"

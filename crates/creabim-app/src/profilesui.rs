@@ -98,6 +98,8 @@ pub struct ProfilesUi {
     /// A guide being dragged: (its place, where the drag began, its two
     /// points then).
     guide_drag: Option<(usize, DVec2, DVec2, DVec2)>,
+    /// Edge lengths and overall dimensions shown (D, or the header toggle).
+    hide_dims: bool,
     /// The pass the pointer was last over the view, for the app's keys
     /// to stand aside.
     hovered_pass: u64,
@@ -303,12 +305,14 @@ impl CreaBimApp {
                     .filter(|p| p.name != n)
                     .collect();
                 self.put_profiles(all, "Delete profile", false);
-                self.profiles.current = None;
+                // the view keeps the name: Ctrl+Z puts the profile back on
+                // screen (MU37: Undo seemed to do nothing)
                 self.status =
                     format!("Profile {n} deleted; what was made with it keeps its shape.");
             }
             "profiles.apply" => self.apply_profile(),
             "prof.trace" => self.profile_trace(arg),
+            "prof.dims" => self.profiles.hide_dims = !self.profiles.hide_dims,
             "prof.tool" => {
                 self.profiles.tool = match arg {
                     "draw" => ProfTool::Draw,
@@ -870,7 +874,7 @@ impl CreaBimApp {
         });
         let mut v = vec![
             json!({"kind": "toggle", "id": "prof.tool:select", "icon": "mouse-pointer-2", "label": "Select", "on": t == ProfTool::Select,
-                   "hint": "Drag corners; click an edge's length to type it; right-click a corner to remove it"}),
+                   "hint": "Pick and drag corners, edges and guides; click an edge's length to type it; right-click for quick actions"}),
             json!({"kind": "toggle", "id": "prof.tool:draw", "icon": "pencil", "label": "Draw", "on": t == ProfTool::Draw,
                    "hint": "Draw a shape: click its corners; the first again closes it, Enter leaves it open"}),
             json!({"kind": "toggle", "id": "prof.tool:insert", "icon": "crosshair", "label": "Insertion", "on": t == ProfTool::Insertion,
@@ -883,6 +887,8 @@ impl CreaBimApp {
                    "hint": "Rotate (R): what is picked, about a centre"}),
             json!({"kind": "toggle", "id": "prof.tool:align", "icon": "align-tool", "label": "Align", "on": t == ProfTool::Align,
                    "hint": "Align: an edge or a guide onto a line (an edge, a guide or an axis)"}),
+            json!({"kind": "toggle", "id": "prof.dims", "icon": "dimension", "label": "Dimensions", "on": !self.profiles.hide_dims,
+                   "hint": "Show or hide the edge lengths and overall sizes (D)"}),
             json!({"kind": "toggle", "id": "prof.tool:void", "icon": "void", "label": "Pick void", "on": t == ProfTool::Void,
                    "hint": "Pick void: click a face where shapes cross or nest to empty it, a void to fill it back"}),
             json!({"kind": "menu", "key": "prof.trace", "icon": "underlay", "label": "Trace",
@@ -993,7 +999,12 @@ impl CreaBimApp {
             painter.text(
                 body.center(),
                 egui::Align2::CENTER_CENTER,
-                "Pick a profile in the header, or make a New one.",
+                &match self.profiles.current.as_deref() {
+                    Some(n) => format!(
+                        "{n} was deleted. Ctrl+Z brings it back; or pick another in the header."
+                    ),
+                    None => "Pick a profile in the header, or make a New one.".to_string(),
+                },
                 egui::FontId::proportional(14.0),
                 pal.muted,
             );
@@ -1417,7 +1428,7 @@ impl CreaBimApp {
             for e in 0..edges {
                 let (a, b) = (s.points[e], s.points[(e + 1) % n]);
                 let (sa, sb) = (scr[e], scr[(e + 1) % n]);
-                if sa.distance(sb) < 36.0 {
+                if sa.distance(sb) < 36.0 || self.profiles.hide_dims {
                     continue;
                 }
                 let mid = sa + (sb - sa) / 2.0;
@@ -1451,7 +1462,7 @@ impl CreaBimApp {
                 );
             }
         }
-        // the overall size, dimensioned under and beside it
+        // the overall size, dimensioned under and beside it (D hides them)
         let lo = all_pts
             .iter()
             .fold(DVec2::splat(f64::MAX), |a, p| a.min(*p));
@@ -1459,30 +1470,32 @@ impl CreaBimApp {
             .iter()
             .fold(DVec2::splat(f64::MIN), |a, p| a.max(*p));
         let (bl, br, tr) = (to_s(lo), to_s(DVec2::new(hi.x, lo.y)), to_s(hi));
-        let y0 = bl.y + 44.0;
-        painter.line_segment(
-            [egui::pos2(bl.x, y0), egui::pos2(br.x, y0)],
-            egui::Stroke::new(1.0, blue),
-        );
-        painter.text(
-            egui::pos2((bl.x + br.x) / 2.0, y0 + 3.0),
-            egui::Align2::CENTER_TOP,
-            crate::units::len(hi.x - lo.x),
-            egui::FontId::proportional(11.0),
-            blue,
-        );
-        let x0 = br.x + 50.0;
-        painter.line_segment(
-            [egui::pos2(x0, br.y), egui::pos2(x0, tr.y)],
-            egui::Stroke::new(1.0, blue),
-        );
-        painter.text(
-            egui::pos2(x0 + 4.0, (br.y + tr.y) / 2.0),
-            egui::Align2::LEFT_CENTER,
-            crate::units::len(hi.y - lo.y),
-            egui::FontId::proportional(11.0),
-            blue,
-        );
+        if !self.profiles.hide_dims {
+            let y0 = bl.y + 44.0;
+            painter.line_segment(
+                [egui::pos2(bl.x, y0), egui::pos2(br.x, y0)],
+                egui::Stroke::new(1.0, blue),
+            );
+            painter.text(
+                egui::pos2((bl.x + br.x) / 2.0, y0 + 3.0),
+                egui::Align2::CENTER_TOP,
+                crate::units::len(hi.x - lo.x),
+                egui::FontId::proportional(11.0),
+                blue,
+            );
+            let x0 = br.x + 50.0;
+            painter.line_segment(
+                [egui::pos2(x0, br.y), egui::pos2(x0, tr.y)],
+                egui::Stroke::new(1.0, blue),
+            );
+            painter.text(
+                egui::pos2(x0 + 4.0, (br.y + tr.y) / 2.0),
+                egui::Align2::LEFT_CENTER,
+                crate::units::len(hi.y - lo.y),
+                egui::FontId::proportional(11.0),
+                blue,
+            );
+        }
         // what is picked, in the accent
         let picked: Vec<PSel> = self
             .profiles
@@ -1621,7 +1634,81 @@ impl CreaBimApp {
         // shape being drawn, a guide's first point, a move or rotation, an
         // align, a calibration, a box; with nothing under way it puts the
         // tool down (back to Select)
-        if response.secondary_clicked() {
+        let mut menu_act: Option<&'static str> = None;
+        let idle_select = {
+            let p = &self.profiles;
+            p.tool == ProfTool::Select
+                && p.drawing.is_empty()
+                && p.guide_from.is_none()
+                && p.op.is_empty()
+                && p.align_ref.is_none()
+                && p.calib.is_none()
+                && p.boxsel.is_none()
+                && !p.copy
+        };
+        if idle_select && response.secondary_clicked() {
+            // the menu acts on what is under the pointer when it isn't picked
+            if let Some(h) = pointer.and_then(pick) {
+                let picked_now: Vec<PSel> = self
+                    .profiles
+                    .sel
+                    .into_iter()
+                    .chain(self.profiles.extra.iter().copied())
+                    .collect();
+                if !picked_now.contains(&h) {
+                    self.profiles.sel = Some(h);
+                    self.profiles.extra.clear();
+                }
+            }
+        }
+        if idle_select {
+            let has_pick = self.profiles.sel.is_some();
+            let dims_label = if self.profiles.hide_dims {
+                "Show dimensions"
+            } else {
+                "Hide dimensions"
+            };
+            response.context_menu(|ui| {
+                ui.set_min_width(190.0);
+                let item = |ui: &mut egui::Ui, label: &str, key: &str, on: bool| {
+                    ui.add_enabled(on, egui::Button::new(label).shortcut_text(key))
+                        .clicked()
+                };
+                if item(ui, "Delete", "Del", has_pick) {
+                    menu_act = Some("delete");
+                }
+                ui.separator();
+                if item(ui, "Move", "M", has_pick) {
+                    menu_act = Some("move");
+                }
+                if item(ui, "Rotate", "R", has_pick) {
+                    menu_act = Some("rotate");
+                }
+                if item(ui, "Duplicate", "Shift D", has_pick) {
+                    menu_act = Some("copy");
+                }
+                if item(ui, "Align", "", true) {
+                    menu_act = Some("align");
+                }
+                ui.separator();
+                if item(ui, "Frame what is picked", "F", has_pick) {
+                    menu_act = Some("frame");
+                }
+                if item(ui, "Select all", "A", true) {
+                    menu_act = Some("all");
+                }
+                if item(ui, "Pick void", "", true) {
+                    menu_act = Some("void");
+                }
+                if item(ui, dims_label, "D", true) {
+                    menu_act = Some("dims");
+                }
+                if menu_act.is_some() {
+                    ui.close();
+                }
+            });
+        }
+        if response.secondary_clicked() && !idle_select {
             let p = &mut self.profiles;
             let busy = !p.drawing.is_empty()
                 || p.guide_from.is_some()
@@ -1823,39 +1910,6 @@ impl CreaBimApp {
                     self.profiles.drag = None;
                     self.profiles.edge_drag = None;
                     self.profiles.guide_drag = None;
-                }
-                if let (true, Some(q)) = (response.secondary_clicked(), pointer) {
-                    let hit = shapes.iter().enumerate().find_map(|(si, s)| {
-                        s.points
-                            .iter()
-                            .position(|c| to_s(*c).distance(q) < 8.0)
-                            .map(|ci| (si, ci))
-                    });
-                    if let Some((si, ci)) = hit {
-                        write = Some((
-                            edit(&mut |x| {
-                                let min = if si == 0 {
-                                    if x.open {
-                                        2
-                                    } else {
-                                        3
-                                    }
-                                } else {
-                                    2
-                                };
-                                if let Some(v) = point_mut(x, si) {
-                                    if v.len() > min {
-                                        v.remove(ci);
-                                    } else if si > 0 {
-                                        v.clear();
-                                    }
-                                }
-                                x.more.retain(|m| m.points.len() >= 2);
-                            }),
-                            "Remove profile corner",
-                            false,
-                        ));
-                    }
                 }
                 // a click picks a corner, an edge, a guide or a shape; Shift
                 // adds it to what is picked, or takes it off
@@ -2350,16 +2404,24 @@ impl CreaBimApp {
         // an edge's length typed: its far corner moves along the edge
         if let Some((si, e, now)) = clicked_len {
             self.profiles.typing = Some((si, e, format!("{:.0}", now * 1000.0)));
-            let _ = now;
+        } else if self.profiles.typing.is_some()
+            && (response.clicked() || response.secondary_clicked() || response.drag_started())
+        {
+            // a click anywhere else lets it go (MU37: it stayed over the sketch)
+            self.profiles.typing = None;
         }
         if let Some((si, e, mut text)) = self.profiles.typing.clone() {
             let s = &shapes[si.min(shapes.len() - 1)];
             if let (Some(a), Some(b)) = (s.points.get(e), s.points.get((e + 1) % s.points.len())) {
                 let mid = to_s((*a + *b) / 2.0);
                 let mut done = false;
-                egui::Area::new(egui::Id::new("prof.len"))
+                // out from the edge, off the sketch; drag it by its frame
+                let (sa, sb) = (to_s(*a), to_s(*b));
+                let away = egui::vec2(-(sb - sa).y, (sb - sa).x).normalized() * 46.0;
+                egui::Area::new(egui::Id::new(("prof.len", si, e)))
                     .order(egui::Order::Foreground)
-                    .fixed_pos(mid + egui::vec2(10.0, -12.0))
+                    .movable(true)
+                    .default_pos(mid + away - egui::vec2(60.0, 14.0))
                     .show(ui.ctx(), |ui| {
                         egui::Frame::popup(ui.style()).show(ui, |ui| {
                             ui.horizontal(|ui| {
@@ -2401,16 +2463,51 @@ impl CreaBimApp {
         }
         // keys over the view: M moves, R rotates, Delete removes a picked
         // guide or corner
-        if response.hovered() && !ui.ctx().egui_wants_keyboard_input() {
+        match menu_act {
+            Some("dims") => self.profiles.hide_dims = !self.profiles.hide_dims,
+            Some("align") => {
+                self.profiles.tool = ProfTool::Align;
+                self.profiles.align_ref = None;
+            }
+            Some("void") => self.profiles.tool = ProfTool::Void,
+            Some("copy") => {
+                self.profiles.tool = ProfTool::Move;
+                self.profiles.op.clear();
+                self.profiles.copy = true;
+                self.status = "Duplicate: click a base point, then where the copy goes.".into();
+            }
+            _ => {}
+        }
+        let keys_here = response.hovered() && !ui.ctx().egui_wants_keyboard_input();
+        if keys_here || menu_act.is_some() {
+            if keys_here && ui.input(|i| !i.modifiers.any() && i.key_pressed(egui::Key::D)) {
+                self.profiles.hide_dims = !self.profiles.hide_dims;
+            }
+            // A picks every shape and guide
+            if menu_act == Some("all")
+                || (keys_here && ui.input(|i| !i.modifiers.any() && i.key_pressed(egui::Key::A)))
+            {
+                let mut all: Vec<PSel> = (0..shapes.len()).map(PSel::Shape).collect();
+                all.extend((0..guides.len()).map(PSel::Guide));
+                self.profiles.sel = all.first().copied();
+                self.profiles.extra = all.into_iter().skip(1).collect();
+            }
             let (m, r, del, frame) = ui.input(|i| {
                 (
-                    !i.modifiers.any() && i.key_pressed(egui::Key::M),
-                    !i.modifiers.any() && i.key_pressed(egui::Key::R),
-                    i.key_pressed(egui::Key::Delete),
-                    !i.modifiers.any()
+                    keys_here && !i.modifiers.any() && i.key_pressed(egui::Key::M),
+                    keys_here && !i.modifiers.any() && i.key_pressed(egui::Key::R),
+                    keys_here && i.key_pressed(egui::Key::Delete),
+                    keys_here
+                        && !i.modifiers.any()
                         && (i.key_pressed(egui::Key::F) || i.key_pressed(egui::Key::Period)),
                 )
             });
+            let (m, r, del, frame) = (
+                m || menu_act == Some("move"),
+                r || menu_act == Some("rotate"),
+                del || menu_act == Some("delete"),
+                frame || menu_act == Some("frame"),
+            );
             // F (or the keypad's .) frames what is picked, as Blender's
             if frame && !picked.is_empty() {
                 let pts: Vec<DVec2> = picked
@@ -2440,7 +2537,27 @@ impl CreaBimApp {
                 self.profiles.copy = true;
                 self.status = "Duplicate: click a base point, then where the copy goes.".into();
             }
-            if del && !picked.is_empty() {
+            // a picked edge opens its shape there (or splits an open one); a
+            // picked shape goes (MU37: Delete did nothing to an edge)
+            let cut: Vec<PSel> = picked
+                .iter()
+                .copied()
+                .filter(|p| matches!(p, PSel::Edge(..) | PSel::Shape(..)))
+                .collect();
+            if del && editable && !cut.is_empty() {
+                self.profiles.sel = None;
+                self.profiles.extra.clear();
+                let n = cut.len();
+                write = Some((
+                    edit(&mut |x| delete_parts(x, &cut)),
+                    if n == 1 {
+                        "Delete profile edge"
+                    } else {
+                        "Delete profile parts"
+                    },
+                    false,
+                ));
+            } else if del && !picked.is_empty() {
                 self.profiles.sel = None;
                 self.profiles.extra.clear();
                 // guides from the last, so the others keep their places
@@ -2821,6 +2938,85 @@ fn apply_sel(x: &mut NamedProfile, sel: PSel, f: &dyn Fn(DVec2) -> DVec2) {
             }
         }
     }
+}
+
+/// Delete picked edges and shapes from a profile: a closed shape opens at
+/// its edge, an open one loses its end or splits in two; a picked shape is
+/// removed (the main shape gives its place to the next one).
+fn delete_parts(x: &mut NamedProfile, picked: &[PSel]) {
+    let mut shapes = x.shapes();
+    let gone: std::collections::BTreeSet<usize> = picked
+        .iter()
+        .filter_map(|p| {
+            if let PSel::Shape(si) = p {
+                Some(*si)
+            } else {
+                None
+            }
+        })
+        .collect();
+    let mut edges: Vec<(usize, usize)> = picked
+        .iter()
+        .filter_map(|p| {
+            if let PSel::Edge(si, e) = p {
+                Some((*si, *e))
+            } else {
+                None
+            }
+        })
+        .filter(|(si, _)| !gone.contains(si))
+        .collect();
+    edges.sort_unstable_by(|a, b| b.cmp(a));
+    let mut extra: Vec<ProfileShape> = vec![];
+    let mut done: Vec<(usize, usize)> = vec![]; // (shape, rotation) of closed shapes opened
+    for (si, mut e) in edges {
+        let Some(sh) = shapes.get_mut(si) else {
+            continue;
+        };
+        let n = sh.points.len();
+        if n < 2 {
+            continue;
+        }
+        if let Some(&(_, rot)) = done.iter().find(|d| d.0 == si) {
+            // the shape was opened already: edge numbers moved round
+            e = (e + n - rot) % n;
+        }
+        if !sh.open {
+            // open it at this edge: the path runs from its far corner round to
+            // its near one
+            let k = (e + 1) % n;
+            sh.points.rotate_left(k);
+            sh.open = true;
+            done.push((si, k));
+        } else if e == 0 {
+            sh.points.remove(0);
+        } else if e + 2 >= n {
+            sh.points.pop();
+        } else {
+            let tail = sh.points.split_off(e + 1);
+            extra.push(ProfileShape {
+                points: tail,
+                open: true,
+                thickness: sh.thickness,
+            });
+        }
+    }
+    let mut kept: Vec<ProfileShape> = shapes
+        .into_iter()
+        .enumerate()
+        .filter(|(i, s)| !gone.contains(i) && s.points.len() >= 2)
+        .map(|(_, s)| s)
+        .collect();
+    kept.extend(extra.into_iter().filter(|s| s.points.len() >= 2));
+    if kept.is_empty() {
+        return; // a profile keeps at least one shape
+    }
+    let first = kept.remove(0);
+    x.points = first.points;
+    x.open = first.open;
+    x.thickness = first.thickness;
+    x.more = kept;
+    x.flips.clear();
 }
 
 /// Move every corner of what is picked by `f`, each once however many

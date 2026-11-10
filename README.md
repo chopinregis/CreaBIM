@@ -1,12 +1,103 @@
-<p align="center"><img src="crates/creabim-app/assets/logo/svg/creabim-mark.svg" width="96" alt="The CreaBIM logo: a weaver beside the woven nest it built"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="crates/creabim-app/assets/logo/png/creabim-lockup-white-640x200.png">
+    <img src="crates/creabim-app/assets/logo/png/creabim-lockup-640x200.png" width="420" alt="CreaBIM: a weaver beside the woven nest it built">
+  </picture>
+</p>
 
-# CreaBIM
+<h1 align="center">One model. Every drawing.</h1>
 
-CreaBIM is an open-source, BIM-native architectural modeler: one model for freeform concept design and permit drawings, with Blender-style modeling, live 2D views and native IFC.
+<p align="center">
+  A free, open-source BIM modeller for architects. Model your building in 3D, and its plans, sections, elevations, sheets, schedules, quantities and IFC follow on their own: always in step, on your own computer, with no subscription.
+</p>
 
-![CreaBIM with the starter house's garden side in 3D beside its ground-floor plan](docs/screenshot.png)
+<p align="center">
+  <a href="https://github.com/chopinregis/CreaBIM/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/chopinregis/CreaBIM?label=download&color=4F6B4C"></a>
+  <img alt="Windows and Linux" src="https://img.shields.io/badge/Windows%20%C2%B7%20Linux-x64-3E5A3B">
+  <img alt="GPL-3.0" src="https://img.shields.io/badge/licence-GPL--3.0-8FB08A">
+  <img alt="IFC4 in and out" src="https://img.shields.io/badge/IFC4-in%20and%20out-6E8C68">
+</p>
 
-**Status: Phase 1 in progress.** The core architecture works end to end, from modelling to permit sheets and IFC. It is not yet a tool for real projects. What it doesn't do yet is listed in [docs/KNOWN_GAPS.md](docs/KNOWN_GAPS.md).
+<p align="center">
+  <a href="https://github.com/chopinregis/CreaBIM/releases/latest"><b>Download</b></a> ·
+  <a href="#what-works-today">What it does</a> ·
+  <a href="docs/KNOWN_GAPS.md">Where it stands</a> ·
+  <a href="docs/ROADMAP.md">Roadmap</a> ·
+  <a href="https://github.com/chopinregis/CreaBIM/discussions">Discussions</a>
+</p>
+
+![CreaBIM with the Maple Lane House in 3D beside its ground-floor plan](docs/screenshot.png)
+
+**CreaBIM is developed and designed by Regis Benoit Brice Nde Tene.** This repository is its official source. Forks and changes are welcome under the GPL.
+
+**Status: 1.0. Ready to explore, not yet for production work.** The whole path works, from modelling to permit sheets and IFC. Some parts are young: IFC export of some elements, Blender exchange, DXF (lines only) and stairs. Everything that doesn't work yet is listed in [docs/KNOWN_GAPS.md](docs/KNOWN_GAPS.md).
+
+## Get it
+
+| | |
+|---|---|
+| **Windows** | Download the `-setup.exe` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest). It installs for you, with no administrator rights; uninstall from Settings › Apps. A portable `.zip` is there too. |
+| **Linux** | Download the `.tar.gz`, untar it and run `./creabim`. Needs WebKitGTK 4.1 and GTK 3. |
+| **From source** | Install Rust (stable), then `cargo run --release -p creabim-app`. |
+
+Windows may warn that the publisher is unknown, because the app isn't code-signed yet: choose *More info*, then *Run anyway*. Each release lists SHA-256 checksums.
+
+## Design in one tool, document in another: the seam
+
+Most practices run two programs and a handover between them: a modeller for the design, and a drafting or BIM tool for the permit set. Every revision crosses that boundary by hand.
+
+| The usual pipeline | CreaBIM |
+|---|---|
+| 1. Concept massing (design tool) | **One element store**: walls, slabs, openings, levels, grids, rooms |
+| 2. Design development (design tool) | 3D view · live |
+| 3. Redraw the plans (CAD) | Plans · 1:50 |
+| 4. Rebuild in BIM (authoring tool) | Sections and elevations, cut from the model |
+| 5. Reconcile the set, every revision | Sheets, schedules, take-off and IFC, all from the same model |
+
+One edit lands in every view, in the same moment and the same undo step.
+
+## At a glance
+
+| **640** elements | **11** sheets | **3** IFC schemas | **1** model |
+|:---:|:---:|:---:|:---:|
+| in the starter house, footings to fixtures | drawn from one model, as vector PDF | IFC2X3, IFC4 and IFC4X3 read | behind every view, sheet, schedule and export |
+
+<table>
+<tr>
+<td width="50%"><img src="docs/readme/plan-ground-floor.png" alt="Part of the Maple Lane House ground-floor plan, drawn by CreaBIM"></td>
+<td width="50%">
+
+### Drawn from the model, not traced over it
+
+Sections and elevations are generated from the model. Cut walls, slabs and openings are drawn heavy; what lies beyond is projected with hidden lines removed.
+
+- Hatches, dimension chains, room tags, door swings, window symbols
+- Sheets with a title block and live views, exported as vector PDF
+- **Exports:** SVG plans · PDF sheets · CSV and XLSX schedules and take-off · IFC4 · glTF for Blender · FreeCAD document
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### Your own profiles
+
+Draw a coping, a gutter or a steel section in its own view, with snaps, guides and typed lengths. Then sweep it, or use it for columns, beams and railings. Several shapes, voids you pick, and traces you draw over.
+
+</td>
+<td width="50%"><img src="docs/readme/profile-view.png" alt="The Profile view"></td>
+</tr>
+</table>
+
+## Small, fast, and quiet
+
+Written in Rust and drawn on your graphics card. Sections and 3D drawings are built on every core in the background, so dragging a wall never waits for the other views.
+
+| **30 MB** | **0.2 s** | **0.3 %** | **16 cores** |
+|:---:|:---:|:---:|:---:|
+| the whole app, for Windows | from double-click to a window | CPU when you leave it alone | used to draw sections and 3D views |
+
+<sub>Measured with the starter house on a 16-core Windows desktop. Your numbers will vary.</sub>
 
 ## The starter house
 
