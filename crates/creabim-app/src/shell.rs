@@ -1903,6 +1903,7 @@ impl CreaBimApp {
             _ if self.join_action(head, arg) => {}
             _ if self.crop_action(head, arg) => {}
             _ if self.profiles_action(head, arg) => {}
+            _ if self.masters_action(head, arg) => {}
             _ if self.similar_action(head, arg) => {}
             _ if self.app_action(ctx, head, arg) => {}
             _ if self.help_action(head, arg) => {}
@@ -2452,6 +2453,16 @@ impl CreaBimApp {
                     "Plan ranges: each floor plan's cut (solid) and view depth (dashed). Drag a grip at the right to change it.".into()
                 } else {
                     "Plan ranges hidden.".into()
+                };
+            }
+            "view.grid" => {
+                let s = &mut self.shell.settings;
+                s.plan_grid = !s.plan_grid;
+                s.store();
+                self.status = if self.shell.settings.plan_grid {
+                    "Grid on behind drawings.".into()
+                } else {
+                    "Grid off: plain paper behind drawings.".into()
                 };
             }
             "view.tempdims" => {
@@ -3185,6 +3196,13 @@ impl CreaBimApp {
                     "hint": "The blue dimensions by what you select: on, they show and can be typed into; off, none show (MU21)",
                 }));
             }
+            // the grid behind the drawing, on or off for every drawing
+            // (MU40: some prefer plain paper)
+            options.push(json!({
+                "kind": "toggle", "id": "view.grid", "label": "Grid",
+                "icon": "grid-3x3", "on": self.shell.settings.plan_grid,
+                "hint": "The light grid behind drawings: off for plain paper. For every plan, section and detail",
+            }));
             options.push(json!({
                 "kind": "button", "id": "view.tag", "label": "Tag openings", "icon": "tag",
                 "hint": "Tag every door and window in this view that has no tag yet",
@@ -3479,6 +3497,7 @@ impl CreaBimApp {
             .collect();
         out.extend(groups);
         out.push(self.profiles_group());
+        out.push(self.masters_group());
         let groups = out;
         json!({
             "theme": self.theme(),
@@ -3831,6 +3850,12 @@ impl CreaBimApp {
                 if let Some(name) = want.strip_prefix("profile:") {
                     let name = name.to_string();
                     self.profiles_action("profiles.open", &name);
+                    return;
+                }
+                // a master of the browser's Masters group (MU40)
+                if let Some(id) = want.strip_prefix("master:") {
+                    let id = id.to_string();
+                    self.masters_action("master.open", &id);
                     return;
                 }
                 let Some(e) = self.doc.model().iter().find(|e| e.id.0.to_string() == want) else {

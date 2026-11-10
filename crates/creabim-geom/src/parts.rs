@@ -104,6 +104,15 @@ pub fn sweep_mesh_on(profile: &[DVec2], path: &[DVec3], closed: bool, up: DVec3)
 /// ends unless it is `closed`.
 pub fn sweep_mesh(profile: &[DVec2], path: &[DVec3], closed: bool) -> TriMesh {
     let mut m = TriMesh::default();
+    // a profile drawn clockwise is turned round: its faces would face in,
+    // and the solid show its inside, hollow (MU40)
+    let turned: Vec<DVec2>;
+    let profile = if signed_area(profile) < 0.0 {
+        turned = profile.iter().rev().copied().collect();
+        &turned[..]
+    } else {
+        profile
+    };
     // drop repeated points, which have no direction
     let mut pts: Vec<DVec3> = vec![];
     for p in path {
@@ -185,6 +194,12 @@ pub fn sweep_mesh(profile: &[DVec2], path: &[DVec3], closed: bool) -> TriMesh {
         m.add_polygon(&rings[n - 1], &tris, f1);
     }
     m
+}
+
+/// The shoelace area of `p`, positive counter-clockwise.
+fn signed_area(p: &[DVec2]) -> f64 {
+    let n = p.len();
+    (0..n).map(|i| p[i].perp_dot(p[(i + 1) % n])).sum::<f64>() / 2.0
 }
 
 // ---- site ----
@@ -1420,5 +1435,27 @@ mod plan_look_tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn a_profile_drawn_clockwise_still_faces_out() {
+        // a 0.2 x 0.3 box, clockwise, along 2 m
+        let cw = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(0.0, 0.3),
+            DVec2::new(0.2, 0.3),
+            DVec2::new(0.2, 0.0),
+        ];
+        let m = sweep_mesh(&cw, &[DVec3::ZERO, DVec3::new(2.0, 0.0, 0.0)], false);
+        let v = |i: u32| glam::Vec3::from(m.positions[i as usize]);
+        let mut volume = 0.0;
+        for t in m.indices.chunks(3) {
+            let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
+            volume += a.dot(b.cross(c)) / 6.0;
+            // each face's normal agrees with the way round it is wound
+            let n = glam::Vec3::from(m.normals[t[0] as usize]);
+            assert!(n.dot((b - a).cross(c - a)) > 0.0, "a face turned in");
+        }
+        assert!((volume - 0.12).abs() < 1e-4, "the solid is whole: {volume}");
     }
 }

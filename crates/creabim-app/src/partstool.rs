@@ -408,13 +408,13 @@ pub fn click(
                     );
                     part.profile = s.library.clone();
                     state.status = Some(format!(
-                        "{name} added along the wall's {}: it follows the wall. Click another wall for the next one.",
+                        "A sweep of {name} added along the wall's {}: it follows the wall. Click another wall for the next one.",
                         s.sweep_edge().label().to_lowercase()
                     ));
                     return add(
                         doc,
                         selection,
-                        Element::new(name, ElementKind::Part(part)),
+                        Element::new("Sweep", ElementKind::Part(part)),
                         "Sweep along wall",
                     );
                 }
@@ -438,11 +438,11 @@ pub fn click(
                     },
                 );
                 part.profile = s.library.clone();
-                state.status = Some(format!("{name} added."));
+                state.status = Some(format!("A sweep of {name} added."));
                 return add(
                     doc,
                     selection,
-                    Element::new(name, ElementKind::Part(part)),
+                    Element::new("Sweep", ElementKind::Part(part)),
                     "Draw sweep",
                 );
             }

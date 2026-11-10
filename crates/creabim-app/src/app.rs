@@ -53,6 +53,8 @@ mod levelcopy;
 mod levelsui;
 #[path = "marksui.rs"]
 mod marksui;
+#[path = "mastersui.rs"]
+mod mastersui;
 #[path = "materials.rs"]
 mod materials;
 #[path = "objectsui.rs"]
@@ -140,6 +142,7 @@ pub struct CreaBimApp {
     divide: divideui::DivideUi,
     /// The profile library window (MU27 block 5).
     profiles: profilesui::ProfilesUi,
+    masters: mastersui::MastersUi,
     camera: OrbitCamera,
     cube: crate::viewcube::ViewCube,
     /// Aspect ratio of the 3D view as last drawn, for framing.
@@ -365,6 +368,7 @@ impl CreaBimApp {
             dark_3d: true,
             divide: Default::default(),
             profiles: Default::default(),
+            masters: Default::default(),
             camera: OrbitCamera::default(),
             cube: Default::default(),
             aspect: 0.65,
@@ -1557,7 +1561,7 @@ impl CreaBimApp {
         // over a Profile view its own keys win (M, R, F, D, Delete…): the
         // model's would act on the model behind it (MU37: Shift+D started a
         // dimension); undo and redo still work
-        if self.profile_view_hovered(ctx) {
+        if self.profile_view_hovered(ctx) || self.masters_view_hovered(ctx) {
             let (undo, redo) = ctx.input(|i| {
                 let cmd = i.modifiers.command;
                 (
@@ -8179,6 +8183,14 @@ impl CreaBimApp {
                 self.notes_pad(ui);
                 return;
             }
+            if tab == PropTab::Profile {
+                self.profile_props(ui);
+                return;
+            }
+            if tab == PropTab::Master {
+                self.master_props(ui);
+                return;
+            }
             if tab == PropTab::Model3d {
                 self.visibility_panel(ui, gridvis::VisTarget::Window3d, Some("3D view"));
                 self.crop_list(ui, self.crop_owner());
@@ -8339,8 +8351,6 @@ impl CreaBimApp {
         if creabim_core::types::TypeCategory::of(&e.kind).is_some() {
             self.type_picker(ui, id);
         }
-        // a sweep's profile from the library; any shape made a profile (MU36)
-        self.sweep_profile_rows(ui, id);
         // the type picker may have changed it
         let Some(e) = self.doc.model().get(id).cloned() else {
             return;
@@ -9731,26 +9741,34 @@ impl CreaBimApp {
         // a mass's face tools in a section of their own (MU39: the element
         // section had grown dense)
         self.mesh_edit_section(ui, id);
-        // what can be made from it, after its settings (MU39: settings
-        // always first): a profile of its shape, even parts of its length
-        ui.add_space(4.0);
-        if creabim_core::profiles::from_shape(self.doc.model(), id).is_some()
-            && crate::props::action(ui, "Profile", "Make a profile", "Its shape (a sketch on any plane, open or closed; a slab; an extrusion) kept in the project's profile library, to sweep or place", true).clicked()
-        {
-            self.profile_from_selection();
-        }
-        // even parts of its length (MU34 B2)
-        if creabim_core::divide::span(self.doc.model(), id).is_some()
-            && crate::props::action(
-                ui,
-                "Divide",
-                "Into even parts…",
-                "Cut it into parts, put guides at the divisions, or copy something into each part",
-                true,
-            )
-            .clicked()
-        {
-            self.open_divide();
+        // a sweep's profile from the library, under its settings (MU40:
+        // settings always first)
+        let own_profile = self.sweep_profile_rows(ui, id);
+        // what can be made from it, in a section of its own (MU40: it hung
+        // glued under Settings): a profile of its shape (a sweep's Profile
+        // section has Save as new for that), even parts of its length
+        let make =
+            !own_profile && creabim_core::profiles::from_shape(self.doc.model(), id).is_some();
+        let divide = creabim_core::divide::span(self.doc.model(), id).is_some();
+        if (make || divide) && self.prop_header(ui, "make", "Make from it", true, None) {
+            if make
+                && crate::props::action(ui, "Profile", "Make a profile", "Its shape (a sketch on any plane, open or closed; a slab; an extrusion) kept in the project's profile library, to sweep or place", true).clicked()
+            {
+                self.profile_from_selection();
+            }
+            // even parts of its length (MU34 B2)
+            if divide
+                && crate::props::action(
+                    ui,
+                    "Divide",
+                    "Into even parts…",
+                    "Cut it into parts, put guides at the divisions, or copy something into each part",
+                    true,
+                )
+                .clicked()
+            {
+                self.open_divide();
+            }
         }
         if extrude_sketch {
             self.extrude_sketch();
@@ -9913,6 +9931,13 @@ impl CreaBimApp {
                     out.push(PropTab::Next);
                 }
             }
+        }
+        // the Profile view in front: its profile, first of the view's tabs
+        if self.profiles_in_front() {
+            out.push(PropTab::Profile);
+        }
+        if self.masters_in_front() {
+            out.push(PropTab::Master);
         }
         if matches!(self.vis_target(false), Some(gridvis::VisTarget::View(_))) {
             out.push(PropTab::View);
@@ -10346,6 +10371,10 @@ pub(crate) enum PropTab {
     Notes,
     /// The element's modifiers (MU27): array, mirror, solidify, subdivide.
     Modifiers,
+    /// The profile in the Profile view in front (MU40).
+    Profile,
+    /// The master in the Masters view in front (MU40).
+    Master,
 }
 
 impl PropTab {
@@ -10358,7 +10387,11 @@ impl PropTab {
             | PropTab::Joins
             | PropTab::Graphics
             | PropTab::Data => 0,
-            PropTab::View | PropTab::Trace | PropTab::Model3d => 1,
+            PropTab::View
+            | PropTab::Trace
+            | PropTab::Model3d
+            | PropTab::Profile
+            | PropTab::Master => 1,
             PropTab::Project | PropTab::Notes => 2,
             PropTab::Modifiers => 0,
         }
@@ -10377,6 +10410,8 @@ impl PropTab {
             PropTab::Project => "Project",
             PropTab::Notes => "Notes and to-dos",
             PropTab::Modifiers => "Modifiers",
+            PropTab::Profile => "Profile",
+            PropTab::Master => "Master",
         }
     }
 
@@ -10393,6 +10428,8 @@ impl PropTab {
             PropTab::Project => "house",
             PropTab::Notes => "sticky-note",
             PropTab::Modifiers => "wrench",
+            PropTab::Profile => "profile",
+            PropTab::Master => "sheet-template",
         }
     }
 }
@@ -10511,6 +10548,10 @@ impl eframe::App for CreaBimApp {
         } else {
             crate::theme::ORANGE
         };
+        crate::planview::set_plan_look(
+            self.shell.settings.plan_grid,
+            self.shell.settings.axis_lines,
+        );
         if ink != crate::theme::interaction() {
             crate::theme::set_interaction(ink);
             self.geometry_key = None;

@@ -794,7 +794,7 @@ impl CreaBimApp {
         });
     }
 
-    fn add_template(&mut self, name: String, t: SheetTemplate) {
+    pub(super) fn add_template(&mut self, name: String, t: SheetTemplate) {
         let e = Element::new(name, ElementKind::SheetTemplate(t));
         let id = e.id;
         let r = self
@@ -804,7 +804,7 @@ impl CreaBimApp {
         self.report(r, "New sheet template. Use it on a sheet below.");
     }
 
-    fn delete_template(&mut self, id: ElementId) {
+    pub(super) fn delete_template(&mut self, id: ElementId) {
         let users = template_users(self.doc.model(), id);
         let mut tx = sheet_template_tx(self.doc.model(), &users, None, "Delete sheet template");
         tx = tx.remove_cascade(self.doc.model(), id);
@@ -813,14 +813,14 @@ impl CreaBimApp {
         self.report(r, "Template deleted; its sheets have the built-in block.");
     }
 
-    fn set_sheet_template(&mut self, sheets: &[ElementId], t: Option<ElementId>) {
+    pub(super) fn set_sheet_template(&mut self, sheets: &[ElementId], t: Option<ElementId>) {
         let tx = sheet_template_tx(self.doc.model(), sheets, t, "Sheet template");
         let n = tx.ops.len();
         let r = self.doc.commit(tx);
         self.report(r, format!("{n} sheet(s) use the template."));
     }
 
-    fn new_sheet_from(&mut self, template: ElementId) {
+    pub(super) fn new_sheet_from(&mut self, template: ElementId) {
         let Some(ElementKind::SheetTemplate(t)) =
             self.doc.model().get(template).map(|e| e.kind.clone())
         else {
@@ -970,7 +970,7 @@ impl CreaBimApp {
 }
 
 /// The sheet templates in the model, by name.
-fn templates(model: &creabim_core::Model) -> Vec<(ElementId, String)> {
+pub(super) fn templates(model: &creabim_core::Model) -> Vec<(ElementId, String)> {
     let mut v: Vec<(ElementId, String)> = model
         .iter()
         .filter(|e| matches!(e.kind, ElementKind::SheetTemplate(_)))
@@ -981,7 +981,7 @@ fn templates(model: &creabim_core::Model) -> Vec<(ElementId, String)> {
 }
 
 /// The sheets using a template.
-fn template_users(model: &creabim_core::Model, id: ElementId) -> Vec<ElementId> {
+pub(super) fn template_users(model: &creabim_core::Model, id: ElementId) -> Vec<ElementId> {
     sheets::sheets(model)
         .into_iter()
         .filter(|(_, s)| s.template == Some(id))
@@ -1017,7 +1017,7 @@ fn sheet_template_tx(
 }
 
 /// `base`, or `base 2`, `base 3`… whichever no element has.
-fn new_style_name(model: &creabim_core::Model, base: &str) -> String {
+pub(super) fn new_style_name(model: &creabim_core::Model, base: &str) -> String {
     let base = base
         .trim_end_matches(|c: char| c.is_ascii_digit())
         .trim_end();

@@ -724,6 +724,108 @@ pub fn svg_items(text: &str) -> Result<Vec<TitleItem>, String> {
     Ok(out)
 }
 
+/// A master as an SVG drawing of its whole sheet, in mm (MU40): its
+/// border, lines, fills and text, the `{fields}` as written, to finish in
+/// Inkscape or any drawing program and read back with [`read`].
+pub fn to_svg(t: &SheetTemplate) -> String {
+    let paper = t.paper.unwrap_or(DVec2::new(420.0, 297.0));
+    let o = t.corner.at(paper.x, paper.y);
+    let svg = |p: DVec2| DVec2::new(p.x, paper.y - p.y);
+    let pts = |ps: &[DVec2]| {
+        ps.iter()
+            .map(|p| {
+                let q = svg(o + *p);
+                format!("{:.3},{:.3}", q.x, q.y)
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let mut out = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}mm\" height=\"{h}mm\" viewBox=\"0 0 {w} {h}\">
+",
+        w = paper.x,
+        h = paper.y
+    );
+    out.push_str(
+        "<g fill=\"none\" stroke=\"#000\" stroke-linecap=\"round\" stroke-linejoin=\"round\">
+",
+    );
+    if t.border {
+        out.push_str(&format!(
+            "<rect x=\"20\" y=\"{MARGIN}\" width=\"{:.3}\" height=\"{:.3}\" stroke-width=\"0.5\"/>
+",
+            paper.x - 20.0 - MARGIN,
+            paper.y - 2.0 * MARGIN
+        ));
+    }
+    for it in &t.items {
+        match it {
+            TitleItem::Line { points, width } => out.push_str(&format!(
+                "<polyline points=\"{}\" stroke-width=\"{:.3}\"/>
+",
+                pts(points),
+                width.max(0.05)
+            )),
+            TitleItem::Fill { points, gray } => {
+                let g = (gray.clamp(0.0, 1.0) * 255.0).round() as u8;
+                out.push_str(&format!(
+                    "<polygon points=\"{}\" fill=\"#{g:02x}{g:02x}{g:02x}\" stroke=\"none\"/>
+",
+                    pts(points)
+                ));
+            }
+            TitleItem::Text { .. } => {}
+        }
+    }
+    out.push_str(
+        "</g>
+<g font-family=\"sans-serif\" fill=\"#000\">
+",
+    );
+    for it in &t.items {
+        if let TitleItem::Text {
+            at,
+            size,
+            text,
+            align,
+            angle,
+        } = it
+        {
+            // by its baseline, as SVG places text; a title item by its middle
+            let base = svg(o + *at - DVec2::from_angle(*angle).perp() * size * 0.35);
+            let anchor = match align {
+                TextAlign::Start => "start",
+                TextAlign::Middle => "middle",
+                TextAlign::End => "end",
+            };
+            let turn = if angle.abs() > 1e-9 {
+                format!(
+                    " transform=\"rotate({:.3} {:.3} {:.3})\"",
+                    -angle.to_degrees(),
+                    base.x,
+                    base.y
+                )
+            } else {
+                String::new()
+            };
+            out.push_str(&format!(
+                "<text x=\"{:.3}\" y=\"{:.3}\" font-size=\"{:.3}\" text-anchor=\"{anchor}\"{turn}>{}</text>
+",
+                base.x,
+                base.y,
+                size,
+                text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+            ));
+        }
+    }
+    out.push_str(
+        "</g>
+</svg>
+",
+    );
+    out
+}
+
 /// A presentation attribute or the same in `style`.
 fn style_attr(tag: &str, name: &str) -> Option<String> {
     if let Some(v) = attr(tag, name) {
@@ -833,5 +935,33 @@ mod tests {
             apply(&transform("translate(10 20) scale(2)"), DVec2::ONE),
             DVec2::new(12.0, 22.0)
         );
+    }
+
+    #[test]
+    fn a_master_written_as_svg_reads_back_with_its_text_and_fields() {
+        let t = creabim_core::titleblock::standard_strip();
+        let svg = to_svg(&t);
+        let back = svg_items(&svg).unwrap();
+        let texts = |items: &[TitleItem]| -> Vec<(String, f64, f64)> {
+            items
+                .iter()
+                .filter_map(|i| match i {
+                    TitleItem::Text { text, at, .. } => Some((text.clone(), at.x, at.y)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let o = t.corner.at(420.0, 297.0);
+        let want = texts(&t.items);
+        let got = texts(&back);
+        assert_eq!(want.len(), got.len());
+        for ((a, ax, ay), (b, bx, by)) in want.iter().zip(&got) {
+            assert_eq!(a, b);
+            assert!(
+                (o.x + ax - bx).abs() < 0.01 && (o.y + ay - by).abs() < 0.01,
+                "{a}"
+            );
+        }
+        assert!(svg.contains("{project}") && svg.contains("<rect"));
     }
 }

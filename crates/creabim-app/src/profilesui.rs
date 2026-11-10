@@ -774,6 +774,210 @@ impl CreaBimApp {
         });
     }
 
+    /// The Profile tab of Properties while a Profile view is in front
+    /// (MU40): the profile's name and size, its faces (a void filled back
+    /// in one click), flips, and the picked corner's place to type.
+    pub(super) fn profile_props(&mut self, ui: &mut egui::Ui) {
+        let Some(cur) = self.profiles.current.clone() else {
+            crate::props::section(ui, "Profile");
+            crate::props::note(
+                ui,
+                "Pick a profile in the view's header, or make a New one.",
+            );
+            return;
+        };
+        let model = self.doc.model();
+        let mine = profiles::project_profiles(model)
+            .into_iter()
+            .find(|p| p.name == cur);
+        let users = profiles::users(model, &cur).len();
+        if self.prop_header(ui, "prof.about", "Profile", true, Some("profiles")) {
+            crate::props::row(ui, "Name", |ui| self.profile_name_field_bare(ui));
+            let pts: Vec<DVec2> = match &mine {
+                Some(p) => p.shapes().iter().flat_map(|s| s.points.clone()).collect(),
+                None => profiles::preset(&cur).unwrap_or_default(),
+            };
+            if let Some(first) = pts.first() {
+                let (lo, hi) = pts
+                    .iter()
+                    .fold((*first, *first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+                let d = hi - lo;
+                crate::props::row(ui, "Size", |ui| {
+                    ui.label(format!("{:.0} × {:.0} mm", d.x * 1000.0, d.y * 1000.0))
+                });
+            }
+            crate::props::row(ui, "Used by", |ui| {
+                ui.label(match users {
+                    0 => "Nothing yet".to_string(),
+                    1 => "1 element".to_string(),
+                    n => format!("{n} elements"),
+                })
+            });
+            if mine.is_none() {
+                crate::props::note(
+                    ui,
+                    "A preset: Duplicate it in the header to make one of your own to change.",
+                );
+            }
+        }
+        let Some(p) = mine else {
+            return;
+        };
+        // its faces: what is filled, what is void (MU40: a void read as a
+        // face turned the wrong way)
+        let faces = p.faces();
+        let voids: Vec<DVec2> = faces
+            .iter()
+            .filter(|f| !f.filled)
+            .map(|f| f.sample)
+            .collect();
+        let filled = faces.len() - voids.len();
+        if self.prop_header(ui, "prof.faces", "Faces", true, None) {
+            crate::props::row(ui, "Faces", |ui| {
+                ui.label(format!(
+                    "{filled} filled, {} void{}",
+                    voids.len(),
+                    if voids.len() == 1 { "" } else { "s" }
+                ))
+            });
+            let (fill, pick) = crate::props::actions2(
+                ui,
+                "",
+                (
+                    "Fill every void",
+                    "Fill every hole of the profile: a hollow one turned solid",
+                    !voids.is_empty(),
+                ),
+                (
+                    "Pick a face…",
+                    "Click a face in the view to turn it over: a void filled, a fill made void",
+                    true,
+                ),
+            );
+            crate::props::note(
+                ui,
+                "A void is white in the view and a hole in what it makes. Offset all, or a shape inside another, makes one.",
+            );
+            if fill {
+                let n = voids.len();
+                self.edit_current("Fill the voids", |x, _| {
+                    for s in &voids {
+                        x.toggle_face(*s);
+                    }
+                });
+                self.status = format!(
+                    "{} filled. Ctrl+Z empties {} again.",
+                    if n == 1 { "The void" } else { "Every void" },
+                    if n == 1 { "it" } else { "them" }
+                );
+            }
+            if pick {
+                self.profiles.tool = ProfTool::Void;
+                self.status =
+                    "Click a face to turn it over: a void filled, a fill made void.".into();
+            }
+        }
+        if self.prop_header(ui, "prof.flip", "Flip", true, None) {
+            let (across, up) = crate::props::actions2(
+                ui,
+                "",
+                (
+                    "Left to right",
+                    "Mirror it across its insertion point's vertical",
+                    true,
+                ),
+                (
+                    "Upside down",
+                    "Mirror it across its insertion point's level",
+                    true,
+                ),
+            );
+            let m = if across {
+                Some(DVec2::new(-1.0, 1.0))
+            } else if up {
+                Some(DVec2::new(1.0, -1.0))
+            } else {
+                None
+            };
+            if let Some(k) = m {
+                self.edit_current("Flip profile", |x, _| {
+                    x.points.iter_mut().for_each(|q| *q *= k);
+                    for s in &mut x.more {
+                        s.points.iter_mut().for_each(|q| *q *= k);
+                    }
+                    x.flips.iter_mut().for_each(|q| *q *= k);
+                });
+                self.status = if users > 0 {
+                    format!("{cur} flipped. Apply in the header gives what is made with it the new shape.")
+                } else {
+                    format!("{cur} flipped.")
+                };
+            }
+        }
+        // the corner picked: its place, to type (mm from the insertion point)
+        if let Some(PSel::Corner(si, ci)) = self.profiles.sel {
+            let at = p.shapes().get(si).and_then(|s| s.points.get(ci)).copied();
+            if let Some(at) = at {
+                if self.prop_header(ui, "prof.picked", "Picked corner", true, None) {
+                    let (mut x, mut y) = (at.x * 1000.0, at.y * 1000.0);
+                    let cx = crate::props::row(ui, "X", |ui| {
+                        crate::props::fill(
+                            ui,
+                            egui::DragValue::new(&mut x).suffix(" mm").speed(1.0),
+                        )
+                    });
+                    let cy = crate::props::row(ui, "Y", |ui| {
+                        crate::props::fill(
+                            ui,
+                            egui::DragValue::new(&mut y).suffix(" mm").speed(1.0),
+                        )
+                    });
+                    if cx.changed() || cy.changed() {
+                        let to = DVec2::new(x, y) / 1000.0;
+                        self.edit_current("Move corner", |q, _| {
+                            if let Some(c) = point_mut(q, si).and_then(|v| v.get_mut(ci)) {
+                                *c = to;
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// The Name field without its label, for a Properties row.
+    fn profile_name_field_bare(&mut self, ui: &mut egui::Ui) -> egui::Response {
+        let cur = self.profiles.current.clone().unwrap_or_default();
+        let mine = profiles::project_profiles(self.doc.model())
+            .iter()
+            .any(|p| p.name == cur);
+        if self.profiles.name_for != cur {
+            self.profiles.name = cur.clone();
+            self.profiles.name_for = cur.clone();
+        }
+        let r = crate::props::fill(
+            ui,
+            egui::TextEdit::singleline(&mut self.profiles.name).interactive(mine),
+        );
+        if r.lost_focus() {
+            let new = self.profiles.name.trim().to_string();
+            if !new.is_empty() && new != cur {
+                self.rename_profile(&cur, &new);
+            } else {
+                self.profiles.name = cur.clone();
+            }
+        }
+        r
+    }
+
+    /// Is a Profile view the area in front (focused)?
+    pub(super) fn profiles_in_front(&self) -> bool {
+        matches!(
+            self.areas.root.areas().get(self.areas.focus),
+            Some(crate::areas::Shows::Profiles)
+        )
+    }
+
     /// Rename profile `old`: in the library, on what is made with it, its
     /// guides and its trace references.
     fn rename_profile(&mut self, old: &str, new: &str) {
@@ -2965,15 +3169,17 @@ impl CreaBimApp {
 
     /// A sweep's, column's or beam's Profile rows: its profile picked from
     /// the pictured list, opened in a view, updated, saved or duplicated.
-    pub(super) fn sweep_profile_rows(&mut self, ui: &mut egui::Ui, id: ElementId) {
+    /// A sweep's, column's or beam's Profile section; false for anything
+    /// else (which has no profile of its own).
+    pub(super) fn sweep_profile_rows(&mut self, ui: &mut egui::Ui, id: ElementId) -> bool {
         let model = self.doc.model();
-        let Some(e) = model.get(id) else { return };
+        let Some(e) = model.get(id) else { return false };
         let (shape, link): (Option<Vec<DVec2>>, Option<String>) = match &e.kind {
             ElementKind::Part(p) => match &p.form {
                 creabim_core::parts::Form::Sweep { profile, .. } => {
                     (Some(profile.clone()), p.profile.clone())
                 }
-                _ => return,
+                _ => return false,
             },
             ElementKind::Column(c) => (
                 c.section.as_ref().map(|s| s.points.clone()),
@@ -2983,7 +3189,7 @@ impl CreaBimApp {
                 b.section.as_ref().map(|s| s.points.clone()),
                 b.section.as_ref().map(|s| s.name.clone()),
             ),
-            _ => return,
+            _ => return false,
         };
         let member = !matches!(e.kind, ElementKind::Part(_));
         let mut all: Vec<String> = profiles::project_profiles(model)
@@ -2996,8 +3202,8 @@ impl CreaBimApp {
             .and_then(|n| profiles::find(model, n))
             .is_some_and(|p| Some(p) != shape);
         let mut pick: Option<Option<String>> = None;
-        if !self.prop_header(ui, "member.profile", "Profile", true, None) {
-            return;
+        if !self.prop_header(ui, "profile", "Profile", true, None) {
+            return true;
         }
         crate::props::row(ui, "Profile", |ui| {
             let w = ui.available_width();
@@ -3124,6 +3330,7 @@ impl CreaBimApp {
             };
             self.report(r, "Profile changed. Ctrl+Z puts it back.");
         }
+        true
     }
 }
 

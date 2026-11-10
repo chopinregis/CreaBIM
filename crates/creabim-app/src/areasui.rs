@@ -396,6 +396,9 @@ impl CreaBimApp {
                 Shows::Profiles => {
                     ui.push_id(("area", i), |ui| self.profiles_area(ui, body));
                 }
+                Shows::Masters => {
+                    ui.push_id(("area", i), |ui| self.masters_area(ui, body));
+                }
                 _ => {
                     let p = self.shell.theme.palette();
                     ui.painter().rect_filled(body, 0.0, p.panel2);
@@ -702,6 +705,7 @@ impl CreaBimApp {
                 .filter(|c| c["kind"] != "sep")
                 .collect(),
             Shows::Profiles => self.profile_controls(),
+            Shows::Masters => self.master_controls(),
             _ => vec![],
         };
         let (kind_icon, kind_label, name) = match shows {
@@ -721,6 +725,7 @@ impl CreaBimApp {
                     .clone()
                     .unwrap_or_else(|| "Pick a profile".to_string()),
             ),
+            Shows::Masters => ("sheet-template", "Masters", self.master_title()),
             _ => ("box", "3D view", "Model".to_string()),
         };
         let mut asks: Vec<Ask> = vec![];
@@ -757,6 +762,8 @@ impl CreaBimApp {
             asks.push(Ask::Popup(
                 if matches!(shows, Shows::Profiles) {
                     "prof.pick".into()
+                } else if matches!(shows, Shows::Masters) {
+                    "master.pick".into()
                 } else if matches!(shows, Shows::Model | Shows::Notes) {
                     "area.kind".into()
                 } else {
@@ -782,6 +789,20 @@ impl CreaBimApp {
                     child.add_space(4.0);
                     plus_w += 136.0;
                 }
+            }
+        }
+        // what to do with masters, beside the list of them (MU40)
+        if matches!(shows, Shows::Masters) {
+            for (id, icon, tip, on) in self.master_buttons() {
+                let r = icon_btn(&mut child, icon, false, on, &p).on_hover_text(tip);
+                if r.clicked() && on {
+                    asks.push(if id.ends_with("menu") {
+                        Ask::Popup(id.into(), r.rect)
+                    } else {
+                        Ask::Run(id.into())
+                    });
+                }
+                plus_w += 28.0;
             }
         }
         // the mode after what it shows, as Blender's (MU27): Object or Edit,
@@ -908,6 +929,9 @@ impl CreaBimApp {
         if let Some(items) = self.profile_menu(key) {
             return Some(items);
         }
+        if let Some(items) = self.master_menu(key) {
+            return Some(items);
+        }
         let i = self.areas.menu_area.unwrap_or(self.areas.focus);
         let shows = self.areas.root.areas();
         let here = shows.get(i).copied().unwrap_or(Shows::Model);
@@ -957,6 +981,12 @@ impl CreaBimApp {
                         .icon("profile")
                         .checked(here == Shows::Profiles)
                         .hint("The profile library and its editor, large: pick, draw and edit profiles"),
+                );
+                items.push(
+                    Item::new("area.show:masters", "Masters")
+                        .icon("sheet-template")
+                        .checked(here == Shows::Masters)
+                        .hint("The sheet masters (title blocks and frames) and their editor: draw lines, text and fields"),
                 );
                 items
             }
@@ -1162,6 +1192,8 @@ impl CreaBimApp {
                     Shows::Notes
                 } else if arg == "profiles" {
                     Shows::Profiles
+                } else if arg == "masters" {
+                    Shows::Masters
                 } else {
                     match self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
                         Some(e) => Shows::View(e.id),
@@ -1178,6 +1210,12 @@ impl CreaBimApp {
                 if let Shows::View(v) = new {
                     self.active_view = Some(v);
                     self.areas.seen = Some(v);
+                }
+                // its own Properties tab comes forward (MU40)
+                match new {
+                    Shows::Masters => self.prop_tab = PropTab::Master,
+                    Shows::Profiles => self.prop_tab = PropTab::Profile,
+                    _ => {}
                 }
                 self.store_areas();
             }

@@ -104,6 +104,15 @@ pub fn boxes(ui: &mut Ui, on: bool) {
     });
 }
 
+/// Is a section's box open to put a sub-section in? (A sub-section with
+/// none above it is a section of its own: MU40.)
+pub fn box_open(ui: &Ui) -> bool {
+    let pass = ui.ctx().cumulative_pass_nr();
+    ui.ctx()
+        .data(|d| d.get_temp::<OpenBox>(box_id(ui)))
+        .is_some_and(|b| b.pass == pass)
+}
+
 fn boxes_on(ui: &Ui) -> bool {
     let id = box_id(ui).with("on");
     let pass = ui.ctx().cumulative_pass_nr();
@@ -718,6 +727,17 @@ pub fn check(
 /// Returns the row's response and the rect left for a ? button beside the
 /// title.
 pub fn header(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, egui::Rect) {
+    let boxed = !indent && boxes_on(ui);
+    let out = header_band(ui, title, open, indent);
+    // a folded section's box ends under its band, so whatever comes next
+    // never hangs under it as a lip (MU40)
+    if boxed && !open {
+        close_box(ui);
+    }
+    out
+}
+
+fn header_band(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, egui::Rect) {
     // as Blender's panels (MU20): a band a step darker than the panel, a
     // thin open chevron at the left that turns down when the section is
     // open, the title in bold after it, a dotted grip at the right

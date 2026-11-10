@@ -204,6 +204,149 @@ impl SheetTemplate {
     }
 }
 
+/// The masters a project can start from (MU40): the Standard strip down
+/// the right, and the Minimal band along the foot. A3, from the bottom
+/// right corner.
+pub fn styles() -> Vec<(&'static str, SheetTemplate)> {
+    vec![
+        ("Standard A3", standard_strip()),
+        ("Minimal A3", minimal_band()),
+    ]
+}
+
+fn rect(lo: DVec2, hi: DVec2, width: f64) -> TitleItem {
+    TitleItem::Line {
+        points: vec![lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y), lo],
+        width,
+    }
+}
+
+fn rule(a: DVec2, b: DVec2) -> TitleItem {
+    TitleItem::Line {
+        points: vec![a, b],
+        width: 0.18,
+    }
+}
+
+fn text(at: DVec2, size: f64, t: &str, align: TextAlign) -> TitleItem {
+    TitleItem::Text {
+        at,
+        size,
+        text: t.to_string(),
+        align,
+        angle: 0.0,
+    }
+}
+
+/// CreaBIM's woven mark, `s` mm across, centred on `c`: two threads each
+/// way, over and under, in a ring.
+pub fn woven_mark(c: DVec2, s: f64) -> Vec<TitleItem> {
+    let r = s / 2.0;
+    let ring: Vec<DVec2> = (0..=32)
+        .map(|k| c + DVec2::from_angle(k as f64 / 32.0 * std::f64::consts::TAU) * r)
+        .collect();
+    let mut out = vec![TitleItem::Line {
+        points: ring,
+        width: 0.25,
+    }];
+    let t = r * 0.42;
+    for k in [-1.0, 1.0] {
+        // across, broken where it passes under
+        out.push(TitleItem::Line {
+            points: vec![
+                c + DVec2::new(-r * 0.8, k * t),
+                c + DVec2::new(-t * 0.35, k * t),
+            ],
+            width: 0.35,
+        });
+        out.push(TitleItem::Line {
+            points: vec![
+                c + DVec2::new(t * 0.35, k * t),
+                c + DVec2::new(r * 0.8, k * t),
+            ],
+            width: 0.35,
+        });
+        // up, whole
+        out.push(TitleItem::Line {
+            points: vec![
+                c + DVec2::new(k * t, -r * 0.8),
+                c + DVec2::new(k * t, r * 0.8),
+            ],
+            width: 0.35,
+        });
+    }
+    out
+}
+
+/// The Standard master: a strip down the right of an A3 sheet. The
+/// project's name has the head of it to itself; the mark signs the foot,
+/// small, beside "Drawn in CreaBIM" (MU40: the mark fought the name).
+pub fn standard_strip() -> SheetTemplate {
+    use TextAlign::{End, Start};
+    let (l, r) = (-76.0, -10.0);
+    let x = l + 3.0;
+    let mut items = vec![
+        rect(DVec2::new(l, 10.0), DVec2::new(r, 287.0), 0.35),
+        text(DVec2::new(x, 282.0), 2.0, "PROJECT", Start),
+        text(DVec2::new(x, 274.0), 4.5, "{project}", Start),
+        text(DVec2::new(x, 267.0), 2.5, "{client}", Start),
+        rule(DVec2::new(l, 262.0), DVec2::new(r, 262.0)),
+        text(DVec2::new(x, 257.0), 2.0, "DRAWING", Start),
+        text(DVec2::new(x, 250.0), 4.0, "{sheet}", Start),
+        rule(DVec2::new(l, 80.0), DVec2::new(r, 80.0)),
+        text(DVec2::new(x, 75.0), 2.0, "REV", Start),
+        text(DVec2::new(l + 14.0, 75.0), 2.0, "DATE", Start),
+        text(DVec2::new(l + 34.0, 75.0), 2.0, "DESCRIPTION", Start),
+        rule(DVec2::new(l, 71.0), DVec2::new(r, 71.0)),
+        rule(DVec2::new(l, 60.0), DVec2::new(r, 60.0)),
+        text(DVec2::new(x, 55.0), 2.0, "SCALE", Start),
+        text(DVec2::new(x, 47.5), 3.5, "{scale}", Start),
+        text(DVec2::new(l + 36.0, 55.0), 2.0, "DATE", Start),
+        text(DVec2::new(l + 36.0, 47.5), 3.0, "{date}", Start),
+        rule(DVec2::new(l + 33.0, 40.0), DVec2::new(l + 33.0, 60.0)),
+        rule(DVec2::new(l, 40.0), DVec2::new(r, 40.0)),
+        text(DVec2::new(x, 35.0), 2.0, "SHEET", Start),
+        text(DVec2::new(x, 25.0), 9.0, "{number}", Start),
+        text(DVec2::new(r - 3.0, 35.0), 2.0, "REV", End),
+        text(DVec2::new(r - 3.0, 25.0), 4.0, "{rev}", End),
+        rule(DVec2::new(l, 17.0), DVec2::new(r, 17.0)),
+        text(DVec2::new(l + 9.0, 13.5), 2.0, "Drawn in CreaBIM", Start),
+    ];
+    items.extend(woven_mark(DVec2::new(l + 5.0, 13.5), 4.6));
+    SheetTemplate {
+        corner: Corner::BottomRight,
+        items,
+        border: true,
+        fields: vec![("client".into(), String::new()), ("rev".into(), "-".into())],
+        paper: Some(DVec2::new(420.0, 297.0)),
+    }
+}
+
+/// The Minimal master: one band along the foot of an A3 sheet.
+pub fn minimal_band() -> SheetTemplate {
+    use TextAlign::{End, Start};
+    let (l, r, lo, hi) = (-390.0, -10.0, 10.0, 24.0);
+    let y = (lo + hi) / 2.0;
+    let mut items = vec![rect(DVec2::new(l, lo), DVec2::new(r, hi), 0.35)];
+    for x in [-240.0, -130.0, -90.0, -40.0] {
+        items.push(rule(DVec2::new(x, lo), DVec2::new(x, hi)));
+    }
+    items.extend([
+        text(DVec2::new(l + 4.0, y), 4.0, "{project}", Start),
+        text(DVec2::new(-236.0, y), 3.0, "{sheet}", Start),
+        text(DVec2::new(-126.0, y), 2.5, "{scale}", Start),
+        text(DVec2::new(-86.0, y), 2.5, "{date}", Start),
+        text(DVec2::new(r - 4.0, y), 6.0, "{number}", End),
+    ]);
+    SheetTemplate {
+        corner: Corner::BottomRight,
+        items,
+        border: true,
+        fields: vec![],
+        paper: Some(DVec2::new(420.0, 297.0)),
+    }
+}
+
 /// The `{name}`s in `text`.
 pub fn fields_in(text: &str) -> Vec<String> {
     let mut out = vec![];
@@ -329,6 +472,22 @@ mod tests {
         // a template without a border flag draws the border
         let t: SheetTemplate = serde_json::from_str(r#"{"items":[]}"#).unwrap();
         assert!(t.border);
+    }
+
+    #[test]
+    fn the_masters_to_start_from_are_valid_and_fit_their_paper() {
+        for (name, t) in styles() {
+            assert!(t.validate().is_ok(), "{name}");
+            let (lo, hi) = t.bounds().unwrap();
+            let paper = t.paper.unwrap();
+            // from the bottom right corner: inside the sheet's margins
+            assert!(hi.x <= -9.9 && lo.x >= -paper.x + 9.9, "{name}: {lo} {hi}");
+            assert!(lo.y >= 9.9 && hi.y <= paper.y - 9.9, "{name}: {lo} {hi}");
+            let used = t.used_fields();
+            for f in ["project", "sheet", "number", "scale"] {
+                assert!(used.iter().any(|u| u == f), "{name} has no {{{f}}}");
+            }
+        }
     }
 
     #[test]

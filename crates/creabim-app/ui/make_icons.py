@@ -176,6 +176,8 @@ FINAL={
  "sel-invert": '<rect x="3" y="3" width="11" height="11" /><rect x="10" y="10" width="11" height="11" /><path d="M10 10h4v4h-4z" />',
  "sel-intersect": '<rect x="3" y="3" width="11" height="11" stroke-dasharray="2 2" /><rect x="10" y="10" width="11" height="11" stroke-dasharray="2 2" /><path d="M10 10h4v4h-4z" />',
  "split": '<rect x="3" y="5" width="18" height="14" rx="1" /><path d="M14 2 10 22" />',
+ "field": '<path d="M9 3H7v6l-2 3 2 3v6h2M15 3h2v6l2 3-2 3v6h-2" />',
+ "text-tool": '<path d="M4 7V4h16v3M9 20h6M12 4v16" />',
  "shell-closed": '<rect x="3" y="4" width="18" height="16" /><rect x="7" y="8" width="10" height="8" />',
  "shell-top": '<path d="M3 4v16h18V4" /><path d="M7 4v12h10V4" />',
  "shell-bottom": '<path d="M3 20V4h18v16" /><path d="M7 20V8h10v12" />',

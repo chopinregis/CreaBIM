@@ -27,6 +27,8 @@ pub enum Shows {
     Notes,
     /// The profile library and its editor (MU36: a profile as its own view).
     Profiles,
+    /// The sheet masters (title blocks) and their editor (MU40).
+    Masters,
 }
 
 /// A layout of areas: one area, or two side by side (`across`) or one

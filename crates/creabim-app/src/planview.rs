@@ -974,7 +974,15 @@ pub fn show(
     };
 
     if style.decorations && kind != PaneKind::Schedule {
-        draw_metric_grid(&painter, &xf);
+        let (grid, axes) = plan_look();
+        if grid {
+            draw_metric_grid(&painter, &xf);
+        }
+        // the origin in a plan, faint: where the building is anchored, red
+        // along X and green along Y as in 3D (MU40)
+        if axes && matches!(kind, PaneKind::Plan { .. }) {
+            draw_origin_axes(&painter, &xf);
+        }
     }
     // a point asked for: a cross follows the pointer, a click gives it
     if picking {
@@ -5139,6 +5147,41 @@ fn section_letter(n: usize) -> String {
             break s;
         }
         n = n / 26 - 1;
+    }
+}
+
+static PLAN_GRID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static PLAN_AXES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// The settings' grid behind drawings and X/Y lines in plans, for this
+/// frame.
+pub fn set_plan_look(grid: bool, axes: bool) {
+    use std::sync::atomic::Ordering::Relaxed;
+    PLAN_GRID.store(grid, Relaxed);
+    PLAN_AXES.store(axes, Relaxed);
+}
+
+fn plan_look() -> (bool, bool) {
+    use std::sync::atomic::Ordering::Relaxed;
+    (PLAN_GRID.load(Relaxed), PLAN_AXES.load(Relaxed))
+}
+
+/// The model's X axis (red) and Y axis (green) through the origin, toned
+/// well down so they place the building without competing with it.
+fn draw_origin_axes(painter: &egui::Painter, xf: &Xf) {
+    let r = xf.rect;
+    let o = xf.to_screen(DVec2::ZERO);
+    if (r.top()..=r.bottom()).contains(&o.y) {
+        painter.line_segment(
+            [egui::pos2(r.left(), o.y), egui::pos2(r.right(), o.y)],
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(214, 72, 72, 70)),
+        );
+    }
+    if (r.left()..=r.right()).contains(&o.x) {
+        painter.line_segment(
+            [egui::pos2(o.x, r.top()), egui::pos2(o.x, r.bottom())],
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(70, 160, 80, 70)),
+        );
     }
 }
 
