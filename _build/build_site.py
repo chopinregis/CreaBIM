@@ -338,7 +338,7 @@ def home(rel):
     </div>
     <ul class="ticks"><li>No account, no licence fee</li><li>Works fully offline</li><li>IFC in and out</li><li>Blender-style keys</li></ul>
     <figure class="shot wrap" style="margin-inline:auto">
-      <img src="assets/img/app-3d-and-plan.jpg" width="1922" height="992" alt="CreaBIM 1.0.1 in the Sage theme: the Maple Lane House in 3D beside its ground-floor plan, with the project browser and Properties" fetchpriority="high">
+      <img src="assets/img/app-3d-and-plan.jpg" width="1918" height="988" alt="CreaBIM 1.0.1 in the Sage theme: the Maple Lane House from the garden, with its green roof, balcony and terrace, beside its ground-floor plan" fetchpriority="high">
       <figcaption><span class="live">Maple Lane House · the starter project</span><span>Two view areas: 3D and the plan at 1:50</span></figcaption>
     </figure>
   </section>
@@ -606,7 +606,7 @@ def features():
       <nav class="toc" aria-label="On this page">{toc}</nav>
     </div>
   </section>
-  <section class="gutter"><figure class="shot wrap" style="margin:0 auto"><img src="assets/img/app-3d-and-plan.jpg" width="1922" height="992" alt="CreaBIM: 3D and plan side by side" loading="lazy"><figcaption><span class="live">One model</span><span>every view updates as you edit</span></figcaption></figure></section>
+  <section class="gutter"><figure class="shot wrap" style="margin:0 auto"><img src="assets/img/app-3d-and-plan.jpg" width="1918" height="988" alt="CreaBIM: 3D and plan side by side" loading="lazy"><figcaption><span class="live">One model</span><span>every view updates as you edit</span></figcaption></figure></section>
   {''.join(secs[:2])}
   <div class="night"><section class="sec gutter">
     <div class="wrap">

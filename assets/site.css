@@ -96,7 +96,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var
 .ticks li::before{content:"✓";color:var(--sage);margin-right:7px;font-weight:700}
 .shot{margin:18px 0 0;width:100%;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--paper-2);box-shadow:var(--shadow)}
 .shot img{display:block;width:100%;height:auto}
-.shot figcaption,.clip figcaption{display:flex;gap:6px 10px;flex-wrap:wrap;justify-content:space-between;padding:10px 14px;font:12.5px var(--mono);color:var(--muted);border-top:1px solid var(--line);text-align:left}
+.shot figcaption,.clip figcaption{display:flex;gap:6px 10px;flex-wrap:wrap;justify-content:space-between;padding:10px 14px;font:12.5px var(--mono);color:var(--muted);border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent);text-align:left}
 .live::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--sage);margin-right:8px;vertical-align:1px}
 
 /* page header (inner pages) */
