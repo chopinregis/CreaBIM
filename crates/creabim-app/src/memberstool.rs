@@ -36,6 +36,10 @@ pub struct MemberSettings {
     pub door: [f64; 3],
     pub window: [f64; 3],
     pub hole: [f64; 3],
+    /// The library profile new columns and beams take; none, their own
+    /// square, round or width × depth (MU40).
+    pub column_section: Option<String>,
+    pub beam_section: Option<String>,
 }
 
 impl Default for MemberSettings {
@@ -59,6 +63,8 @@ impl Default for MemberSettings {
             door: [0.9, 2.1, 0.0],
             window: [1.2, 1.3, 0.9],
             hole: [1.0, 1.0, 1.0],
+            column_section: None,
+            beam_section: None,
         }
     }
 }
@@ -84,6 +90,7 @@ impl MemberSettings {
     }
 
     pub fn set_round(&mut self, round: bool) {
+        self.column_section = None;
         let v = self.column_size();
         self.column = if round {
             Profile::Round { diameter: v }
@@ -142,10 +149,21 @@ pub fn click(
     };
     match tool {
         Tool::Column => {
-            let c = Column::new(level, p, set.column);
+            let mut c = Column::new(level, p, set.column);
+            // a profile from the library, if one is picked (MU40)
+            let lib = set
+                .column_section
+                .as_deref()
+                .and_then(|n| Some((n, creabim_core::profiles::find(doc.model(), n)?)));
+            if let Some((n, pts)) = &lib {
+                c.section = Some(creabim_core::members::Section {
+                    name: n.to_string(),
+                    points: pts.clone(),
+                });
+            }
             state.status = Some(format!(
                 "Column {} placed. Its height runs to the next level; drag its top handle or set a height in Properties.",
-                set.column.label()
+                lib.map_or_else(|| set.column.label(), |(n, _)| n.to_string())
             ));
             let e = state.typed(doc.model(), Element::new("Column", ElementKind::Column(c)));
             add(doc, selection, e, "Place column")
@@ -160,6 +178,15 @@ pub fn click(
                 let mut b = Beam::new(level, a, p);
                 b.width = set.beam_width;
                 b.depth = set.beam_depth;
+                // a profile from the library, if one is picked (MU40)
+                if let Some(n) = set.beam_section.as_deref() {
+                    if let Some(pts) = creabim_core::profiles::find(doc.model(), n) {
+                        b.section = Some(creabim_core::members::Section {
+                            name: n.to_string(),
+                            points: pts,
+                        });
+                    }
+                }
                 // under the slab above, not inside it
                 b.top_offset = creabim_core::members::beam_top_offset(doc.model(), level, a, p);
                 state.pending = Some(p);
@@ -1194,17 +1221,24 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             toggle(
                 "square",
                 "Square",
-                !m.round_columns(),
+                m.column_section.is_none() && !m.round_columns(),
                 "square-dashed",
                 "Rectangular columns",
             ),
             toggle(
                 "round",
                 "Round",
-                m.round_columns(),
+                m.column_section.is_none() && m.round_columns(),
                 "circle-dot",
                 "Round columns",
             ),
+            // or any profile of the library: an I, a T, an L, your own (MU40)
+            json!({
+                "kind": "menu", "key": "column.library", "label": "Profile",
+                "value": m.column_section.clone().unwrap_or_else(|| "Library".into()), "icon": "profile",
+                "on": m.column_section.is_some(),
+                "hint": "Columns of a profile from the library: presets and the project's own",
+            }),
             num(
                 "column",
                 if m.round_columns() {
@@ -1221,6 +1255,12 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             ),
         ],
         Tool::Beam => vec![
+            json!({
+                "kind": "menu", "key": "beam.library", "label": "Profile",
+                "value": m.beam_section.clone().unwrap_or_else(|| "Its own".into()), "icon": "profile",
+                "on": m.beam_section.is_some(),
+                "hint": "Beams of a profile from the library (an I, a T, an L, your own), or their own width × depth",
+            }),
             num(
                 "beam_width",
                 "Width",

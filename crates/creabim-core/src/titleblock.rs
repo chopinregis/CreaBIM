@@ -84,6 +84,67 @@ pub enum TitleItem {
         #[serde(default)]
         angle: f64,
     },
+    /// A drawn shape in colour (MU40): an outline, a filled face, or both,
+    /// see-through by `opacity`.
+    Shape {
+        points: Vec<DVec2>,
+        #[serde(default)]
+        closed: bool,
+        /// Its pen, mm; none draws no outline.
+        #[serde(default)]
+        pen: Option<f64>,
+        /// The pen's colour, sRGB 0..1.
+        #[serde(default)]
+        colour: [f32; 3],
+        /// Its fill colour; none leaves it empty.
+        #[serde(default)]
+        fill: Option<[f32; 3]>,
+        /// 1 solid, 0 gone.
+        #[serde(default = "one")]
+        opacity: f64,
+    },
+    /// A picture (a logo, a stamp, a background), spanning `lo`..`hi` mm:
+    /// its pixels kept in the master, RGBA rows from the top, deflated and
+    /// in base64, so the project carries it wherever it goes (MU40).
+    Image {
+        lo: DVec2,
+        hi: DVec2,
+        width: u32,
+        height: u32,
+        rgba: String,
+    },
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+impl TitleItem {
+    /// Its points, mm from the template's corner (a text's place, a
+    /// picture's two corners).
+    pub fn points(&self) -> Vec<DVec2> {
+        match self {
+            TitleItem::Line { points, .. }
+            | TitleItem::Fill { points, .. }
+            | TitleItem::Shape { points, .. } => points.clone(),
+            TitleItem::Text { at, .. } => vec![*at],
+            TitleItem::Image { lo, hi, .. } => vec![*lo, *hi],
+        }
+    }
+
+    /// Move it by `d` mm.
+    pub fn shift(&mut self, d: DVec2) {
+        match self {
+            TitleItem::Line { points, .. }
+            | TitleItem::Fill { points, .. }
+            | TitleItem::Shape { points, .. } => points.iter_mut().for_each(|p| *p += d),
+            TitleItem::Text { at, .. } => *at += d,
+            TitleItem::Image { lo, hi, .. } => {
+                *lo += d;
+                *hi += d;
+            }
+        }
+    }
 }
 
 /// A named, reusable title block. The element's name is the template's.
@@ -132,6 +193,23 @@ impl SheetTemplate {
                 TitleItem::Text {
                     at, size, angle, ..
                 } => at.is_finite() && size.is_finite() && *size > 0.0 && angle.is_finite(),
+                TitleItem::Shape {
+                    points,
+                    pen,
+                    opacity,
+                    ..
+                } => {
+                    points.iter().all(finite)
+                        && pen.is_none_or(|w| w.is_finite() && w >= 0.0)
+                        && (0.0..=1.0).contains(opacity)
+                }
+                TitleItem::Image {
+                    lo,
+                    hi,
+                    width,
+                    height,
+                    ..
+                } => lo.is_finite() && hi.is_finite() && *width > 0 && *height > 0,
             };
             if !ok {
                 return Err("title block items must be finite, with positive text sizes".into());
@@ -151,10 +229,8 @@ impl SheetTemplate {
         let mut pts = vec![];
         for it in &self.items {
             match it {
-                TitleItem::Line { points, .. } | TitleItem::Fill { points, .. } => {
-                    pts.extend(points.iter().copied())
-                }
                 TitleItem::Text { at, size, .. } => pts.push(*at + DVec2::Y * size * 0.5),
+                _ => pts.extend(it.points()),
             }
         }
         let first = *pts.first()?;
@@ -179,12 +255,7 @@ impl SheetTemplate {
         };
         let shift = -target;
         for it in &mut self.items {
-            match it {
-                TitleItem::Line { points, .. } | TitleItem::Fill { points, .. } => {
-                    points.iter_mut().for_each(|p| *p += shift)
-                }
-                TitleItem::Text { at, .. } => *at += shift,
-            }
+            it.shift(shift);
         }
     }
 

@@ -347,6 +347,38 @@ pub fn draw_template(
                 let text = fill_fields(text, values);
                 c.text_angle(*at + o, *size, &text, anchor, *angle);
             }
+            TitleItem::Shape {
+                points,
+                closed,
+                pen,
+                colour,
+                fill,
+                opacity,
+            } => {
+                let mut pts: Vec<DVec2> = points.iter().map(|p| *p + o).collect();
+                // see-through on white paper: the colour mixed toward white
+                let wash = |c: [f32; 3]| c.map(|v| 1.0 - (1.0 - v) * *opacity as f32);
+                if let (Some(f), true) = (fill, pts.len() >= 3) {
+                    c.fill_rgb(&pts, wash(*f));
+                }
+                if let Some(w) = pen {
+                    if *closed && pts.len() >= 2 && pts.first() != pts.last() {
+                        pts.push(pts[0]);
+                    }
+                    c.line_rgb(&pts, Stroke::solid(*w, 0.0), wash(*colour));
+                }
+            }
+            TitleItem::Image {
+                lo,
+                hi,
+                width,
+                height,
+                rgba,
+            } => {
+                if let Some(r) = crate::raster::stored_image(*width, *height, rgba) {
+                    c.image(*lo + o, *hi + o, None, &r);
+                }
+            }
         }
     }
 }

@@ -65,12 +65,7 @@ pub fn from_items(items: Vec<TitleItem>) -> Result<SheetTemplate, String> {
         t.fit_to_corner();
         let inset = DVec2::new(-MARGIN, MARGIN);
         for it in &mut t.items {
-            match it {
-                TitleItem::Line { points, .. } | TitleItem::Fill { points, .. } => {
-                    points.iter_mut().for_each(|p| *p += inset)
-                }
-                TitleItem::Text { at, .. } => *at += inset,
-            }
+            it.shift(inset);
         }
     }
     // fields of its own: the ones its text uses beyond the built-in ones
@@ -773,6 +768,47 @@ pub fn to_svg(t: &SheetTemplate) -> String {
 ",
                     pts(points)
                 ));
+            }
+            TitleItem::Shape {
+                points,
+                closed,
+                pen,
+                colour,
+                fill,
+                opacity,
+            } => {
+                let hex = |c: &[f32; 3]| {
+                    let b = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
+                    format!("#{:02x}{:02x}{:02x}", b[0], b[1], b[2])
+                };
+                let tag = if *closed { "polygon" } else { "polyline" };
+                out.push_str(&format!(
+                    "<{tag} points=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{:.3}\" opacity=\"{:.3}\"/>\n",
+                    pts(points),
+                    fill.as_ref().map_or("none".to_string(), hex),
+                    if pen.is_some() { hex(colour) } else { "none".to_string() },
+                    pen.unwrap_or(0.0),
+                    opacity
+                ));
+            }
+            TitleItem::Image {
+                lo,
+                hi,
+                width,
+                height,
+                rgba,
+            } => {
+                if let Some(r) = creabim_geom::raster::stored_image(*width, *height, rgba) {
+                    let (a, b) = (svg(o + *lo), svg(o + *hi));
+                    out.push_str(&format!(
+                        "<image x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" preserveAspectRatio=\"none\" href=\"data:image/png;base64,{}\"/>\n",
+                        a.x.min(b.x),
+                        a.y.min(b.y),
+                        (b.x - a.x).abs(),
+                        (b.y - a.y).abs(),
+                        creabim_geom::raster::base64(&r.png())
+                    ));
+                }
             }
             TitleItem::Text { .. } => {}
         }

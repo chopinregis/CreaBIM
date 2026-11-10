@@ -420,6 +420,20 @@ impl CreaBimApp {
                     m.points.reverse();
                 }
             }),
+            "column.lib" | "beam.lib" => {
+                let lib = (!arg.is_empty()).then(|| arg.to_string());
+                let what = if head == "column.lib" {
+                    self.plan.members.column_section = lib.clone();
+                    "column"
+                } else {
+                    self.plan.members.beam_section = lib.clone();
+                    "beam"
+                };
+                self.status = match lib {
+                    Some(n) => format!("New {what}s are {n}: click to place them. Square, Round or Its own goes back."),
+                    None => format!("New {what}s take their own shape again."),
+                };
+            }
             "sweep.lib" | "extrusion.lib" => {
                 let lib = (!arg.is_empty()).then(|| arg.to_string());
                 let (tool, what) = if head == "sweep.lib" {

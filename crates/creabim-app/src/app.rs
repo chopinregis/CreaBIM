@@ -143,6 +143,9 @@ pub struct CreaBimApp {
     /// The profile library window (MU27 block 5).
     profiles: profilesui::ProfilesUi,
     masters: mastersui::MastersUi,
+    /// What the area in front showed last frame: a Masters or Profile view
+    /// coming forward brings its own Properties tab (MU40).
+    prop_front: Option<crate::areas::Shows>,
     camera: OrbitCamera,
     cube: crate::viewcube::ViewCube,
     /// Aspect ratio of the 3D view as last drawn, for framing.
@@ -369,6 +372,7 @@ impl CreaBimApp {
             divide: Default::default(),
             profiles: Default::default(),
             masters: Default::default(),
+            prop_front: None,
             camera: OrbitCamera::default(),
             cube: Default::default(),
             aspect: 0.65,
@@ -1428,6 +1432,11 @@ impl CreaBimApp {
     /// Run an edit picked from a key, a button or a menu. `at` is where a
     /// right-click menu was opened.
     fn run_command(&mut self, ctx: &egui::Context, c: Command, at: Option<DVec3>) {
+        // a Masters view in front: Move, Rotate, Duplicate and Delete act
+        // on what is picked on the master (MU40)
+        if self.masters_command(c) {
+            return;
+        }
         if let Some(m) = c.modal() {
             self.arm(c, m);
             return;
@@ -8822,50 +8831,71 @@ impl CreaBimApp {
                     }
                 }
                 ElementKind::Sheet(sh) => {
-                    crate::props::flow(ui, |ui| {
-                        ui.label("Number");
-                        if ui.text_edit_singleline(&mut sh.number).changed() {
-                            label = "Sheet number"
-                        }
-                    });
+                    // label column and field, as every other row (MU40:
+                    // labels stacked over their fields read unlike Blender)
+                    if crate::props::row(ui, "Number", |ui| {
+                        crate::props::fill(ui, egui::TextEdit::singleline(&mut sh.number))
+                    })
+                    .changed()
+                    {
+                        label = "Sheet number"
+                    }
                     let current = sh.size_name().unwrap_or("Custom");
-                    crate::app::helpui::combo(ui, "Paper")
-                        .selected_text(current)
-                        .show_ui(ui, |ui| {
-                            for (name, w, h) in Sheet::SIZES {
-                                if ui.selectable_label(current == *name, *name).clicked() {
-                                    (sh.width, sh.height) = (*w, *h);
-                                    label = "Sheet size"
+                    crate::props::row(ui, "Paper", |ui| {
+                        egui::ComboBox::from_id_salt(("sheet.paper", id))
+                            .icon(crate::props::combo_icon)
+                            .width(ui.available_width())
+                            .selected_text(current)
+                            .show_ui(ui, |ui| {
+                                for (name, w, h) in Sheet::SIZES {
+                                    if ui.selectable_label(current == *name, *name).clicked() {
+                                        (sh.width, sh.height) = (*w, *h);
+                                        label = "Sheet size"
+                                    }
                                 }
-                            }
-                        });
+                            })
+                    });
                     if let Some(l) = self.sheet_template_ui(ui, sh) {
                         label = l;
                     }
                     // its guides, to reuse on other sheets (MU27)
+                    let n = sh.guides.len();
                     crate::props::row(ui, "Guides", |ui| {
-                        crate::props::flow(ui, |ui| {
-                            ui.label(egui::RichText::new(format!("{}", sh.guides.len())).weak());
-                            if ui
-                                .add_enabled(!sh.guides.is_empty(), egui::Button::new("Copy to all sheets").small())
-                                .on_hover_text("Every other sheet gets these guides in place of its own: one layout across the set")
-                                .clicked()
-                            {
-                                self.copy_guides = Some((id, sh.guides.clone()));
-                            }
-                            if ui
-                                .add_enabled(
-                                    !sh.guides.is_empty(),
-                                    egui::Button::new("Clear").small(),
-                                )
-                                .clicked()
-                            {
-                                sh.guides.clear();
-                                label = "Clear guides";
-                            }
-                        });
+                        ui.label(match n {
+                            0 => "None".to_string(),
+                            1 => "1 guide".to_string(),
+                            n => format!("{n} guides"),
+                        })
                     });
-                    if self.active_view != Some(id) && ui.button("Open this sheet").clicked() {
+                    if n > 0 {
+                        let (copy, clear) = crate::props::actions2(
+                            ui,
+                            "",
+                            (
+                                "Copy to all",
+                                "Every other sheet gets these guides in place of its own: one layout across the set",
+                                true,
+                            ),
+                            ("Clear", "Take this sheet's guides away", true),
+                        );
+                        if copy {
+                            self.copy_guides = Some((id, sh.guides.clone()));
+                        }
+                        if clear {
+                            sh.guides.clear();
+                            label = "Clear guides";
+                        }
+                    }
+                    if self.active_view != Some(id)
+                        && crate::props::action(
+                            ui,
+                            "",
+                            "Open this sheet",
+                            "Show it in the sheet view",
+                            true,
+                        )
+                        .clicked()
+                    {
                         self.active_view = Some(id);
                     }
                 }
@@ -10773,6 +10803,17 @@ impl eframe::App for CreaBimApp {
                     self.prop_tab = PropTab::Element;
                 }
                 self.prop_seen = now;
+            }
+            // the view in front leads, as Blender's editors do (MU40: a
+            // sheet's settings showed over the Masters view)
+            let front = self.areas.root.areas().get(self.areas.focus).copied();
+            if front != self.prop_front {
+                match front {
+                    Some(crate::areas::Shows::Masters) => self.prop_tab = PropTab::Master,
+                    Some(crate::areas::Shows::Profiles) => self.prop_tab = PropTab::Profile,
+                    _ => {}
+                }
+                self.prop_front = front;
             }
             if !tabs.contains(&self.prop_tab) {
                 self.prop_tab = tabs[0];

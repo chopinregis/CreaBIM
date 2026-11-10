@@ -907,8 +907,10 @@ impl CreaBimApp {
             .template
             .and_then(|t| list.iter().find(|l| l.0 == t))
             .map_or("Built-in".to_string(), |l| l.1.clone());
-        ui.horizontal_wrapped(|ui| {
-            crate::app::helpui::combo(ui, "Title block")
+        crate::props::row(ui, "Master", |ui| {
+            egui::ComboBox::from_id_salt("sheet.master")
+                .icon(crate::props::combo_icon)
+                .width(ui.available_width())
                 .selected_text(now)
                 .show_ui(ui, |ui| {
                     if ui
@@ -925,12 +927,23 @@ impl CreaBimApp {
                             label = Some("Sheet template");
                         }
                     }
-                });
-            if ui.small_button("Templates…").clicked() {
-                self.drafting.templates_open = true;
-                self.drafting.template = sh.template;
-            }
-        });
+                })
+        })
+        .response
+        .on_hover_text("The master (title block and frame) this sheet is drawn on");
+        // its master in the Masters view, to change (MU40: a view, not a
+        // window)
+        if crate::props::action(
+            ui,
+            "",
+            "Edit the master",
+            "Open its master in a Masters view: what you change shows on every sheet on it",
+            true,
+        )
+        .clicked()
+        {
+            self.open_master(sh.template);
+        }
         let fields: Vec<(String, String)> = sheets::template_of(self.doc.model(), sh)
             .map(|t| {
                 let mut f = t.fields.clone();
@@ -944,17 +957,23 @@ impl CreaBimApp {
             })
             .unwrap_or_default();
         for (k, default) in fields {
-            crate::props::flow(ui, |ui| {
-                ui.label(&k);
-                let mut v = sh.fields.get(&k).cloned().unwrap_or_default();
-                if ui
-                    .add(
-                        egui::TextEdit::singleline(&mut v)
-                            .vertical_align(egui::Align::Center)
-                            .hint_text(default)
-                            .desired_width(180.0),
-                    )
-                    .changed()
+            let mut v = sh.fields.get(&k).cloned().unwrap_or_default();
+            let mut word = k.replace('_', " ");
+            if let Some(f) = word.get_mut(0..1) {
+                f.make_ascii_uppercase();
+            }
+            if crate::props::row(ui, &word, |ui| {
+                crate::props::fill(
+                    ui,
+                    egui::TextEdit::singleline(&mut v).hint_text(if default.is_empty() {
+                        "From the master".to_string()
+                    } else {
+                        default
+                    }),
+                )
+            })
+            .changed()
+            {
                 {
                     if v.is_empty() {
                         sh.fields.remove(&k);
@@ -963,7 +982,7 @@ impl CreaBimApp {
                     }
                     label = Some("Title block field");
                 }
-            });
+            }
         }
         label
     }
@@ -1095,6 +1114,21 @@ fn template_preview(ui: &mut egui::Ui, t: &SheetTemplate) {
     let o = t.corner.at(paper.x, paper.y);
     for item in &t.items {
         match item {
+            TitleItem::Shape { points, closed, .. } => {
+                let mut pts: Vec<egui::Pos2> = points.iter().map(|p| to(o + *p)).collect();
+                if *closed && !pts.is_empty() {
+                    pts.push(pts[0]);
+                }
+                painter.add(egui::Shape::line(pts, egui::Stroke::new(0.8, ink)));
+            }
+            TitleItem::Image { lo, hi, .. } => {
+                painter.rect_stroke(
+                    egui::Rect::from_two_pos(to(o + *lo), to(o + *hi)),
+                    0.0,
+                    egui::Stroke::new(0.8, ink),
+                    egui::StrokeKind::Middle,
+                );
+            }
             TitleItem::Line { points, .. } => {
                 painter.add(egui::Shape::line(
                     points.iter().map(|p| to(o + *p)).collect(),

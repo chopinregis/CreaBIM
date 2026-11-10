@@ -409,6 +409,16 @@ impl CreaBimApp {
             "units.menu" => self.unit_items(),
             "select.menu" => self.select_menu_items(),
             "sweep.library" => self.sweep_library_items(),
+            "column.library" => self.library_items(
+                "column.lib",
+                self.plan.members.column_section.clone(),
+                Some("Its own: square or round"),
+            ),
+            "beam.library" => self.library_items(
+                "beam.lib",
+                self.plan.members.beam_section.clone(),
+                Some("Its own: width × depth"),
+            ),
             "extrusion.library" => self.extrusion_library_items(),
             "menu:File" => self.file_menu(),
             "menu:Edit" => self.edit_menu(),
