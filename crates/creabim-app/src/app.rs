@@ -146,6 +146,9 @@ pub struct CreaBimApp {
     profiles: profilesui::ProfilesUi,
     masters: mastersui::MastersUi,
     log_ui: reportui::LogUi,
+    /// Report a problem asked for: the themed window is open; whether to
+    /// put the project in.
+    report_ask: Option<bool>,
     /// What the area in front showed last frame: a Masters or Profile view
     /// coming forward brings its own Properties tab (MU40).
     prop_front: Option<crate::areas::Shows>,
@@ -334,6 +337,17 @@ impl CreaBimApp {
             .map(|rs| Viewport3d::new(&rs.device));
         let mut app = Self::blank(viewport);
         crate::actlog::start();
+        // the graphics card, for problem reports (MU40)
+        if let Some(rs) = cc.wgpu_render_state.as_ref() {
+            let i = rs.adapter.get_info();
+            let gpu = format!(
+                "{} ({:?}, driver {} {})",
+                i.name, i.backend, i.driver, i.driver_info
+            );
+            crate::actlog::line(format!("graphics: {gpu}"));
+            reportui::set_gpu(gpu);
+        }
+        crate::actlog::line(format!("system: {}", reportui::os_version()));
         app.builds.set_context(cc.egui_ctx.clone());
         app.shell.theme = theme;
         app.vis3d.categories = settings.hidden_3d.clone();
@@ -379,6 +393,7 @@ impl CreaBimApp {
             profiles: Default::default(),
             masters: Default::default(),
             log_ui: Default::default(),
+            report_ask: None,
             prop_front: None,
             camera: OrbitCamera::default(),
             cube: Default::default(),
@@ -8396,6 +8411,10 @@ impl CreaBimApp {
                 self.master_props(ui);
                 return;
             }
+            if tab == PropTab::Log {
+                self.log_props(ui);
+                return;
+            }
             if tab == PropTab::Model3d {
                 self.visibility_panel(ui, gridvis::VisTarget::Window3d, Some("3D view"));
                 self.crop_list(ui, self.crop_owner());
@@ -10167,6 +10186,12 @@ impl CreaBimApp {
         if self.masters_in_front() {
             out.push(PropTab::Master);
         }
+        if matches!(
+            self.areas.root.areas().get(self.areas.focus),
+            Some(crate::areas::Shows::Log)
+        ) {
+            out.push(PropTab::Log);
+        }
         if matches!(self.vis_target(false), Some(gridvis::VisTarget::View(_))) {
             out.push(PropTab::View);
             if self.selection.active.is_none() {
@@ -10712,6 +10737,8 @@ pub(crate) enum PropTab {
     Profile,
     /// The master in the Masters view in front (MU40).
     Master,
+    /// The Log view in front: its filter and what is in it (MU40).
+    Log,
 }
 
 impl PropTab {
@@ -10728,7 +10755,8 @@ impl PropTab {
             | PropTab::Trace
             | PropTab::Model3d
             | PropTab::Profile
-            | PropTab::Master => 1,
+            | PropTab::Master
+            | PropTab::Log => 1,
             PropTab::Project | PropTab::Notes => 2,
             PropTab::Modifiers => 0,
         }
@@ -10749,6 +10777,7 @@ impl PropTab {
             PropTab::Modifiers => "Modifiers",
             PropTab::Profile => "Profile",
             PropTab::Master => "Master",
+            PropTab::Log => "Log",
         }
     }
 
@@ -10767,6 +10796,7 @@ impl PropTab {
             PropTab::Modifiers => "wrench",
             PropTab::Profile => "profile",
             PropTab::Master => "sheet-template",
+            PropTab::Log => "log",
         }
     }
 }
@@ -10803,9 +10833,13 @@ impl Perf {
 
 impl Drop for Perf {
     fn drop(&mut self) {
+        let ms = self.0.elapsed().as_secs_f64() * 1000.0;
+        // every slow step is kept for problem reports (MU40: lag measured,
+        // not only told): a line in the log, at most one a second for each
+        // kind, and its count and worst in the timing table
+        crate::actlog::slow(self.1, ms);
         static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         if *ON.get_or_init(|| std::env::var_os("CREABIM_PERF").is_some()) {
-            let ms = self.0.elapsed().as_secs_f64() * 1000.0;
             static MIN: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
             let min = *MIN.get_or_init(|| {
                 std::env::var("CREABIM_PERF_MS")
@@ -11118,6 +11152,7 @@ impl eframe::App for CreaBimApp {
                 match front {
                     Some(crate::areas::Shows::Masters) => self.prop_tab = PropTab::Master,
                     Some(crate::areas::Shows::Profiles) => self.prop_tab = PropTab::Profile,
+                    Some(crate::areas::Shows::Log) => self.prop_tab = PropTab::Log,
                     _ => {}
                 }
                 self.prop_front = front;
@@ -11256,6 +11291,7 @@ impl eframe::App for CreaBimApp {
         self.ground_spacing_window(&ctx);
         self.import_report_window(&ctx);
         self.help_window(&ctx);
+        self.report_window(&ctx);
         // a plan in its own window keeps egui's menus
         self.plan.web_menus = false;
 

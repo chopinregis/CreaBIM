@@ -252,6 +252,8 @@ window.ICONS = {
 "field": "<path d=\"M9 3H7v6l-2 3 2 3v6h2M15 3h2v6l2 3-2 3v6h-2\" />",
 "text-tool": "<path d=\"M4 7V4h16v3M9 20h6M12 4v16\" />",
 "image": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\" /><circle cx=\"9\" cy=\"9\" r=\"2\" /><path d=\"M21 15 16 10 5 21\" />",
+"log": "<path d=\"m8 4-4 4 4 4M16 4l4 4-4 4\" /><path d=\"M4 16h16M4 20h11\" />",
+"problem": "<path d=\"M12 3 2 20h20z\" /><path d=\"M12 10v4M12 17h.01\" />",
 "corner-mitre": "<path d=\"M4 20V9l5-5h11v6h-7l-3 3v7z\" /><path d=\"M10 13 4 9\" />",
 "corner-butt": "<path d=\"M4 20V4h16v6H10v10z\" /><path d=\"M10 10V4\" />",
 "corner-apart": "<path d=\"M4 20V11h5v9z\" /><path d=\"M11 4h9v6h-9z\" />",

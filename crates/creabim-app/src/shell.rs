@@ -1932,6 +1932,7 @@ impl CreaBimApp {
             _ if self.crop_action(head, arg) => {}
             _ if self.profiles_action(head, arg) => {}
             _ if self.masters_action(head, arg) => {}
+            _ if self.log_action(ctx, head) => {}
             _ if self.similar_action(head, arg) => {}
             _ if self.app_action(ctx, head, arg) => {}
             _ if self.help_action(head, arg) => {}

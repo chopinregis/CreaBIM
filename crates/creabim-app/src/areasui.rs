@@ -709,6 +709,7 @@ impl CreaBimApp {
                 .collect(),
             Shows::Profiles => self.profile_controls(),
             Shows::Masters => self.master_controls(),
+            Shows::Log => self.log_controls(),
             _ => vec![],
         };
         let (kind_icon, kind_label, name) = match shows {
@@ -729,7 +730,7 @@ impl CreaBimApp {
                     .unwrap_or_else(|| "Pick a profile".to_string()),
             ),
             Shows::Masters => ("sheet-template", "Masters", self.master_title()),
-            Shows::Log => ("file-text", "Log", "Activity log".to_string()),
+            Shows::Log => ("log", "Log", "Activity log".to_string()),
             _ => ("box", "3D view", "Model".to_string()),
         };
         let mut asks: Vec<Ask> = vec![];
@@ -994,7 +995,7 @@ impl CreaBimApp {
                 );
                 items.push(
                     Item::new("area.show:log", "Log")
-                        .icon("file-text")
+                        .icon("log")
                         .checked(here == Shows::Log)
                         .hint("What CreaBIM did, as it happens, problems in red; copy it, or save a problem report"),
                 );

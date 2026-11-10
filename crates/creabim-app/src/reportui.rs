@@ -75,7 +75,125 @@ pub fn zip(files: &[(String, Vec<u8>)]) -> Vec<u8> {
     out
 }
 
+static GPU: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Note the graphics card, once, at start.
+pub fn set_gpu(s: String) {
+    let _ = GPU.set(s);
+}
+
+/// The graphics card, as the app found it.
+pub fn gpu() -> String {
+    GPU.get().cloned().unwrap_or_else(|| "unknown".into())
+}
+
+/// The system and its version: "Windows 10.0.26200", a Linux
+/// distribution's name, or macOS's, and the processor kind.
+pub fn os_version() -> String {
+    static V: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    V.get_or_init(|| {
+        let arch = std::env::consts::ARCH;
+        let run = |cmd: &str, args: &[&str]| {
+            std::process::Command::new(cmd)
+                .args(args)
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|s| !s.is_empty())
+        };
+        let name = if cfg!(windows) {
+            run("cmd", &["/C", "ver"]).unwrap_or_else(|| "Windows".into())
+        } else if cfg!(target_os = "macos") {
+            run("sw_vers", &["-productVersion"]).map_or("macOS".into(), |v| format!("macOS {v}"))
+        } else {
+            std::fs::read_to_string("/etc/os-release")
+                .ok()
+                .and_then(|t| {
+                    t.lines()
+                        .find_map(|l| l.strip_prefix("PRETTY_NAME="))
+                        .map(|v| v.trim_matches('"').to_string())
+                })
+                .unwrap_or_else(|| "Linux".into())
+        };
+        format!("{name}, {arch}")
+    })
+    .clone()
+}
+
 impl CreaBimApp {
+    /// The Log view's header: the buttons used most (MU40); the filter
+    /// and counts are in its Properties tab.
+    pub(super) fn log_controls(&self) -> Vec<serde_json::Value> {
+        use serde_json::json;
+        vec![
+            json!({"kind": "toggle", "id": "log.problems", "icon": "problem", "label": "Problems only",
+                   "on": self.log_ui.problems_only, "hint": "Only crashes, errors and what could not be done"}),
+            json!({"kind": "button", "id": "log.copy", "icon": "copy", "label": "Copy",
+                   "hint": "Copy what is shown, to paste in a message"}),
+            json!({"kind": "button", "id": "app.report", "icon": "file-text", "label": "Report a problem",
+                   "hint": "Save one file to attach to a bug report: this log, your settings, your system and, if you like, the project"}),
+            json!({"kind": "button", "id": "app.log", "icon": "folder-open", "label": "Open the folder",
+                   "hint": "Where the whole activity log is kept"}),
+        ]
+    }
+
+    /// The Log's header buttons. False for anything else.
+    pub(super) fn log_action(&mut self, ctx: &egui::Context, head: &str) -> bool {
+        match head {
+            "log.problems" => self.log_ui.problems_only = !self.log_ui.problems_only,
+            "log.copy" => {
+                let shown = self.log_shown();
+                ctx.copy_text(shown.join(
+                    "
+",
+                ));
+                self.status = format!("{} log lines copied.", shown.len());
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// The lines the filter lets through.
+    fn log_shown(&self) -> Vec<String> {
+        let (lines, _) = crate::actlog::recent();
+        let f = self.log_ui.filter.to_lowercase();
+        lines
+            .into_iter()
+            .filter(|l| !self.log_ui.problems_only || crate::actlog::is_problem(l))
+            .filter(|l| f.is_empty() || l.to_lowercase().contains(&f))
+            .collect()
+    }
+
+    /// The Log tab of Properties: its filter and what is in it.
+    pub(super) fn log_props(&mut self, ui: &mut egui::Ui) {
+        if !self.prop_header(ui, "log_view", "Log", true, None) {
+            return;
+        }
+        crate::props::row(ui, "Filter", |ui| {
+            crate::props::fill(
+                ui,
+                egui::TextEdit::singleline(&mut self.log_ui.filter)
+                    .vertical_align(egui::Align::Center)
+                    .hint_text("words to find"),
+            )
+        });
+        crate::props::check(ui, "Show", &mut self.log_ui.problems_only, "Problems only");
+        let (lines, _) = crate::actlog::recent();
+        let problems = lines
+            .iter()
+            .filter(|l| crate::actlog::is_problem(l))
+            .count();
+        crate::props::row(ui, "Lines", |ui| ui.label(format!("{}", lines.len())));
+        crate::props::row(ui, "Problems", |ui| ui.label(format!("{problems}")));
+        crate::props::row(ui, "System", |ui| ui.label(os_version()));
+        crate::props::row(ui, "Graphics", |ui| ui.label(gpu()));
+        crate::props::note(
+            ui,
+            "Report a problem saves this log, your settings and your system in one file; your project only if you say so. Nothing is sent anywhere.",
+        );
+    }
+
     /// The Log view: the activity log as it is written.
     pub(super) fn log_area(&mut self, ui: &mut egui::Ui, body: Rect) {
         let pal = self.shell.theme.palette();
@@ -86,45 +204,7 @@ impl CreaBimApp {
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
         let ui = &mut child;
-        let (lines, _) = crate::actlog::recent();
-        let mut copy = false;
-        let mut report = false;
-        ui.horizontal_wrapped(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.log_ui.filter)
-                    .hint_text("Filter the log")
-                    .desired_width(220.0),
-            );
-            ui.checkbox(&mut self.log_ui.problems_only, "Problems only")
-                .on_hover_text("Only crashes, errors and what could not be done");
-            copy = ui
-                .button("Copy")
-                .on_hover_text("Copy what is shown, to paste in a message")
-                .clicked();
-            report = ui
-                .button("Report a problem…")
-                .on_hover_text("Save one file to attach to a bug report: this log, your settings and, if you like, the project")
-                .clicked();
-            if ui
-                .button("Open the folder")
-                .on_hover_text("Where the whole activity log is kept")
-                .clicked()
-            {
-                self.run_action(ui.ctx(), "app.log");
-            }
-        });
-        ui.add_space(4.0);
-        let f = self.log_ui.filter.to_lowercase();
-        let shown: Vec<&String> = lines
-            .iter()
-            .filter(|l| !self.log_ui.problems_only || crate::actlog::is_problem(l))
-            .filter(|l| f.is_empty() || l.to_lowercase().contains(&f))
-            .collect();
-        if copy {
-            let text: Vec<&str> = shown.iter().map(|s| s.as_str()).collect();
-            ui.ctx().copy_text(text.join("\n"));
-            self.status = format!("{} log lines copied.", shown.len());
-        }
+        let shown = self.log_shown();
         let red = egui::Color32::from_rgb(214, 72, 72);
         egui::ScrollArea::both()
             .auto_shrink(false)
@@ -150,25 +230,48 @@ impl CreaBimApp {
                     );
                 }
             });
-        if report {
-            self.report_problem();
-        }
     }
 
-    /// Help › Report a problem: one zip to attach to a bug report.
+    /// Help › Report a problem: asks in a window of CreaBIM's own
+    /// (MU40: not the system's box) whether to put the project in.
     pub(super) fn report_problem(&mut self) {
-        let with_project = rfd::MessageDialog::new()
-            .set_title("Report a problem")
-            .set_description(
-                "CreaBIM saves one file to attach to a bug report: what it did lately, your settings and your system. Nothing is sent anywhere.\n\nInclude the project as it is now? It helps rebuild the problem exactly, but it is your work: say no if it is private.",
-            )
-            .set_buttons(rfd::MessageButtons::YesNoCancel)
-            .show();
-        let with_project = match with_project {
-            rfd::MessageDialogResult::Yes => true,
-            rfd::MessageDialogResult::No => false,
-            _ => return,
+        self.report_ask = Some(false);
+    }
+
+    /// The Report a problem window, while it is asked for.
+    pub(super) fn report_window(&mut self, ctx: &egui::Context) {
+        let Some(mut with_project) = self.report_ask else {
+            return;
         };
+        let mut go = false;
+        let mut close = false;
+        let pal = self.shell.theme.palette();
+        egui::Modal::new(egui::Id::new("report-problem")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.heading("Report a problem");
+            ui.add_space(6.0);
+            ui.label("CreaBIM saves one file to attach to a GitHub issue or an email: what it did lately, the steps that were slow, any crash, your settings, your system and graphics card. Nothing is sent anywhere.");
+            ui.add_space(8.0);
+            ui.checkbox(&mut with_project, "Include the project as it is now");
+            ui.label(
+                egui::RichText::new("It helps rebuild the problem exactly, but it is your work: leave it off if it is private.")
+                    .small()
+                    .color(pal.muted),
+            );
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                go = ui.button("Save the report…").clicked();
+                close = ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+            });
+        });
+        self.report_ask = if go || close {
+            None
+        } else {
+            Some(with_project)
+        };
+        if !go {
+            return;
+        }
         let secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
@@ -219,10 +322,8 @@ impl CreaBimApp {
         let mut put = |k: &str, v: String| summary.push_str(&format!("{k}: {v}\n"));
         put("CreaBIM", env!("CARGO_PKG_VERSION").to_string());
         put("Build", env!("CREABIM_COMMIT").to_string());
-        put(
-            "System",
-            format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
-        );
+        put("System", os_version());
+        put("Graphics", gpu());
         put("Theme", self.shell.theme.id().to_string());
         put("Tool", self.plan.tool.label().to_string());
         put("Elements", model.iter().count().to_string());
@@ -234,7 +335,17 @@ impl CreaBimApp {
         put("Areas", areas.join(", "));
         put("Status", self.status.clone());
         put("Project included", with_project.to_string());
-        summary.push_str("\n--- Problems in this run ---\n");
+        summary.push_str(
+            "
+--- Slow steps in this run (lag) ---
+",
+        );
+        summary.push_str(&crate::actlog::slow_table());
+        summary.push_str(
+            "
+--- Problems in this run ---
+",
+        );
         for p in &problems {
             summary.push_str(p);
             summary.push('\n');
@@ -245,14 +356,17 @@ impl CreaBimApp {
             summary.push('\n');
         }
         let mut files = vec![("summary.txt".to_string(), summary.into_bytes())];
+        // the end of the log: what led up to now, light enough to attach
+        let tail = |b: Vec<u8>| {
+            const KEEP: usize = 2 * 1024 * 1024;
+            if b.len() > KEEP {
+                b[b.len() - KEEP..].to_vec()
+            } else {
+                b
+            }
+        };
         if let Some(log) = crate::actlog::path().and_then(|p| std::fs::read(p).ok()) {
-            files.push(("activity.log".into(), log));
-        }
-        if let Some(old) = crate::actlog::path()
-            .map(|p| p.with_file_name("activity.old.log"))
-            .and_then(|p| std::fs::read(p).ok())
-        {
-            files.push(("activity.old.log".into(), old));
+            files.push(("activity.log".into(), tail(log)));
         }
         if let Some(s) =
             crate::files::settings_dir().and_then(|d| std::fs::read(d.join("settings.json")).ok())
