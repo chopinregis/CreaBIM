@@ -1337,7 +1337,7 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
         Tool::Beam => vec![
             json!({
                 "kind": "menu", "key": "beam.corner", "label": "Corners",
-                "value": m.beam_corner.label(), "icon": "corner-down-right",
+                "value": m.beam_corner.label(), "icon": m.beam_corner.icon(),
                 "hint": "How the beams of a chain meet: Separate (concrete pieces), Mitred (welded steel) or Butt (one runs through, the next stops against it)",
             }),
             toggle(

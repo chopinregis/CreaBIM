@@ -413,6 +413,8 @@ impl CreaBimApp {
                 .iter()
                 .map(|c| {
                     Item::new(format!("beam.corner:{}", c.label()), c.label())
+                        .icon(c.icon())
+                        .hint(c.hint())
                         .checked(*c == self.plan.members.beam_corner)
                 })
                 .collect(),

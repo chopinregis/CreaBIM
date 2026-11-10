@@ -308,13 +308,29 @@ impl BeamCorner {
             BeamCorner::Butt => "Butt",
         }
     }
+
+    /// Its icon in the beam tool's bar and menu.
+    pub fn icon(self) -> &'static str {
+        match self {
+            BeamCorner::Separate => "corner-apart",
+            BeamCorner::Mitred => "corner-mitre",
+            BeamCorner::Butt => "corner-butt",
+        }
+    }
+
+    pub fn hint(self) -> &'static str {
+        match self {
+            BeamCorner::Separate => "Each runs to the corner point, as concrete pieces",
+            BeamCorner::Mitred => "Both cut on the line halfway between them, as welded steel",
+            BeamCorner::Butt => "The first runs through, the next stops against it",
+        }
+    }
 }
 
 /// Meet beams `a` (ending at the corner) and `b` (starting there) as
 /// `how` says: their end cuts and extensions.
 pub fn join_beams(a: &mut Beam, b: &mut Beam, how: BeamCorner) {
     let da = (a.end - a.start).normalize_or_zero();
-    let db = (b.end - b.start).normalize_or_zero();
     match how {
         BeamCorner::Separate => {
             a.cuts[1] = None;
