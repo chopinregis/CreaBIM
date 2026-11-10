@@ -239,6 +239,18 @@ pub fn set_interaction(c: eframe::egui::Color32) {
 pub const ORANGE: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(230, 120, 30);
 
 impl Theme {
+    /// The logo's colour in this theme, as app.css's --logo (MU39).
+    pub fn logo(self) -> Color32 {
+        match self {
+            Theme::Light | Theme::Sage => Color32::from_rgb(0x4F, 0x6B, 0x4C),
+            Theme::Paper => Color32::from_rgb(0x6F, 0x7A, 0x4E),
+            Theme::Graphite => Color32::from_rgb(0xC9, 0xA8, 0x67),
+            Theme::Blueprint => Color32::from_rgb(0x9F, 0xD3, 0xEA),
+            Theme::Ink => Color32::from_rgb(0xF0, 0xC3, 0x6B),
+            Theme::Dark => Color32::from_rgb(0x8F, 0xB0, 0x8A),
+        }
+    }
+
     /// The selection's colour when it follows the theme: picked by hand
     /// for each, to read against its paper and its linework (MU39).
     pub fn selection(self) -> Color32 {

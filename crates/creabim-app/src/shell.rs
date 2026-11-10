@@ -2787,9 +2787,41 @@ impl CreaBimApp {
         }
         let head = json!({
             "label": tool.label(), "icon": tool_icon(tool), "hint": hint,
-            "help": crate::help::tool_page(tool),
+            "help": crate::help::tool_page(tool), "trail": tool == Tool::Select,
         });
         (head, options)
+    }
+
+    /// What the left, middle and right buttons do over the view the
+    /// pointer was last in, for the status bar (MU39).
+    fn mouse_hints(&self) -> Value {
+        let in_2d = self.last_in_2d;
+        let classic = self.shell.settings.navigation == "classic";
+        let left = if self.plan.modal.is_some() {
+            "Place"
+        } else if self.plan.tool == Tool::Select {
+            if self.plan.edit.is_some() {
+                "Pick a point"
+            } else {
+                "Select"
+            }
+        } else {
+            self.plan.tool.label()
+        };
+        let middle = match (in_2d, classic) {
+            (true, _) | (false, true) => "Pan",
+            (false, false) => "Rotate view",
+        };
+        let right = if self.plan.tool == Tool::Select {
+            "Menu"
+        } else {
+            "Back"
+        };
+        json!([
+            {"b": "l", "label": left},
+            {"b": "m", "label": middle},
+            {"b": "r", "label": right},
+        ])
     }
 
     /// The tool bar's hint while Select is the tool: what is selected and
@@ -2798,7 +2830,7 @@ impl CreaBimApp {
         let model = self.doc.model();
         let ids = self.selection.all();
         match ids.len() {
-            0 => "Click or drag to select. Shift adds, Ctrl takes away. A all, Alt+A or Esc none."
+            0 => "Click or drag to select. Shift adds, Ctrl takes away. Ctrl+A all, Alt+A or Esc none."
                 .into(),
             1 => {
                 let id = ids[0];
@@ -3380,6 +3412,8 @@ impl CreaBimApp {
             "message": self.status,
             // what the drawing under the pointer does, after the message
             "hint": self.plan.hint.filter(|h| *h != self.status),
+            // what each mouse button does here, as Blender's status bar (MU39)
+            "mouse": self.mouse_hints(),
             "controls": [
                 {"kind": "toggle", "id": "snap.on", "label": "Snap", "on": self.plan.snap.on, "icon": "magnet",
                  "hint": "Object snaps on or off (F3). Hold Alt while picking to suspend them."},

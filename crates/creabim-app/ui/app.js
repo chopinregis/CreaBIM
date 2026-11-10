@@ -25,6 +25,27 @@
     return `<svg class="mark" viewBox="0 0 200 200" aria-label="CreaBIM">${window.ICONS[name]}</svg>`;
   }
 
+  // The weaver and its nest, woven once where the logo lives (MU39, the
+  // "Woven precise" motion): the branch draws, two strands weave the
+  // nest, the nest fills, the bird lands; then a line or two of where it
+  // is: a settings slider, a guide's page, a new plan. In the theme's
+  // logo colour. `play` false draws it still (a redraw, or reduced motion).
+  function woven(kind, play) {
+    const ctxArt = {
+      settings: `<path class="wm-ctx" d="M222 78 H318"/><circle class="wm-ctx" cx="252" cy="78" r="9"/><path class="wm-ctx" d="M222 126 H318"/><circle class="wm-ctx" cx="292" cy="126" r="9"/>`,
+      guide: `<path class="wm-ctx" d="M222 70 H306 M222 100 H318 M222 130 H290 M222 160 H300"/>`,
+      new: `<path class="wm-ctx" d="M222 62 H318 V160 H222 Z M270 62 V112 H318"/>`,
+    }[kind] || "";
+    const w = ctxArt ? 330 : 200;
+    return `<svg class="woven ${play ? "play" : "still"}" viewBox="0 0 ${w} 200" aria-label="CreaBIM">` +
+      `<g transform="translate(9 4)">` +
+      `<path class="wm-branch" d="M26 52 H174"/>` +
+      `<path class="wm-nest" d="M130 52 C162 64 172 100 166 128 C160 156 146 166 142 190 L118 190 C114 166 98 156 94 128 C88 100 98 64 130 52 Z"/>` +
+      `<path class="wm-strand" d="M98 98 L164 124"/><path class="wm-strand s2" d="M96 132 L160 156"/>` +
+      `<g class="wm-bird"><path d="M44.5 8.0 C51.2 2.1 63.8 3.0 67.2 12.2 C69.7 18.9 66.4 24.8 63.0 29.0 C61.3 39.9 52.9 50.0 38.6 50.8 C32.8 51.3 27.7 50.0 23.5 48.3 L8.4 56.7 L16.8 43.3 C14.3 35.7 16.0 27.3 21.8 22.3 C27.7 17.2 37.8 14.7 44.5 8.0 Z"/><path d="M65.5 10.5 L80.6 16.4 L65.5 21.4 Z"/><circle class="wm-eye" cx="61.5" cy="11.4" r="2.8"/></g>` +
+      `</g>${ctxArt}</svg>`;
+  }
+
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -137,7 +158,9 @@
       // widths measured below).
       `<div class="bar3"><div class="toolname">${S.tool.icon ? icon(S.tool.icon) : ""}<b>${esc(S.tool.label)}</b>` +
       (S.tool.help ? `<button class="qhelp ${S.popup === "toolhelp" ? "open" : ""}" data-popup="toolhelp" title="How to use the ${esc(S.tool.label)} tool (F1 opens its page)">${icon("circle-help")}</button>` : "") + `</div>` +
-      (S.tool_options.length ? `<div class="options tool-opts">${shown(S.tool_options).map((c) => control(c)).join("")}</div>` :
+      (S.tool_options.length ? `<div class="options tool-opts">${shown(S.tool_options).map((c) => control(c)).join("")}</div>` +
+        // Select keeps its hint after its tools: what is selected (MU39)
+        (S.tool.trail ? `<div class="tool-hint" title="${esc(S.tool.hint)}">${esc(S.tool.hint || "")}</div>` : "") :
         `<div class="tool-hint" title="${esc(S.tool.hint)}">${esc(S.tool.hint || "")}</div>`) +
       `<span class="spacer"></span>` +
       (S.tool_options.length && S.options.length ? `<span class="vsep group-sep"></span>` : "") +
@@ -312,7 +335,8 @@
   // ---- status pane ----
 
   function drawStatus() {
-    root.innerHTML = `<div class="status"><div class="msg"><span class="pulse"></span><span title="${esc(S.message)}">${esc(S.message)}</span>${S.hint ? `<span class="hint" title="${esc(S.hint)}">${esc(S.hint)}</span>` : ""}</div>` +
+    const mouse = (S.mouse || []).map((m) => `<span class="mb"><svg viewBox="0 0 12 16"><rect x="1" y="1" width="10" height="14" rx="5"/><path class="${m.b}" d="${m.b === "l" ? "M1 6 V6 a5 5 0 0 1 5 -5 V6 Z" : m.b === "r" ? "M11 6 a5 5 0 0 0 -5 -5 V6 Z" : "M5 2.5 h2 v3 h-2 Z"}"/></svg>${esc(m.label)}</span>`).join("");
+    root.innerHTML = `<div class="status"><span class="mice">${mouse}</span><div class="msg"><span class="pulse"></span><span title="${esc(S.message)}">${esc(S.message)}</span>${S.hint ? `<span class="hint" title="${esc(S.hint)}">${esc(S.hint)}</span>` : ""}</div>` +
       S.controls.map(control).join("") + `</div>`;
   }
 
@@ -424,13 +448,14 @@
   // ---- New project: two large choices and the samples to learn from ----
 
   function drawDialog(d) {
-    if (local.key !== S.key) { local.key = S.key; local.pick = d.starts[0].id; }
+    const fresh = local.key !== S.key;
+    if (fresh) { local.key = S.key; local.pick = d.starts[0].id; }
     const all = d.starts.concat(d.samples);
     if (!all.some((c) => c.id === local.pick)) local.pick = d.starts[0].id;
     const card = (c, big) => `<button class="${big ? "np-big" : "np-sample"} ${local.pick === c.id ? "on" : ""}" data-pick="${esc(c.id)}" title="${esc(c.line)}">` +
       (big ? `<span class="np-pic">${icon(c.icon)}</span><span class="np-text"><b>${esc(c.title)}</b><span>${esc(c.line)}</span></span>` :
         `<span class="np-icon">${icon(c.icon)}</span><span class="np-text"><b>${esc(c.title)}</b><span>${esc(c.line)}</span></span>`) + `</button>`;
-    root.innerHTML = `<div class="np"><div class="np-head"><span class="logo np-logo">${mark(true)}</span><b>${esc(d.title)}</b><span class="np-esc">Esc to close</span></div>` +
+    root.innerHTML = `<div class="np"><div class="np-head"><span class="logo np-logo">${woven("new", fresh)}</span><b>${esc(d.title)}</b><span class="np-esc">Esc to close</span></div>` +
       `<div class="np-starts">${d.starts.map((c) => card(c, true)).join("")}</div>` +
       `<div class="np-sub">${esc(d.samples_title)}</div><div class="np-samples">${d.samples.map((c) => card(c, false)).join("")}</div>` +
       `<div class="np-foot"><span>${esc(d.note)}</span><span class="spacer"></span><button class="np-btn" data-np="cancel">Cancel</button><button class="np-btn primary" data-np="create">Create</button></div></div>`;
@@ -780,7 +805,10 @@
     } else {
       const i = pages.indexOf(page);
       const prev = pages[i - 1], next = pages[i + 1];
-      body = `<div class="crumb"><a data-act="help:contents">Contents</a> › ${esc(page.section)}</div><article class="hdoc">${markdown(page.md)}</article>` +
+      // the woven mark over each page, woven once as the page opens
+      const opened = local.hwoven !== page.id;
+      local.hwoven = page.id;
+      body = `<div class="help-mark logo">${woven("guide", opened)}</div><div class="crumb"><a data-act="help:contents">Contents</a> › ${esc(page.section)}</div><article class="hdoc">${markdown(page.md)}</article>` +
         // two equal cards, a small label over the page's title (MU30)
         `<div class="pn">${prev ? `<a class="pn-card" data-act="help:${esc(prev.id)}"><small>← Previous</small><span>${esc(prev.title)}</span></a>` : "<span></span>"}` +
         `${next ? `<a class="pn-card next" data-act="help:${esc(next.id)}"><small>Next →</small><span>${esc(next.title)}</span></a>` : "<span></span>"}</div>`;

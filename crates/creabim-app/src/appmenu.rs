@@ -267,6 +267,7 @@ impl CreaBimApp {
         let mut edge_w = self.shell.settings.edit_edge_width;
         let mut vert_s = self.shell.settings.edit_vertex_size;
         let theme_accent = self.shell.theme.selection();
+        let theme_logo = self.shell.theme.logo();
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         // as Blender's Preferences (MU39): its categories down the left, the
         // one picked on the right, scrolling, so it never grows past the
@@ -297,6 +298,34 @@ impl CreaBimApp {
                     ui.vertical(|ui| {
                         ui.set_width(140.0);
                         ui.spacing_mut().item_spacing.y = 2.0;
+                        // the logo, rising in once as Settings opens (MU39)
+                        let t = {
+                            let now = ui.input(|i| i.time);
+                            let key = egui::Id::new("settings.logo.t0");
+                            let t0 = ui.ctx().data_mut(|d| *d.get_temp_mut_or_insert_with(key, || now));
+                            let t = (((now - t0) / 0.6) as f32).clamp(0.0, 1.0);
+                            if t < 1.0 {
+                                ui.ctx().request_repaint();
+                            }
+                            1.0 - (1.0 - t).powi(3)
+                        };
+                        let (r, _) = ui.allocate_exact_size(Vec2::new(140.0, 46.0), egui::Sense::hover());
+                        let tex = logo_texture(ui.ctx());
+                        let s = 36.0;
+                        let at = egui::Rect::from_min_size(
+                            egui::pos2(r.left() + 8.0, r.top() + 4.0 + (1.0 - t) * 10.0),
+                            Vec2::splat(s),
+                        );
+                        egui::Image::new((tex.id(), Vec2::splat(s)))
+                            .tint(theme_logo.gamma_multiply(t))
+                            .paint_at(ui, at);
+                        ui.painter().text(
+                            egui::pos2(at.right() + 8.0, r.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            "Settings",
+                            egui::FontId::proportional(14.0),
+                            p.text.gamma_multiply(t),
+                        );
                         for (i, (name, icon)) in TABS.iter().enumerate() {
                             let (r, resp) = ui.allocate_exact_size(
                                 Vec2::new(140.0, 28.0),
@@ -524,6 +553,9 @@ impl CreaBimApp {
             });
         ctx.data_mut(|d| d.insert_temp(tab_id, tab));
         self.settings_open = open;
+        if !open {
+            ctx.data_mut(|d| d.remove::<f64>(egui::Id::new("settings.logo.t0")));
+        }
         // resting on a grip look shows it at once; leaving puts yours back
         crate::handles::set_grip_style(grip_hover.filter(|_| open).unwrap_or(grips));
         if edge_w != self.shell.settings.edit_edge_width
@@ -814,6 +846,28 @@ impl CreaBimApp {
         self.project_open = open && !close;
         self.project_draft = self.project_open.then_some(draft);
     }
+}
+
+/// The logo's mark as a white texture, to tint with a theme's colour.
+pub(crate) fn logo_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    static TEX: std::sync::OnceLock<egui::TextureHandle> = std::sync::OnceLock::new();
+    TEX.get_or_init(|| {
+        let img =
+            image::load_from_memory(include_bytes!("../assets/logo/png/creabim-mark-128.png"))
+                .map(|i| i.to_rgba8())
+                .unwrap_or_default();
+        let (w, h) = img.dimensions();
+        let px: Vec<egui::Color32> = img
+            .pixels()
+            .map(|p| egui::Color32::from_rgba_unmultiplied(255, 255, 255, p[3]))
+            .collect();
+        ctx.load_texture(
+            "creabim-logo",
+            egui::ColorImage::new([w as usize, h as usize], px),
+            egui::TextureOptions::LINEAR,
+        )
+    })
+    .clone()
 }
 
 #[cfg(test)]

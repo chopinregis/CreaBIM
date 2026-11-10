@@ -972,7 +972,7 @@ kbd {
 
 /* ---------- New project ---------- */
 
-.np { display: flex; flex-direction: column; gap: 14px; padding: 20px 24px; height: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
+.np { display: flex; flex-direction: column; gap: 14px; padding: 20px 24px; height: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 0; }
 .np-head { display: flex; align-items: center; gap: 12px; }
 .np-logo, .np-logo svg.mark { width: 48px; height: 48px; }
 .np-head b { font-size: 17px; font-weight: 650; flex: 1; }
@@ -1038,3 +1038,36 @@ kbd {
    words run out of room (as before MU29); its note stays its own size */
 .group > span:not(.n):not(.gnote) { flex: 1 1 auto; min-width: 0; }
 .group > .gnote { flex: none; white-space: nowrap; }
+
+/* The woven mark (MU39): in each theme's logo colour, woven once */
+html { --logo: #8FB08A; }
+html[data-theme="light"], html[data-theme="sage"] { --logo: #4F6B4C; }
+html[data-theme="paper"] { --logo: #6F7A4E; }
+html[data-theme="graphite"] { --logo: #C9A867; }
+html[data-theme="blueprint"] { --logo: #9FD3EA; }
+html[data-theme="ink"] { --logo: #F0C36B; }
+.logo { color: var(--logo) !important; }
+.woven { display: block; overflow: visible; }
+.woven .wm-branch { fill: none; stroke: currentColor; stroke-opacity: .75; stroke-width: 9; stroke-linecap: round; }
+.woven .wm-nest, .woven .wm-bird path { fill: currentColor; }
+.woven .wm-strand { fill: none; stroke: var(--panel); stroke-width: 9; stroke-linecap: round; }
+.woven .wm-eye { fill: var(--panel); }
+.woven .wm-ctx { fill: none; stroke: currentColor; stroke-opacity: .45; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+.woven.play .wm-branch { stroke-dasharray: 160; stroke-dashoffset: 160; animation: wm-draw .45s ease-out forwards; }
+.woven.play .wm-nest { opacity: 0; animation: wm-fade .35s .55s ease-out forwards; }
+.woven.play .wm-strand { stroke-dasharray: 80; stroke-dashoffset: 80; animation: wm-draw .4s .8s ease-out forwards; }
+.woven.play .wm-strand.s2 { animation-delay: .95s; }
+.woven.play .wm-bird { opacity: 0; transform: translate(0, -22px); animation: wm-land .5s 1.1s cubic-bezier(.22,.8,.24,1) forwards; }
+.woven.play .wm-ctx { stroke-dasharray: 420; stroke-dashoffset: 420; animation: wm-draw .7s 1.35s ease-out forwards; }
+@keyframes wm-draw { to { stroke-dashoffset: 0; } }
+@keyframes wm-fade { to { opacity: 1; } }
+@keyframes wm-land { to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .woven.play * { animation: none !important; opacity: 1 !important; transform: none !important; stroke-dashoffset: 0 !important; } }
+.help-mark { width: 72px; height: 44px; display: block; margin: 2px 0 6px; }
+.help-mark svg { width: 72px; height: 44px; }
+.np-logo, .np-logo svg.woven { width: 80px !important; height: 48px !important; }
+/* what each mouse button does, as Blender's status bar (MU39) */
+.status .mice { display: flex; align-items: center; gap: 10px; margin-right: 12px; color: var(--muted); font-size: 11.5px; white-space: nowrap; flex: none; }
+.status .mb { display: inline-flex; align-items: center; gap: 4px; }
+.status .mb svg { width: 10px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+.status .mb svg path { fill: var(--text); stroke: none; }

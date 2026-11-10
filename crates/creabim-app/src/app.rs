@@ -2795,14 +2795,21 @@ impl CreaBimApp {
         // middle drag orbits (Classic: middle pans too)
         let classic = self.shell.settings.navigation == "classic";
         let shift_now = ui.input(|i| i.modifiers.shift);
-        if response.dragged_by(egui::PointerButton::Secondary)
-            || (response.dragged_by(egui::PointerButton::Middle) && (classic || shift_now))
-        {
-            let d = response.drag_delta();
-            self.camera.pan(GVec2::new(d.x, d.y), rect.height());
-        }
-        if !classic && response.dragged_by(egui::PointerButton::Middle) && !shift_now {
-            self.orbit_3d(response.drag_delta());
+        // Ctrl + middle drag zooms, up in and down out, as Blender (MU39)
+        let ctrl_now = ui.input(|i| i.modifiers.command);
+        let mid = response.dragged_by(egui::PointerButton::Middle);
+        if mid && ctrl_now {
+            self.camera.zoom(-response.drag_delta().y / 60.0);
+        } else {
+            if response.dragged_by(egui::PointerButton::Secondary)
+                || (mid && (classic || shift_now))
+            {
+                let d = response.drag_delta();
+                self.camera.pan(GVec2::new(d.x, d.y), rect.height());
+            }
+            if !classic && mid && !shift_now {
+                self.orbit_3d(response.drag_delta());
+            }
         }
         if response.hovered() {
             // two fingers on a touchpad pan; a wheel and a pinch zoom (MU24)

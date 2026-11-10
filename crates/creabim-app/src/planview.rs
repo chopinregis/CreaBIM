@@ -890,8 +890,27 @@ pub fn show(
         }
     }
 
-    // pan and zoom
-    if response.dragged_by(egui::PointerButton::Secondary)
+    // pan and zoom; Ctrl + middle drag zooms about where it started (MU39)
+    let ctrl_mid =
+        response.dragged_by(egui::PointerButton::Middle) && ui.input(|i| i.modifiers.command);
+    if ctrl_mid {
+        let k = (1.0 - response.drag_delta().y * 0.01).clamp(0.5, 2.0);
+        if let Some(at) = ui.input(|i| i.pointer.press_origin()) {
+            let xf = Xf {
+                rect,
+                center,
+                scale,
+            };
+            let before = xf.to_world(at);
+            scale = (scale * k).clamp(2.0, 2000.0);
+            let xf = Xf {
+                rect,
+                center,
+                scale,
+            };
+            center += before - xf.to_world(at);
+        }
+    } else if response.dragged_by(egui::PointerButton::Secondary)
         || response.dragged_by(egui::PointerButton::Middle)
     {
         let d = response.drag_delta() / scale;
