@@ -231,5 +231,17 @@ window.ICONS = {
 "view-range": "<path d=\"M3 5h18\"></path><path d=\"M3 19h18\"></path><path d=\"M12 8v8\"></path><path d=\"M9 11l3-3 3 3\"></path>",
 "workspace": "<path d=\"M3 4h18v16H3z\"></path><path d=\"M12 4v16\"></path><path d=\"M12 12h9\"></path>",
 "isolate": "<path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z\" stroke-dasharray=\"1 3\"></path><circle cx=\"12\" cy=\"12\" r=\"3.5\"></circle>",
-"open-view": "<path d=\"M14 3h7v7\"></path><path d=\"M21 3l-9 9\"></path><path d=\"M19 14v7H3V5h7\"></path>"
+"open-view": "<path d=\"M14 3h7v7\"></path><path d=\"M21 3l-9 9\"></path><path d=\"M19 14v7H3V5h7\"></path>",
+"mod-array": "<rect x=\"2\" y=\"8\" width=\"5\" height=\"8\" /><rect x=\"9.5\" y=\"8\" width=\"5\" height=\"8\" /><rect x=\"17\" y=\"8\" width=\"5\" height=\"8\" />",
+"mod-radial": "<circle cx=\"12\" cy=\"12\" r=\"2\" /><rect x=\"10.5\" y=\"2\" width=\"3\" height=\"4\" /><rect x=\"10.5\" y=\"18\" width=\"3\" height=\"4\" /><rect x=\"2\" y=\"10.5\" width=\"4\" height=\"3\" /><rect x=\"18\" y=\"10.5\" width=\"4\" height=\"3\" />",
+"mod-path": "<path d=\"M3 20C7 10 17 15 21 4\" /><circle cx=\"5.5\" cy=\"15\" r=\"1.5\" /><circle cx=\"12\" cy=\"12.5\" r=\"1.5\" /><circle cx=\"18\" cy=\"9\" r=\"1.5\" />",
+"mod-panels": "<rect x=\"3\" y=\"3\" width=\"8\" height=\"8\" /><rect x=\"13\" y=\"3\" width=\"8\" height=\"8\" /><rect x=\"3\" y=\"13\" width=\"8\" height=\"8\" /><rect x=\"13\" y=\"13\" width=\"8\" height=\"8\" />",
+"mod-louvres": "<path d=\"M4 3v18\" /><path d=\"M4 5l10 3M4 11l10 3M4 17l10 3\" />",
+"mod-bevel": "<path d=\"M4 21V11l7-7h9\" />",
+"mod-shell": "<path d=\"M3 4h18v16H3z\" /><path d=\"M7 4v12h10V4\" />",
+"mod-slice": "<rect x=\"5\" y=\"3\" width=\"14\" height=\"5\" /><rect x=\"5\" y=\"10\" width=\"14\" height=\"5\" /><rect x=\"5\" y=\"17\" width=\"14\" height=\"4\" />",
+"mod-taper": "<path d=\"M5 21h14L15 3H9z\" />",
+"mod-twist": "<path d=\"M6 21h12M8 3h8\" /><path d=\"M6 21 16 3M18 21 8 3\" />",
+"mod-smooth": "<circle cx=\"12\" cy=\"12\" r=\"8\" /><path d=\"M5 9c4 3 10 3 14 0\" />",
+"mod-solidify": "<path d=\"M3 9l9-5 9 5-9 5z\" /><path d=\"M3 9v5l9 5 9-5V9\" />"
 };

@@ -29,6 +29,7 @@ pub mod library;
 pub mod marks;
 pub mod members;
 pub mod model;
+pub mod modgen;
 pub mod modifiers;
 pub mod objects;
 pub mod offset;

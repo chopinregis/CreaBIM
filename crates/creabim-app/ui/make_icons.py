@@ -158,6 +158,19 @@ FINAL={
  "roof-mono": '<path d="M4 20v-9l16-6v15" /> <path d="M3 20h18" />',
  "roof-gable": '<path d="M3 11 12 4l9 7" /> <path d="M5 9.5V20h14V9.5" />',
  "roof-hip": '<path d="M3 13 7 7h10l4 6z" /> <path d="M5 13v7h14v-7" />',
+ # the modifiers (MU38)
+ "mod-array": '<rect x="2" y="8" width="5" height="8" /><rect x="9.5" y="8" width="5" height="8" /><rect x="17" y="8" width="5" height="8" />',
+ "mod-radial": '<circle cx="12" cy="12" r="2" /><rect x="10.5" y="2" width="3" height="4" /><rect x="10.5" y="18" width="3" height="4" /><rect x="2" y="10.5" width="4" height="3" /><rect x="18" y="10.5" width="4" height="3" />',
+ "mod-path": '<path d="M3 20C7 10 17 15 21 4" /><circle cx="5.5" cy="15" r="1.5" /><circle cx="12" cy="12.5" r="1.5" /><circle cx="18" cy="9" r="1.5" />',
+ "mod-panels": '<rect x="3" y="3" width="8" height="8" /><rect x="13" y="3" width="8" height="8" /><rect x="3" y="13" width="8" height="8" /><rect x="13" y="13" width="8" height="8" />',
+ "mod-louvres": '<path d="M4 3v18" /><path d="M4 5l10 3M4 11l10 3M4 17l10 3" />',
+ "mod-bevel": '<path d="M4 21V11l7-7h9" />',
+ "mod-shell": '<path d="M3 4h18v16H3z" /><path d="M7 4v12h10V4" />',
+ "mod-slice": '<rect x="5" y="3" width="14" height="5" /><rect x="5" y="10" width="14" height="5" /><rect x="5" y="17" width="14" height="4" />',
+ "mod-taper": '<path d="M5 21h14L15 3H9z" />',
+ "mod-twist": '<path d="M6 21h12M8 3h8" /><path d="M6 21 16 3M18 21 8 3" />',
+ "mod-smooth": '<circle cx="12" cy="12" r="8" /><path d="M5 9c4 3 10 3 14 0" />',
+ "mod-solidify": '<path d="M3 9l9-5 9 5-9 5z" /><path d="M3 9v5l9 5 9-5V9" />',
 }
 out={}
 for n in names:
