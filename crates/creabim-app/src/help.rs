@@ -64,6 +64,7 @@ pub const PAGES: &[(&str, &str, &str)] = &[
     page!("Building the model", "stairs-railings"),
     page!("Building the model", "footings"),
     page!("Building the model", "parts"),
+    page!("Building the model", "profiles"),
     page!("Building the model", "site"),
     page!("Building the model", "curtain-walls"),
     page!("Building the model", "types"),
@@ -146,6 +147,7 @@ pub const IMAGES: &[(&str, &[u8])] = &[
     img!("catalogue"),
     img!("object-against-wall"),
     img!("details"),
+    img!("profile-view"),
 ];
 
 /// A page's text by id.
