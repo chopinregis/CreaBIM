@@ -263,6 +263,7 @@ impl CreaBimApp {
         let mut edit_bar = self.shell.settings.edit_bar.clone();
         let mut axis_lines = self.shell.settings.axis_lines;
         let mut interaction = self.shell.settings.interaction.clone();
+        let mut keep_alt_a = self.shell.settings.keep_alt_a;
         let theme_accent = crate::theme::vivid(crate::theme::Palette::of(ctx).accent);
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
         // as Blender's Preferences (MU39): its categories down the left, the
@@ -503,6 +504,9 @@ impl CreaBimApp {
                                         );
                                         ui.add_space(4.0);
                                         keys = ui.button("Keyboard shortcuts…").clicked();
+                                        ui.add_space(8.0);
+                                        ui.checkbox(&mut keep_alt_a, "Keep Alt+A for CreaBIM")
+                                            .on_hover_text("While CreaBIM is in front, Alt+A selects nothing here even if another program (a chat app's screenshot) uses the same keys. Other windows are not affected.");
                                     }
                                 }
                             });
@@ -513,6 +517,11 @@ impl CreaBimApp {
         self.settings_open = open;
         // resting on a grip look shows it at once; leaving puts yours back
         crate::handles::set_grip_style(grip_hover.filter(|_| open).unwrap_or(grips));
+        if keep_alt_a != self.shell.settings.keep_alt_a {
+            crate::keyhook::set_on(keep_alt_a);
+            self.shell.settings.keep_alt_a = keep_alt_a;
+            self.shell.settings.store();
+        }
         if interaction != self.shell.settings.interaction {
             self.shell.settings.interaction = interaction;
             self.shell.settings.store();

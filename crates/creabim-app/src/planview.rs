@@ -1970,13 +1970,16 @@ pub fn show(
                     .any(|id| selection.contains(id));
                 if !on_selected || footing_box {
                     state.boxsel = Some((p0, response.id));
+                    boxsel::trace(p0, true);
                 }
             }
         }
         if let Some((p0, _)) = state.boxsel.filter(|b| b.1 == response.id) {
             let now = ui.input(|i| i.pointer.latest_pos()).unwrap_or(p0);
+            boxsel::trace(now, false);
             boxsel::draw(&painter, p0, now);
-            if response.drag_stopped() || !response.dragged() {
+            let ended = response.drag_stopped() || !response.dragged();
+            {
                 let parts = plan.items.iter().filter_map(|it| {
                     if creabim_geom::plan::is_underlay(it) {
                         return None;
@@ -1990,6 +1993,13 @@ pub fn show(
                 let ids = boxsel::pick(p0, now, parts)
                     .into_iter()
                     .filter(|id| box_selectable(doc, *id));
+                if !ended {
+                    // what it would take, counted as it is drawn (MU39)
+                    if !footing_box {
+                        boxsel::draw_count(&painter, now, ids.count());
+                    }
+                    return None;
+                }
                 if footing_box {
                     let pad = crate::memberstool::footing_kind(doc.model(), state)
                         == creabim_core::FootingKind::Pad;
@@ -2010,7 +2020,8 @@ pub fn show(
                     }
                     state.want_footings = hosts;
                 } else {
-                    selection.extend(ids, shift);
+                    let ctrl = ui.input(|i| i.modifiers.command);
+                    boxsel::apply(selection, ids.collect(), boxsel::combine_with(shift, ctrl));
                     state.boxed = true;
                 }
                 state.boxsel = None;

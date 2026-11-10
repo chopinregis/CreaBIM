@@ -811,22 +811,8 @@ impl CreaBimApp {
                 asks.push(Ask::Popup("area.mode".into(), r.rect));
             }
             mode_w += if compact { 44.0 } else { 110.0 };
-            if editing {
-                for (k, icon, tip) in [
-                    (1u8, "pick-vertex", "Points (1): corners, ends, vertices"),
-                    (2, "pick-edge", "Edges (2): sides, edges, jambs"),
-                    (3, "pick-face", "Faces (3): faces, tops, undersides"),
-                ] {
-                    let on = handles::pick() == k;
-                    if icon_btn(&mut child, icon, on, true, &p)
-                        .on_hover_text(tip)
-                        .clicked()
-                    {
-                        handles::set_pick(if on { 0 } else { k });
-                    }
-                }
-                mode_w += 3.0 * 28.0;
-            }
+            // what a click picks in Edit mode is in the tool bar now, once
+            // for every view (MU39, option B)
         }
         child.add_space(6.0);
         // its controls, as many as fit before More and maximise

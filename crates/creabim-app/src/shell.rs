@@ -398,6 +398,7 @@ impl CreaBimApp {
         match key {
             "menu:CreaBIM" => self.app_menu(),
             "units.menu" => self.unit_items(),
+            "select.menu" => self.select_menu_items(),
             "sweep.library" => self.sweep_library_items(),
             "extrusion.library" => self.extrusion_library_items(),
             "menu:File" => self.file_menu(),
@@ -1847,6 +1848,31 @@ impl CreaBimApp {
                 }
             }
             "slab.arc" => crate::slabtool::pick(ctx, None, Some(arg == "1")),
+            "sel.shape" => {
+                use crate::boxsel::Shape;
+                crate::boxsel::set_shape(match arg {
+                    "1" => Shape::Circle,
+                    "2" => Shape::Lasso,
+                    _ => Shape::Box,
+                });
+            }
+            "sel.combine" => {
+                use crate::boxsel::Combine;
+                crate::boxsel::set_combine(match arg {
+                    "1" => Combine::Add,
+                    "2" => Combine::Subtract,
+                    "3" => Combine::Invert,
+                    "4" => Combine::Intersect,
+                    _ => Combine::New,
+                });
+            }
+            "sel.pick" => {
+                let k: u8 = arg.parse().unwrap_or(0);
+                crate::handles::set_pick(if crate::handles::pick() == k { 0 } else { k });
+            }
+            "sel.invert" => self.select_invert(),
+            "sel.linked" => self.select_linked(),
+            "sel.random" => self.select_random(),
             "sketch.shape" => {
                 if let Some(s) = index.and_then(|i| crate::sketch::Shape::ALL.get(i)) {
                     crate::sketch::pick_shape(ctx, *s);
@@ -2676,11 +2702,154 @@ impl CreaBimApp {
         while options.last().is_some_and(|o| o["kind"] == "sep") {
             options.pop();
         }
+        // Select's own tools (MU39, option B): the shape a drag takes, how
+        // it joins what is selected, in Edit mode what a click picks, and
+        // the Select menu; the hint names what is selected
+        let mut hint = tool.hint().to_string();
+        if tool == Tool::Select {
+            let iseg = |items: Vec<(String, &str, bool, &str)>| {
+                json!({"kind": "seg", "items": items
+                    .into_iter()
+                    .map(|(id, icon, on, h)| json!({"id": id, "label": "", "icon": icon, "on": on, "hint": h}))
+                    .collect::<Vec<_>>()})
+            };
+            use crate::boxsel::{Combine as C, Shape as S};
+            let shape = crate::boxsel::shape();
+            let mut sel_opts = vec![iseg(vec![
+                ("sel.shape:0".into(), "sel-box", shape == S::Box, "Box (B): drag a box; left to right takes what is inside, right to left what it touches"),
+                ("sel.shape:1".into(), "sel-circle", shape == S::Circle, "Circle: drag out a circle; it takes what it touches"),
+                ("sel.shape:2".into(), "sel-lasso", shape == S::Lasso, "Lasso: draw round what to take"),
+            ])];
+            let how = crate::boxsel::combine();
+            sel_opts.push(iseg(vec![
+                (
+                    "sel.combine:0".into(),
+                    "sel-new",
+                    how == C::New,
+                    "New: what you take replaces the selection",
+                ),
+                (
+                    "sel.combine:1".into(),
+                    "sel-add",
+                    how == C::Add,
+                    "Add (Shift): what you take joins the selection",
+                ),
+                (
+                    "sel.combine:2".into(),
+                    "sel-sub",
+                    how == C::Subtract,
+                    "Subtract (Ctrl): what you take leaves the selection",
+                ),
+                (
+                    "sel.combine:3".into(),
+                    "sel-invert",
+                    how == C::Invert,
+                    "Invert: what you take flips, in or out",
+                ),
+                (
+                    "sel.combine:4".into(),
+                    "sel-intersect",
+                    how == C::Intersect,
+                    "Intersect: keep only what is both selected and taken",
+                ),
+            ]));
+            if self.plan.edit.is_some() {
+                let k = crate::handles::pick();
+                sel_opts.push(iseg(vec![
+                    (
+                        "sel.pick:1".into(),
+                        "pick-vertex",
+                        k == 1,
+                        "Points (1): corners, ends, vertices",
+                    ),
+                    (
+                        "sel.pick:2".into(),
+                        "pick-edge",
+                        k == 2,
+                        "Edges (2): sides, edges, jambs",
+                    ),
+                    (
+                        "sel.pick:3".into(),
+                        "pick-face",
+                        k == 3,
+                        "Faces (3): faces, tops, undersides",
+                    ),
+                ]));
+            }
+            sel_opts.push(json!({
+                "kind": "menu", "key": "select.menu", "label": "", "value": "Select",
+                "hint": "All, none, invert, similar, linked, random",
+            }));
+            sel_opts.push(json!({"kind": "sep"}));
+            sel_opts.extend(options);
+            options = sel_opts;
+            hint = self.selection_hint();
+        }
         let head = json!({
-            "label": tool.label(), "icon": tool_icon(tool), "hint": tool.hint(),
+            "label": tool.label(), "icon": tool_icon(tool), "hint": hint,
             "help": crate::help::tool_page(tool),
         });
         (head, options)
+    }
+
+    /// The tool bar's hint while Select is the tool: what is selected and
+    /// what keys do to it, or how to select (MU39).
+    fn selection_hint(&self) -> String {
+        let model = self.doc.model();
+        let ids = self.selection.all();
+        match ids.len() {
+            0 => "Click or drag to select. Shift adds, Ctrl takes away. A all, Alt+A or Esc none."
+                .into(),
+            1 => {
+                let id = ids[0];
+                format!(
+                    "{} · M move · R rotate · Shift+A all of its type",
+                    crate::hoverpick::describe(model, id)
+                )
+            }
+            n => {
+                let mut kinds: Vec<(String, usize)> = vec![];
+                for e in ids.iter().filter_map(|i| model.get(*i)) {
+                    let k = crate::app::kind_word(&e.kind).to_string();
+                    match kinds.iter_mut().find(|(w, _)| *w == k) {
+                        Some((_, c)) => *c += 1,
+                        None => kinds.push((k, 1)),
+                    }
+                }
+                let list: Vec<String> = kinds
+                    .iter()
+                    .map(|(k, c)| format!("{c} {}", crate::app::plural(k, *c)))
+                    .collect();
+                format!("{n} selected: {} · M move · R rotate", list.join(", "))
+            }
+        }
+    }
+
+    /// The Select menu of the tool bar (MU39).
+    fn select_menu_items(&self) -> Vec<Item> {
+        let some = !self.selection.is_empty();
+        let mut items = vec![
+            self.cmd_item(Command::SelectAll),
+            self.cmd_item(Command::SelectNone),
+            Item::new("sel.invert", "Invert")
+                .hint("Select what is not selected, and drop what is"),
+            Item::Separator,
+            Item::new("sel.shape:0", "Box select").key("B").icon("sel-box"),
+            Item::new("sel.shape:1", "Circle select").icon("sel-circle"),
+            Item::new("sel.shape:2", "Lasso select").icon("sel-lasso"),
+            Item::Separator,
+            Item::new("sel.linked", "Select linked")
+                .enabled(some)
+                .hint("Add what is joined to the selection: walls meeting it, the doors and windows in it"),
+            Item::new("sel.random", "Select random")
+                .enabled(some)
+                .hint("Keep about half of the selection, picked at random: to thin out a row"),
+        ];
+        let similar = self.similar_items();
+        if !similar.is_empty() {
+            items.push(Item::sub("Select similar", similar).icon("copy"));
+        }
+        items
     }
 
     /// The quick help the ? by the tool's name opens: what the tool is and

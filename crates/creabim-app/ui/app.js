@@ -91,7 +91,7 @@
       case "label":
         return `<span class="ctl-label"${slot}>${esc(c.label)}</span>`;
       case "seg":
-        return `<span class="seg"${slot}>` + c.items.map((i) => `<button class="${i.on ? "on" : ""}" data-act="${esc(i.id)}" data-keep="${full ? 1 : 0}" title="${esc(i.hint)}">${esc(i.label)}</button>`).join("") + `</span>`;
+        return `<span class="seg"${slot}>` + c.items.map((i) => `<button class="${i.on ? "on" : ""}${i.icon ? " ico" : ""}" data-act="${esc(i.id)}" data-keep="${full ? 1 : 0}" title="${esc(i.hint)}">${i.icon ? icon(i.icon) : esc(i.label)}</button>`).join("") + `</span>`;
       case "sep":
         return `<span class="vsep"${slot}></span>`;
       case "meta":

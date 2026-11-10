@@ -314,6 +314,8 @@ impl CreaBimApp {
         let theme = crate::theme::Theme::from_id(&settings.theme).unwrap_or_default();
         crate::handles::set_grip_style(settings.grips);
         crate::modal::set_bar_by_pointer(settings.edit_bar == "pointer");
+        crate::keyhook::set_on(settings.keep_alt_a);
+        crate::keyhook::install(&cc.egui_ctx);
         shell::style(&cc.egui_ctx, theme);
         let viewport = cc
             .wgpu_render_state
@@ -1981,9 +1983,67 @@ impl CreaBimApp {
 
     /// Everything that can be picked: building elements, sketches, guides,
     /// annotations, but not levels, views, sheets or materials.
-    fn select_all(&mut self) {
+    /// Select what is not selected, and drop what is (MU39).
+    pub(super) fn select_invert(&mut self) {
+        let was = self.selection.clone();
         let ids: Vec<ElementId> = self
-            .doc
+            .selectable_ids()
+            .into_iter()
+            .filter(|id| !was.contains(*id))
+            .collect();
+        self.selection.extend(ids, false);
+        self.face = None;
+        self.status = format!("Inverted: {} selected.", self.selection.len());
+    }
+
+    /// Add what is joined to the selection: walls meeting it end to end,
+    /// and the doors, windows and holes set in it (MU39).
+    pub(super) fn select_linked(&mut self) {
+        let model = self.doc.model();
+        let mut add = vec![];
+        for id in self.selection.all() {
+            add.extend(planview::joined_with(&self.doc, id));
+            for e in model.iter() {
+                if let ElementKind::Opening(o) = &e.kind {
+                    if o.host == id {
+                        add.push(e.id);
+                    }
+                }
+            }
+        }
+        let before = self.selection.len();
+        self.selection.extend(add, true);
+        self.status = format!(
+            "Linked: {} added, {} selected.",
+            self.selection.len() - before,
+            self.selection.len()
+        );
+    }
+
+    /// Keep about half of the selection, picked at random (MU39).
+    pub(super) fn select_random(&mut self) {
+        let mut seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(1, |d| d.as_nanos() as u64)
+            | 1;
+        let keep: Vec<ElementId> = self
+            .selection
+            .all()
+            .into_iter()
+            .filter(|_| {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                seed.is_multiple_of(2)
+            })
+            .collect();
+        self.selection.extend(keep, false);
+        self.status = format!("Random: {} kept.", self.selection.len());
+    }
+
+    /// Everything Select all takes.
+    fn selectable_ids(&self) -> Vec<ElementId> {
+        self.doc
             .model()
             .iter()
             .filter(|e| {
@@ -2002,7 +2062,11 @@ impl CreaBimApp {
                     )
             })
             .map(|e| e.id)
-            .collect();
+            .collect()
+    }
+
+    fn select_all(&mut self) {
+        let ids = self.selectable_ids();
         self.selection.extend(ids, false);
         self.face = None;
         self.status = format!("{} selected.", self.selection.len());
@@ -3085,22 +3149,37 @@ impl CreaBimApp {
                 if self.pending_3d.take().is_some() || self.guide_from.take().is_some() {
                     self.plan.cancel();
                     self.status = "Cancelled. Right-click or Esc again to leave the tool.".into();
-                } else if !self.plan.step_back() && right && self.plan.tool == Tool::Select {
-                    if self.plan.web_menus {
-                        self.plan.menu_request = response.interact_pointer_pos();
-                        self.shell.menu_3d = true;
-                    }
-                    if let Some(p) = response.interact_pointer_pos() {
-                        let (o, d) = ray(p);
-                        let hit = pick::pick(&self.scene, o.as_vec3(), d.as_vec3());
-                        if let Some(h) = hit.as_ref().filter(|h| !self.selection.contains(h.id)) {
-                            self.selection.only(h.id);
-                            self.face = None;
+                } else {
+                    let stepped = self.plan.step_back();
+                    // Esc with nothing to step back from selects nothing (MU39)
+                    if !stepped
+                        && esc
+                        && !right
+                        && self.plan.tool == Tool::Select
+                        && self.plan.edit.is_none()
+                        && self.selection.is_some()
+                    {
+                        self.selection.clear();
+                        self.face = None;
+                        self.status = "Nothing selected.".into();
+                    } else if !stepped && right && self.plan.tool == Tool::Select {
+                        if self.plan.web_menus {
+                            self.plan.menu_request = response.interact_pointer_pos();
+                            self.shell.menu_3d = true;
                         }
-                        self.menu_at_3d = hit
-                            .map(|h| o + d * h.t as f64)
-                            .or_else(|| Workplane::ground(0.0).intersect(o, d));
-                        self.menu_plane_3d = face_plane(&self.scene, o, d);
+                        if let Some(p) = response.interact_pointer_pos() {
+                            let (o, d) = ray(p);
+                            let hit = pick::pick(&self.scene, o.as_vec3(), d.as_vec3());
+                            if let Some(h) = hit.as_ref().filter(|h| !self.selection.contains(h.id))
+                            {
+                                self.selection.only(h.id);
+                                self.face = None;
+                            }
+                            self.menu_at_3d = hit
+                                .map(|h| o + d * h.t as f64)
+                                .or_else(|| Workplane::ground(0.0).intersect(o, d));
+                            self.menu_plane_3d = face_plane(&self.scene, o, d);
+                        }
                     }
                 }
             }
@@ -3216,12 +3295,17 @@ impl CreaBimApp {
                 && response.drag_started_by(egui::PointerButton::Primary)
             {
                 self.box_3d = ui.input(|i| i.pointer.press_origin());
+                if let Some(p0) = self.box_3d {
+                    crate::boxsel::trace(p0, true);
+                }
                 self.box_armed = false;
             }
             if let Some(p0) = self.box_3d {
                 let now = ui.input(|i| i.pointer.latest_pos()).unwrap_or(p0);
+                crate::boxsel::trace(now, false);
                 crate::boxsel::draw(&painter, p0, now);
-                if response.drag_stopped() || !response.dragged() {
+                let ended = response.drag_stopped() || !response.dragged();
+                {
                     let tris = self.scene.iter().flat_map(|item| {
                         let pts: Vec<Option<egui::Pos2>> = item
                             .mesh
@@ -3243,8 +3327,16 @@ impl CreaBimApp {
                         .into_iter()
                         .filter(|id| planview::box_selectable(&self.doc, *id))
                         .collect();
-                    let shift = ui.input(|i| i.modifiers.shift);
-                    self.selection.extend(ids, shift);
+                    if !ended {
+                        crate::boxsel::draw_count(&painter, now, ids.len());
+                        return;
+                    }
+                    let (shift, ctrl) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
+                    crate::boxsel::apply(
+                        &mut self.selection,
+                        ids,
+                        crate::boxsel::combine_with(shift, ctrl),
+                    );
                     self.face = None;
                     self.box_3d = None;
                     self.status = format!("{} selected.", self.selection.len());
@@ -10372,6 +10464,11 @@ impl eframe::App for CreaBimApp {
         let _perf = Perf::new("frame");
         let ctx = ui.ctx().clone();
         crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
+        // Alt+A kept from another app's hotkey: select nothing (MU39)
+        if crate::keyhook::take_alt_a() {
+            self.run_command(&ctx, crate::commands::Command::SelectNone, None);
+            self.status = "Nothing selected.".into();
+        }
         // the colour of what is worked on: orange, or the theme's accent;
         // the 3D view's highlight is built again when it changes (MU39)
         let ink = if self.shell.settings.interaction == "theme" {
@@ -10994,7 +11091,7 @@ fn with_plan_views(model: Model) -> Model {
 
 /// A file's name without its folders.
 /// What to call an element in a count.
-fn kind_word(k: &ElementKind) -> &'static str {
+pub(crate) fn kind_word(k: &ElementKind) -> &'static str {
     match k {
         ElementKind::Level(_) => "level",
         ElementKind::Grid(_) => "grid line",
@@ -11049,7 +11146,7 @@ fn kind_word(k: &ElementKind) -> &'static str {
 }
 
 /// "wall" or "walls", for counts in messages.
-fn plural(kind: &str, n: usize) -> String {
+pub(crate) fn plural(kind: &str, n: usize) -> String {
     let k = kind.to_lowercase();
     match (n, k.as_str()) {
         (1, _) => k,
