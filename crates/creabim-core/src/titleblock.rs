@@ -241,48 +241,55 @@ pub const BUILT_IN_FIELDS: [(&str, &str); 5] = [
     ("date", "Today's date"),
 ];
 
+impl TitleItem {
+    /// Finite, with positive text sizes and opacities in 0..1: one bad
+    /// item no longer keeps a whole master from being changed (MU40).
+    pub fn is_valid(&self) -> bool {
+        let finite = |p: &DVec2| p.is_finite();
+        let it = self;
+        match it {
+            TitleItem::Line { points, width } => {
+                points.iter().all(finite) && width.is_finite() && *width >= 0.0
+            }
+            TitleItem::Fill { points, gray } => {
+                points.iter().all(finite) && (0.0..=1.0).contains(gray)
+            }
+            TitleItem::Text {
+                at, size, angle, ..
+            } => at.is_finite() && size.is_finite() && *size > 0.0 && angle.is_finite(),
+            TitleItem::Shape {
+                points,
+                pen,
+                opacity,
+                ..
+            } => {
+                points.iter().all(finite)
+                    && pen.is_none_or(|w| w.is_finite() && w >= 0.0)
+                    && (0.0..=1.0).contains(opacity)
+            }
+            TitleItem::Image {
+                lo,
+                hi,
+                width,
+                height,
+                ..
+            } => lo.is_finite() && hi.is_finite() && *width > 0 && *height > 0,
+            TitleItem::Logo { lo, hi, shapes } => lo.is_finite()
+                && hi.is_finite()
+                && shapes.iter().all(
+                    |s| matches!(s, TitleItem::Shape { points, .. } if points.iter().all(finite)),
+                ),
+        }
+    }
+}
+
 impl SheetTemplate {
     pub fn validate(&self) -> Result<(), String> {
-        let finite = |p: &DVec2| p.is_finite();
-        for it in &self.items {
-            let ok = match it {
-                TitleItem::Line { points, width } => {
-                    points.iter().all(finite) && width.is_finite() && *width >= 0.0
-                }
-                TitleItem::Fill { points, gray } => {
-                    points.iter().all(finite) && (0.0..=1.0).contains(gray)
-                }
-                TitleItem::Text {
-                    at, size, angle, ..
-                } => at.is_finite() && size.is_finite() && *size > 0.0 && angle.is_finite(),
-                TitleItem::Shape {
-                    points,
-                    pen,
-                    opacity,
-                    ..
-                } => {
-                    points.iter().all(finite)
-                        && pen.is_none_or(|w| w.is_finite() && w >= 0.0)
-                        && (0.0..=1.0).contains(opacity)
-                }
-                TitleItem::Image {
-                    lo,
-                    hi,
-                    width,
-                    height,
-                    ..
-                } => lo.is_finite() && hi.is_finite() && *width > 0 && *height > 0,
-                TitleItem::Logo { lo, hi, shapes } => {
-                    lo.is_finite()
-                        && hi.is_finite()
-                        && shapes.iter().all(|s| {
-                            matches!(s, TitleItem::Shape { points, .. } if points.iter().all(finite))
-                        })
-                }
-            };
-            if !ok {
-                return Err("title block items must be finite, with positive text sizes".into());
-            }
+        if let Some(k) = self.items.iter().position(|it| !it.is_valid()) {
+            return Err(format!(
+                "title block item {} is not finite, or has a zero text size",
+                k + 1
+            ));
         }
         if self
             .paper

@@ -77,6 +77,35 @@ pub struct MastersUi {
     /// dragged: (0 left, 1 bottom, 2 right, 3 top; where it is now, mm).
     pub border_sel: bool,
     border_drag: Option<(usize, f64)>,
+    /// What the Shape tool draws: 0 a rectangle (two corners), 1 a circle
+    /// (centre, then a point on it), 2 an ellipse (two corners of its box).
+    pub shape_kind: u8,
+}
+
+const SHAPE_KINDS: [(&str, &str, &str); 3] = [
+    ("Rectangle", "square", "Two corners"),
+    ("Circle", "circle", "Its centre, then a point on it"),
+    ("Ellipse", "ellipse", "Two corners of the box round it"),
+];
+
+/// The outline the Shape tool makes from its two clicks, paper mm.
+fn shape_points(kind: u8, a: DVec2, b: DVec2) -> Vec<DVec2> {
+    let ring = |c: DVec2, r: DVec2| -> Vec<DVec2> {
+        (0..72)
+            .map(|i| {
+                let t = i as f64 / 72.0 * std::f64::consts::TAU;
+                c + DVec2::new(t.cos() * r.x, t.sin() * r.y)
+            })
+            .collect()
+    };
+    match kind {
+        1 => ring(a, DVec2::splat(a.distance(b))),
+        2 => ring((a + b) / 2.0, (b - a).abs() / 2.0),
+        _ => {
+            let (lo, hi) = (a.min(b), a.max(b));
+            vec![lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)]
+        }
+    }
 }
 
 /// The guide's colour: a cyan apart from ink, fields and the selection.
@@ -307,21 +336,41 @@ impl CreaBimApp {
     }
 
     /// Change the master shown, as one undo step.
-    fn edit_master(&mut self, label: &str, f: impl FnOnce(&mut SheetTemplate)) {
+    fn edit_master(&mut self, label: &str, f: impl FnOnce(&mut SheetTemplate)) -> bool {
         let Some((id, _, mut t)) = self.master() else {
-            return;
+            return false;
         };
+        let broken_before = t.items.iter().filter(|it| !it.is_valid()).count();
         f(&mut t);
-        if t.validate().is_err() {
-            self.status = "That would make the master unreadable: not changed.".into();
-            return;
+        if let Err(e) = t.validate() {
+            // an item broken before this edit no longer blocks every
+            // change (MU40: the tools seemed to stop drawing); it is
+            // taken out, and said so
+            let bad: Vec<String> = t
+                .items
+                .iter()
+                .filter(|it| !it.is_valid())
+                .map(|it| format!("{it:?}").chars().take(160).collect())
+                .collect();
+            crate::actlog::line(format!("master edit refused: {e}: {bad:?}"));
+            if broken_before > 0 {
+                t.items.retain(|it| it.is_valid());
+                self.status = format!(
+                    "{broken_before} broken item(s) on the master taken out so it can be changed."
+                );
+            } else {
+                self.status = format!("Not changed: {e}.");
+                return false;
+            }
         }
         let r = self
             .doc
             .edit_merged(id, label, move |e| e.kind = ElementKind::SheetTemplate(t));
         if let Err(e) = r {
             self.status = format!("Couldn't change the master: {e}");
+            return false;
         }
+        true
     }
 
     /// Show master `id` in a Masters view: one there, else the focused
@@ -491,7 +540,8 @@ impl CreaBimApp {
                    "hint": "Pick, drag, and resize by its corners; M moves, R turns, Ctrl+D copies, Delete removes; arrows nudge 1 mm (Shift 5 mm)"}),
             json!({"kind": "toggle", "id": "master.tool:line", "icon": "slash", "label": "Line", "on": t == MTool::Line,
                    "hint": "Lines: click corners. Enter or a right-click ends it there; the first corner again closes it; Esc drops it"}),
-            json!({"kind": "toggle", "id": "master.tool:rect", "icon": "square", "label": "Rectangle", "on": t == MTool::Rect,
+            json!({"kind": "menu", "key": "master.shape", "icon": SHAPE_KINDS[self.masters.shape_kind as usize % 3].1, "label": "Shape",
+                   "value": SHAPE_KINDS[self.masters.shape_kind as usize % 3].0, "on": t == MTool::Rect,
                    "hint": "A rectangle: two corners. Its pen, fill and opacity are in Properties"}),
             json!({"kind": "toggle", "id": "master.tool:text", "icon": "text-tool", "label": "Text", "on": t == MTool::Text,
                    "hint": "Text: click where it goes, then type it in Properties"}),
@@ -525,6 +575,16 @@ impl CreaBimApp {
                 v
             }
             "master.newmenu" => self.master_new_items(),
+            "master.shape" => SHAPE_KINDS
+                .iter()
+                .enumerate()
+                .map(|(k, (n, icon, hint))| {
+                    Item::new(format!("master.shapekind:{k}"), *n)
+                        .icon(icon)
+                        .hint(*hint)
+                        .checked(self.masters.shape_kind as usize == k)
+                })
+                .collect(),
             "master.field" => {
                 let own: Vec<(String, String)> =
                     self.master().map(|(_, _, t)| t.fields).unwrap_or_default();
@@ -716,12 +776,24 @@ impl CreaBimApp {
                 self.status = match self.masters.tool {
                     MTool::Select => "Select: pick, drag, or resize by a corner.",
                     MTool::Line => "Line: click corners; Enter or a right-click ends it.",
-                    MTool::Rect => "Rectangle: click two corners.",
+                    MTool::Rect => "Shape: click two points.",
                     MTool::Text => "Text: click where it goes.",
                     MTool::Field => "Field: click where it goes.",
                     MTool::Guide => "Guide: click two points it runs through.",
                 }
                 .into();
+            }
+            "master.shapekind" => {
+                self.masters.shape_kind = arg.parse().unwrap_or(0);
+                self.masters.tool = MTool::Rect;
+                self.masters.drawing.clear();
+                self.status = format!(
+                    "{}: {}.",
+                    SHAPE_KINDS[self.masters.shape_kind as usize % 3].0,
+                    SHAPE_KINDS[self.masters.shape_kind as usize % 3]
+                        .2
+                        .to_lowercase()
+                );
             }
             "master.newfield" => {
                 self.masters.asking_field = Some(String::new());
@@ -871,6 +943,9 @@ impl CreaBimApp {
 
     /// The Masters view: the master's sheet, its drawing and the tools.
     pub(super) fn masters_area(&mut self, ui: &mut egui::Ui, body: Rect) {
+        // what an edit this frame made shows at once, not on the next
+        // pointer move (MU40: a rectangle seemed not to be drawn)
+        let before = self.master().map(|m| m.2);
         if ui.rect_contains_pointer(body) {
             self.masters.hovered_pass = ui.ctx().cumulative_pass_nr();
         }
@@ -1720,8 +1795,8 @@ impl CreaBimApp {
                     let rect_tool = self.masters.tool == MTool::Rect;
                     if let (Some(last), Some((w, _))) = (self.masters.drawing.last(), here) {
                         if rect_tool {
-                            let a = *last;
-                            let pts = [a, DVec2::new(w.x, a.y), w, DVec2::new(a.x, w.y), a];
+                            let mut pts = shape_points(self.masters.shape_kind, *last, w);
+                            pts.push(pts[0]);
                             painter.add(egui::Shape::line(
                                 pts.iter().map(|p| to_s(*p)).collect(),
                                 egui::Stroke::new(1.5, accent),
@@ -1741,26 +1816,36 @@ impl CreaBimApp {
                             if rect_tool && d.len() == 1 {
                                 let a = d[0];
                                 d.clear();
-                                if (w - a).abs().min_element() > 0.1 {
-                                    let (lo, hi) = (a.min(w) - o, a.max(w) - o);
+                                let kind = self.masters.shape_kind;
+                                let big = if kind == 1 {
+                                    a.distance(w) > 0.1
+                                } else {
+                                    (w - a).abs().min_element() > 0.1
+                                };
+                                if big {
+                                    let pts: Vec<DVec2> = shape_points(kind, a, w)
+                                        .into_iter()
+                                        .map(|p| p - o)
+                                        .collect();
                                     let n = t.items.len();
-                                    self.edit_master("Rectangle", |t| {
-                                        t.items.push(TitleItem::Shape {
-                                            points: vec![
-                                                lo,
-                                                DVec2::new(hi.x, lo.y),
-                                                hi,
-                                                DVec2::new(lo.x, hi.y),
-                                            ],
-                                            closed: true,
-                                            pen: Some(0.35),
-                                            colour: [0.0; 3],
-                                            fill: None,
-                                            opacity: 1.0,
-                                        })
-                                    });
-                                    self.masters.sel = Some(n);
-                                    self.status = "Rectangle drawn: its pen, fill and opacity are in Properties.".into();
+                                    let made =
+                                        self.edit_master(SHAPE_KINDS[kind as usize % 3].0, |t| {
+                                            t.items.push(TitleItem::Shape {
+                                                points: pts,
+                                                closed: true,
+                                                pen: Some(0.35),
+                                                colour: [0.0; 3],
+                                                fill: None,
+                                                opacity: 1.0,
+                                            })
+                                        });
+                                    if made {
+                                        self.masters.sel = Some(n);
+                                        self.status = format!(
+                                            "{} drawn: its pen, fill and opacity are in Properties.",
+                                            SHAPE_KINDS[kind as usize % 3].0
+                                        );
+                                    }
                                 }
                             } else if !rect_tool && d.len() >= 2 && d[0].distance(w) < 1e-6 {
                                 finish = true;
@@ -1895,7 +1980,7 @@ impl CreaBimApp {
             match self.masters.tool {
                 MTool::Select => "Click to pick, drag to move, a corner resizes (Shift keeps its shape); M moves, R turns, Ctrl+D copies, Delete removes",
                 MTool::Line => "Click corners; Enter or a right-click ends it, the first corner again closes it; Esc drops it",
-                MTool::Rect => "Click two corners",
+                MTool::Rect => "Rectangle and ellipse: two corners; circle: its centre, then a point on it. Esc or a right-click puts the tool down",
                 MTool::Text => "Click where the text goes; Esc back to Select",
                 MTool::Field => "Click where the field goes: each sheet fills it in; Esc back to Select",
                 MTool::Guide => "Click two points the guide runs through; nearly level or upright, it goes straight. Esc back to Select",
@@ -1910,6 +1995,9 @@ impl CreaBimApp {
         );
         if let Some(look) = look {
             crate::planview::nav_draw(ui, &look);
+        }
+        if self.master().map(|m| m.2) != before {
+            ui.ctx().request_repaint();
         }
         // naming a field of your own, over the view's top left
         if let Some(mut name) = self.masters.asking_field.take() {
