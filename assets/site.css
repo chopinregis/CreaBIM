@@ -277,8 +277,15 @@ td a{color:var(--sage-deep);font-weight:500;overflow-wrap:anywhere}
 /* guide pages */
 .guide{display:grid;grid-template-columns:250px minmax(0,1fr);gap:48px;padding-block:40px 80px;align-items:start}
 .side{position:sticky;top:84px;max-height:calc(100vh - 100px);overflow:auto;font-size:14px;padding-right:6px}
-.side h4{font:12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
-.side h4:first-child{margin-top:0}
+.side details.sg{border:0;border-bottom:1px solid var(--line);padding:0}
+.side details.sg:last-child{border-bottom:0}
+.side .sg summary{font:800 15px var(--head);color:var(--ink);letter-spacing:0;padding:11px 10px;border-radius:6px;align-items:center;gap:8px;justify-content:flex-start}
+.side .sg summary:hover{color:var(--sage-deep);background:var(--sage-wash)}
+.side .sg summary span{font:500 11px var(--mono);color:var(--muted);background:var(--paper-3);border-radius:999px;padding:1px 7px;margin-left:auto}
+.side .sg summary::after{content:"";width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;margin:0 4px 0 2px;flex:none}
+.side .sg[open] summary::after{content:"";transform:rotate(45deg) translate(-2px,-2px)}
+.side .sg[open] summary{color:var(--sage-deep)}
+.side .sg ul{padding:0 0 10px 8px}
 .side ul{list-style:none;margin:0;padding:0}
 .side a{display:block;text-decoration:none;color:var(--ink-2);padding:4px 10px;border-radius:6px}
 .side a:hover{color:var(--sage)}

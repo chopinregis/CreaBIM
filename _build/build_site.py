@@ -782,7 +782,11 @@ def guide_index(pages, prefix, current=None, side=False):
     out = []
     for sec, ids in SECTIONS.items():
         li = "".join(f'<li><a href="{prefix}{p}.html"{" aria-current=page" if p == current else ""}>{html.escape(pages[p])}</a></li>' for p in ids)
-        out.append(f"<h4>{sec}</h4><ul>{li}</ul>" if side else f"<section><h3>{sec}</h3><ul>{li}</ul></section>")
+        if side:
+            here = " open" if current in ids else ""
+            out.append(f'<details class="sg"{here}><summary>{sec}<span>{len(ids)}</span></summary><ul>{li}</ul></details>')
+        else:
+            out.append(f"<section><h3>{sec}</h3><ul>{li}</ul></section>")
     return "".join(out)
 
 
