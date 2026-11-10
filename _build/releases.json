@@ -1,0 +1,58 @@
+[
+ {
+  "tag": "v1.0.1",
+  "name": "CreaBIM 1.0.1 \u00b7 2026-11-09",
+  "date": "2026-11-10",
+  "url": "https://github.com/chopinregis/CreaBIM/releases/tag/v1.0.1",
+  "assets": [
+   {
+    "name": "CreaBIM-1.0.1-2026-11-09-linux-x64.tar.gz",
+    "size": 22605084,
+    "url": "https://github.com/chopinregis/CreaBIM/releases/download/v1.0.1/CreaBIM-1.0.1-2026-11-09-linux-x64.tar.gz"
+   },
+   {
+    "name": "CreaBIM-1.0.1-2026-11-09-windows-x64-setup.exe",
+    "size": 16191488,
+    "url": "https://github.com/chopinregis/CreaBIM/releases/download/v1.0.1/CreaBIM-1.0.1-2026-11-09-windows-x64-setup.exe"
+   },
+   {
+    "name": "CreaBIM-1.0.1-2026-11-09-windows-x64.zip",
+    "size": 20560045,
+    "url": "https://github.com/chopinregis/CreaBIM/releases/download/v1.0.1/CreaBIM-1.0.1-2026-11-09-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 328,
+    "url": "https://github.com/chopinregis/CreaBIM/releases/download/v1.0.1/SHA256SUMS.txt"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.0",
+  "name": "CreaBIM 1.0.0 \u00b7 2026-11-09",
+  "date": "2026-11-10",
+  "url": "https://github.com/chopinregis/CreaBIM/releases/tag/v1.0.0",
+  "assets": [
+   {
+    "name": "CreaBIM-1.0.0-2026-11-09-linux-x64.tar.gz",
+    "size": 22588406,
+    "url": "https://github.com/chopinregis/CreaBIM/releases/download/v1.0.0/CreaBIM-1.0.0-2026-11-09-linux-x64.tar.gz"
+   },
+   {
+    "name": "CreaBIM-1.0.0-2026-11-09-windows-x64-setup.exe",
+    "size": 16216064,
+    "url": "https://github.com/chopinregis/CreaBIM/releases/download/v1.0.0/CreaBIM-1.0.0-2026-11-09-windows-x64-setup.exe"
+   },
+   {
+    "name": "CreaBIM-1.0.0-2026-11-09-windows-x64.zip",
+    "size": 20544855,
+    "url": "https://github.com/chopinregis/CreaBIM/releases/download/v1.0.0/CreaBIM-1.0.0-2026-11-09-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 328,
+    "url": "https://github.com/chopinregis/CreaBIM/releases/download/v1.0.0/SHA256SUMS.txt"
+   }
+  ]
+ }
+]

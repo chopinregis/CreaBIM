@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Step 6: look at it · CreaBIM</title>
+<meta name="description" content="Everything you see in CreaBIM is drawn from the model. You never draw a section by hand: you say where to cut, and CreaBIM draws it.">
+<link rel="canonical" href="https://chopinregis.github.io/CreaBIM/guide/start-views.html">
+<meta property="og:title" content="Step 6: look at it · CreaBIM">
+<meta property="og:description" content="Everything you see in CreaBIM is drawn from the model. You never draw a section by hand: you say where to cut, and CreaBIM draws it.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://chopinregis.github.io/CreaBIM/guide/start-views.html">
+<meta property="og:image" content="https://chopinregis.github.io/CreaBIM/assets/img/app-3d-and-plan.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#F5F4EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141712" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="64x64" href="../assets/logo/icon-64.png">
+<link rel="apple-touch-icon" href="../assets/logo/icon-256.png">
+<script>try{var t=localStorage.getItem("creabim-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="mark" viewBox="0 0 200 200"><g transform="translate(9 4)"><path d="M26 52 H174" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/><path d="M130 52 C162 64 172 100 166 128 C160 156 146 166 142 190 L118 190 C114 166 98 156 94 128 C88 100 98 64 130 52 Z" fill="currentColor"/><path d="M98 98 L164 124 M96 132 L160 156" fill="none" stroke="var(--paper)" stroke-width="9" stroke-linecap="round"/><path d="M44.5 8.0 C51.2 2.1 63.8 3.0 67.2 12.2 C69.7 18.9 66.4 24.8 63.0 29.0 C61.3 39.9 52.9 50.0 38.6 50.8 C32.8 51.3 27.7 50.0 23.5 48.3 L8.4 56.7 L16.8 43.3 C14.3 35.7 16.0 27.3 21.8 22.3 C27.7 17.2 37.8 14.7 44.5 8.0 Z M65.5 10.5 L80.6 16.4 L65.5 21.4 Z" fill="currentColor"/><circle cx="61.5" cy="11.4" r="2.8" fill="var(--paper)"/></g></symbol>
+<symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-gh" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.5-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.4 1.1 2.9.8.1-.6.3-1.100.6-1.3-2.2-.3-4.6-1.1-4.6-5a3.9 3.9 0 0 1 1-2.7c-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2z" fill="currentColor"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+<symbol id="i-off" viewBox="0 0 24 24"><path d="M4 7h16v10H4zM8 21h8M12 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6zM14 2v4h4M9 13h6M9 17h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2 3 7v10l9 5 9-5V7zM3 7l9 5 9-5M12 12v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="i-sheet" viewBox="0 0 24 24"><path d="M3 4h18v16H3zM3 16h18M14 16v4M7 8h6M7 11h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+<symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14l-4-4M20 16H6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="m10 8 6 4-6 4z" fill="currentColor"/></symbol>
+<symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3zM12 4.3 21 3v8.5h-9zM3 12.5h7.5v7L3 18.5zM12 12.5h9V21l-9-1.3z" fill="currentColor"/></symbol>
+<symbol id="i-linux" viewBox="0 0 24 24"><path d="M12 2c-2.2 0-3.5 1.8-3.5 4.3 0 1.5.3 2.4-.6 3.9C6.6 12.3 5 14.400 5 17c0 1 .4 1.8 1 2.300-.6.4-1.300.8-1.300 1.4C4.700 21.700 6 22 7.500 22c1.300 0 2.300-.6 3-1.100.5.1 1 .1 1.500.1s1-.1 1.500-.1c.700.500 1.700 1.100 3 1.100 1.500 0 2.800-.3 2.800-1.300 0-.6-.700-1-1.300-1.400.600-.5 1-1.300 1-2.300 0-2.600-1.600-4.700-2.900-6.800-.900-1.500-.6-2.400-.6-3.900C15.500 3.800 14.200 2 12 2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="10.300" cy="7" r=".9" fill="currentColor"/><circle cx="13.700" cy="7" r=".9" fill="currentColor"/><path d="M10.500 9.300 12 10.300l1.500-1" fill="none" stroke="currentColor" stroke-width="1.500" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.400 9.300 8 11 4.600-1.700 8-6 8-11V5zM8.500 12l2.500 2.500 4.500-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+</defs></svg>
+<header class="nav gutter">
+  <div class="wrap">
+    <a class="brand" href="../index.html" aria-label="CreaBIM home"><svg aria-hidden="true"><use href="#mark"/></svg>creabim</a>
+    <nav class="links" aria-label="Site"><a href="../index.html">Home</a><a href="../features.html">Features</a><a href="../tutorials/index.html">Tutorials</a><a href="../guide/welcome.html" aria-current=page>Guide</a><a href="../download.html">Download</a></nav>
+    <div class="end">
+      <button class="ghost" id="theme" type="button" aria-label="Switch between light and dark"><svg class="i-sun"><use href="#i-sun"/></svg><svg class="i-moon"><use href="#i-moon"/></svg></button>
+      <a class="btn gh" href="https://github.com/chopinregis/CreaBIM"><svg aria-hidden="true"><use href="#i-gh"/></svg>GitHub</a>
+      <a class="btn primary dlbtn" href="../download.html"><svg aria-hidden="true"><use href="#i-dl"/></svg><span>Download</span></a>
+      <button class="ghost" id="menu" type="button" aria-label="Menu" aria-expanded="false"><svg><use href="#i-menu"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+
+  <div class="wrap gutter guide">
+    <button class="side-toggle" type="button" aria-expanded="false">Guide contents <span aria-hidden="true">▾</span></button>
+    <nav class="side" aria-label="Guide"><h4>Getting started</h4><ul><li><a href="welcome.html">Welcome to CreaBIM</a></li><li><a href="starter-house.html">The starter house</a></li><li><a href="start.html">Getting started: a first house</a></li><li><a href="start-project.html">Step 1: start a project</a></li><li><a href="start-levels.html">Step 2: set up the levels</a></li><li><a href="start-walls.html">Step 3: draw the walls</a></li><li><a href="start-openings.html">Step 4: add doors and windows</a></li><li><a href="start-floors-roofs.html">Step 5: add a floor and a roof</a></li><li><a href="start-views.html" aria-current=page>Step 6: look at it</a></li><li><a href="start-sheets.html">Step 7: put it on a sheet</a></li><li><a href="start-export.html">Step 8: save and export</a></li><li><a href="interface.html">The window at a glance</a></li><li><a href="navigate.html">Moving around the views</a></li></ul><h4>Selecting and editing</h4><ul><li><a href="select.html">Selecting</a></li><li><a href="move.html">Move, rotate, scale, mirror and offset</a></li><li><a href="align.html">Align, Extend and Stretch</a></li><li><a href="handles.html">Handles and grips</a></li><li><a href="edit-mode.html">Edit mode</a></li><li><a href="edit.html">Copy, paste, delete and undo</a></li></ul><h4>Building the model</h4><ul><li><a href="levels.html">Levels</a></li><li><a href="walls.html">Walls</a></li><li><a href="doors-windows.html">Doors and windows</a></li><li><a href="holes.html">Holes, wall openings and shafts</a></li><li><a href="slabs.html">Slabs</a></li><li><a href="roofs.html">Roofs</a></li><li><a href="columns-beams.html">Columns and beams</a></li><li><a href="stairs-railings.html">Stairs and railings</a></li><li><a href="footings.html">Footings</a></li><li><a href="parts.html">Extrusions, sweeps and voids</a></li><li><a href="site.html">Site: terrain, hard landscape and planting</a></li><li><a href="curtain-walls.html">Curtain walls</a></li><li><a href="types.html">Types</a></li><li><a href="assemblies.html">Layered assemblies</a></li><li><a href="materials.html">Materials</a></li><li><a href="masses.html">Masses, modifiers and booleans</a></li><li><a href="sketches.html">Sketches and the workplane</a></li><li><a href="grids.html">Grids</a></li><li><a href="furniture.html">Furniture and fixtures</a></li><li><a href="fixtures.html">Electrical, plumbing and HVAC fixtures</a></li><li><a href="rooms.html">Rooms</a></li><li><a href="ceilings.html">Ceilings</a></li><li><a href="joins.html">Joins</a></li></ul><h4>Views and drawings</h4><ul><li><a href="views.html">Views</a></li><li><a href="sections.html">Sections and elevations</a></li><li><a href="view-range.html">View range</a></li><li><a href="graphic-styles.html">Graphic styles</a></li><li><a href="visibility.html">Visibility and X-ray</a></li><li><a href="crop-boxes.html">Crop boxes</a></li><li><a href="trace-reference.html">Trace and reference</a></li><li><a href="details.html">Details</a></li><li><a href="schedules.html">Schedules</a></li><li><a href="take-off.html">Take-off</a></li><li><a href="sheets.html">Sheets and title blocks</a></li></ul><h4>Annotation</h4><ul><li><a href="dimensions.html">Dimensions</a></li><li><a href="tags.html">Tags</a></li><li><a href="marks.html">Marks and numbering</a></li><li><a href="spot-levels.html">Spot levels</a></li><li><a href="notes.html">Notes</a></li><li><a href="styles.html">Annotation styles</a></li></ul><h4>Drawing aids</h4><ul><li><a href="snaps.html">Snaps</a></li><li><a href="guides.html">Guides</a></li><li><a href="units.html">Units</a></li><li><a href="project-info.html">Project information</a></li></ul><h4>Files and exchange</h4><ul><li><a href="files.html">Opening and saving</a></li><li><a href="ifc.html">IFC</a></li><li><a href="blender.html">Blender</a></li><li><a href="freecad.html">FreeCAD</a></li><li><a href="gltf.html">glTF</a></li><li><a href="dxf-svg.html">PDF, SVG and DXF</a></li></ul><h4>Reference</h4><ul><li><a href="shortcuts.html">Keyboard shortcuts</a></li><li><a href="glossary.html">BIM words explained</a></li><li><a href="about.html">About CreaBIM</a></li></ul></nav>
+    <article class="doc">
+      <div class="crumbs"><a href="../tutorials/index.html">Tutorials</a><span>/</span><a href="../tutorials/index.html#guide">Guide</a><span>/</span><span>Getting started</span></div>
+      <h1>Step 6: look at it</h1>
+<p>Everything you see in CreaBIM is drawn from the model. You never draw a section by hand: you say where to cut, and CreaBIM draws it.</p>
+<h2 id="turn-around-in-3d">Turn around in 3D</h2>
+<p>In the 3D view, drag with the middle mouse button to orbit (or <kbd>Alt</kbd> + left drag), drag with the right button to pan, and roll the wheel to zoom; a left drag selects with a box. <kbd>Home</kbd> frames the whole model. See <a href="navigate.html">Moving around the views</a>.</p>
+<h2 id="cut-a-section">Cut a section</h2>
+<ol><li>Open the floor plan.</li><li>Pick the <strong>Section</strong> tool.</li><li>Click two points across the house. The section looks to the <strong>left</strong> of the direction you draw.</li><li>Open the new section from the project browser (under <em>Sections</em>), or from the view switcher at the top right.</li></ol>
+<p>Cut walls and slabs are drawn heavy and hatched; what lies beyond is drawn in thinner lines. Elevations work the same way with the <strong>Elevation</strong> tool: draw them outside the building.</p>
+<figure><img src="../assets/help/section.jpg" alt="A section, made from the model" loading="lazy"><figcaption>A section, made from the model</figcaption></figure>
+<p>Change a wall, and the plan, the section and the 3D view all change with it.</p>
+<p>More: <a href="views.html">Views</a> and <a href="sections.html">Sections and elevations</a>.</p>
+<p><strong>Next:</strong> <a href="start-sheets.html">Put it on a sheet</a></p>
+      <nav class="pager" aria-label="Pages"><a href="start-floors-roofs.html"><span>Previous</span><b>Step 5: add a floor and a roof</b></a><a class="next" href="start-sheets.html"><span>Next</span><b>Step 7: put it on a sheet</b></a></nav>
+    </article>
+  </div>
+
+</main>
+<footer class="gutter">
+  <div class="wrap">
+    <a class="brand" href="../index.html"><svg aria-hidden="true"><use href="#mark"/></svg>creabim</a>
+    <span>Free and open source · GPL-3.0-or-later</span>
+    <nav aria-label="Footer"><a href="../features.html">Features</a><a href="../tutorials/index.html">Tutorials</a><a href="../download.html">Download</a><a href="https://github.com/chopinregis/CreaBIM">GitHub</a><a href="https://github.com/chopinregis/CreaBIM/issues">Report a bug</a><a href="https://github.com/chopinregis/CreaBIM/discussions">Discussions</a></nav>
+  </div>
+</footer>
+<script src="../assets/site.js" defer></script>
+</body>
+</html>

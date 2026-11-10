@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://chopinregis.github.io/CreaBIM/sitemap.xml
