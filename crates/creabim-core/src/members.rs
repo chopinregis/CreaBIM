@@ -260,6 +260,86 @@ pub struct Beam {
     /// point on the beam's top line; `width` and `depth` follow it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section: Option<Section>,
+    /// How far each end's top sits above the beam's top (MU40): a sloped
+    /// rafter, a purlin up a roof face, a brace in a wall.
+    #[serde(default, skip_serializing_if = "is_zero2")]
+    pub rise: [f64; 2],
+    /// The section's up, square to the face it was drawn on (MU40: a beam
+    /// on a roof slope lies in the slope); none, plumb.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub up: Option<DVec3>,
+    /// How far each end runs past its point (negative: pulled back, where
+    /// a column or wall runs through).
+    #[serde(default, skip_serializing_if = "is_zero2")]
+    pub extend: [f64; 2],
+    /// How each end is cut: square, or along a plane (a mitre with the
+    /// next beam of its chain), by that plane's normal.
+    #[serde(default, skip_serializing_if = "no_cuts")]
+    pub cuts: [Option<DVec3>; 2],
+}
+
+fn is_zero2(v: &[f64; 2]) -> bool {
+    v[0] == 0.0 && v[1] == 0.0
+}
+
+fn no_cuts(v: &[Option<DVec3>; 2]) -> bool {
+    v[0].is_none() && v[1].is_none()
+}
+
+/// How the beams of a chain meet at its corners (MU40).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BeamCorner {
+    /// Each runs to the corner point, as concrete pieces poured apart.
+    #[default]
+    Separate,
+    /// Cut along the line halfway between them, as welded steel.
+    Mitred,
+    /// The first runs through, the second stops against it.
+    Butt,
+}
+
+impl BeamCorner {
+    pub const ALL: [BeamCorner; 3] = [BeamCorner::Separate, BeamCorner::Mitred, BeamCorner::Butt];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            BeamCorner::Separate => "Separate",
+            BeamCorner::Mitred => "Mitred",
+            BeamCorner::Butt => "Butt",
+        }
+    }
+}
+
+/// Meet beams `a` (ending at the corner) and `b` (starting there) as
+/// `how` says: their end cuts and extensions.
+pub fn join_beams(a: &mut Beam, b: &mut Beam, how: BeamCorner) {
+    let da = (a.end - a.start).normalize_or_zero();
+    let db = (b.end - b.start).normalize_or_zero();
+    match how {
+        BeamCorner::Separate => {
+            a.cuts[1] = None;
+            b.cuts[0] = None;
+            a.extend[1] = 0.0;
+            b.extend[0] = 0.0;
+        }
+        BeamCorner::Mitred => {
+            // the plane halfway between the two runs, through the corner
+            let n = (da + db).normalize_or(da);
+            // each end slid onto the cut, inside and outside of the turn
+            a.cuts[1] = Some(n.extend(0.0));
+            b.cuts[0] = Some(n.extend(0.0));
+            a.extend[1] = 0.0;
+            b.extend[0] = 0.0;
+        }
+        BeamCorner::Butt => {
+            // the first runs through to the second's far face, the second
+            // stops at the first's near face
+            a.cuts[1] = None;
+            b.cuts[0] = None;
+            a.extend[1] = b.width / 2.0;
+            b.extend[0] = -a.width / 2.0;
+        }
+    }
 }
 
 impl Beam {
@@ -273,7 +353,20 @@ impl Beam {
             top_offset: 0.0,
             material: None,
             section: None,
+            rise: [0.0, 0.0],
+            up: None,
+            extend: [0.0, 0.0],
+            cuts: [None, None],
         }
+    }
+
+    /// Its top line's ends in 3D, with its rise and extensions.
+    pub fn axis(&self, model: &Model) -> (DVec3, DVec3) {
+        let top = self.top(model);
+        let a = self.start.extend(top + self.rise[0]);
+        let b = self.end.extend(top + self.rise[1]);
+        let d = (b - a).normalize_or_zero();
+        (a - d * self.extend[0], b + d * self.extend[1])
     }
 
     pub fn length(&self) -> f64 {
@@ -285,9 +378,13 @@ impl Beam {
         elevation(model, self.level) + storey_height(model, self.level) - self.top_offset
     }
 
-    /// The footprint in plan, counter-clockwise.
+    /// The footprint in plan, counter-clockwise, with its extensions.
     pub fn outline(&self) -> Vec<DVec2> {
         let d = (self.end - self.start).normalize_or_zero();
+        let (start, end) = (
+            self.start - d * self.extend[0],
+            self.end + d * self.extend[1],
+        );
         // a library section: as wide as it reaches either side
         let (l, r) = match &self.section {
             Some(s) if !s.points.is_empty() => {
@@ -298,12 +395,7 @@ impl Beam {
             _ => (self.width / 2.0, self.width / 2.0),
         };
         let (nl, nr) = (d.perp() * l, d.perp() * r);
-        vec![
-            self.start - nr,
-            self.end - nr,
-            self.end + nl,
-            self.start + nl,
-        ]
+        vec![start - nr, end - nr, end + nl, start + nl]
     }
 }
 

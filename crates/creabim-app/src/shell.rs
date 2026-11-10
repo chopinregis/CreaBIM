@@ -409,6 +409,18 @@ impl CreaBimApp {
             "units.menu" => self.unit_items(),
             "select.menu" => self.select_menu_items(),
             "sweep.library" => self.sweep_library_items(),
+            "beam.corner" => creabim_core::members::BeamCorner::ALL
+                .iter()
+                .map(|c| {
+                    Item::new(format!("beam.corner:{}", c.label()), c.label())
+                        .checked(*c == self.plan.members.beam_corner)
+                })
+                .collect(),
+            "railing.library" => self.library_items(
+                "railing.lib",
+                self.plan.members.railing_section.clone(),
+                Some("Its own: a square bar"),
+            ),
             "column.library" => self.library_items(
                 "column.lib",
                 self.plan.members.column_section.clone(),

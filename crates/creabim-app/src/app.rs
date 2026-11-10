@@ -201,6 +201,9 @@ pub struct CreaBimApp {
     snaps_3d: Option<(u64, Vec<ElementId>, Snapper)>,
     /// First click of a two-click tool in the 3D view, on a level.
     pending_3d: Option<(DVec2, ElementId)>,
+    /// A beam drawn on a face (MU40): its first point, the face's plane
+    /// (a point and its outward normal).
+    beam_face: Option<(DVec3, DVec3, DVec3)>,
     /// Points rested on while drawing in 3D, that the next point lines up
     /// with, and the one being rested on now (MU24: as in plans).
     rested_3d: (Vec<DVec3>, Option<(DVec3, f64)>),
@@ -403,6 +406,7 @@ impl CreaBimApp {
             box_3d: None,
             snaps_3d: None,
             pending_3d: None,
+            beam_face: None,
             rested_3d: (vec![], None),
             menu_at_3d: None,
             menu_plane_3d: None,
@@ -4163,6 +4167,172 @@ impl CreaBimApp {
         }
     }
 
+    /// The Beam tool's On face mode in 3D: the first click picks a face
+    /// (a roof slope, a wall) and a point on it; every next click is kept
+    /// in that face's plane, and each beam lies on the face, its section
+    /// square to it, sitting on its surface. Clicks chain beams; Esc or a
+    /// right-click ends the chain.
+    fn beam_on_face_3d(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        painter: &egui::Painter,
+        project: &dyn Fn(DVec3) -> Option<egui::Pos2>,
+        ray: &dyn Fn(egui::Pos2) -> (DVec3, DVec3),
+        level: ElementId,
+    ) {
+        let accent = crate::theme::interaction();
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) || response.secondary_clicked() {
+            if self.beam_face.take().is_none() {
+                self.plan.tool = Tool::Select;
+            }
+            self.status = "Beams on face: click a face to start.".into();
+            return;
+        }
+        let Some(hover) = response.hover_pos() else {
+            return;
+        };
+        let (o, d) = ray(hover);
+        // where the pointer is: on the face picked first, else on the face
+        // under it
+        let face = pick::pick_face(&self.scene, o.as_vec3(), d.as_vec3());
+        let (at, plane) = match self.beam_face {
+            Some((_, p0, n)) => {
+                let den = d.dot(n);
+                if den.abs() < 1e-9 {
+                    return;
+                }
+                let t = (p0 - o).dot(n) / den;
+                if t <= 0.0 {
+                    return;
+                }
+                (o + d * t, Some((p0, n)))
+            }
+            None => match &face {
+                Some(f) => (f.point, Some((f.point, f.normal))),
+                None => {
+                    if response.clicked() {
+                        self.status =
+                            "Beams on face: click a face (a roof slope, a wall, a slab).".into();
+                    }
+                    return;
+                }
+            },
+        };
+        // the face's corners and the middles of its edges snap
+        let mut at = at;
+        if let Some(f) = &face {
+            let mut best = 12.0f32;
+            for tri in &f.triangles {
+                for k in 0..3 {
+                    for q in [tri[k], (tri[k] + tri[(k + 1) % 3]) / 2.0] {
+                        let on_plane = plane.is_none_or(|(p0, n)| (q - p0).dot(n).abs() < 1e-4);
+                        if let (Some(s), true) = (project(q), on_plane) {
+                            let dd = s.distance(hover);
+                            if dd < best {
+                                best = dd;
+                                at = q;
+                            }
+                        }
+                    }
+                }
+            }
+            if best < 12.0 {
+                if let Some(s) = project(at) {
+                    painter.rect_stroke(
+                        egui::Rect::from_center_size(s, egui::vec2(10.0, 10.0)),
+                        0.0,
+                        egui::Stroke::new(1.5, accent),
+                        egui::StrokeKind::Middle,
+                    );
+                }
+            }
+        }
+        let set = self.plan.members.clone();
+        if let Some((a, _, n)) = self.beam_face {
+            if let (Some(sa), Some(sb)) = (project(a), project(at)) {
+                painter.line_segment([sa, sb], egui::Stroke::new(2.0, accent));
+                // its depth, standing off the face
+                if let (Some(sa2), Some(sb2)) = (
+                    project(a + n * set.beam_depth),
+                    project(at + n * set.beam_depth),
+                ) {
+                    painter.add(egui::Shape::closed_line(
+                        vec![sa, sb, sb2, sa2],
+                        egui::Stroke::new(1.0, accent),
+                    ));
+                }
+                painter.text(
+                    sb + egui::vec2(10.0, -12.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    crate::units::len(a.distance(at)),
+                    egui::FontId::proportional(13.0),
+                    accent,
+                );
+            }
+        } else if let Some(s) = project(at) {
+            painter.circle_stroke(s, 6.0, egui::Stroke::new(1.5, accent));
+        }
+        if !response.clicked() {
+            return;
+        }
+        let Some((p0, n)) = plane else { return };
+        let Some((a, _, _)) = self.beam_face else {
+            self.beam_face = Some((at, p0, n));
+            self.status = "Beam on face: click its other end; it stays on this face.".into();
+            return;
+        };
+        if a.distance(at) < 1e-3 {
+            return;
+        }
+        // its top line stands off the face by its depth, so it sits on it
+        let (ta, tb) = (a + n * set.beam_depth, at + n * set.beam_depth);
+        let model = self.doc.model();
+        let top0 = creabim_core::members::elevation(model, level)
+            + creabim_core::members::storey_height(model, level);
+        let mut b = creabim_core::Beam::new(level, ta.truncate(), tb.truncate());
+        b.width = set.beam_width;
+        b.depth = set.beam_depth;
+        b.top_offset = top0 - ta.z;
+        b.rise = [0.0, tb.z - ta.z];
+        b.up = Some(n);
+        if let Some(nm) = set.beam_section.as_deref() {
+            if let Some(pts) = creabim_core::profiles::find(model, nm) {
+                b.section = Some(creabim_core::members::Section {
+                    name: nm.to_string(),
+                    points: pts,
+                });
+            }
+        }
+        let e = self
+            .plan
+            .typed(model, Element::new("Beam", ElementKind::Beam(b)));
+        // the one before in this chain, ending where this starts
+        let prev = self.selection.active.and_then(|id| model.get(id).cloned()).filter(|pe| {
+            matches!(&pe.kind, ElementKind::Beam(pb) if pb.end.distance(ta.truncate()) < 1e-6)
+        });
+        let id = e.id;
+        let tx = match prev {
+            Some(pe) => {
+                let (mut pe2, mut ne) = (pe.clone(), e);
+                if let (ElementKind::Beam(pb), ElementKind::Beam(nb)) =
+                    (&mut pe2.kind, &mut ne.kind)
+                {
+                    creabim_core::members::join_beams(pb, nb, set.beam_corner);
+                }
+                Transaction::new("Beam on face").replace(pe, pe2).insert(ne)
+            }
+            None => Transaction::new("Beam on face").insert(e),
+        };
+        let r = self.doc.commit(tx);
+        self.selection.only(id);
+        self.beam_face = Some((at, p0, n));
+        self.report(
+            r,
+            "Beam on the face. Click on to chain the next; Esc or a right-click ends.",
+        );
+    }
+
     fn tools_3d(
         &mut self,
         ui: &egui::Ui,
@@ -4266,6 +4436,12 @@ impl CreaBimApp {
             return;
         }
 
+        // a beam on a face: it lies in the face's plane, square to it,
+        // wherever the second point is drawn (MU40)
+        if tool == Tool::Beam && self.plan.members.beam_on_face {
+            self.beam_on_face_3d(ui, response, painter, project, ray, level);
+            return;
+        }
         // everything else is drawn on the working level
         let from = self
             .pending_3d

@@ -40,6 +40,13 @@ pub struct MemberSettings {
     /// square, round or width × depth (MU40).
     pub column_section: Option<String>,
     pub beam_section: Option<String>,
+    /// How a chain of beams meets at its corners (MU40).
+    pub beam_corner: creabim_core::members::BeamCorner,
+    /// Beams drawn in 3D lie on the face clicked (a roof slope, a wall),
+    /// square to it, rather than level (MU40).
+    pub beam_on_face: bool,
+    /// The library profile new railings' top rail takes (MU40).
+    pub railing_section: Option<String>,
 }
 
 impl Default for MemberSettings {
@@ -65,6 +72,9 @@ impl Default for MemberSettings {
             hole: [1.0, 1.0, 1.0],
             column_section: None,
             beam_section: None,
+            beam_corner: Default::default(),
+            beam_on_face: false,
+            railing_section: None,
         }
     }
 }
@@ -168,35 +178,55 @@ pub fn click(
             let e = state.typed(doc.model(), Element::new("Column", ElementKind::Column(c)));
             add(doc, selection, e, "Place column")
         }
-        Tool::Beam => match state.pending {
-            None => {
-                state.pending = Some(p);
-                state.status = Some("Click the beam's other end.".into());
-                Ok(())
-            }
-            Some(a) if a.distance(p) > 0.05 => {
-                let mut b = Beam::new(level, a, p);
-                b.width = set.beam_width;
-                b.depth = set.beam_depth;
-                // a profile from the library, if one is picked (MU40)
-                if let Some(n) = set.beam_section.as_deref() {
-                    if let Some(pts) = creabim_core::profiles::find(doc.model(), n) {
-                        b.section = Some(creabim_core::members::Section {
-                            name: n.to_string(),
-                            points: pts,
-                        });
+        Tool::Beam => {
+            match state.pending {
+                None => {
+                    state.pending = Some(p);
+                    state.status = Some("Click the beam's other end.".into());
+                    Ok(())
+                }
+                Some(a) if a.distance(p) > 0.05 => {
+                    let mut b = Beam::new(level, a, p);
+                    b.width = set.beam_width;
+                    b.depth = set.beam_depth;
+                    // a profile from the library, if one is picked (MU40)
+                    if let Some(n) = set.beam_section.as_deref() {
+                        if let Some(pts) = creabim_core::profiles::find(doc.model(), n) {
+                            b.section = Some(creabim_core::members::Section {
+                                name: n.to_string(),
+                                points: pts,
+                            });
+                        }
+                    }
+                    // under the slab above, not inside it
+                    b.top_offset = creabim_core::members::beam_top_offset(doc.model(), level, a, p);
+                    state.pending = Some(p);
+                    state.status = Some(
+                        "Beam added. Click on to chain another; Esc or right-click ends.".into(),
+                    );
+                    let e = state.typed(doc.model(), Element::new("Beam", ElementKind::Beam(b)));
+                    // the beam before it in the chain, ending here: the two
+                    // meet as the tool's Corners says (MU40)
+                    let prev = selection.active.and_then(|id| doc.model().get(id).cloned()).filter(
+                    |pe| matches!(&pe.kind, ElementKind::Beam(pb) if pb.end.distance(a) < 1e-6),
+                );
+                    match prev {
+                        Some(pe) => {
+                            let (mut pe2, mut ne) = (pe.clone(), e);
+                            if let (ElementKind::Beam(pb), ElementKind::Beam(nb)) =
+                                (&mut pe2.kind, &mut ne.kind)
+                            {
+                                creabim_core::members::join_beams(pb, nb, set.beam_corner);
+                            }
+                            selection.only(ne.id);
+                            doc.commit(Transaction::new("Draw beam").replace(pe, pe2).insert(ne))
+                        }
+                        None => add(doc, selection, e, "Draw beam"),
                     }
                 }
-                // under the slab above, not inside it
-                b.top_offset = creabim_core::members::beam_top_offset(doc.model(), level, a, p);
-                state.pending = Some(p);
-                state.status =
-                    Some("Beam added. Click on to chain another; Esc or right-click ends.".into());
-                let e = state.typed(doc.model(), Element::new("Beam", ElementKind::Beam(b)));
-                add(doc, selection, e, "Draw beam")
+                Some(_) => Ok(()),
             }
-            Some(_) => Ok(()),
-        },
+        }
         Tool::Stair => match state.pending.take() {
             None => {
                 state.pending = Some(p);
@@ -238,6 +268,7 @@ pub fn click(
                 }
                 let mut r = Railing::new(level, pts.iter().map(|q| q.extend(0.0)).collect());
                 r.height = set.railing_height;
+                r.rail_profile = set.railing_section.clone();
                 state.status = Some("Railing added.".into());
                 return add(
                     doc,
@@ -745,6 +776,47 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
                 | num(ui, "End Y", &mut b.end.y, -1e4, 1e4)
             {
                 label = "Move beam"
+            }
+            // a sloped beam: each end's top above the beam's top (MU40)
+            if num(ui, "Start rise", &mut b.rise[0], -50.0, 50.0)
+                | num(ui, "End rise", &mut b.rise[1], -50.0, 50.0)
+            {
+                label = "Beam slope"
+            }
+            // each end run past its point, or pulled back where a column
+            // or wall runs through (MU40)
+            if num(ui, "Start extension", &mut b.extend[0], -20.0, 20.0)
+                | num(ui, "End extension", &mut b.extend[1], -20.0, 20.0)
+            {
+                label = "Beam extension"
+            }
+            let cuts = b.cuts.iter().filter(|c| c.is_some()).count();
+            if cuts > 0 || b.up.is_some() {
+                crate::props::row(ui, "Ends", |ui| {
+                    ui.label(match cuts {
+                        0 => "Square".to_string(),
+                        1 => "One mitred".to_string(),
+                        _ => "Both mitred".to_string(),
+                    })
+                });
+                let (square, plumb) = crate::props::actions2(
+                    ui,
+                    "",
+                    ("Square ends", "Take the mitre cuts off its ends", cuts > 0),
+                    (
+                        "Stand plumb",
+                        "Its section upright again, not square to the face it was drawn on",
+                        b.up.is_some(),
+                    ),
+                );
+                if square {
+                    b.cuts = [None, None];
+                    label = "Square ends";
+                }
+                if plumb {
+                    b.up = None;
+                    label = "Beam plumb";
+                }
             }
             weak(
                 ui,
@@ -1256,6 +1328,18 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
         ],
         Tool::Beam => vec![
             json!({
+                "kind": "menu", "key": "beam.corner", "label": "Corners",
+                "value": m.beam_corner.label(), "icon": "corner-down-right",
+                "hint": "How the beams of a chain meet: Separate (concrete pieces), Mitred (welded steel) or Butt (one runs through, the next stops against it)",
+            }),
+            toggle(
+                "beam.onface",
+                "On face",
+                m.beam_on_face,
+                "scan",
+                "In 3D, beams lie on the face clicked (a roof slope, a wall), square to it: purlins, rafters, braces",
+            ),
+            json!({
                 "kind": "menu", "key": "beam.library", "label": "Profile",
                 "value": m.beam_section.clone().unwrap_or_else(|| "Its own".into()), "icon": "profile",
                 "on": m.beam_section.is_some(),
@@ -1364,16 +1448,24 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                 "Thickness of new footings",
             ),
         ],
-        Tool::Railing => vec![num(
-            "railing_height",
-            "Height",
-            m.railing_height,
-            "m",
-            0.05,
-            0.3,
-            3.0,
-            "Height of new railings",
-        )],
+        Tool::Railing => vec![
+            json!({
+                "kind": "menu", "key": "railing.library", "label": "Rail",
+                "value": m.railing_section.clone().unwrap_or_else(|| "Its own".into()), "icon": "profile",
+                "on": m.railing_section.is_some(),
+                "hint": "The top rail's profile from the library (a handrail, a tube, your own), or its own square bar",
+            }),
+            num(
+                "railing_height",
+                "Height",
+                m.railing_height,
+                "m",
+                0.05,
+                0.3,
+                3.0,
+                "Height of new railings",
+            ),
+        ],
         _ => vec![],
     };
     if !out.is_empty() {
@@ -1416,6 +1508,7 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
 pub fn toggle_option(state: &mut PlanState, what: &str) {
     let m = &mut state.members;
     match what {
+        "beam.onface" => m.beam_on_face = !m.beam_on_face,
         "square" => m.set_round(false),
         "round" => m.set_round(true),
         "lshape" => m.stair_turn = !m.stair_turn,

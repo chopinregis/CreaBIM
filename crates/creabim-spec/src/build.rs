@@ -1173,6 +1173,10 @@ fn beam(c: &mut Ctx, b: &f::Beam, at: &Path) {
         top_offset: c.l(b.top_offset),
         material: None,
         section: None,
+        rise: [0.0, 0.0],
+        up: None,
+        extend: [0.0, 0.0],
+        cuts: [None, None],
     };
     let mut e = Element::new(name_of(&b.name, &b.id), ElementKind::Beam(beam));
     if !stamp(c, &mut e, &b.r#type, f::TypeCategory::Beam, at) {

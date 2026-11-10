@@ -420,6 +420,24 @@ impl CreaBimApp {
                     m.points.reverse();
                 }
             }),
+            "beam.corner" => {
+                if let Some(c) = creabim_core::members::BeamCorner::ALL
+                    .into_iter()
+                    .find(|c| c.label() == arg)
+                {
+                    self.plan.members.beam_corner = c;
+                    self.status =
+                        format!("Beam corners: {}. Chain beams to see them meet.", c.label());
+                }
+            }
+            "railing.lib" => {
+                let lib = (!arg.is_empty()).then(|| arg.to_string());
+                self.plan.members.railing_section = lib.clone();
+                self.status = match lib {
+                    Some(n) => format!("New railings' top rail is {n}."),
+                    None => "New railings take their own square rail again.".into(),
+                };
+            }
             "column.lib" | "beam.lib" => {
                 let lib = (!arg.is_empty()).then(|| arg.to_string());
                 let what = if head == "column.lib" {
