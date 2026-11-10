@@ -1216,24 +1216,38 @@ pub fn plan_view_with(
                 // a mass or sweep below the cut: its top seen tinted, in
                 // its material under the colour styles (MU36: they read as
                 // wireframe)
-                if let ElementKind::Part(p) = k {
-                    if !p.void {
-                        if let Some(mesh) = crate::parts::part_mesh(model, p) {
-                            let color = creabim_core::material_of(model, e)
-                                .map_or([0.78, 0.76, 0.72], |(_, m)| m.color);
-                            let item = crate::scene::SceneItem {
-                                id: e.id,
-                                mesh,
-                                color,
-                                surface: crate::scene::PLAIN_SURFACE,
-                                ghost: false,
-                                layer: None,
-                                finish: None,
-                            };
-                            let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
-                            shades.extend(mesh_shade(&item, z, graphics));
-                        }
+                // and a beam, in its colour as other members' (MU40: a beam
+                // on the roof read as an empty outline)
+                let solid: Option<(crate::TriMesh, [f32; 3])> = match k {
+                    ElementKind::Part(p) if !p.void => {
+                        crate::parts::part_mesh(model, p).map(|m| (m, [0.78, 0.76, 0.72]))
                     }
+                    ElementKind::Beam(b) => {
+                        Some((crate::members::beam_mesh(model, b), [0.72, 0.64, 0.52]))
+                    }
+                    _ => None,
+                };
+                if let Some((mesh, base)) = solid {
+                    let color = creabim_core::material_of(model, e).map_or(base, |(_, m)| m.color);
+                    let item = crate::scene::SceneItem {
+                        id: e.id,
+                        mesh,
+                        color,
+                        surface: crate::scene::PLAIN_SURFACE,
+                        ghost: false,
+                        layer: None,
+                        finish: None,
+                    };
+                    let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
+                    // a beam is seen from above whole, even where the cut
+                    // passes through it (MU40: one on a roof slope crossed
+                    // the cut and had no fill at all)
+                    let z = if matches!(k, ElementKind::Beam(_)) {
+                        f64::MAX
+                    } else {
+                        z
+                    };
+                    shades.extend(mesh_shade(&item, z, graphics));
                 }
             }
             // a column standing on a level below, running up through this one
@@ -2753,5 +2767,35 @@ mod tests {
         assert!(washed(square.clone(), true));
         assert!(!washed(square, false));
         assert!(!washed(bow, true));
+    }
+
+    #[test]
+    fn a_beam_on_a_roof_slope_is_filled_in_its_colour_in_the_plan() {
+        let lv = creabim_core::Element::new(
+            "L1",
+            ElementKind::Level(creabim_core::Level {
+                elevation: 3.0,
+                height: 3.0,
+            }),
+        );
+        let mut b = creabim_core::Beam::new(lv.id, DVec2::ZERO, DVec2::new(4.0, 0.0));
+        // rising through the cut (6 m) from 5.6 to 7.6
+        b.top_offset = 0.4;
+        b.rise = [0.0, 2.0];
+        let be = creabim_core::Element::new("Beam", ElementKind::Beam(b));
+        let id = be.id;
+        let m = Model::from_elements([lv.clone(), be]).unwrap();
+        let g = creabim_core::PlanGraphics {
+            below_fill: true,
+            below_strength: 1.0,
+            ..Default::default()
+        };
+        let v = plan_view_with(&m, lv.id, 3.0, &g);
+        assert!(
+            v.items
+                .iter()
+                .any(|it| matches!(it, PlanItem::Shade { id: i, .. } if *i == id)),
+            "the beam has its fill"
+        );
     }
 }
