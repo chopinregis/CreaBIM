@@ -25,7 +25,11 @@ A reference is saved with the project. One reference can show in **several views
 
 In a section, a reference stands on the section's plane, and its grips and moves stay on that plane. Its lines snap: ends, middles and anywhere along them.
 
-Its dashed outline shows when it is selected or under the pointer; clicking the outline selects it. **Locked** keeps the grips off.
+Its dashed outline shows when it is selected or under the pointer, in plans and in 3D; clicking the outline selects it. **Locked** keeps the grips off.
+
+**Copy to view…** puts a separate copy of the same drawing in another view, with its own place, size and settings.
+
+A trace placed in a [Profile view](profiles#the-profile-view) is kept to that profile: **Only in this profile** is ticked, and it is not drawn in plans, sections or 3D. Untick it to choose the views it shows in, as for any other reference.
 
 ## How it looks
 

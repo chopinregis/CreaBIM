@@ -38,7 +38,11 @@
 
 **Location line**: the line a wall is drawn and dimensioned on. See [Walls](walls#location-line).
 
+**Master**: the frame and title block a sheet is drawn on; change it and every sheet on it changes. See [Masters](masters).
+
 **Mass**: a free 3D shape, for studies or anything that isn't a standard element. See [Masses](masses).
+
+**Modifier**: a change to a mass's shape (an array, a bevel, a shell…) kept apart from the shape itself, so it can be changed or removed later. See [Masses](masses#modifiers).
 
 **Mullion**: a bar of a curtain wall's grid.
 
@@ -63,6 +67,8 @@
 **Sill**: the height of a window's (or opening's) bottom edge above its wall's base.
 
 **Slab**: a floor, ceiling or terrace plate. See [Slabs](slabs).
+
+**Split**: cutting an element in two along a line you choose. See [Split](edit#split).
 
 **Snap**: the pointer jumping to an exact point, such as a corner. See [Snaps](snaps).
 

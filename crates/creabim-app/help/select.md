@@ -6,10 +6,10 @@ The **Select** tool (the arrow, first in the tool row) is where you are most of 
 
 - Click an element in any view: 3D, plan, section, elevation, or a view on a sheet. It turns orange in every view, and *Properties* on the right shows its settings.
 - `Shift+click` adds an element to the selection, or takes it away again.
-- Click on empty space to select nothing. `Alt+A` does the same, and `Ctrl+A` selects everything.
+- Click on empty space to select nothing. In the 3D view `Esc`, with nothing else to step back from, does the same. `Ctrl+A` selects everything. `Alt+A` also selects nothing, unless another program (a chat app's screen capture, say) has taken those keys for itself: then use `Esc` or *Select › Select nothing*.
 - Click a row in the project browser to select that element. `Shift` or `Ctrl` adds to it.
 
-The status bar counts what is selected, by kind ("5 selected: 2 windows, 2 walls, 1 tag"). With several selected, Delete, Move, Copy and Hide act on all of them, and *Properties* shows the one picked last.
+The status bar counts what is selected, and with Select the tool bar ends with the same count, by kind ("5 selected: 2 windows, 2 walls, 1 tag"). With several selected, Delete, Move, Copy and Hide act on all of them, and *Properties* shows the one picked last.
 
 ## Hover first
 
@@ -28,16 +28,37 @@ A plain click without `Tab` takes what it always took. In an elevation this also
 
 For hidden elements you need to work on for a while, [X-ray](visibility#x-ray) (`Alt+Z`) makes walls and slabs faint and puts what is inside them first.
 
-## Select with a box
+## Select with a box, a circle or a lasso
+
+With the Select tool, the tool bar holds three ways to drag a selection:
+
+| Shape | How |
+| --- | --- |
+| **Box** (`B` in 3D) | Drag a rectangle |
+| **Circle** | Drag from the centre outwards |
+| **Lasso** | Draw round what you want, freehand |
 
 - In a plan or section, drag on empty paper.
-- In 3D, press `B`, then drag.
+- In 3D, press `B` (or pick a shape in the tool bar), then drag.
 
-Dragged **left to right** (solid blue), the box takes only what lies wholly inside it. Dragged **right to left** (dashed green), it takes everything it touches. Hold `Shift` to add to what is already selected. While you drag, what the box will catch lights up.
+Dragged **left to right** (solid blue), the shape takes only what lies wholly inside it. Dragged **right to left** (dashed green), it takes everything it touches. While you drag, what it will catch lights up, and a small count by the pointer says how many.
 
-A box starts anywhere except on something already selected (that drag moves it), in plans, sections and sheets, and in the 3D view with the usual mouse scheme. On a sheet, a box on empty paper picks views, marks and notes.
+Beside the shapes, the tool bar sets what a drag does to the selection: **New** (what you take replaces the selection), **Add**, **Subtract**, **Invert** (what you take flips in or out) or **Intersect** (keep only what is both selected and taken). Held keys do the same for one drag: `Shift` adds, `Ctrl` takes away.
+
+A drag starts anywhere except on something already selected (that drag moves it), in plans, sections and sheets, and in the 3D view with the usual mouse scheme. On a sheet, a box on empty paper picks views, marks and notes.
 
 ![A box dragged in a plan](img/box-select.jpg)
+
+## The Select menu
+
+The *Select* menu in the tool bar gathers the rest:
+
+- **Select all** (`Ctrl+A`), **Select nothing**, and **Invert**: select what is not selected, and drop what is.
+- **Box select**, **Circle select** and **Lasso select**.
+- **Select linked**: add what is joined to the selection, such as the walls meeting it and the doors and windows in it.
+- **Select random**: keep about half of the selection, picked at random, to thin out a row.
+- **All by type**: every wall, every door, every slab… with a count, without selecting one first.
+- **Select similar**, as below.
 
 ## Select similar
 

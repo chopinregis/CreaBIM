@@ -2,7 +2,7 @@
 
 ## In the 3D view
 
-The same mouse in every view (*Settings › Mouse*; *Classic* keeps a left drag for orbiting):
+The same mouse in every view (*Settings › Navigation › Mouse*; *Classic* keeps a left drag for orbiting):
 
 | Do this | To |
 | --- | --- |
@@ -14,6 +14,7 @@ The same mouse in every view (*Settings › Mouse*; *Classic* keeps a left drag 
 | Drag with the right button, or `Shift` + middle | Pan |
 | Click with the right button without moving | The menu for what is under the pointer |
 | Roll the wheel | Zoom toward the pointer |
+| `Ctrl` + drag with the middle button | Zoom, as in Blender: drag up to zoom in, down to zoom out |
 | `Home` | Frame everything |
 | `.` | Frame the selection |
 
@@ -37,6 +38,7 @@ The cube in the top right corner of the 3D view turns the view for you:
 | Drag with the left button on empty paper | Select with a box |
 | Drag with the right or middle button | Pan |
 | Roll the wheel | Zoom |
+| `Ctrl` + drag with the middle button | Zoom, as in the 3D view |
 | The buttons at the top right | Zoom in and out (click a step, or drag up and down), fit, frame the selection, and drag the hand to pan |
 | *Zoom to scale* (*⋯ More*) | 1 mm on paper is 1 mm on screen |
 
@@ -54,4 +56,6 @@ A two-finger scroll pans plans, sheets and the 3D view; a pinch zooms. A mouse w
 
 ## The ground grid
 
-The 3D view shows a grid on the working level. Turn it off with the grid button in its navigation bar, and pick its spacing in *View › Ground grid*, including any spacing you type.
+The 3D view shows a grid on the working level. Turn it off with the grid button in its navigation bar, and pick its spacing in *View › Ground grid*, including any spacing you type. The model's X axis runs through it in red and Y in green (*Settings › Viewport*); Z shows in blue only while a move keeps to it.
+
+Plans and sections have a **Grid** button in their header too, with faint red and green lines through the origin.

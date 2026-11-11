@@ -27,13 +27,16 @@ A profile is drawn like any drawing, in a **Profile view**: an area with a grid,
 - **Mirror**: about the insertion point;
 - **Apply**, with a badge counting the elements still made with the old shape.
 
-Over a Profile view, its keys are its own: the app's shortcuts for the model stand aside, while `Ctrl+Z` and `Ctrl+Y` still undo and redo.
+Over a Profile view, its keys are its own: the app's shortcuts for the model stand aside, while `Ctrl+Z` and `Ctrl+Y` still undo and redo. `Ctrl` + middle-drag zooms, as in the other views.
+
+With a Profile view in front, *Properties* shows the **Profile** tab: its name and size, **Faces** (fill every void), flips, and the picked corner's X and Y to type.
 
 ### Drawing a shape
 
 1. Pick **Draw**.
 2. Click the corners. The pointer snaps to corners, guide crossings and trace lines, and level, plumb and 15° guides run from the point you are working from and through every corner.
-3. Finish: click the first corner to close the shape. A double-click, a click on the last corner again, or `Enter` finishes it too; it also closes by itself when its ends meet. A right-click cancels it.
+3. For a curved side press `A` (or the **Arc** button): click the arc's end, then a point it passes through. `L` goes back to straight sides.
+4. Finish: click the first corner to close the shape. A double-click, a click on the last corner again, or `Enter` finishes it too; it also closes by itself when its ends meet. A right-click cancels it.
 
 A profile can hold several shapes. Where shapes cross or nest, **Pick void** empties the face you click (a hole), and a click on a void fills it again.
 
@@ -56,7 +59,7 @@ The **insertion point** is where the profile sits on its path: on a wall's top e
 ## Using a profile
 
 - **Sweep** and **Extrusion**: pick the profile in the tool's options before you click. See [Extrusions, sweeps and voids](parts).
-- **Columns and beams**: *Properties* lists the library's profiles beside the column's own section. See [Columns and beams](columns-beams).
+- **Columns and beams**: the Column and Beam tools take a library profile beside square and round, and *Properties* lists them beside an element's own section. See [Columns and beams](columns-beams).
 - **Railings**: the top rail can take a profile from the library. See [Stairs and railings](stairs-railings).
 
 A selected sweep or extrusion has a **Profile** section in *Properties*: change its profile, **Edit in a view** (opens it in a Profile view), **Update** it to its profile's current shape, or **Save as new** to make its own shape a new profile of the project.

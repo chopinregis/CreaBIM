@@ -6,7 +6,7 @@ A **sketch** is a flat drawing of lines, arcs and circles on a plane. A closed s
 
 1. Pick the **Sketch** tool.
 2. In 3D, click a face to sketch on it (or the ground). In a plan or section, click on the drawing.
-3. Click the corners. `L`, `A` and `C` switch between lines, arcs (click its end, then a point it passes through) and circles (click the centre, then a point on it).
+3. Click the corners. `L`, `A`, `C` and `R` switch between lines, arcs (click its end, then a point it passes through), circles (click the centre, then a point on it) and rectangles (two opposite corners, square to the sketch plane, with its width × height shown while you draw). A circle or a rectangle is a sketch of its own.
 4. Click the first corner to close the sketch, or press `Enter` or right-click to leave it open. `Esc` cancels.
 
 `Shift` keeps lines square.

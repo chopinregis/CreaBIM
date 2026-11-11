@@ -10,11 +10,11 @@ Edit mode opens one element so every one of its grips shows, in every view it is
 
 A layered element's *Properties* has an **Edit its layers in the views** button too.
 
-`Esc`, `Enter` again, *Finish editing* in the right-click menu, or selecting something else closes it. *Properties* says *Editing* while it is open, and the status bar lists what you can do.
+As in Blender, only `Tab`, the mode button or *Finish editing* in the right-click menu closes it. `Esc` drops what is picked and stays in Edit mode, and clicking elsewhere does not leave it either. *Properties* says *Editing* while it is open, and the status bar lists what you can do.
 
 ## Points, edges and faces
 
-In Edit mode, three keys choose what a click picks, as in Blender, and the other kinds of grip step aside:
+In Edit mode the tool bar holds **Points**, **Edges** and **Faces**, for every view at once. They choose what a click picks, as in Blender, and the other kinds of grip step aside. The number keys do the same:
 
 | Key | Picks |
 | --- | --- |
@@ -22,11 +22,21 @@ In Edit mode, three keys choose what a click picks, as in Blender, and the other
 | `2` | **Edges**: sides, edges, jambs |
 | `3` | **Faces**: faces, tops, undersides |
 
-A mass shows only its main grips at rest (its base point, its turn grip and the clicked face's push and pull); every face's arrow, its corners, its edges and the lift arrow come in Edit mode.
+Press the same key again to pick everything. With *Edges*, every edge shows to grab; with *Faces*, a dot marks each face.
+
+## Editing a mass
+
+A mass shows only its main grips at rest (its base point, its turn grip and the clicked face's push and pull); every face's arrow, its corners, its edges and the lift arrow come in Edit mode. It is drawn as in Blender, in thin dark wires with small corner dots (their sizes are in *Settings › Viewport*), and edges and faces light up under the pointer.
+
+- A click picks a point, an edge (anywhere along it) or a face, and it stays lit. `Shift` picks more, a box picks the points in it, and a click on nothing lets go.
+- `G` or `M` moves what is picked, `R` turns it and `S` scales it about its middle. Type a value or keep to an axis as in [Move](move).
+- The *Mesh edit* section of *Properties* extrudes, insets and tapers the picked face (see [Masses](masses#mesh-edit)).
+
+![Edit mode on a mass, with a face picked](img/edit-mode-mass.jpg)
 
 ## Layers: each layer's ends
 
-On a layered wall, press `Tab` in Edit mode for **Layers**: the wall's own grips give way to one grip at each end of each layer, where its join puts that end. They show in plans, sections, callouts and 3D (stepped up the end face there, so each can be reached). `Tab` again goes back.
+On a layered wall, press `Shift+Tab` in Edit mode for **Layers**: the wall's own grips give way to one grip at each end of each layer, where its join puts that end. They show in plans, sections, callouts and 3D (stepped up the end face there, so each can be reached). `Shift+Tab` again goes back.
 
 | Do this | And |
 |---|---|
@@ -60,7 +70,7 @@ Slab outlines and their holes, roof outlines and their holes, shafts, sketches a
 | Click inside a hole | Picks the hole: `Delete` removes it |
 | Drag inside a hole | Moves the whole hole |
 | Right-click a corner, an edge or a hole | Its menu (below) |
-| `Esc` | Cancels a drag; then drops the picks; then leaves Edit mode |
+| `Esc` | Cancels a drag; then drops the picks (`Tab` leaves Edit mode) |
 
 `Delete` in Edit mode never deletes the element you are editing: with no corner picked it only says to pick one. A closed outline keeps at least three corners, an open one (a railing's path, an open sketch) two.
 

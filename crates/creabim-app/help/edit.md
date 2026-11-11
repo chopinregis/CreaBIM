@@ -12,6 +12,17 @@ Every change can be undone: `Ctrl+Z` undoes, `Ctrl+Y` (or `Ctrl+Shift+Z`) redoes
 
 `Shift+D` (duplicate) copies and starts moving the copy in one go. In Move, `Ctrl` leaves a copy behind at each click.
 
+## Split
+
+**Split** cuts an element in two along a line you choose, where [Divide](divide) cuts it into even parts.
+
+1. Select what to cut: walls, slabs, parts, sketches or masses.
+2. Right-click it and pick **Split…** (at the top of the menu), use *Edit › Split…*, or the Split button beside Duplicate.
+3. Click a guide, a line or an edge to cut along, or click two points. The drawing snaps work while you pick them. A red see-through cutting plane shows where it cuts, in every view.
+4. Click the side to keep selected.
+
+Walls are cut where their line crosses the plane. Slabs, parts drawn from a plan and closed sketches are cut into the outlines on each side (a cut across both arms of a U gives three). An open sketch is cut at every crossing, and a mass by the plane. A split is one undo step; `Esc` leaves.
+
 ## Delete
 
 `Del` deletes what is selected. Things that belong to it go too: a wall's doors and windows, an element's tags and attached dimensions. The *Delete* button in *Properties* counts them ("Delete (and 2 attached)"). `Ctrl+Z` brings everything back.

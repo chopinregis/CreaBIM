@@ -19,16 +19,32 @@ Selected, a mass shows only its main grips: its base point (moves it), its turn 
 
 Give a mass an IFC class in *Properties* (such as `IfcRoof`) and it is exported as that.
 
+## Mesh edit
+
+The *Mesh edit* section of *Properties* works on the face you clicked: **Extrude** pushes it out with new sides (`E`), **Move** slides it, **Taper** shrinks it, and **Inset** draws a smaller face inside its edges, by the distance in *Inset by*. Inset makes a reveal, a recessed panel or a parapet: inset the roof face, then push it down. These change the mesh under its modifiers.
+
 ## Modifiers
 
-Modifiers change a mass's shape without touching it, so you can change or remove them later. Select a mass and open the **Modifiers** tab of *Properties* (the wrench), then **Add modifier**:
+Modifiers change a mass's shape without touching it, so you can change or remove them later. Select a mass and open the **Modifiers** tab of *Properties* (the wrench), then **Add modifier**. The menu groups them under *Repeat*, *Facade*, *Shape* and *Deform*, each with its icon; hover one for what it is for:
 
-- **Array**: copies in a row (a pergola's rafters);
-- **Mirror**: a mirrored copy;
-- **Solidify**: gives a surface a thickness;
-- **Subdivision**: smooths it.
+| Modifier | What it does |
+| --- | --- |
+| **Array** | Copies in a row (a pergola's rafters): a count, or to fit a length; each copy can step by its own size, turn and grow |
+| **Radial array** | Copies round a centre, picked in a plan or set to its middle: seats round a table, columns round a rotunda |
+| **Path array** | Copies along a sketch or a guide: balusters, posts along a curve |
+| **Mirror** | A mirrored copy, its plane at the middle or at an edge |
+| **Bevel** | Rounds or chamfers the upright corners: all of them, the outside or the inside ones |
+| **Shell** | Hollows it to a thickness, open at the top, the bottom or both |
+| **Solidify** | Gives a surface a thickness, growing in or out |
+| **Slice by levels** | Floors cut out of the mass, with a gap between: a quick tower study |
+| **Panelize** | Facade panels with joints on its upright, rectangular faces |
+| **Louvres / fins** | Fins on the sides facing north, east, south or west, at an angle |
+| **Taper** and **Twist** | Narrows it towards the top, or turns it as it rises |
+| **Smooth** | Smooths it; its *Split* kind keeps the shape and only adds faces |
 
-Each modifier is a card, as in Blender: fold it, rename it, show or hide it, and its menu has **Apply** (make it part of the shape), **Move up** and **Move down**; the cross removes it. Open, its settings are rows. The *Element* tab says how many modifiers the mass has.
+![Slice by levels on a mass: the floors and the gaps between them, with its card in the Modifiers tab](img/modifiers.jpg)
+
+Each modifier is a card, as in Blender. Its icon switches it on and off, and folded it shows a one-line summary. Rename it, and use its `…` menu for **Apply** (make it part of the shape), **Duplicate**, **Move up** and **Move down**; the cross removes it. Open, its settings are rows, and the `?` on the card explains it. The card you are working in shows its guides in every view: the radial centre and circle, the mirror plane, the slice floors as see-through planes. The *Element* tab says how many modifiers the mass has.
 
 ## Booleans: cutting one shape from another
 

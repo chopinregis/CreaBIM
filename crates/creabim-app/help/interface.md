@@ -22,11 +22,11 @@ The **?** beside the tool's name opens a few lines on how to use it, with **Read
 
 ## View areas
 
-The middle of the window is split into **areas**, as in Blender. Each area shows one thing under its own header: the 3D view, a plan, section, elevation, detail, sheet or schedule, the project's [notepad](notes#the-notepad), or the [profile library](profiles).
+The middle of the window is split into **areas**, as in Blender. Each area shows one thing under its own header: the 3D view, a plan, section, elevation, detail, sheet or schedule, the project's [notepad](notes#the-notepad), the [profile library](profiles), the [Masters](masters) of the sheets, or the activity [Log](files#the-activity-log).
 
 The header of an area, from the left:
 
-- **The view-type menu**: what the area shows. Pick *3D view*, a kind of drawing, *Notes* or *Profiles*. There is one 3D view: an area that asks for it while another shows it gets a drawing instead.
+- **The view-type menu**: what the area shows. Pick *3D view*, a kind of drawing, *Notes*, *Profiles*, *Masters* or *Log*. There is one 3D view: an area that asks for it while another shows it gets a drawing instead.
 - **The view's name**: pick another view of the same kind.
 - **The mode button**: *Object mode* or *Edit mode* (`Tab`). See [Edit mode](edit-mode). Sheets and schedules have none.
 - **The view's own tools**: the cut height, drawing style, X-ray, what is hidden, and so on. Hover each for what it does.
@@ -76,17 +76,28 @@ Drag the panel's left edge to make it as wide as you like; in a narrow panel, ro
 
 ## The status bar (bottom)
 
-What to do next, in words, on the left. Then the **Snap** switch and the list of [snaps](snaps), **Grid snap** (`Alt+S`), the **Workplane**, the **Pivot** for rotating and scaling, the **Units** menu (see [Units and number formats](units)) and the number of elements in the project.
+It starts with what each mouse button does over the view in use, and changes while `Shift`, `Ctrl` or `Alt` is held. Then what to do next, in words; a message cut short slides to show the rest when you point at it. Then the **Snap** switch and the list of [snaps](snaps), **Grid snap** (`Alt+S`), the **Workplane**, the **Pivot** for rotating and scaling, the **Units** menu (see [Units and number formats](units)) and the number of elements in the project.
 
 ## The Help panel
 
 This panel. It opens at the right of the window, beside your work. Drag its left edge to widen it, search with the box at the top, go back with the arrow, and close it with **×**, `Esc` or `F1`.
 
+## Settings
+
+*CreaBIM menu › Settings…* (`Ctrl+,`) holds what is yours alone: it never changes anyone's drawings, and goes with you, not with the project. Its categories:
+
+| Category | What is in it |
+| --- | --- |
+| **Interface** | The theme, the **drawing paper** (follow the theme, always light or always dark; prints and PDFs are always on white), and where the **Move, Rotate and Scale bar** sits: over the view, or by the pointer |
+| **Viewport** | The **selection and grips colour** (*Orange*, or *Follow the theme*'s own accent), how grips look, Edit mode's edge width and vertex size, and the X and Y axes on the grid |
+| **Navigation** | The mouse: *CreaBIM* (middle orbits, left boxes) or *Classic* (left drag orbits) |
+| **Snapping** | Grid snap spacing, and distance marks while dragging |
+| **Project** | The project's units, saved with the project for everyone who opens it |
+| **Keymap** | Every key, by what it does. `Ctrl+/` opens the list any time |
+
 ## Themes and the command palette
 
-- *View › Theme* picks a colour theme: Graphite, Paper, Blueprint, Sage, Ink (high contrast), Dark or Light. `Ctrl+Shift+T` goes to the next one. The choice is remembered. *Settings › Appearance › Drawing paper* chooses whether drawings follow the theme (dark paper in a dark theme), or are always light or always dark. Prints and PDFs are always on white.
+- *View › Theme* picks a colour theme: Graphite, Paper, Blueprint, Sage, Ink (high contrast), Solarized, Dark or Light. `Ctrl+Shift+T` goes to the next one. The choice is remembered.
 - `Ctrl+K` opens the **command palette**: type part of any command, tool, view, help page or element name, then `Enter`. An element is selected and zoomed to.
 
 ![The command palette](img/palette.jpg)
-
-- *View › Classic panels* switches to plain built-in panels, for computers where the new interface can't start.
