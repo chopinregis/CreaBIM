@@ -48,6 +48,7 @@ pub mod screen;
 pub mod site;
 pub mod sketch;
 pub mod slab;
+pub mod split;
 pub mod starter;
 pub mod styles;
 pub mod takeoff;

@@ -2555,6 +2555,8 @@ fn title_block() -> SheetTemplate {
             ("drawn".into(), "CreaBIM starter".into()),
         ],
         paper: None,
+        guides: vec![],
+        margins: None,
     }
 }
 

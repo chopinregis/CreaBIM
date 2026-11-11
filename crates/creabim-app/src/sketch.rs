@@ -516,7 +516,7 @@ impl SketchDraft {
         project: &dyn Fn(DVec3) -> Option<Pos2>,
         hover: Option<DVec2>,
     ) {
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         let stroke = Stroke::new(2.0, accent);
         let at = |p: DVec2| project(self.plane.to_model(p));
         let line = |pts: &[DVec2]| {

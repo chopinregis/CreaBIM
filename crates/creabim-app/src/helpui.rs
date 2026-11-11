@@ -61,6 +61,13 @@ impl CreaBimApp {
             Item::new("help:shortcuts", "Keyboard shortcuts").icon("keyboard"),
             Item::new("help:glossary", "BIM words explained").icon("info"),
             Item::Separator,
+            Item::new("app.report", "Report a problem…")
+                .icon("file-text")
+                .hint("Save one file to attach to a bug report: what CreaBIM did lately, your settings and, if you like, the project. Nothing is sent anywhere"),
+            Item::new("area.show:log", "Show the log")
+                .icon("log")
+                .hint("The activity log in a view of its own, problems in red"),
+            Item::Separator,
             Item::new("help:about", "About CreaBIM").icon("info"),
         ]
     }
@@ -133,8 +140,10 @@ impl CreaBimApp {
         // a sub-section (a key with a dot, "view.pens") is set in
         // (visibility and a view's range and template are sections of
         // their own, boxed, not sub-sections: MU22)
-        let indent =
-            key.contains('.') && !key.starts_with("visibility.") && !key.starts_with("view.");
+        let indent = key.contains('.')
+            && !key.starts_with("visibility.")
+            && !key.starts_with("view.")
+            && crate::props::box_open(ui);
         let (resp, help_at) = crate::props::header(ui, title, open, indent);
         let resp = resp.on_hover_text(if open {
             "Click to fold this section"
@@ -187,6 +196,10 @@ impl CreaBimApp {
             ));
         let mut read = false;
         egui::Popup::from_toggle_button_response(&r)
+            // opening leftward, under the ?: the Help panel to the right
+            // is drawn over anything that runs into it (MU39)
+            .align(egui::RectAlign::BOTTOM_END)
+            .align_alternatives(&[egui::RectAlign::TOP_END, egui::RectAlign::LEFT_START])
             // above the views' zoom columns, which sit on the foreground
             // layer (MU22)
             .kind(egui::PopupKind::Tooltip)

@@ -318,11 +318,20 @@ pub fn draw_template(
 ) {
     let o = t.corner.at(sheet.width, sheet.height);
     if t.border {
-        let lo = DVec2::new(BINDING, MARGIN);
-        let hi = DVec2::new(sheet.width - MARGIN, sheet.height - MARGIN);
+        // where its margins put it (MU40: the border stretches)
+        let (lo, hi) = t.border_box(DVec2::new(sheet.width, sheet.height));
         c.rect(lo, hi, Stroke::solid(0.5, 0.0));
     }
-    for it in &t.items {
+    // a logo is drawn as the shapes it holds, laid over its box
+    let laid: Vec<TitleItem> = t
+        .items
+        .iter()
+        .flat_map(|it| match it {
+            TitleItem::Logo { .. } => it.logo_shapes(),
+            _ => vec![it.clone()],
+        })
+        .collect();
+    for it in &laid {
         match it {
             TitleItem::Line { points, width } => {
                 let pts: Vec<DVec2> = points.iter().map(|p| *p + o).collect();
@@ -347,6 +356,41 @@ pub fn draw_template(
                 let text = fill_fields(text, values);
                 c.text_angle(*at + o, *size, &text, anchor, *angle);
             }
+            TitleItem::Shape {
+                points,
+                closed,
+                pen,
+                colour,
+                fill,
+                opacity,
+            } => {
+                let mut pts: Vec<DVec2> = points.iter().map(|p| *p + o).collect();
+                // see-through on white paper: the colour mixed toward white
+                let wash = |c: [f32; 3]| c.map(|v| 1.0 - (1.0 - v) * *opacity as f32);
+                if let (Some(f), true) = (fill, pts.len() >= 3) {
+                    c.fill_rgb(&pts, wash(*f));
+                }
+                if let Some(w) = pen {
+                    if *closed && pts.len() >= 2 && pts.first() != pts.last() {
+                        pts.push(pts[0]);
+                    }
+                    c.line_rgb(&pts, Stroke::solid(*w, 0.0), wash(*colour));
+                }
+            }
+            TitleItem::Image {
+                lo,
+                hi,
+                width,
+                height,
+                rgba,
+                opacity,
+            } => {
+                if let Some(r) = crate::raster::stored_image(*width, *height, rgba) {
+                    let r = crate::raster::faded(&r, *opacity);
+                    c.image(*lo + o, *hi + o, None, &r);
+                }
+            }
+            TitleItem::Logo { .. } => {}
         }
     }
 }
@@ -509,6 +553,8 @@ pub fn builtin_template() -> SheetTemplate {
         border: true,
         fields: vec![],
         paper: None,
+        guides: vec![],
+        margins: None,
     }
 }
 
@@ -739,6 +785,41 @@ fn draw_revision_table(
 pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_north: f64) {
     use creabim_core::PaperMarkKind;
     match &m.kind {
+        PaperMarkKind::Picture {
+            width,
+            height,
+            rgba,
+            opacity,
+            ..
+        } => {
+            let (lo, hi) = m.bounds();
+            if let Some(r) = crate::raster::stored_image(*width, *height, rgba) {
+                c.image(lo, hi, None, &crate::raster::faded(&r, *opacity));
+            }
+            return;
+        }
+        PaperMarkKind::Vector { shapes, .. } => {
+            // drawn as a master's logo is, from the sheet's lower left
+            let (lo, hi) = m.bounds();
+            let t = SheetTemplate {
+                corner: creabim_core::titleblock::Corner::BottomLeft,
+                items: vec![TitleItem::Logo {
+                    lo,
+                    hi,
+                    shapes: shapes.clone(),
+                }],
+                border: false,
+                fields: vec![],
+                paper: None,
+                guides: vec![],
+                margins: None,
+            };
+            draw_template(c, &Sheet::a("", "A3"), &t, &BTreeMap::new());
+            return;
+        }
+        _ => {}
+    }
+    match &m.kind {
         PaperMarkKind::NorthArrow { .. } => {
             let s = m.size;
             let turn = DVec2::from_angle(m.north_angle(true_north).to_radians());
@@ -812,7 +893,9 @@ pub fn draw_paper_mark(c: &mut dyn Canvas, m: &creabim_core::PaperMark, true_nor
                 Anchor::Middle,
             );
         }
-        PaperMarkKind::RevisionTable => {}
+        PaperMarkKind::RevisionTable
+        | PaperMarkKind::Picture { .. }
+        | PaperMarkKind::Vector { .. } => {}
         PaperMarkKind::ScaleBar {
             scale,
             length,
@@ -915,6 +998,8 @@ mod tests {
                 ("status".into(), "Draft".into()),
             ],
             paper: None,
+            guides: vec![],
+            margins: None,
         };
         let (_, s) = sheets(&m).into_iter().next().unwrap();
         let mut s = s.clone();
@@ -1140,6 +1225,8 @@ mod tests {
             border: false,
             fields: vec![("client".into(), "Client".into())],
             paper: None,
+            guides: vec![],
+            margins: None,
         };
         let te = Element::new("Office", ElementKind::SheetTemplate(t));
         let tid = te.id;

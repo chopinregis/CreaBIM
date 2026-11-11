@@ -11,7 +11,7 @@ use shell::icon_name;
 /// The height of an area's header, in points.
 /// A view area's header height (A4-2): 26 px controls with 4 px above and
 /// below.
-pub(super) const HEADER: f32 = 38.0;
+pub(super) const HEADER: f32 = 34.0;
 
 /// The areas as they are now.
 #[derive(Clone, Debug)]
@@ -374,7 +374,9 @@ impl CreaBimApp {
                     let own = !self.plan.linked_areas.contains(&i);
                     self.plan.area = own.then_some(i);
                     self.area_now = i;
+                    self.plan.pane_now = Some(i);
                     ui.push_id(("area", i), |ui| self.show_plan(ui, body, background));
+                    self.plan.pane_now = None;
                     self.plan.area = None;
                     timings.push(format!(
                         "area {i} {:.1}",
@@ -393,6 +395,12 @@ impl CreaBimApp {
                 }
                 Shows::Profiles => {
                     ui.push_id(("area", i), |ui| self.profiles_area(ui, body));
+                }
+                Shows::Masters => {
+                    ui.push_id(("area", i), |ui| self.masters_area(ui, body));
+                }
+                Shows::Log => {
+                    ui.push_id(("area", i), |ui| self.log_area(ui, body));
                 }
                 _ => {
                     let p = self.shell.theme.palette();
@@ -700,6 +708,8 @@ impl CreaBimApp {
                 .filter(|c| c["kind"] != "sep")
                 .collect(),
             Shows::Profiles => self.profile_controls(),
+            Shows::Masters => self.master_controls(),
+            Shows::Log => self.log_controls(),
             _ => vec![],
         };
         let (kind_icon, kind_label, name) = match shows {
@@ -719,6 +729,8 @@ impl CreaBimApp {
                     .clone()
                     .unwrap_or_else(|| "Pick a profile".to_string()),
             ),
+            Shows::Masters => ("sheet-template", "Masters", self.master_title()),
+            Shows::Log => ("log", "Log", "Activity log".to_string()),
             _ => ("box", "3D view", "Model".to_string()),
         };
         let mut asks: Vec<Ask> = vec![];
@@ -726,13 +738,13 @@ impl CreaBimApp {
             egui::UiBuilder::new()
                 .id_salt(("area-head", i))
                 .max_rect(Rect::from_min_max(
-                    head.min + egui::vec2(14.0, 4.0),
-                    head.max - egui::vec2(6.0, 4.0),
+                    head.min + egui::vec2(14.0, 5.0),
+                    head.max - egui::vec2(6.0, 3.0),
                 ))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         child.spacing_mut().item_spacing.x = 2.0;
-        child.spacing_mut().interact_size.y = 26.0;
+        child.spacing_mut().interact_size.y = 24.0;
         let room = head.width() - 20.0;
         // what shows: the kind, then which one
         let r = pill(&mut child, kind_icon, "", true, &p).on_hover_text(format!(
@@ -755,6 +767,8 @@ impl CreaBimApp {
             asks.push(Ask::Popup(
                 if matches!(shows, Shows::Profiles) {
                     "prof.pick".into()
+                } else if matches!(shows, Shows::Masters) {
+                    "master.pick".into()
                 } else if matches!(shows, Shows::Model | Shows::Notes) {
                     "area.kind".into()
                 } else {
@@ -780,6 +794,20 @@ impl CreaBimApp {
                     child.add_space(4.0);
                     plus_w += 136.0;
                 }
+            }
+        }
+        // what to do with masters, beside the list of them (MU40)
+        if matches!(shows, Shows::Masters) {
+            for (id, icon, tip, on) in self.master_buttons() {
+                let r = icon_btn(&mut child, icon, false, on, &p).on_hover_text(tip);
+                if r.clicked() && on {
+                    asks.push(if id.ends_with("menu") {
+                        Ask::Popup(id.into(), r.rect)
+                    } else {
+                        Ask::Run(id.into())
+                    });
+                }
+                plus_w += 28.0;
             }
         }
         // the mode after what it shows, as Blender's (MU27): Object or Edit,
@@ -809,22 +837,8 @@ impl CreaBimApp {
                 asks.push(Ask::Popup("area.mode".into(), r.rect));
             }
             mode_w += if compact { 44.0 } else { 110.0 };
-            if editing {
-                for (k, icon, tip) in [
-                    (1u8, "pick-vertex", "Points (1): corners, ends, vertices"),
-                    (2, "pick-edge", "Edges (2): sides, edges, jambs"),
-                    (3, "pick-face", "Faces (3): faces, tops, undersides"),
-                ] {
-                    let on = handles::pick() == k;
-                    if icon_btn(&mut child, icon, on, true, &p)
-                        .on_hover_text(tip)
-                        .clicked()
-                    {
-                        handles::set_pick(if on { 0 } else { k });
-                    }
-                }
-                mode_w += 3.0 * 28.0;
-            }
+            // what a click picks in Edit mode is in the tool bar now, once
+            // for every view (MU39, option B)
         }
         child.add_space(6.0);
         // its controls, as many as fit before More and maximise
@@ -920,6 +934,9 @@ impl CreaBimApp {
         if let Some(items) = self.profile_menu(key) {
             return Some(items);
         }
+        if let Some(items) = self.master_menu(key) {
+            return Some(items);
+        }
         let i = self.areas.menu_area.unwrap_or(self.areas.focus);
         let shows = self.areas.root.areas();
         let here = shows.get(i).copied().unwrap_or(Shows::Model);
@@ -969,6 +986,18 @@ impl CreaBimApp {
                         .icon("profile")
                         .checked(here == Shows::Profiles)
                         .hint("The profile library and its editor, large: pick, draw and edit profiles"),
+                );
+                items.push(
+                    Item::new("area.show:masters", "Masters")
+                        .icon("sheet-template")
+                        .checked(here == Shows::Masters)
+                        .hint("The sheet masters (title blocks and frames) and their editor: draw lines, text and fields"),
+                );
+                items.push(
+                    Item::new("area.show:log", "Log")
+                        .icon("log")
+                        .checked(here == Shows::Log)
+                        .hint("What CreaBIM did, as it happens, problems in red; copy it, or save a problem report"),
                 );
                 items
             }
@@ -1174,6 +1203,10 @@ impl CreaBimApp {
                     Shows::Notes
                 } else if arg == "profiles" {
                     Shows::Profiles
+                } else if arg == "masters" {
+                    Shows::Masters
+                } else if arg == "log" {
+                    Shows::Log
                 } else {
                     match self.doc.model().iter().find(|e| e.id.0.to_string() == arg) {
                         Some(e) => Shows::View(e.id),
@@ -1190,6 +1223,12 @@ impl CreaBimApp {
                 if let Shows::View(v) = new {
                     self.active_view = Some(v);
                     self.areas.seen = Some(v);
+                }
+                // its own Properties tab comes forward (MU40)
+                match new {
+                    Shows::Masters => self.prop_tab = PropTab::Master,
+                    Shows::Profiles => self.prop_tab = PropTab::Profile,
+                    _ => {}
                 }
                 self.store_areas();
             }

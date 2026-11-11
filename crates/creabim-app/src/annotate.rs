@@ -21,7 +21,9 @@ use glam::DVec2;
 
 /// Annotations are drawn in this blue on screen unless they have a colour.
 pub const INK: Color32 = Color32::from_rgb(30, 60, 120);
-const ACCENT: Color32 = Color32::from_rgb(230, 120, 30);
+fn interaction_ink() -> Color32 {
+    crate::theme::interaction()
+}
 
 pub fn color32([r, g, b]: [f32; 3]) -> Color32 {
     let c = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -809,7 +811,7 @@ pub fn preview(
     tol: f64,
     mm: f64,
 ) {
-    let accent = Stroke::new(1.5, ACCENT);
+    let accent = Stroke::new(1.5, interaction_ink());
     if let (Some(ready), Some(at)) = (d.ready, raw) {
         let (shape, text) = shape_of(ready, at);
         let item = Annotation {
@@ -818,11 +820,14 @@ pub fn preview(
             look: TextLook::default(),
             mm,
         };
-        paint(painter, xf, &item, ACCENT, mm);
+        paint(painter, xf, &item, interaction_ink(), mm);
         return;
     }
     if let Some((_, a, b, _)) = d.line {
-        painter.line_segment([xf.to_screen(a), xf.to_screen(b)], Stroke::new(3.0, ACCENT));
+        painter.line_segment(
+            [xf.to_screen(a), xf.to_screen(b)],
+            Stroke::new(3.0, interaction_ink()),
+        );
     }
     for (_, p) in &d.points {
         painter.circle_stroke(xf.to_screen(*p), 4.0, accent);
@@ -857,14 +862,14 @@ pub fn preview(
                             )
                         })
                         .collect();
-                    painter.add(egui::Shape::line(pts, Stroke::new(3.0, ACCENT)));
+                    painter.add(egui::Shape::line(pts, Stroke::new(3.0, interaction_ink())));
                 }
             }
             Tool::Angle => {
                 if let Some((_, a, b)) = segment_at(items, p, tol) {
                     painter.line_segment(
                         [xf.to_screen(a), xf.to_screen(b)],
-                        Stroke::new(2.0, ACCENT.gamma_multiply(0.6)),
+                        Stroke::new(2.0, interaction_ink().gamma_multiply(0.6)),
                     );
                 }
             }
@@ -1060,7 +1065,7 @@ pub fn draw_grips(
             egui::Rect::from_center_size(r.center_top(), Vec2::splat(8.0)),
             1.0,
             Color32::WHITE,
-            Stroke::new(1.5, ACCENT),
+            Stroke::new(1.5, interaction_ink()),
             egui::StrokeKind::Middle,
         );
     }
@@ -1072,13 +1077,18 @@ pub fn draw_grips(
             let elbow = matches!(g, Grab::Elbow(_) | Grab::TagElbow(..));
             let r = egui::Rect::from_center_size(xf.to_screen(p), Vec2::splat(7.0));
             if elbow {
-                painter.circle(r.center(), 3.5, Color32::WHITE, Stroke::new(1.5, ACCENT));
+                painter.circle(
+                    r.center(),
+                    3.5,
+                    Color32::WHITE,
+                    Stroke::new(1.5, interaction_ink()),
+                );
             } else {
                 painter.rect(
                     r,
                     0.0,
                     Color32::WHITE,
-                    Stroke::new(1.5, ACCENT),
+                    Stroke::new(1.5, interaction_ink()),
                     egui::StrokeKind::Middle,
                 );
             }
@@ -1111,7 +1121,14 @@ pub fn sheet_input(
         if let PlanItem::Annotation { id, item } = it {
             // the sheet draws the note itself; a selected one is traced
             if selection.contains(*id) {
-                paint_weighted(painter, xf, item, ACCENT, 1.0, crate::planview::TRACE);
+                paint_weighted(
+                    painter,
+                    xf,
+                    item,
+                    interaction_ink(),
+                    1.0,
+                    crate::planview::TRACE,
+                );
             }
         }
     }

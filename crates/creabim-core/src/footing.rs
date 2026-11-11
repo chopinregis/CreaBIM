@@ -208,6 +208,10 @@ impl Footing {
 
     /// The plan length of a strip.
     pub fn strip_length(&self, model: &Model) -> f64 {
+        // round the arc under a curved wall
+        if let Some(w) = self.host_wall(model).filter(|w| w.is_arc()) {
+            return w.length();
+        }
         let (a, b) = self.line(model);
         a.distance(b)
     }
@@ -289,6 +293,8 @@ fn strip_outlines_now(model: &Model) -> HashMap<ElementId, Vec<Vec<DVec2>>> {
         let (a, b) = f.line(model);
         let mut w = Wall::new(f.plan_level(model), a, b, f.width, 1.0);
         w.disallow_join = [false; 2];
+        // under a curved wall, curved as it is
+        w.bulge = f.host_wall(model).map_or(0.0, |hw| hw.bulge);
         // a free end runs on as far as the strip stands proud of its wall
         let proud = f
             .host_wall(model)
@@ -298,8 +304,21 @@ fn strip_outlines_now(model: &Model) -> HashMap<ElementId, Vec<Vec<DVec2>>> {
     let walls: Vec<(ElementId, Wall)> = lines.iter().map(|(id, w, _)| (*id, w.clone())).collect();
     let joins = plain_joins(&walls);
     let mut out = HashMap::new();
+    let mut curved = HashMap::new();
     for (id, w, proud) in &lines {
         if w.length() < 1e-6 {
+            continue;
+        }
+        if w.is_arc() {
+            // a band round the arc, its ends square; kept out of the
+            // trimming below, which cuts convex pieces only
+            let t = w.thickness / 2.0;
+            let mut us = vec![0.0];
+            us.extend(w.bends());
+            us.push(w.length());
+            let mut band: Vec<DVec2> = us.iter().map(|u| w.place(*u, -t)).collect();
+            band.extend(us.iter().rev().map(|u| w.place(*u, t)));
+            curved.insert(*id, vec![band]);
             continue;
         }
         let mut ends: WallEnds = joins.get(id).cloned().unwrap_or_default();
@@ -333,7 +352,9 @@ fn strip_outlines_now(model: &Model) -> HashMap<ElementId, Vec<Vec<DVec2>>> {
             .collect();
         out.insert(*id, pieces);
     }
-    trim_overlaps(model, &lines, &mut out);
+    let straight: Vec<_> = lines.iter().filter(|l| !l.1.is_arc()).cloned().collect();
+    trim_overlaps(model, &straight, &mut out);
+    out.extend(curved);
     out
 }
 
@@ -592,6 +613,107 @@ mod tests {
 
     fn area(p: &[DVec2]) -> f64 {
         crate::polygon::signed_area2(p).abs() / 2.0
+    }
+
+    #[test]
+    fn strips_under_a_circle_of_two_half_walls_fill_as_bands() {
+        let mut m = Model::new();
+        let level = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let lid = level.id;
+        let (a, b) = (DVec2::new(20.0, -3.0), DVec2::new(20.0 + 2.0 * 2.743, -3.0));
+        let mut tx = Transaction::new("t").insert(level);
+        let mut ids = vec![];
+        for (s, e) in [(a, b), (b, a)] {
+            let mut w = Wall::new(lid, s, e, 0.2, 3.0);
+            w.bulge = 1.0;
+            let we = Element::new("W", ElementKind::Wall(w));
+            ids.push(we.id);
+            tx = tx.insert(we);
+        }
+        tx.apply(&mut m).unwrap();
+        let (tx, fids) = under(&m, &ids, &|_| {});
+        tx.apply(&mut m).unwrap();
+        let strips = strip_outlines(&m);
+        for id in &fids {
+            for band in &strips[id] {
+                let tris = crate::polygon::triangulate(band);
+                let filled: f64 = tris
+                    .iter()
+                    .map(|t| {
+                        crate::polygon::signed_area2(&[band[t[0]], band[t[1]], band[t[2]]]).abs()
+                            / 2.0
+                    })
+                    .sum();
+                // half a ring 600 wide round radius 2.743
+                let ring = std::f64::consts::PI * 2.743 * 0.6;
+                assert!((area(band) - ring).abs() < 0.05, "{} vs {ring}", area(band));
+                assert!(
+                    (filled - area(band)).abs() < 1e-6,
+                    "{filled} vs {}",
+                    area(band)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_strip_under_a_curved_wall_follows_its_arc() {
+        // a half circle of radius 2.5 round (2.5, 0)
+        let mut m = Model::new();
+        let level = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let lid = level.id;
+        let mut w = Wall::new(lid, DVec2::ZERO, DVec2::new(5.0, 0.0), 0.3, 3.0);
+        w.bulge = 1.0;
+        let we = Element::new("W", ElementKind::Wall(w));
+        let wid = we.id;
+        Transaction::new("t")
+            .insert(level)
+            .insert(we)
+            .apply(&mut m)
+            .unwrap();
+        let (tx, ids) = under(&m, &[wid], &|_| {});
+        tx.apply(&mut m).unwrap();
+        let band = &strip_outlines(&m)[&ids[0]][0];
+        let c = DVec2::new(2.5, 0.0);
+        // every corner on one of its faces, 300 either side of the arc
+        for p in band {
+            let r = p.distance(c);
+            assert!(
+                (r - 2.2).abs() < 1e-6 || (r - 2.8).abs() < 1e-6,
+                "{p} at {r}"
+            );
+        }
+        assert!(band.len() > 10);
+        // it fills as a band, not the half disc inside it
+        let tris = crate::polygon::triangulate(band);
+        let filled: f64 = tris
+            .iter()
+            .map(|t| {
+                crate::polygon::signed_area2(&[band[t[0]], band[t[1]], band[t[2]]]).abs() / 2.0
+            })
+            .sum();
+        assert!(
+            (filled - area(band)).abs() < 1e-6,
+            "{filled} vs {}",
+            area(band)
+        );
+        let f = match &m.get(ids[0]).unwrap().kind {
+            ElementKind::Footing(f) => f.clone(),
+            _ => unreachable!(),
+        };
+        assert!((f.strip_length(&m) - 2.5 * std::f64::consts::PI).abs() < 1e-6);
     }
 
     #[test]

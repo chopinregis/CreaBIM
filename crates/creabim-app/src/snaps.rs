@@ -512,12 +512,17 @@ struct Point {
     /// The sources it comes from (two for a crossing); all must be wanted.
     src: [Source; 2],
     host: Option<ElementId>,
+    /// A crossing's other element.
+    host2: Option<ElementId>,
 }
 
 /// Snap geometry for one pane.
 #[derive(Clone, Debug, Default)]
 pub struct Snapper {
     segments: Vec<Segment>,
+    /// Elements left out when snapping (the selection being moved), so a
+    /// selection change needs no rebuild (MU39: a click took 60 ms here).
+    hide: Vec<ElementId>,
     /// Corner, middle and centre candidates.
     points: Vec<Point>,
     /// Distance between grid points; 0 turns the grid off.
@@ -541,7 +546,19 @@ impl Snapper {
             kind,
             src: [src; 2],
             host,
+            host2: None,
         });
+    }
+
+    /// Leave `ids` out of snapping from now on (and bring back the rest).
+    pub fn hide(&mut self, ids: &[ElementId]) {
+        if self.hide != ids {
+            self.hide = ids.to_vec();
+        }
+    }
+
+    fn hidden(&self, h: Option<ElementId>) -> bool {
+        h.is_some_and(|h| self.hide.contains(&h))
     }
 
     /// An edge, with its ends and middle; a guide is only a line.
@@ -654,26 +671,55 @@ impl Snapper {
     pub fn add_intersections(&mut self) {
         let flat = |p: DVec3| p.truncate();
         let n = self.segments.len().min(4000);
-        let mut out = Vec::new();
-        for i in 0..n {
-            let s = self.segments[i];
-            for j in i + 1..n {
-                let t = self.segments[j];
-                let (ga, gb) = (s.src == Source::Guide, t.src == Source::Guide);
-                if let Some(p) = crossing(flat(s.a), flat(s.b), flat(t.a), flat(t.b), ga, gb) {
-                    // the element rather than the grid or guide it crosses
-                    let host = if s.src == Source::Edge || t.src != Source::Edge {
-                        s.host.or(t.host)
-                    } else {
-                        t.host.or(s.host)
-                    };
-                    out.push(Point {
-                        p: p.extend(0.0),
-                        kind: SnapKind::Intersection,
-                        src: [s.src, t.src],
-                        host,
-                    });
+        // the pairs worth trying: segments whose boxes overlap, found by a
+        // sweep along x, and every guide (endless) with everything (MU39:
+        // trying every pair took ~90 ms on the starter house)
+        let guide = |s: &Segment| s.src == Source::Guide;
+        let lo = |s: &Segment| s.a.x.min(s.b.x);
+        let mut order: Vec<usize> = (0..n).filter(|i| !guide(&self.segments[*i])).collect();
+        order.sort_by(|a, b| lo(&self.segments[*a]).total_cmp(&lo(&self.segments[*b])));
+        let mut pairs: Vec<(usize, usize)> = vec![];
+        for (k, &i) in order.iter().enumerate() {
+            let s = &self.segments[i];
+            let x_hi = s.a.x.max(s.b.x) + 1e-9;
+            let (y_lo, y_hi) = (s.a.y.min(s.b.y) - 1e-9, s.a.y.max(s.b.y) + 1e-9);
+            for &j in &order[k + 1..] {
+                let t = &self.segments[j];
+                if lo(t) > x_hi {
+                    break;
                 }
+                if t.a.y.max(t.b.y) < y_lo || t.a.y.min(t.b.y) > y_hi {
+                    continue;
+                }
+                pairs.push((i.min(j), i.max(j)));
+            }
+        }
+        for g in (0..n).filter(|i| guide(&self.segments[*i])) {
+            for j in 0..n {
+                if j != g && (!guide(&self.segments[j]) || j > g) {
+                    pairs.push((g.min(j), g.max(j)));
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for (i, j) in pairs {
+            let s = self.segments[i];
+            let t = self.segments[j];
+            let (ga, gb) = (s.src == Source::Guide, t.src == Source::Guide);
+            if let Some(p) = crossing(flat(s.a), flat(s.b), flat(t.a), flat(t.b), ga, gb) {
+                // the element rather than the grid or guide it crosses
+                let host = if s.src == Source::Edge || t.src != Source::Edge {
+                    s.host.or(t.host)
+                } else {
+                    t.host.or(s.host)
+                };
+                out.push(Point {
+                    p: p.extend(0.0),
+                    kind: SnapKind::Intersection,
+                    src: [s.src, t.src],
+                    host,
+                    host2: if host == s.host { t.host } else { s.host },
+                });
             }
         }
         self.points.extend(out);
@@ -822,6 +868,7 @@ impl Snapper {
                             kind: SnapKind::Intersection,
                             src: [Source::GridLine; 2],
                             host: Some(id),
+                            host2: None,
                         });
                     }
                 }
@@ -952,6 +999,7 @@ impl Snapper {
             .points
             .iter()
             .filter(|q| cfg.allows(q.kind) && q.src.iter().all(|s| cfg.takes(*s)))
+            .filter(|q| !self.hidden(q.host) && !self.hidden(q.host2))
             .filter_map(|q| near(q.p).map(|d| (d + rank(q.kind) * 2.0, q)))
             .min_by(|a, b| a.0.total_cmp(&b.0));
         if let Some((_, q)) = best_point {
@@ -964,7 +1012,11 @@ impl Snapper {
                 None,
             ));
         }
-        let segments = || self.segments.iter().filter(|s| cfg.takes(s.src));
+        let segments = || {
+            self.segments
+                .iter()
+                .filter(|s| cfg.takes(s.src) && !self.hidden(s.host))
+        };
         // the temporary guides near the pointer
         let near_guides: Vec<(f32, usize)> = if cfg.allows(SnapKind::OnTempGuide) {
             guides
@@ -1165,6 +1217,7 @@ impl Snapper {
                     .filter_map(|(_, l)| {
                         let seg = self.segments.iter().find(|g| {
                             g.src == Source::Edge
+                                && !self.hidden(g.host)
                                 && closest_on_segment(g.a, g.b, s.p).distance(s.p) < 1e-6
                         })?;
                         let (a, b) = (l.at.truncate(), (l.at + l.axis()).truncate());

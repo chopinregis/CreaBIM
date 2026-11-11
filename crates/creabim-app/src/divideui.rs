@@ -56,6 +56,9 @@ pub struct DivideUi {
     pub s: Settings,
     /// How each divided element was divided, for this session.
     pub memory: HashMap<ElementId, Settings>,
+    /// Where the bar was dragged to, from its place at the top of the
+    /// view (MU39: it felt stuck).
+    pub offset: egui::Vec2,
 }
 
 impl Settings {
@@ -152,6 +155,26 @@ impl CreaBimApp {
             }
             e
         };
+        // guides change nothing: they show as the guides they will be,
+        // dashed, running past it, the element left as it is (MU39)
+        if self.divide.s.make == Make::Guides {
+            let reach = s.width.max(1.0);
+            if let Some(ps) = &along {
+                for part in &ps[1..] {
+                    let p = s.o + s.u * part.0;
+                    let (a, b) = (p - s.v * 0.5, p + s.v * (reach + 0.5));
+                    marks.push((a.extend(z0), b.extend(z0), true));
+                }
+            }
+            if let Some(ps) = &up {
+                for part in &ps[1..] {
+                    let z = lift + s.z0 + part.0;
+                    let (a, b) = (s.o - s.u * 0.5, s.o + s.u * (s.len + 0.5));
+                    marks.push((a.extend(z), b.extend(z), false));
+                }
+            }
+            return (marks, labels);
+        }
         if let Some(ps) = &along {
             for t in edges(ps) {
                 let p = s.o + s.u * t;
@@ -226,6 +249,9 @@ impl CreaBimApp {
                 !typing && i.key_pressed(egui::Key::Escape),
             )
         });
+        let self_offset = self.divide.offset;
+        let mut moved_by = egui::Vec2::ZERO;
+        let moved = &mut moved_by;
         let d = &mut self.divide.s;
         if !cuttable && d.make == Make::Cuts {
             d.make = Make::Guides;
@@ -247,7 +273,7 @@ impl CreaBimApp {
         egui::Area::new(egui::Id::new("divide bar"))
             .order(egui::Order::Foreground)
             .pivot(egui::Align2::CENTER_TOP)
-            .fixed_pos(egui::pos2(area.center().x, area.top() + 44.0))
+            .fixed_pos(egui::pos2(area.center().x, area.top() + 44.0) + self.divide.offset)
             .show(ctx, |ui| {
                 ui.set_max_width((area.width() - 40.0).max(260.0));
                 egui::Frame::new()
@@ -259,6 +285,36 @@ impl CreaBimApp {
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
+                            // a grip to carry the bar out of the way
+                            let (gr, grip) =
+                                ui.allocate_exact_size(egui::vec2(12.0, 20.0), egui::Sense::drag());
+                            let dot = if grip.hovered() || grip.dragged() {
+                                p.text
+                            } else {
+                                p.muted
+                            };
+                            for (x, y) in [
+                                (-2.5, -5.0),
+                                (2.5, -5.0),
+                                (-2.5, 0.0),
+                                (2.5, 0.0),
+                                (-2.5, 5.0),
+                                (2.5, 5.0),
+                            ] {
+                                ui.painter().circle_filled(
+                                    gr.center() + egui::vec2(x, y),
+                                    1.3,
+                                    dot,
+                                );
+                            }
+                            if grip.dragged() {
+                                *moved += grip.drag_delta();
+                            }
+                            if grip.double_clicked() {
+                                *moved = -self_offset;
+                            }
+                            grip.on_hover_cursor(egui::CursorIcon::Grab)
+                                .on_hover_text("Drag to move the bar; double-click puts it back");
                             let (ir, _) = ui
                                 .allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
                             crate::svgicon::paint(ui.painter(), ir, "mod-array", p.accent);
@@ -441,6 +497,7 @@ impl CreaBimApp {
             self.status = "Divide left.".into();
             return;
         }
+        self.divide.offset += moved_by;
         if go {
             let item = item.filter(|_| s.make == Make::Copies);
             match divide::divide_grid(

@@ -86,8 +86,13 @@ enum CloudGrip {
 
 /// The grips of a selected cloud, on paper.
 fn cloud_grips(m: &creabim_core::PaperMark) -> Vec<(CloudGrip, DVec2)> {
-    let creabim_core::PaperMarkKind::Cloud { w, h, points, .. } = &m.kind else {
-        return vec![];
+    use creabim_core::PaperMarkKind as K;
+    // a picture sizes by the same box grips (MU40)
+    let none: Vec<DVec2> = vec![];
+    let (w, h, points) = match &m.kind {
+        K::Cloud { w, h, points, .. } => (w, h, points),
+        K::Picture { w, h, .. } | K::Vector { w, h, .. } => (w, h, &none),
+        _ => return vec![],
     };
     if points.len() >= 3 {
         let pts: Vec<DVec2> = points.iter().map(|p| m.at + *p).collect();
@@ -117,6 +122,48 @@ fn cloud_grips(m: &creabim_core::PaperMark) -> Vec<(CloudGrip, DVec2)> {
 fn drag_cloud(was: &creabim_core::PaperMark, g: CloudGrip, to: DVec2) -> creabim_core::PaperMark {
     let mut m = was.clone();
     let at = m.at;
+    // a picture: its corners keep its proportions, its edges stretch it
+    let picture = match &mut m.kind {
+        creabim_core::PaperMarkKind::Picture { w, h, .. }
+        | creabim_core::PaperMarkKind::Vector { w, h, .. } => Some((w, h)),
+        _ => None,
+    };
+    if let (Some((w, h)), CloudGrip::Side(sx, sy)) = (picture, g) {
+        let (lo, hi) = (at - DVec2::new(*w, *h) / 2.0, at + DVec2::new(*w, *h) / 2.0);
+        let fixed = DVec2::new(
+            if sx < 0 { hi.x } else { lo.x },
+            if sy < 0 { hi.y } else { lo.y },
+        );
+        let (mut nw, mut nh) = (*w, *h);
+        if sx != 0 {
+            nw = ((to.x - fixed.x) * sx as f64).max(2.0);
+        }
+        if sy != 0 {
+            nh = ((to.y - fixed.y) * sy as f64).max(2.0);
+        }
+        if sx != 0 && sy != 0 {
+            let k = (nw / *w).max(nh / *h);
+            nw = *w * k;
+            nh = *h * k;
+        }
+        // the far side stays put; an axis not dragged stays centred
+        let lo2 = DVec2::new(
+            match sx {
+                0 => at.x - nw / 2.0,
+                s if s < 0 => hi.x - nw,
+                _ => lo.x,
+            },
+            match sy {
+                0 => at.y - nh / 2.0,
+                s if s < 0 => hi.y - nh,
+                _ => lo.y,
+            },
+        );
+        *w = nw;
+        *h = nh;
+        m.at = lo2 + DVec2::new(nw, nh) / 2.0;
+        return m;
+    }
     if let creabim_core::PaperMarkKind::Cloud { w, h, points, .. } = &mut m.kind {
         match g {
             CloudGrip::Side(sx, sy) => {
@@ -276,7 +323,7 @@ fn sheet_move(
             painter.rect_stroke(
                 Rect::from_center_size(at, Vec2::splat(9.0)),
                 1.0,
-                egui::Stroke::new(1.5, ACCENT),
+                egui::Stroke::new(1.5, interaction_ink()),
                 egui::StrokeKind::Middle,
             );
         }
@@ -291,7 +338,11 @@ fn sheet_move(
         let base_click = armed && response.clicked();
         if armed && response.hovered() {
             if let Some(h) = here {
-                painter.circle_stroke(xf.to_screen(h), 5.0, egui::Stroke::new(1.5, ACCENT));
+                painter.circle_stroke(
+                    xf.to_screen(h),
+                    5.0,
+                    egui::Stroke::new(1.5, interaction_ink()),
+                );
             }
         }
         if !(base_click || g) {
@@ -354,7 +405,11 @@ fn sheet_move(
     }
     match (base, here) {
         (None, Some(p)) => {
-            painter.circle_stroke(xf.to_screen(p), 5.0, egui::Stroke::new(1.5, ACCENT));
+            painter.circle_stroke(
+                xf.to_screen(p),
+                5.0,
+                egui::Stroke::new(1.5, interaction_ink()),
+            );
             if response.clicked() {
                 state.moving = Some((items, Some(p)));
                 plan.status =
@@ -365,7 +420,7 @@ fn sheet_move(
             let by = p - b;
             painter.line_segment(
                 [xf.to_screen(b), xf.to_screen(b + by)],
-                egui::Stroke::new(1.0, ACCENT),
+                egui::Stroke::new(1.0, interaction_ink()),
             );
             error = put(doc, by);
             if response.clicked() {
@@ -417,7 +472,7 @@ fn outline_items(
     sheet: ElementId,
     ids: &[ElementId],
 ) {
-    let stroke = egui::Stroke::new(1.5, ACCENT);
+    let stroke = egui::Stroke::new(1.5, interaction_ink());
     for e in model.iter().filter(|e| ids.contains(&e.id)) {
         let b = match &e.kind {
             ElementKind::PaperMark(m) if m.sheet == sheet => Some(m.bounds()),
@@ -591,7 +646,9 @@ impl Canvas for EguiCanvas<'_> {
     }
 }
 
-const ACCENT: Color32 = Color32::from_rgb(230, 120, 30);
+fn interaction_ink() -> Color32 {
+    crate::theme::interaction()
+}
 
 /// Draw `d` as it prints, as large as fits in `rect`: a type's preview.
 /// Lines keep their printed weights at three pixels a millimetre.
@@ -635,10 +692,15 @@ pub fn rescaled_center(vp: &creabim_core::Viewport, mid: DVec2, old: f64, new: f
 /// denominator when one is picked or typed.
 pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f64> {
     let mut out = None;
-    ui.horizontal(|ui| {
-        ui.label("Scale");
+    // a Properties row like the rest, sized to the panel: a fixed-width
+    // pair here stretched the whole column past a narrow panel's edge
+    crate::props::row(ui, "Scale", |ui| {
         let standard = SCALES.iter().any(|s| (s - scale).abs() < 1e-6);
+        let h = ui.spacing().interact_size.y;
+        let typed = 56.0_f32.min(ui.available_width() * 0.4);
+        let gap = ui.spacing().item_spacing.x;
         egui::ComboBox::from_id_salt(("scale", salt))
+            .width((ui.available_width() - typed - gap).max(30.0))
             .icon(crate::props::combo_icon)
             .selected_text(if standard {
                 format!("1:{scale:.0}")
@@ -657,7 +719,8 @@ pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f6
             });
         let mut v = scale;
         if ui
-            .add(
+            .add_sized(
+                [typed, h],
                 egui::DragValue::new(&mut v)
                     .speed(1.0)
                     .range(1.0..=5000.0)
@@ -807,7 +870,7 @@ pub fn show(
             painter.rect_stroke(
                 xf.rect_of(lo, hi).expand(4.0),
                 2.0,
-                egui::Stroke::new(1.5, ACCENT),
+                egui::Stroke::new(1.5, interaction_ink()),
                 egui::StrokeKind::Outside,
             );
         }
@@ -842,7 +905,7 @@ pub fn show(
         painter.rect_stroke(
             inner,
             3.0,
-            egui::Stroke::new(1.5, ACCENT),
+            egui::Stroke::new(1.5, interaction_ink()),
             egui::StrokeKind::Outside,
         );
     }
@@ -1158,7 +1221,7 @@ pub fn show(
                     r.left_bottom(),
                     r.left_top(),
                 ],
-                egui::Stroke::new(1.0, ACCENT),
+                egui::Stroke::new(1.0, interaction_ink()),
                 6.0,
                 4.0,
             ));
@@ -1173,7 +1236,7 @@ pub fn show(
                     Rect::from_center_size(h, Vec2::splat(8.0)),
                     0.0,
                     Color32::WHITE,
-                    egui::Stroke::new(1.5, ACCENT),
+                    egui::Stroke::new(1.5, interaction_ink()),
                     egui::StrokeKind::Middle,
                 );
             }
@@ -1298,7 +1361,9 @@ pub fn show(
         let cloud = selection.active.filter(|_| selection.len() == 1).and_then(|id| {
             doc.model().get(id).filter(|e| {
                 matches!(&e.kind, ElementKind::PaperMark(m)
-                    if m.sheet == sheet_id && matches!(m.kind, creabim_core::PaperMarkKind::Cloud { .. }))
+                    if m.sheet == sheet_id && matches!(m.kind, creabim_core::PaperMarkKind::Cloud { .. }
+                        | creabim_core::PaperMarkKind::Picture { .. }
+                        | creabim_core::PaperMarkKind::Vector { .. }))
             })
         });
         if let Some(e) = cloud.cloned() {
@@ -1324,15 +1389,15 @@ pub fn show(
                             at,
                             if lit { 5.0 } else { 3.5 },
                             Color32::WHITE,
-                            egui::Stroke::new(1.2, ACCENT),
+                            egui::Stroke::new(1.2, interaction_ink()),
                         );
                         painter.line_segment(
                             [at - Vec2::new(2.0, 0.0), at + Vec2::new(2.0, 0.0)],
-                            egui::Stroke::new(1.0, ACCENT),
+                            egui::Stroke::new(1.0, interaction_ink()),
                         );
                         painter.line_segment(
                             [at - Vec2::new(0.0, 2.0), at + Vec2::new(0.0, 2.0)],
-                            egui::Stroke::new(1.0, ACCENT),
+                            egui::Stroke::new(1.0, interaction_ink()),
                         );
                     }
                     _ => {
@@ -1341,8 +1406,12 @@ pub fn show(
                         painter.rect(
                             r,
                             1.0,
-                            if lit { ACCENT } else { Color32::WHITE },
-                            egui::Stroke::new(1.3, ACCENT),
+                            if lit {
+                                interaction_ink()
+                            } else {
+                                Color32::WHITE
+                            },
+                            egui::Stroke::new(1.3, interaction_ink()),
                             egui::StrokeKind::Middle,
                         );
                     }
@@ -1407,7 +1476,7 @@ pub fn show(
                     egui::Stroke::new(
                         1.5,
                         if lit {
-                            ACCENT
+                            interaction_ink()
                         } else {
                             hoverpick::HOVER.gamma_multiply(0.7)
                         },
@@ -1582,8 +1651,8 @@ pub fn show(
             if let Some(b) = pointer {
                 let r = Rect::from_two_pos(a, b);
                 let touching = b.x < a.x;
-                let stroke = egui::Stroke::new(1.0, ACCENT);
-                painter.rect_filled(r, 0.0, ACCENT.gamma_multiply(0.08));
+                let stroke = egui::Stroke::new(1.0, interaction_ink());
+                painter.rect_filled(r, 0.0, interaction_ink().gamma_multiply(0.08));
                 if touching {
                     let c = [
                         r.left_top(),
@@ -1606,7 +1675,7 @@ pub fn show(
                         l.x >= lo.x && h.x <= hi.x && l.y >= lo.y && h.y <= hi.y
                     }
                 };
-                let lit = egui::Stroke::new(2.0, ACCENT);
+                let lit = egui::Stroke::new(2.0, interaction_ink());
                 let mut ids: Vec<ElementId> = vec![];
                 for (id, bx) in &mark_boxes {
                     if take(*bx) {
@@ -1634,7 +1703,7 @@ pub fn show(
                                     &painter,
                                     &pxf,
                                     item,
-                                    ACCENT,
+                                    interaction_ink(),
                                     1.0,
                                     planview::TRACE,
                                 );
@@ -1659,7 +1728,7 @@ pub fn show(
                     egui::Align2::LEFT_TOP,
                     format!("{n}"),
                     egui::FontId::proportional(12.0),
-                    ACCENT,
+                    interaction_ink(),
                 );
                 if response.drag_stopped() {
                     let add = ui.input(|i| i.modifiers.shift);
@@ -1732,7 +1801,7 @@ pub fn show(
                     _ => None,
                 })
                 .collect();
-            let guide = egui::Stroke::new(1.0, ACCENT);
+            let guide = egui::Stroke::new(1.0, interaction_ink());
             if let Some(o) = others.iter().find(|o| (o.x - moved.x).abs() < tol) {
                 moved.x = o.x;
                 painter.extend(egui::Shape::dashed_line(
@@ -1816,7 +1885,7 @@ pub fn show(
             painter.rect_stroke(
                 area,
                 2.0,
-                egui::Stroke::new(2.0, ACCENT),
+                egui::Stroke::new(2.0, interaction_ink()),
                 egui::StrokeKind::Outside,
             );
             painter.text(
@@ -1824,7 +1893,7 @@ pub fn show(
                 egui::Align2::LEFT_BOTTOM,
                 format!("Working in {}. Esc or click outside to finish.", v.title),
                 egui::FontId::proportional(12.0),
-                ACCENT,
+                interaction_ink(),
             );
         }
     }

@@ -102,7 +102,7 @@ impl Icon {
             | Icon::CropBox => Color32::from_rgb(40, 140, 110),
             Icon::Sheet | Icon::Viewport => Color32::from_rgb(110, 90, 160),
             Icon::Dimension | Icon::Tag => Color32::from_rgb(30, 60, 140),
-            Icon::Sketch => Color32::from_rgb(230, 120, 30),
+            Icon::Sketch => crate::theme::interaction(),
         }
     }
 

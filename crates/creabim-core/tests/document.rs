@@ -30,6 +30,7 @@ fn wall(level: ElementId) -> Element {
             attach_top: vec![],
             curtain: None,
             layer_ends: vec![],
+            bulge: 0.0,
         }),
     )
 }

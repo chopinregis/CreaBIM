@@ -191,15 +191,6 @@ pub enum Target {
     Face,
 }
 
-impl Target {
-    pub fn label(self) -> &'static str {
-        match self {
-            Target::Object => "Object",
-            Target::Face => "Face",
-        }
-    }
-}
-
 /// A face under the pointer, as a pane picks it.
 #[derive(Clone, Debug)]
 pub struct FacePick {
@@ -418,11 +409,28 @@ impl CopyPreview {
 pub const STILL: f32 = 4.0;
 
 /// A move, rotate or scale in progress, from a key or a tool.
+static BAR_BY_POINTER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Where the edit bar was dragged to, from its own place.
+fn bar_offset(ctx: &egui::Context) -> egui::Vec2 {
+    ctx.data_mut(|m| {
+        *m.get_persisted_mut_or_default::<egui::Vec2>(egui::Id::new("modal_bar_offset"))
+    })
+}
+
+/// Show the edit bar by the pointer (true) or over the top of the view.
+pub fn set_bar_by_pointer(on: bool) {
+    BAR_BY_POINTER.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 #[derive(Debug)]
 pub struct Modal {
     pub mode: Mode,
     /// A mesh face being edited instead of the whole element.
     pub face: Option<usize>,
+    /// A mass's picked vertices in Edit mode: what the edit moves, turns
+    /// or scales, about their middle (MU39).
+    pub verts: Option<Vec<u32>>,
     pub space: Space,
     /// The pane that runs it: a view, or `None` for the 3D view.
     pub pane: Option<ElementId>,
@@ -472,6 +480,9 @@ pub struct Modal {
     ctrl_before: bool,
     /// Copy switched on the on-screen panel.
     want_copy: Option<bool>,
+    /// Where the bar by the pointer sits: where the pointer was when the
+    /// edit started (MU38: it stays put, it doesn't chase the pointer).
+    anchor: Option<egui::Pos2>,
     /// Whole elements or one face, for Move.
     pub works_on: Target,
     /// Switched on the on-screen panel.
@@ -604,6 +615,7 @@ impl Modal {
         let blank = |pivot: DVec3, own: Vec<DVec3>, edit: LiveEdit| Modal {
             mode,
             face: None,
+            verts: None,
             space,
             pane,
             owner: None,
@@ -633,6 +645,7 @@ impl Modal {
             delta: DVec3::ZERO,
             ctrl_before: false,
             want_copy: None,
+            anchor: None,
             works_on: Target::Object,
             want_works_on: None,
             hover: None,
@@ -1502,104 +1515,268 @@ impl Modal {
         ))
     }
 
-    /// The on-screen panel while the edit runs, for working without the
-    /// keyboard: axis buttons, a value box, Finish and Cancel.
+    /// The bar while the edit runs, for working without the keyboard
+    /// (MU38): one slim row, as Archicad's and SketchUp's: what it does,
+    /// object or face, the axis chips in their colours, the value, copies,
+    /// then finish and cancel. Over the top of the view, or by the pointer
+    /// (Settings).
     pub fn panel(&mut self, ctx: &egui::Context, rect: egui::Rect) {
+        let by_pointer = BAR_BY_POINTER.load(std::sync::atomic::Ordering::Relaxed);
+        if by_pointer && self.anchor.is_none() {
+            self.anchor = ctx.pointer_hover_pos().filter(|p| rect.contains(*p));
+        }
+        let at = match (by_pointer, self.anchor) {
+            (true, Some(a)) => (a + egui::vec2(22.0, 22.0), egui::Align2::LEFT_TOP),
+            _ => (
+                egui::pos2(rect.center().x, rect.top() + 10.0),
+                egui::Align2::CENTER_TOP,
+            ),
+        };
+        let p = crate::theme::Palette::of(ctx);
         egui::Area::new(egui::Id::new("modal_panel"))
             .order(egui::Order::Foreground)
-            .pivot(egui::Align2::CENTER_BOTTOM)
-            .fixed_pos(rect.center_bottom() - egui::vec2(0.0, 28.0))
-            .constrain_to(rect.shrink(4.0))
+            .pivot(at.1)
+            .fixed_pos(at.0 + bar_offset(ctx))
+            // clear of the view's zoom and fit column at its right (MU39)
+            .constrain_to(egui::Rect::from_min_max(
+                rect.min + egui::vec2(6.0, 6.0),
+                rect.max - egui::vec2(56.0, 6.0),
+            ))
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    // in a narrow view the panel wraps onto two rows
-                    ui.set_max_width((rect.width() - 40.0).max(160.0));
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(egui::RichText::new(self.mode.verb()).strong());
-                        ui.separator();
-                        if self.can_take_faces() {
-                            // whole elements, or one face pushed and pulled
-                            for (t, tip) in [
-                                (Target::Object, "Move whole elements (F switches)"),
-                                (
-                                    Target::Face,
-                                    "Push or pull the face under the pointer: walls, slabs and masses (F switches)",
-                                ),
-                            ] {
-                                if ui
-                                    .selectable_label(self.works_on == t, t.label())
-                                    .on_hover_text(tip)
-                                    .clicked()
-                                {
-                                    self.want_works_on = Some(t);
-                                }
-                            }
-                            ui.separator();
-                        }
-                        let faces = self.works_on == Target::Face && self.can_take_faces();
-                        let axes: &[Axis] = match (self.mode, self.face.is_some()) {
-                            _ if faces => &[],
-                            (Mode::Mirror | Mode::Offset | Mode::Grip, _) => &[],
-                            (Mode::Rotate, true) => &[],
-                            _ => &Axis::ALL,
-                        };
-                        if !axes.is_empty() {
-                            if ui.selectable_label(self.axis.is_none(), "Free").clicked() {
-                                self.axis = None;
-                            }
-                            for a in axes {
-                                let name = match (self.mode, a) {
-                                    (Mode::Rotate, Axis::X) => "Tilt X",
-                                    (Mode::Rotate, Axis::Y) => "Tilt Y",
-                                    (Mode::Rotate, Axis::Z) => "Turn",
-                                    (_, Axis::X) => "X",
-                                    (_, Axis::Y) => "Y",
-                                    (_, Axis::Z) => "Z",
-                                };
-                                if ui.selectable_label(self.axis == Some(*a), name).clicked() {
-                                    self.toggle(*a);
-                                }
-                            }
-                            ui.separator();
-                        }
-                        ui.label(match self.mode {
-                            Mode::Move | Mode::Offset | Mode::Grip => "Distance",
-                            Mode::Rotate | Mode::Mirror => "Angle",
-                            Mode::Scale => "Factor",
-                        });
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.typed).vertical_align(egui::Align::Center)
-                                .desired_width(60.0)
-                                .hint_text("type"),
-                        );
-                        if self.copies_allowed() {
-                            ui.separator();
-                            let tip = match self.mode {
-                                Mode::Move => "Leave copies behind: each click places one",
-                                _ => "Make a copy and keep the original (off: change the original itself)",
-                            };
-                            if ui
-                                .selectable_label(self.copy, "Copy (Ctrl)")
-                                .on_hover_text(tip)
-                                .clicked()
-                            {
-                                self.want_copy = Some(!self.copy);
-                            }
-                        }
-                        ui.separator();
-                        let ready = self.stage == Stage::Follow;
-                        if ui
-                            .add_enabled(ready, egui::Button::new("✔ Finish"))
-                            .clicked()
-                        {
-                            self.ask = Some(true);
-                        }
-                        if ui.button("✖ Cancel").clicked() {
-                            self.ask = Some(false);
-                        }
+                egui::Frame::new()
+                    .fill(ui.visuals().window_fill)
+                    .stroke(egui::Stroke::new(1.0, p.border))
+                    .corner_radius(if by_pointer { 10.0 } else { 18.0 })
+                    .shadow(ui.visuals().popup_shadow)
+                    .inner_margin(egui::Margin::symmetric(8, 4))
+                    .show(ui, |ui| {
+                        ui.set_max_width((rect.width() - 80.0).max(160.0));
+                        ui.horizontal_wrapped(|ui| self.bar_row(ui, by_pointer, &p));
                     });
-                });
             });
+    }
+
+    fn bar_row(&mut self, ui: &mut egui::Ui, compact: bool, p: &crate::theme::Palette) {
+        ui.spacing_mut().item_spacing.x = 3.0;
+        // a grip to carry the bar out of the way (MU39); double-click
+        // puts it back
+        let (gr, grip) =
+            ui.allocate_exact_size(egui::vec2(10.0, 20.0), egui::Sense::click_and_drag());
+        let dot = if grip.hovered() || grip.dragged() {
+            p.text
+        } else {
+            p.muted
+        };
+        for (x, y) in [
+            (-2.0, -5.0),
+            (2.0, -5.0),
+            (-2.0, 0.0),
+            (2.0, 0.0),
+            (-2.0, 5.0),
+            (2.0, 5.0),
+        ] {
+            ui.painter()
+                .circle_filled(gr.center() + egui::vec2(x, y), 1.2, dot);
+        }
+        let key = egui::Id::new("modal_bar_offset");
+        if grip.dragged() {
+            let d = grip.drag_delta();
+            ui.ctx()
+                .data_mut(|m| *m.get_persisted_mut_or_default::<egui::Vec2>(key) += d);
+        }
+        if grip.double_clicked() {
+            ui.ctx()
+                .data_mut(|m| m.insert_persisted(key, egui::Vec2::ZERO));
+        }
+        grip.on_hover_cursor(egui::CursorIcon::Grab)
+            .on_hover_text("Drag to move the bar; double-click puts it back");
+        let icon = match self.mode {
+            Mode::Move => "move",
+            Mode::Rotate => "rotate-cw",
+            Mode::Scale => "scaling",
+            Mode::Mirror => "flip-horizontal-2",
+            Mode::Offset => "offset",
+            Mode::Grip => "maximize-2",
+        };
+        let (ir, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+        crate::svgicon::paint(ui.painter(), ir, icon, p.accent);
+        if !compact {
+            ui.label(egui::RichText::new(self.mode.verb()).strong());
+        }
+        let muted = p.muted;
+        let border = p.border;
+        // a chip: on, it takes the selection's fill (or its axis colour)
+        let chip =
+            |ui: &mut egui::Ui, on: bool, text: &str, colour: Option<egui::Color32>, tip: &str| {
+                let fill = match (on, colour) {
+                    (true, Some(c)) => c.gamma_multiply(0.9),
+                    (true, None) => ui.visuals().selection.bg_fill,
+                    _ => egui::Color32::TRANSPARENT,
+                };
+                let ink = match (on, colour) {
+                    (true, _) => egui::Color32::WHITE,
+                    (false, Some(c)) => c,
+                    _ => ui.visuals().text_color(),
+                };
+                ui.add(
+                    egui::Button::new(egui::RichText::new(text).color(ink))
+                        .fill(fill)
+                        .corner_radius(9.0)
+                        .min_size(egui::vec2(24.0, 20.0)),
+                )
+                .on_hover_text(tip)
+                .clicked()
+            };
+        let icon_chip = |ui: &mut egui::Ui, on: bool, icon: &str, tip: &str| {
+            let (r, resp) = ui.allocate_exact_size(egui::vec2(24.0, 20.0), egui::Sense::click());
+            if on {
+                ui.painter()
+                    .rect_filled(r, 9.0, ui.visuals().selection.bg_fill);
+            } else if resp.hovered() {
+                ui.painter()
+                    .rect_filled(r, 9.0, ui.visuals().widgets.hovered.weak_bg_fill);
+            }
+            let ink = if on { egui::Color32::WHITE } else { muted };
+            let ir = egui::Rect::from_center_size(r.center(), egui::vec2(14.0, 14.0));
+            crate::svgicon::paint(ui.painter(), ir, icon, ink);
+            resp.on_hover_text(tip).clicked()
+        };
+        let sep = |ui: &mut egui::Ui| {
+            let (r, _) = ui.allocate_exact_size(egui::vec2(7.0, 18.0), egui::Sense::hover());
+            ui.painter().line_segment(
+                [r.center_top(), r.center_bottom()],
+                egui::Stroke::new(1.0, border),
+            );
+        };
+        sep(ui);
+        if self.can_take_faces() {
+            if icon_chip(
+                ui,
+                self.works_on == Target::Object,
+                "box",
+                "Object: move whole elements (F switches)",
+            ) {
+                self.want_works_on = Some(Target::Object);
+            }
+            if icon_chip(ui, self.works_on == Target::Face, "square", "Face: push or pull the face under the pointer, on walls, slabs and masses (F switches)") {
+                self.want_works_on = Some(Target::Face);
+            }
+            sep(ui);
+        }
+        let faces = self.works_on == Target::Face && self.can_take_faces();
+        let axes: &[Axis] = match (self.mode, self.face.is_some()) {
+            _ if faces => &[],
+            (Mode::Mirror | Mode::Offset | Mode::Grip, _) => &[],
+            (Mode::Rotate, true) => &[],
+            _ => &Axis::ALL,
+        };
+        if !axes.is_empty() {
+            if chip(
+                ui,
+                self.axis.is_none(),
+                "Free",
+                None,
+                "Free: any direction, snapping as it goes",
+            ) {
+                self.axis = None;
+            }
+            for a in axes {
+                let (name, tip) = match (self.mode, a) {
+                    (Mode::Rotate, Axis::X) => ("X", "Tilt about X"),
+                    (Mode::Rotate, Axis::Y) => ("Y", "Tilt about Y"),
+                    (Mode::Rotate, Axis::Z) => ("Z", "Turn about Z (upright)"),
+                    (_, Axis::X) => ("X", "Along X only (X)"),
+                    (_, Axis::Y) => ("Y", "Along Y only (Y)"),
+                    (_, Axis::Z) => ("Z", "Up and down only (Z)"),
+                };
+                let colour = axis_colour(*a);
+                if chip(ui, self.axis == Some(*a), name, Some(colour), tip) {
+                    self.toggle(*a);
+                }
+            }
+            sep(ui);
+        }
+        let what = match self.mode {
+            Mode::Move | Mode::Offset | Mode::Grip => "Distance",
+            Mode::Rotate | Mode::Mirror => "Angle",
+            Mode::Scale => "Factor",
+        };
+        let letter = &what[..1];
+        // a help mark, not a button: it lights as the ? marks do (MU39)
+        let (br, badge) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+        let lit = badge.hovered();
+        if lit {
+            ui.painter()
+                .circle_filled(br.center(), 8.0, p.accent.gamma_multiply(0.25));
+        }
+        let ink = if lit { p.accent } else { muted };
+        ui.painter()
+            .circle_stroke(br.center(), 8.0, egui::Stroke::new(1.0, ink));
+        ui.painter().text(
+            br.center(),
+            egui::Align2::CENTER_CENTER,
+            letter,
+            egui::FontId::proportional(10.5),
+            ink,
+        );
+        badge.on_hover_text(match self.mode {
+            Mode::Move | Mode::Offset | Mode::Grip => "Distance: type how far, then Enter",
+            Mode::Rotate | Mode::Mirror => "Angle: type how far it turns, then Enter",
+            Mode::Scale => "Factor: type how much bigger (2) or smaller (0.5), then Enter",
+        });
+        ui.add(
+            egui::TextEdit::singleline(&mut self.typed)
+                .vertical_align(egui::Align::Center)
+                .desired_width(56.0)
+                .hint_text("type"),
+        )
+        .on_hover_text(format!("{what}: type it and press Enter"));
+        if self.copies_allowed() {
+            let tip = match self.mode {
+                Mode::Move => "Copy (Ctrl): leave copies behind, each click places one",
+                _ => "Copy (Ctrl): make a copy and keep the original",
+            };
+            if icon_chip(ui, self.copy, "copy", tip) {
+                self.want_copy = Some(!self.copy);
+            }
+        }
+        sep(ui);
+        let ready = self.stage == Stage::Follow;
+        let (r, resp) = ui.allocate_exact_size(egui::vec2(24.0, 20.0), egui::Sense::click());
+        let fill = if ready {
+            p.accent
+        } else {
+            p.accent.gamma_multiply(0.35)
+        };
+        ui.painter().rect_filled(r, 9.0, fill);
+        let ir = egui::Rect::from_center_size(r.center(), egui::vec2(14.0, 14.0));
+        crate::svgicon::paint(ui.painter(), ir, "check", egui::Color32::WHITE);
+        if resp.on_hover_text("Finish (Enter)").clicked() && ready {
+            self.ask = Some(true);
+        }
+        if icon_chip(ui, false, "x", "Cancel (Esc)") {
+            self.ask = Some(false);
+        }
+    }
+
+    /// Work on mass `id`'s vertices `vs` only, turning and scaling about
+    /// their middle (MU39).
+    pub fn set_verts(&mut self, doc: &Document, id: ElementId, vs: Vec<u32>) {
+        let model = doc.model();
+        if let Some(ElementKind::FreeMesh(m)) = model.get(id).map(|e| &e.kind) {
+            let z = m
+                .level
+                .and_then(|l| model.level(l))
+                .map_or(0.0, |l| l.elevation);
+            let n = vs.len().max(1) as f64;
+            let c = vs
+                .iter()
+                .map(|v| m.mesh.vertices[*v as usize])
+                .sum::<DVec3>()
+                / n;
+            self.pivot = m.origin + m.to_model(c) + DVec3::Z * z;
+            self.verts = Some(vs);
+        }
     }
 
     fn toggle(&mut self, a: Axis) {
@@ -1798,6 +1975,35 @@ impl Modal {
             return c.update(doc, &|m, e| transform::transformed(m, e, &Xform::Move(d)));
         }
         let originals = self.edit.originals().to_vec();
+        if let (Some(vs), ElementKind::FreeMesh(m)) = (&self.verts, &originals[0].kind) {
+            let mut m = m.clone();
+            let n = vs.len().max(1) as f64;
+            let c = vs
+                .iter()
+                .map(|v| m.mesh.vertices[*v as usize])
+                .sum::<DVec3>()
+                / n;
+            match *t {
+                Xform::Move(d) => m.mesh.translate_vertices(vs, m.to_local(d)),
+                Xform::Scale { factor, .. } => {
+                    for v in vs {
+                        let p = &mut m.mesh.vertices[*v as usize];
+                        *p = c + (*p - c) * factor;
+                    }
+                }
+                Xform::Rotate { degrees, .. } => {
+                    let r = DVec2::from_angle(degrees.to_radians());
+                    for v in vs {
+                        let p = &mut m.mesh.vertices[*v as usize];
+                        *p = (c.truncate() + r.rotate(p.truncate() - c.truncate())).extend(p.z);
+                    }
+                }
+                Xform::Tilt { .. } | Xform::Stretch { .. } => {}
+            }
+            let mut e = originals[0].clone();
+            e.kind = ElementKind::FreeMesh(m);
+            return self.edit.update(doc, vec![e]).map_err(|e| e.to_string());
+        }
         let changed = match (self.face, &originals[0].kind) {
             (Some(f), ElementKind::FreeMesh(m)) => {
                 let mut m = m.clone();
@@ -2160,7 +2366,7 @@ impl Modal {
     }
 
     fn draw(&self, painter: &egui::Painter, map: &PaneMap) {
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         if self.uses_points() {
             return self.draw_points(painter, map);
         }
@@ -2190,7 +2396,7 @@ impl Modal {
     /// The base point, the rubber band to where it goes, and the snap
     /// marker under the pointer.
     fn draw_points(&self, painter: &egui::Painter, map: &PaneMap) {
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         let stroke = Stroke::new(1.5, accent);
         let marker = |s: Snap, from: Option<Pos2>| {
             if let Some(at) = (map.project)(s.p) {
@@ -2267,8 +2473,13 @@ impl Modal {
                         painter.add(egui::Shape::dashed_line(&[b, t], stroke, 6.0, 4.0));
                     }
                 } else if let (Some(b), Some(t)) = (base, to) {
-                    // the rubber band, with its length at its middle
-                    painter.add(egui::Shape::dashed_line(&[b, t], stroke, 6.0, 4.0));
+                    // the rubber band, with its length at its middle; in
+                    // its axis's colour when it keeps to one (MU39)
+                    let band = match self.axis {
+                        Some(a) => Stroke::new(1.5, axis_colour(a)),
+                        None => stroke,
+                    };
+                    painter.add(egui::Shape::dashed_line(&[b, t], band, 6.0, 4.0));
                     if b.distance(t) > 30.0 {
                         let side = (t - b).normalized().rot90() * 14.0;
                         let side = if side.y > 0.0 { -side } else { side };
@@ -2297,15 +2508,30 @@ impl Modal {
 }
 
 /// The line through `at` along axis `a`, in the axis' colour.
+/// An axis's colour, as Blender's: X red, Y green, Z blue.
+pub fn axis_colour(a: Axis) -> Color32 {
+    match a {
+        Axis::X => Color32::from_rgb(214, 72, 72),
+        Axis::Y => Color32::from_rgb(82, 170, 72),
+        Axis::Z => Color32::from_rgb(70, 125, 225),
+    }
+}
+
+/// The line a move keeps to, through `at`, in the axis's colour. Drawn in
+/// pieces, keeping those in front of the camera: drawn end to end, a Z
+/// line's far end could fall behind the camera and the whole line went
+/// missing (MU39).
 fn draw_axis(painter: &egui::Painter, map: &PaneMap, at: DVec3, a: Axis) {
-    let color = match a {
-        Axis::X => Color32::from_rgb(210, 60, 60),
-        Axis::Y => Color32::from_rgb(60, 160, 60),
-        Axis::Z => Color32::from_rgb(60, 100, 220),
-    };
-    let far = |s: f64| (map.project)(at + a.unit() * s);
-    if let (Some(p), Some(q)) = (far(-200.0), far(200.0)) {
-        painter.line_segment([p, q], Stroke::new(1.5, color));
+    let stroke = Stroke::new(1.5, axis_colour(a));
+    let steps: Vec<f64> = (-40..=40).map(|k| k as f64 * 5.0).collect();
+    for w in steps.windows(2) {
+        let (p, q) = (
+            (map.project)(at + a.unit() * w[0]),
+            (map.project)(at + a.unit() * w[1]),
+        );
+        if let (Some(p), Some(q)) = (p, q) {
+            painter.line_segment([p, q], stroke);
+        }
     }
 }
 

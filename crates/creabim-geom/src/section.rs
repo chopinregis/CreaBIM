@@ -585,10 +585,18 @@ pub(crate) fn hidden_lines(
     let image = zbuf.image();
     let zbuf = &zbuf;
     // each element's edges on its own core; the lines kept in scene order
+    // the direction depth grows in, in world terms: a curved wall's seams
+    // draw only where they are its outline from here (owner, Nov 2026)
+    let o = project(DVec3::ZERO);
+    let view = Vec3::new(
+        (project(DVec3::X).z - o.z) as f32,
+        (project(DVec3::Y).z - o.z) as f32,
+        (project(DVec3::Z).z - o.z) as f32,
+    );
     let per_item = par_map(scene, |index, s| {
         let mut items = Vec::new();
         let revealed = reveal.is_some_and(|r| r.contains(&s.id));
-        for (a, b) in feature_edges(s) {
+        for (a, b) in feature_edges_seen(s, view) {
             let Some((a, b)) = clip_segment(project(a), project(b), 1e-4, depth) else {
                 continue;
             };
@@ -1149,10 +1157,32 @@ pub fn feature_edges(item: &SceneItem) -> Vec<(DVec3, DVec3)> {
     feature_edges_over(item, 0.995)
 }
 
+/// [`feature_edges`] for a view looking along `view`: a seam between faces
+/// meeting at under 8° (a curved wall's facets) draws only where it is
+/// the outline, one face turned to the viewer and the other away.
+pub fn feature_edges_seen(item: &SceneItem, view: Vec3) -> Vec<(DVec3, DVec3)> {
+    let soft = 8f32.to_radians().cos();
+    edges_where(item, |ns| {
+        ns.len() == 1
+            || ns.iter().any(|a| ns.iter().any(|b| a.dot(*b) < soft))
+            || ns.iter().any(|a| {
+                ns.iter()
+                    .any(|b| a.dot(*b) < 0.9999 && (a.dot(view) > 0.0) != (b.dot(view) > 0.0))
+            })
+    })
+}
+
 /// [`feature_edges`] with its own crease: faces meeting at more than
 /// `acos(cos)` keep their edge. A sweep along a curve uses a wider one
 /// (25°), so the seams between its segments don't draw as ribs (MU23).
 pub fn feature_edges_over(item: &SceneItem, cos: f32) -> Vec<(DVec3, DVec3)> {
+    edges_where(item, |ns| {
+        ns.len() == 1 || ns.iter().any(|a| ns.iter().any(|b| a.dot(*b) < cos))
+    })
+}
+
+/// The mesh's edges whose faces' normals pass `keep`.
+fn edges_where(item: &SceneItem, keep: impl Fn(&[Vec3]) -> bool) -> Vec<(DVec3, DVec3)> {
     let key = |p: [f32; 3]| {
         let q = |v: f32| (v as f64 * 1e4).round() as i64;
         (q(p[0]), q(p[1]), q(p[2]))
@@ -1181,7 +1211,7 @@ pub fn feature_edges_over(item: &SceneItem, cos: f32) -> Vec<(DVec3, DVec3)> {
     }
     let mut out: Vec<(DVec3, DVec3)> = edges
         .into_values()
-        .filter(|(_, _, ns)| ns.len() == 1 || ns.iter().any(|a| ns.iter().any(|b| a.dot(*b) < cos)))
+        .filter(|(_, _, ns)| keep(ns))
         .map(|(a, b, _)| (a, b))
         .collect();
     out.sort_by(|x, y| {
@@ -1309,6 +1339,7 @@ fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(usize, &T) -> R + Sync) -> 
             .enumerate()
             .map(|(k, chunk)| {
                 scope.spawn(move || {
+                    crate::prio::background();
                     chunk
                         .iter()
                         .enumerate()

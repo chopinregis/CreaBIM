@@ -196,7 +196,7 @@ fn paint_room_tag(painter: &Painter, r: Rect, style: RoomTagStyle) {
 /// A picture of grips in `style`'s way on a selected outline.
 pub fn paint_grips(painter: &Painter, r: Rect, style: crate::handles::GripStyle) {
     use crate::handles::GripStyle as G;
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     let b = r.shrink2(Vec2::new(10.0, 8.0));
     painter.rect(
         b,
@@ -248,6 +248,81 @@ pub fn paint_grips(painter: &Painter, r: Rect, style: crate::handles::GripStyle)
 /// One option of a list: its picture, its name and a line under it, and
 /// a tick when it is the one in use. Click it to choose it; resting on it
 /// previews it.
+/// A picture of the interaction colour: a selected box and its grips.
+pub fn paint_interaction(painter: &Painter, r: Rect, ink: Color32) {
+    let b = r.shrink2(Vec2::new(16.0, 9.0));
+    painter.rect(
+        b,
+        0.0,
+        ink.gamma_multiply(0.25),
+        Stroke::new(1.4, ink),
+        egui::StrokeKind::Middle,
+    );
+    for c in [
+        b.left_top(),
+        b.right_top(),
+        b.left_bottom(),
+        b.right_bottom(),
+    ] {
+        painter.rect_filled(Rect::from_center_size(c, Vec2::splat(5.0)), 1.0, ink);
+    }
+}
+
+/// A picture of where the Move bar sits: a slim pill at the top of a
+/// view, or a small palette by the pointer.
+pub fn paint_edit_bar(painter: &Painter, r: Rect, by_pointer: bool) {
+    let accent = crate::theme::interaction();
+    let ink = Color32::from_gray(120);
+    // the view, and a box being moved in it
+    painter.rect_stroke(r, 3.0, Stroke::new(1.0, ink), egui::StrokeKind::Inside);
+    let block = Rect::from_min_size(
+        r.left_bottom() + Vec2::new(14.0, -16.0),
+        Vec2::new(16.0, 10.0),
+    );
+    painter.rect(
+        block,
+        0.0,
+        Color32::from_rgb(250, 220, 195),
+        Stroke::new(1.2, accent),
+        egui::StrokeKind::Middle,
+    );
+    let bar = if by_pointer {
+        Rect::from_min_size(
+            block.right_top() + Vec2::new(8.0, -10.0),
+            Vec2::new(38.0, 9.0),
+        )
+    } else {
+        Rect::from_center_size(
+            egui::pos2(r.center().x, r.top() + 7.0),
+            Vec2::new(60.0, 7.0),
+        )
+    };
+    painter.rect(
+        bar,
+        4.0,
+        Color32::from_gray(70),
+        Stroke::NONE,
+        egui::StrokeKind::Middle,
+    );
+    // its chips
+    let n = if by_pointer { 4 } else { 6 };
+    for i in 0..n {
+        let c = egui::pos2(
+            bar.left() + 6.0 + i as f32 * (bar.width() - 12.0) / (n - 1) as f32,
+            bar.center().y,
+        );
+        painter.circle_filled(
+            c,
+            1.6,
+            if i == n - 1 {
+                accent
+            } else {
+                Color32::from_gray(200)
+            },
+        );
+    }
+}
+
 pub fn choice_row(
     ui: &mut egui::Ui,
     selected: bool,

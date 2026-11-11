@@ -215,6 +215,21 @@ pub struct Settings {
     /// The grid snap's and the distance marks' spacing, micrometres. Grid
     /// snap itself always starts off.
     pub snap_spacing_um: u32,
+    /// Where Move, Rotate, Scale and the like show their bar: a slim pill
+    /// at the top of the view, or a small palette by the pointer (MU38).
+    pub edit_bar: String,
+    /// The model's X and Y axes drawn red and green on the 3D ground
+    /// grid, as Blender's (MU39).
+    pub axis_lines: bool,
+    /// The light millimetre grid behind plans, sections and details; off,
+    /// plain paper (MU40).
+    pub plan_grid: bool,
+    /// The colour of what is worked on (selection, grips, ghosts): "orange",
+    /// the default, or "theme" for the theme's accent (MU39).
+    pub interaction: String,
+    /// Edit mode's wires and corner dots, in points.
+    pub edit_edge_width: f32,
+    pub edit_vertex_size: f32,
 }
 
 impl Default for Settings {
@@ -248,6 +263,12 @@ impl Default for Settings {
             grips: Default::default(),
             distance_marks: false,
             snap_spacing_um: 50_000,
+            edit_bar: "top".into(),
+            axis_lines: true,
+            plan_grid: true,
+            interaction: "orange".into(),
+            edit_edge_width: 1.0,
+            edit_vertex_size: 4.0,
         }
     }
 }

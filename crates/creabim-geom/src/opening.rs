@@ -200,9 +200,12 @@ pub fn door_hand(o: &Opening, wall: &Wall) -> &'static str {
 /// standing on a level at `level_z`.
 pub fn to_model(o: &Opening, wall: &Wall, level_z: f64) -> Option<impl Fn(DVec3) -> DVec3> {
     let c = Cut::of(o, wall)?;
-    let d = wall.direction();
+    // square to the wall at the opening's middle: on a curved wall the
+    // door or window stands on the arc, along its tangent there
+    let um = (c.u0 + c.u1) / 2.0;
+    let d = wall.tangent_at(um);
     let n = DVec2::new(-d.y, d.x);
-    let start = wall.start;
+    let start = wall.place(um, 0.0) - d * um;
     let z0 = level_z + wall.base_offset + c.v0;
     Some(move |p: DVec3| (start + d * (c.u0 + p.x) + n * p.y).extend(z0 + p.z))
 }
@@ -295,11 +298,14 @@ pub(crate) fn add_box(m: &mut TriMesh, lo: DVec3, hi: DVec3, at: &dyn Fn(DVec3) 
 /// ghost shows around a door or window (A7-4, MU18).
 pub fn cut_box_mesh(o: &Opening, wall: &Wall, level_z: f64) -> Option<crate::TriMesh> {
     let c = crate::wall::Cut::of(o, wall)?;
-    let d = wall.direction();
-    let n = glam::DVec2::new(-d.y, d.x);
     let t = wall.thickness / 2.0;
-    let at = |u: f64, s: f64| wall.start + d * u + n * s;
-    let outline = [at(c.u0, -t), at(c.u1, -t), at(c.u1, t), at(c.u0, t)];
+    // round the arc on a curved wall
+    let n = if wall.is_arc() { 8 } else { 1 };
+    let us: Vec<f64> = (0..=n)
+        .map(|i| c.u0 + (c.u1 - c.u0) * i as f64 / n as f64)
+        .collect();
+    let mut outline: Vec<glam::DVec2> = us.iter().map(|u| wall.place(*u, -t)).collect();
+    outline.extend(us.iter().rev().map(|u| wall.place(*u, t)));
     let z0 = level_z + wall.base_offset;
     Some(crate::scene::slab_mesh(&outline, z0 + c.v1, c.v1 - c.v0))
 }
@@ -326,6 +332,7 @@ mod tests {
             attach_top: vec![],
             curtain: None,
             layer_ends: vec![],
+            bulge: 0.0,
         }
     }
 
@@ -346,6 +353,25 @@ mod tests {
 
     fn count(boxes: &[PartBox], part: Part) -> usize {
         boxes.iter().filter(|b| b.part == part).count()
+    }
+
+    #[test]
+    fn a_window_in_a_curved_wall_stands_on_its_arc() {
+        // a half circle of radius 2.5 from (0,0) to (5,0)
+        let w = Wall {
+            bulge: 1.0,
+            ..wall()
+        };
+        let o = opening(OpeningKind::Window, OpeningFrame::default());
+        let at = to_model(&o, &w, 0.0).unwrap();
+        // the window's middle, on the wall's centreline
+        let mid = at(DVec3::new(o.width / 2.0, 0.0, 0.0)).truncate();
+        let c = DVec2::new(2.5, 0.0);
+        assert!((mid.distance(c) - 2.5).abs() < 0.01, "{mid}");
+        assert!(w.along(mid).1 < 0.01);
+        // square to the wall there: across it points at the centre
+        let across = at(DVec3::new(o.width / 2.0, 1.0, 0.0)).truncate() - mid;
+        assert!(across.normalize().perp_dot((c - mid).normalize()).abs() < 1e-6);
     }
 
     #[test]

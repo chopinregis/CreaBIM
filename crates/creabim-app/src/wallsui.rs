@@ -216,6 +216,25 @@ pub(super) fn wall_fields(
     }
 
     crate::props::row(ui, "Length", |ui| ui.label(crate::units::len(w.length())));
+    if w.is_arc() {
+        // a curved wall's radius: its ends stay, it bends more or less
+        let chord = w.start.distance(w.end);
+        let creabim_core::sketch::Curve::Arc { radius, sweep, .. } = w.curve() else {
+            unreachable!()
+        };
+        let mut r = radius;
+        if num(ui, "Radius", &mut r, chord / 2.0 + 1e-3, 1e4) {
+            let minor = 2.0 * (chord / (2.0 * r)).clamp(-1.0, 1.0).asin();
+            // the side it bulges to, and more or less than a half circle, stay
+            let s = if sweep.abs() > std::f64::consts::PI {
+                std::f64::consts::TAU - minor
+            } else {
+                minor
+            };
+            w.bulge = w.bulge.signum() * (s / 4.0).tan();
+            label = "Change wall radius"
+        }
+    }
     let (mut a, mut b) = walls::location_line(model, w);
     let moved_a = num(ui, "Start X", &mut a.x, -1e4, 1e4) | num(ui, "Start Y", &mut a.y, -1e4, 1e4);
     let moved_b = num(ui, "End X", &mut b.x, -1e4, 1e4) | num(ui, "End Y", &mut b.y, -1e4, 1e4);
@@ -646,6 +665,18 @@ impl CreaBimApp {
                     self.status =
                         format!("New walls are drawn on their {}.", l.label().to_lowercase());
                 }
+            }
+            "wall.shape" => {
+                self.plan.wall_shape = arg.parse().unwrap_or(0);
+                self.plan.pending = None;
+                self.plan.wall_arc_end = None;
+                self.status = match self.plan.wall_shape {
+                    1 => "Arc wall: click its start, its end, then a point it passes through.",
+                    2 => "Circle wall: click its centre, then a point on it.",
+                    3 => "Rectangle of walls: click a corner, then the opposite one.",
+                    _ => "Straight walls: click to start, click for each corner.",
+                }
+                .into();
             }
             "wall.flipnew" => {
                 self.plan.wall_flip = !self.plan.wall_flip;

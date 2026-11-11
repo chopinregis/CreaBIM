@@ -104,6 +104,15 @@ pub fn boxes(ui: &mut Ui, on: bool) {
     });
 }
 
+/// Is a section's box open to put a sub-section in? (A sub-section with
+/// none above it is a section of its own: MU40.)
+pub fn box_open(ui: &Ui) -> bool {
+    let pass = ui.ctx().cumulative_pass_nr();
+    ui.ctx()
+        .data(|d| d.get_temp::<OpenBox>(box_id(ui)))
+        .is_some_and(|b| b.pass == pass)
+}
+
 fn boxes_on(ui: &Ui) -> bool {
     let id = box_id(ui).with("on");
     let pass = ui.ctx().cumulative_pass_nr();
@@ -263,6 +272,78 @@ pub fn flow<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerRespon
 /// A choice of a few as one row of equal joined buttons filling the field
 /// column, the chosen one lit: Blender's expanded list (MU31). Returns
 /// true when it changed.
+/// One segment of a row of joined buttons: rounded at the row's ends.
+fn segment_radius(i: usize, n: usize) -> egui::CornerRadius {
+    let (first, last) = (i == 0, i + 1 == n);
+    egui::CornerRadius {
+        nw: if first { 4 } else { 0 },
+        sw: if first { 4 } else { 0 },
+        ne: if last { 4 } else { 0 },
+        se: if last { 4 } else { 0 },
+    }
+}
+
+/// As [`choice`], each option a picture rather than a word (MU39: words
+/// cut to … in a narrow panel): `(value, icon, name, what it does)`.
+pub fn choice_icons<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    label: &str,
+    value: &mut T,
+    options: &[(T, &str, &str, &str)],
+) -> bool {
+    let mut changed = false;
+    row(ui, label, |ui| {
+        ui.spacing_mut().item_spacing.x = 1.0;
+        let n = options.len().max(1);
+        let w = ((ui.available_width() - (n as f32 - 1.0)) / n as f32).max(22.0);
+        let h = ui.spacing().interact_size.y;
+        for (i, (v, icon, name, tip)) in options.iter().enumerate() {
+            let on = *value == *v;
+            let mut b = egui::Button::selectable(on, "").corner_radius(segment_radius(i, n));
+            if !on {
+                b = b.fill(box_fill(ui.visuals()));
+            }
+            let resp = ui.add_sized([w, h], b);
+            let ink = if on {
+                ui.visuals().selection.stroke.color
+            } else {
+                crate::theme::Palette::of(ui.ctx()).muted
+            };
+            let r = egui::Rect::from_center_size(resp.rect.center(), Vec2::splat(15.0));
+            crate::svgicon::paint(ui.painter(), r, icon, ink);
+            if resp.on_hover_text(format!("{name}: {tip}")).clicked() && !on {
+                *value = *v;
+                changed = true;
+            }
+        }
+    });
+    changed
+}
+
+/// A row of joined on/off buttons, any number on at once (the sides a
+/// modifier works on). True when one changed.
+pub fn toggles(ui: &mut Ui, label: &str, on: &mut [bool], names: &[(&str, &str)]) -> bool {
+    let mut changed = false;
+    row(ui, label, |ui| {
+        ui.spacing_mut().item_spacing.x = 1.0;
+        let n = names.len().max(1);
+        let w = ((ui.available_width() - (n as f32 - 1.0)) / n as f32).max(20.0);
+        let h = ui.spacing().interact_size.y;
+        for (i, (text, tip)) in names.iter().enumerate() {
+            let Some(v) = on.get_mut(i) else { break };
+            let mut b = egui::Button::selectable(*v, *text).corner_radius(segment_radius(i, n));
+            if !*v {
+                b = b.fill(box_fill(ui.visuals()));
+            }
+            if ui.add_sized([w, h], b).on_hover_text(*tip).clicked() {
+                *v = !*v;
+                changed = true;
+            }
+        }
+    });
+    changed
+}
+
 pub fn choice<T: PartialEq + Copy>(
     ui: &mut Ui,
     label: &str,
@@ -646,6 +727,17 @@ pub fn check(
 /// Returns the row's response and the rect left for a ? button beside the
 /// title.
 pub fn header(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, egui::Rect) {
+    let boxed = !indent && boxes_on(ui);
+    let out = header_band(ui, title, open, indent);
+    // a folded section's box ends under its band, so whatever comes next
+    // never hangs under it as a lip (MU40)
+    if boxed && !open {
+        close_box(ui);
+    }
+    out
+}
+
+fn header_band(ui: &mut Ui, title: &str, open: bool, indent: bool) -> (Response, egui::Rect) {
     // as Blender's panels (MU20): a band a step darker than the panel, a
     // thin open chevron at the left that turns down when the section is
     // open, the title in bold after it, a dotted grip at the right

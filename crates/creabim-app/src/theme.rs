@@ -7,7 +7,6 @@ use eframe::egui::{self, Color32};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Theme {
     /// The original dark look.
-    #[default]
     Dark,
     /// The original light look.
     Light,
@@ -17,10 +16,14 @@ pub enum Theme {
     Paper,
     /// Deep blue, like a blueprint.
     Blueprint,
-    /// Pale green-grey.
+    /// Pale green-grey: the first-run look, as the settings' default and
+    /// the guide's pictures (MU39).
+    #[default]
     Sage,
     /// Near black with a gold accent, for high contrast.
     Ink,
+    /// Warm cream with slate ink and blue: Solarized Light (MU39).
+    Solarized,
 }
 
 /// The colours egui needs.
@@ -62,13 +65,14 @@ const fn hex(v: u32) -> Color32 {
 }
 
 impl Theme {
-    pub const ALL: [Theme; 7] = [
+    pub const ALL: [Theme; 8] = [
         Theme::Dark,
         Theme::Light,
         Theme::Graphite,
         Theme::Paper,
         Theme::Blueprint,
         Theme::Sage,
+        Theme::Solarized,
         Theme::Ink,
     ];
 
@@ -82,6 +86,7 @@ impl Theme {
             Theme::Blueprint => "blueprint",
             Theme::Sage => "sage",
             Theme::Ink => "ink",
+            Theme::Solarized => "solarized",
         }
     }
 
@@ -94,6 +99,7 @@ impl Theme {
             Theme::Blueprint => "Blueprint",
             Theme::Sage => "Sage",
             Theme::Ink => "Ink (high contrast)",
+            Theme::Solarized => "Solarized",
         }
     }
 
@@ -169,6 +175,11 @@ impl Theme {
                 false, 0xF6F7F4, 0xFFFFFF, 0xF6F7F4, 0xE3E6DF, 0xD3D8CE, 0x22261F, 0x5D6558,
                 0x4F6B4C,
             ),
+            Theme::Solarized => t(
+                // Solarized Light: base3 paper, base2 panels, base01 ink
+                false, 0xEEE8D5, 0xFDF6E3, 0xF5EFDC, 0xE2DBC6, 0xD3CBB2, 0x073642, 0x657B83,
+                0x268BD2,
+            ),
             Theme::Ink => t(
                 true, 0x0B0C0E, 0x141518, 0x1D1F23, 0x2A2D33, 0x3A3E46, 0xF5F3EE, 0x8F9096,
                 0xF0C36B,
@@ -218,9 +229,68 @@ impl Palette {
     }
 }
 
+static INTERACTION: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0xE6781E);
+
+/// The colour of what is being worked on: the selection, grips, ghosts,
+/// cutting planes' outlines (MU39): the orange it always was, or the
+/// theme's accent when Settings says to follow the theme.
+pub fn interaction() -> eframe::egui::Color32 {
+    let v = INTERACTION.load(std::sync::atomic::Ordering::Relaxed);
+    eframe::egui::Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
+}
+
+/// Set the interaction colour.
+pub fn set_interaction(c: eframe::egui::Color32) {
+    let v = (c.r() as u32) << 16 | (c.g() as u32) << 8 | c.b() as u32;
+    INTERACTION.store(v, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The orange the selection has always been.
+pub const ORANGE: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(230, 120, 30);
+
+impl Theme {
+    /// The logo's colour in this theme, as app.css's --logo (MU39).
+    pub fn logo(self) -> Color32 {
+        match self {
+            Theme::Light | Theme::Sage => Color32::from_rgb(0x4F, 0x6B, 0x4C),
+            Theme::Paper => Color32::from_rgb(0x6F, 0x7A, 0x4E),
+            Theme::Graphite => Color32::from_rgb(0xC9, 0xA8, 0x67),
+            Theme::Blueprint => Color32::from_rgb(0x9F, 0xD3, 0xEA),
+            Theme::Ink => Color32::from_rgb(0xF0, 0xC3, 0x6B),
+            Theme::Dark => Color32::from_rgb(0x8F, 0xB0, 0x8A),
+            Theme::Solarized => Color32::from_rgb(0x85, 0x99, 0x00),
+        }
+    }
+
+    /// The selection's colour when it follows the theme: picked by hand
+    /// for each, to read against its paper and its linework (MU39).
+    pub fn selection(self) -> Color32 {
+        match self {
+            Theme::Dark => Color32::from_rgb(0x5B, 0x8C, 0xFF),
+            Theme::Light => Color32::from_rgb(0x2F, 0x6B, 0xF0),
+            Theme::Graphite => Color32::from_rgb(0xE0, 0xA2, 0x4A),
+            Theme::Paper => Color32::from_rgb(0xC0, 0x55, 0x2E),
+            Theme::Blueprint => Color32::from_rgb(0x5F, 0xD0, 0xFF),
+            Theme::Sage => Color32::from_rgb(0x3F, 0xA3, 0x4D),
+            Theme::Ink => Color32::from_rgb(0xF0, 0xC3, 0x6B),
+            Theme::Solarized => Color32::from_rgb(0xCB, 0x4B, 0x16),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_themes_selection_stands_off_its_panels() {
+        // Sage's deep green was nearly black on its plans (MU39)
+        for t in Theme::ALL {
+            let sel = t.selection();
+            let bg = t.palette().panel;
+            assert!(contrast_ratio(sel, bg) >= 2.0, "{t:?}: {sel:?} on {bg:?}");
+        }
+    }
 
     #[test]
     fn every_theme_round_trips_by_id_and_cycles() {

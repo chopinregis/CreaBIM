@@ -20,7 +20,7 @@ use crate::snaps;
 use creabim_core::transform::transformed;
 use creabim_core::{pushpull, Document, ElementId, ElementKind, ModelError, Transaction, Xform};
 use creabim_geom::PlanItem;
-use eframe::egui::{self, Color32, Stroke};
+use eframe::egui::{self, Stroke};
 use glam::{DVec2, DVec3};
 
 /// What the second click does to what it picks.
@@ -517,7 +517,7 @@ pub fn draw_picks(
     hover: Option<(ElementId, DVec2, DVec2, bool)>,
     centres: &[CentreLine],
 ) {
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     // the centre lines of what the pointer is over, faintly
     let centre = crate::align3d::CENTRE;
     for (id, a, b) in centres {

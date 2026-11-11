@@ -63,11 +63,15 @@ impl CreaBimApp {
             handles::set_layers(false);
             return;
         };
-        if self.selection.active != Some(id)
-            || self.selection.len() != 1
-            || self.plan.tool != Tool::Select
-            || self.doc.model().get(id).is_none()
+        // as Blender's: a click elsewhere doesn't end Edit mode, the
+        // element stays the one edited until Tab, Esc or Enter (MU39)
+        if self.doc.model().get(id).is_some()
+            && self.plan.tool == Tool::Select
+            && (self.selection.active != Some(id) || self.selection.len() != 1)
         {
+            self.selection.only(id);
+        }
+        if self.plan.tool != Tool::Select || self.doc.model().get(id).is_none() {
             self.plan.edit = None;
             self.plan.grips.clear();
             handles::set_layers(false);
@@ -123,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn edit_mode_opens_on_the_selection_and_ends_when_it_changes() {
+    fn edit_mode_opens_on_the_selection_and_stays_until_left() {
         let mut app = app();
         // nothing selected: nothing to edit
         app.toggle_edit_mode();
@@ -133,11 +137,14 @@ mod tests {
         app.toggle_edit_mode();
         assert_eq!(app.plan.edit, Some(id));
         assert!(app.status.contains("Editing"), "{}", app.status);
-        // Esc steps out of it, keeping the selection
+        // Esc doesn't leave it, as Blender's (MU39); Tab does, keeping the
+        // selection
         assert!(app.plan.step_back());
+        assert_eq!(app.plan.edit, Some(id));
+        app.toggle_edit_mode();
         assert_eq!(app.plan.edit, None);
         assert!(app.selection.contains(id));
-        // and selecting something else ends it
+        // and a click elsewhere doesn't end it
         app.toggle_edit_mode();
         let slab = app
             .doc
@@ -148,7 +155,11 @@ mod tests {
             .id;
         app.selection.only(slab);
         app.keep_edit_mode();
-        assert_eq!(app.plan.edit, None);
+        assert_eq!(app.plan.edit, Some(id));
+        assert_eq!(app.selection.active, Some(id));
+        app.selection.clear();
+        app.keep_edit_mode();
+        assert_eq!(app.plan.edit, Some(id));
     }
 
     #[test]
@@ -265,11 +276,13 @@ mod tests {
         assert!(app.plan.grips.is_empty());
         // and still in Edit mode
         assert_eq!(app.plan.edit, Some(id));
-        // Esc drops picks first, then finishes editing
+        // Esc drops picks, and stays in Edit mode; Tab finishes
         app.plan.grips.pick(handles::Ring::Outline, 0, false);
         assert!(app.plan.step_back());
         assert_eq!(app.plan.edit, Some(id));
         assert!(app.plan.step_back());
+        assert_eq!(app.plan.edit, Some(id));
+        app.toggle_edit_mode();
         assert_eq!(app.plan.edit, None);
         // out of Edit mode Delete deletes the element, as it always did
         app.run_command(&ctx, Command::Delete, None);

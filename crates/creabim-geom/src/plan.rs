@@ -1012,7 +1012,19 @@ pub fn plan_view_with(
                 let ends = joins.get(&e.id).cloned().unwrap_or_default();
                 // wall-local point; the wall's own ends and the sides of the
                 // gaps crossing walls leave follow its joins
-                let at = |u: f64, s: f64| w.start + d * ends.place(w, u, s, false) + n * s;
+                // a curved wall is laid round its arc, its ends square
+                let at = |u: f64, s: f64| {
+                    if w.is_arc() {
+                        // its ends as its joins put them (see Wall::place_end)
+                        if u <= 1e-9 || u >= w.length() - 1e-9 {
+                            w.place_end(u > 1e-9, ends.place(w, u, s, false), s)
+                        } else {
+                            w.place(u, s)
+                        }
+                    } else {
+                        w.start + d * ends.place(w, u, s, false) + n * s
+                    }
+                };
                 let cut_v = cut_height - w.base_offset;
                 let top_v = wall_top_height(model, w);
                 if cut_v <= 0.0 || cut_v >= top_v {
@@ -1021,7 +1033,11 @@ pub fn plan_view_with(
                         items.push(PlanItem::Polygon {
                             id: e.id,
                             pen: Pen::Projection,
-                            points: ends.footprint(w).to_vec(),
+                            points: if w.is_arc() {
+                                wall_band(w, &at, 0.0, w.length(), -t, t)
+                            } else {
+                                ends.footprint(w).to_vec()
+                            },
                         });
                     }
                     continue;
@@ -1106,17 +1122,16 @@ pub fn plan_view_with(
                     // each layer between its own ends: a core runs on at a T
                     for band in creabim_core::assembly::wall_bands(asm, w) {
                         let at = |u: f64, s: f64| {
-                            w.start + d * ends.place_layer(w, u, s, band.core, band.ext) + n * s
+                            if w.is_arc() {
+                                w.place(u, s)
+                            } else {
+                                w.start + d * ends.place_layer(w, u, s, band.core, band.ext) + n * s
+                            }
                         };
                         for &(a, b) in &pieces {
                             layers.push(CutPiece {
                                 id: e.id,
-                                points: vec![
-                                    at(a, band.s0),
-                                    at(b, band.s0),
-                                    at(b, band.s1),
-                                    at(a, band.s1),
-                                ],
+                                points: wall_band(w, &at, a, b, band.s0, band.s1),
                                 layer: Some(crate::scene::LayerPart::of(&band)),
                             });
                         }
@@ -1127,7 +1142,7 @@ pub fn plan_view_with(
                     items.push(PlanItem::Polygon {
                         id: e.id,
                         pen: Pen::Cut,
-                        points: vec![at(a, -t), at(b, -t), at(b, t), at(a, t)],
+                        points: wall_band(w, &at, a, b, -t, t),
                     });
                 }
             }
@@ -1216,24 +1231,30 @@ pub fn plan_view_with(
                 // a mass or sweep below the cut: its top seen tinted, in
                 // its material under the colour styles (MU36: they read as
                 // wireframe)
-                if let ElementKind::Part(p) = k {
-                    if !p.void {
-                        if let Some(mesh) = crate::parts::part_mesh(model, p) {
-                            let color = creabim_core::material_of(model, e)
-                                .map_or([0.78, 0.76, 0.72], |(_, m)| m.color);
-                            let item = crate::scene::SceneItem {
-                                id: e.id,
-                                mesh,
-                                color,
-                                surface: crate::scene::PLAIN_SURFACE,
-                                ghost: false,
-                                layer: None,
-                                finish: None,
-                            };
-                            let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
-                            shades.extend(mesh_shade(&item, z, graphics));
-                        }
+                // and a beam, in its colour as other members' (MU40: a beam
+                // on the roof read as an empty outline)
+                // every member: sweeps and extrusions, beams, roofs,
+                // stairs, railings… (MU40: roofs and sweeps read empty)
+                let solid: Option<(crate::TriMesh, [f32; 3])> = match k {
+                    ElementKind::Part(p) if !p.void => {
+                        crate::parts::part_mesh(model, p).map(|m| (m, [0.78, 0.76, 0.72]))
                     }
+                    ElementKind::Part(_) => None,
+                    _ => crate::members::member_mesh(model, e),
+                };
+                if let Some((mesh, base)) = solid {
+                    let color = creabim_core::material_of(model, e).map_or(base, |(_, m)| m.color);
+                    let item = crate::scene::SceneItem {
+                        id: e.id,
+                        mesh,
+                        color,
+                        surface: crate::scene::PLAIN_SURFACE,
+                        ghost: false,
+                        layer: None,
+                        finish: None,
+                    };
+                    let z = model.level(level).map_or(0.0, |l| l.elevation) + cut_height;
+                    shades.extend(mesh_shade(&item, z, graphics));
                 }
             }
             // a column standing on a level below, running up through this one
@@ -1243,6 +1264,30 @@ pub fn plan_view_with(
                     pen: Pen::Cut,
                     points: c.outline(),
                 });
+            }
+            // one from a level below that rises into this level but stops
+            // under the cut: seen from above (MU40: porch posts reaching
+            // the roof were missing from the roof plan)
+            ElementKind::Column(c)
+                if !on_level && {
+                    let (_, z1) = c.span(model);
+                    let floor = model.level(level).map_or(0.0, |l| l.elevation);
+                    z1 > floor + 0.05 && z1 <= floor + cut_height
+                } =>
+            {
+                let pts = c.outline();
+                let mut ring = pts.clone();
+                if let Some(f) = pts.first() {
+                    ring.push(*f);
+                }
+                for w in ring.windows(2) {
+                    items.push(PlanItem::Line {
+                        id: e.id,
+                        pen: Pen::Projection,
+                        a: w[0],
+                        b: w[1],
+                    });
+                }
             }
             // a footing under a wall or column of a level above, which this
             // plan's plane cuts through: the plan of a foundation level
@@ -1416,16 +1461,23 @@ fn mesh_shade(
     };
     let m = &item.mesh;
     let p = |i: u32| glam::Vec3::from(m.positions[i as usize]).as_dvec3();
-    if m.positions.is_empty() || m.positions.iter().any(|q| q[2] as f64 >= z - 1e-6) {
+    if m.positions.is_empty() {
         return vec![];
     }
+    // what lies below the cut, seen from above: a solid the cut passes
+    // through (a roof, a sloped beam) is tinted where it is below it
+    // (MU40: they were left empty)
     let tris = m.indices.chunks(3).filter(|t| t.len() == 3);
     if m.indices.len() / 3 > 4000 {
         let pts: Vec<DVec2> = m
             .positions
             .iter()
+            .filter(|q| (q[2] as f64) < z - 1e-6)
             .map(|q| DVec2::new(q[0] as f64, q[1] as f64))
             .collect();
+        if pts.len() < 3 {
+            return vec![];
+        }
         let hull = creabim_core::objects::hull(&pts);
         return vec![PlanItem::Shade {
             id: item.id,
@@ -1435,15 +1487,53 @@ fn mesh_shade(
     }
     tris.filter_map(|t| {
         let (a, b, c) = (p(t[0]), p(t[1]), p(t[2]));
-        let (a, b, c) = (a.truncate(), b.truncate(), c.truncate());
         // faces turned up, seen from above
-        ((b - a).perp_dot(c - a) > 1e-9).then(|| PlanItem::Shade {
+        if (b - a).truncate().perp_dot((c - a).truncate()) <= 1e-9 {
+            return None;
+        }
+        // the part of it below the cut (MU40: a face the cut crosses, as a
+        // sloped beam's or a roof's top, was left empty)
+        let mut poly: Vec<DVec2> = vec![];
+        for (u, v) in [(a, b), (b, c), (c, a)] {
+            let (iu, iv) = (u.z < z - 1e-6, v.z < z - 1e-6);
+            if iu {
+                poly.push(u.truncate());
+            }
+            if iu != iv {
+                let k = (z - u.z) / (v.z - u.z);
+                poly.push((u + (v - u) * k).truncate());
+            }
+        }
+        (poly.len() >= 3).then_some(PlanItem::Shade {
             id: item.id,
-            points: vec![a, b, c],
+            points: poly,
             rgb,
         })
     })
     .collect()
+}
+
+/// The band of wall `w` from `a` to `b` along it and `s0` to `s1` across,
+/// as an outline: four corners on a straight wall, bending round a
+/// curved one (MU40).
+fn wall_band(
+    w: &creabim_core::Wall,
+    at: &dyn Fn(f64, f64) -> DVec2,
+    a: f64,
+    b: f64,
+    s0: f64,
+    s1: f64,
+) -> Vec<DVec2> {
+    let mut us = vec![a];
+    us.extend(
+        w.bends()
+            .into_iter()
+            .filter(|u| *u > a + 1e-9 && *u < b - 1e-9),
+    );
+    us.push(b);
+    let mut pts: Vec<DVec2> = us.iter().map(|u| at(*u, s0)).collect();
+    pts.extend(us.iter().rev().map(|u| at(*u, s1)));
+    pts
 }
 
 /// The height of a wall's top above its base where it is highest. A top
@@ -2753,5 +2843,35 @@ mod tests {
         assert!(washed(square.clone(), true));
         assert!(!washed(square, false));
         assert!(!washed(bow, true));
+    }
+
+    #[test]
+    fn a_beam_on_a_roof_slope_is_filled_in_its_colour_in_the_plan() {
+        let lv = creabim_core::Element::new(
+            "L1",
+            ElementKind::Level(creabim_core::Level {
+                elevation: 3.0,
+                height: 3.0,
+            }),
+        );
+        let mut b = creabim_core::Beam::new(lv.id, DVec2::ZERO, DVec2::new(4.0, 0.0));
+        // rising through the cut (6 m) from 5.6 to 7.6
+        b.top_offset = 0.4;
+        b.rise = [0.0, 2.0];
+        let be = creabim_core::Element::new("Beam", ElementKind::Beam(b));
+        let id = be.id;
+        let m = Model::from_elements([lv.clone(), be]).unwrap();
+        let g = creabim_core::PlanGraphics {
+            below_fill: true,
+            below_strength: 1.0,
+            ..Default::default()
+        };
+        let v = plan_view_with(&m, lv.id, 3.0, &g);
+        assert!(
+            v.items
+                .iter()
+                .any(|it| matches!(it, PlanItem::Shade { id: i, .. } if *i == id)),
+            "the beam has its fill"
+        );
     }
 }

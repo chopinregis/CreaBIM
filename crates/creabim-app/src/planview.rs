@@ -318,6 +318,33 @@ pub struct PlanState {
     /// show it), and each part's size at its middle (MU38).
     pub divide_marks: Vec<(DVec3, DVec3, bool)>,
     pub divide_labels: Vec<(DVec3, String)>,
+    /// The element a click would place, from the view the pointer is in
+    /// (its view, or None for 3D): set as it is drawn there, and shown a
+    /// frame later in every other view, so placing a mass in 3D shows it
+    /// in the plans too (MU39).
+    /// Keyed by the pane (two panes may show the same view; the 3D view
+    /// is `usize::MAX`).
+    pub ghost_now: Option<(Option<usize>, crate::ghost::Ghost)>,
+    pub ghost_shared: Option<(Option<usize>, crate::ghost::Ghost)>,
+    /// The pane being drawn now, while the areas draw theirs.
+    pub pane_now: Option<usize>,
+    /// Divide is making guides: its marks show as guides do (MU39).
+    pub divide_guides: bool,
+    /// While a point is asked for (a radial array's centre): the next
+    /// click in a plan gives it, in model x and y (MU39).
+    pub point_pick: bool,
+    pub point_picked: Option<DVec2>,
+    /// While a point is asked for: where the pointer is, and (when
+    /// `point_lines`) the drawing's straight line under it, which a click
+    /// takes instead of a point (Split's cutting line, MU39).
+    pub point_hover: Option<DVec2>,
+    /// The first point of a line being picked (Split's), for tracking.
+    pub point_from: Option<DVec2>,
+    pub point_lines: bool,
+    pub point_line_picked: Option<(DVec2, DVec2)>,
+    /// Lines and see-through planes a modifier being set shows in the
+    /// views (its centre, its mirror plane, its cuts), in model space.
+    pub mod_guides: crate::modguides::Guides,
     /// A view to show at its drawing scale on the next frame: 1 paper mm
     /// on 1 screen mm (A5-7, the view's More menu).
     pub zoom_to_scale: Option<ElementId>,
@@ -341,6 +368,11 @@ pub struct PlanState {
     /// is on (the right of the direction drawn, or flipped its left).
     pub wall_location: creabim_core::LocationLine,
     pub wall_flip: bool,
+    /// What the Wall tool draws (MU40): 0 straight, 1 an arc (start, end,
+    /// then a point it passes through), 2 a circle (centre, then radius).
+    pub wall_shape: u8,
+    /// An arc wall's end, once clicked: the next click bends it.
+    pub wall_arc_end: Option<DVec2>,
     /// Section line handle being dragged, and the line when the drag began.
     drag: Option<(Handle, DVec2, DVec2, DVec2)>,
     /// Dimension being drawn: its points so far, attached and as drawn.
@@ -360,7 +392,7 @@ pub struct PlanState {
     /// A sketch being drawn, in whichever pane started it.
     pub sketch: Option<SketchDraft>,
     /// A handle or selected element being dragged in a plan or section.
-    grip: Option<handles::Drag>,
+    pub(crate) grip: Option<handles::Drag>,
     /// The element open in Edit mode (see [`crate::editmode`]): all its
     /// grips show, in every view.
     pub edit: Option<ElementId>,
@@ -568,6 +600,17 @@ impl Default for PlanState {
             cameras: HashMap::new(),
             divide_marks: vec![],
             divide_labels: vec![],
+            divide_guides: false,
+            ghost_now: None,
+            ghost_shared: None,
+            pane_now: None,
+            point_pick: false,
+            point_picked: None,
+            point_hover: None,
+            point_from: None,
+            point_lines: false,
+            point_line_picked: None,
+            mod_guides: Default::default(),
             zoom_to_scale: None,
             edit_note: None,
             sheet_guides: false,
@@ -580,6 +623,8 @@ impl Default for PlanState {
             wall_thickness: 0.2,
             wall_location: Default::default(),
             wall_flip: false,
+            wall_shape: 0,
+            wall_arc_end: None,
             drag: None,
             dim: vec![],
             tag_host: None,
@@ -730,11 +775,11 @@ impl PlanState {
             true
         } else if self.edit.is_some() && !self.grips.is_empty() {
             self.grips.clear();
-            self.status = Some("Corners deselected. Esc again finishes editing.".into());
+            self.status = Some("Nothing picked. Tab finishes editing.".into());
             true
-        } else if self.edit.take().is_some() {
-            self.grips.clear();
-            self.status = Some("Finished editing.".into());
+        } else if self.edit.is_some() {
+            // Esc never leaves Edit mode, as Blender's: Tab does (MU39)
+            self.status = Some("Still editing: Tab finishes.".into());
             true
         } else if self.tool != Tool::Select {
             self.tool = Tool::Select;
@@ -794,7 +839,14 @@ pub fn show(
     selection: &mut Selection,
     style: PaneStyle,
 ) -> Option<String> {
-    let response = ui.interact(rect, ui.id().with(("view", view)), Sense::click_and_drag());
+    // while a point is asked for, a click gives it and selects nothing
+    let picking = state.point_pick && matches!(kind, PaneKind::Plan { .. });
+    let sense = if picking {
+        Sense::drag()
+    } else {
+        Sense::click_and_drag()
+    };
+    let response = ui.interact(rect, ui.id().with(("view", view)), sense);
     let painter = ui.painter_at(rect);
     if let Some(bg) = style.background {
         painter.rect_filled(rect, 0.0, bg);
@@ -845,8 +897,27 @@ pub fn show(
         }
     }
 
-    // pan and zoom
-    if response.dragged_by(egui::PointerButton::Secondary)
+    // pan and zoom; Ctrl + middle drag zooms about where it started (MU39)
+    let ctrl_mid =
+        response.dragged_by(egui::PointerButton::Middle) && ui.input(|i| i.modifiers.command);
+    if ctrl_mid {
+        let k = (1.0 - response.drag_delta().y * 0.01).clamp(0.5, 2.0);
+        if let Some(at) = ui.input(|i| i.pointer.press_origin()) {
+            let xf = Xf {
+                rect,
+                center,
+                scale,
+            };
+            let before = xf.to_world(at);
+            scale = (scale * k).clamp(2.0, 2000.0);
+            let xf = Xf {
+                rect,
+                center,
+                scale,
+            };
+            center += before - xf.to_world(at);
+        }
+    } else if response.dragged_by(egui::PointerButton::Secondary)
         || response.dragged_by(egui::PointerButton::Middle)
     {
         let d = response.drag_delta() / scale;
@@ -910,7 +981,123 @@ pub fn show(
     };
 
     if style.decorations && kind != PaneKind::Schedule {
-        draw_metric_grid(&painter, &xf);
+        let (grid, axes) = plan_look();
+        if grid {
+            draw_metric_grid(&painter, &xf);
+        }
+        // the origin in a plan, faint: where the building is anchored, red
+        // along X and green along Y as in 3D (MU40)
+        if axes && matches!(kind, PaneKind::Plan { .. }) {
+            draw_origin_axes(&painter, &xf);
+        }
+    }
+    // a point asked for: a cross follows the pointer, a click gives it
+    if picking {
+        if let Some(h) = response.hover_pos() {
+            let w = xf.to_world(h);
+            let step = crate::snaps::current_step();
+            // the drawing tools' snaps (MU39): corners, middles, where
+            // guides and lines cross, along a guide; else the grid step
+            let cfg = state.snap.live(ui.input(|i| i.modifiers.alt));
+            let from = state.point_from.map(|f| f.extend(0.0));
+            let snapped = state.snaps.get(&view).and_then(|(_, _, sn)| {
+                sn.snap(
+                    &cfg,
+                    h,
+                    &|p: DVec3| Some(xf.to_screen(p.truncate())),
+                    from,
+                    Some(w.extend(0.0)),
+                )
+            });
+            if let Some(sn) = snapped {
+                let top = ui
+                    .ctx()
+                    .layer_painter(egui::LayerId::new(
+                        egui::Order::Foreground,
+                        ui.id().with("picksnap"),
+                    ))
+                    .with_clip_rect(rect);
+                crate::snaps::draw(
+                    &top,
+                    sn,
+                    xf.to_screen(sn.p.truncate()),
+                    from.map(|f| xf.to_screen(f.truncate())),
+                );
+            }
+            let corner = snapped
+                .filter(|s| s.kind.is_point())
+                .map(|s| s.p.truncate());
+            let along = snapped
+                .filter(|s| !s.kind.is_point())
+                .map(|s| s.p.truncate());
+            let w = match corner.or(if state.point_lines { None } else { along }) {
+                Some(c) => c,
+                None if step > 0.0 => (w / step).round() * step,
+                None => w,
+            };
+            state.point_hover = Some(w);
+            // a straight line of the drawing under the pointer: a guide, a
+            // wall's face, an edge
+            let line = if state.point_lines && corner.is_none() {
+                let reach = 6.0 / scale as f64;
+                let to_seg = |a: DVec2, b: DVec2| {
+                    let ab = b - a;
+                    let t = ((w - a).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+                    (a + ab * t).distance(w)
+                };
+                plan.items
+                    .iter()
+                    .flat_map(|it| match it {
+                        PlanItem::Line { a, b, .. } => vec![(*a, *b)],
+                        PlanItem::Polygon { points, .. } => (0..points.len())
+                            .map(|i| (points[i], points[(i + 1) % points.len()]))
+                            .collect(),
+                        _ => vec![],
+                    })
+                    .filter(|(a, b)| a.distance(*b) > 1e-6 && to_seg(*a, *b) < reach)
+                    .min_by(|p, q| to_seg(p.0, p.1).total_cmp(&to_seg(q.0, q.1)))
+            } else {
+                None
+            };
+            if let Some((a, b)) = line {
+                let top = ui
+                    .ctx()
+                    .layer_painter(egui::LayerId::new(
+                        egui::Order::Foreground,
+                        ui.id().with("pickline"),
+                    ))
+                    .with_clip_rect(rect);
+                top.line_segment(
+                    [xf.to_screen(a), xf.to_screen(b)],
+                    Stroke::new(3.0, SPLIT_RED),
+                );
+            }
+            let c = xf.to_screen(w);
+            let top = ui
+                .ctx()
+                .layer_painter(egui::LayerId::new(
+                    egui::Order::Foreground,
+                    ui.id().with("pick"),
+                ))
+                .with_clip_rect(rect);
+            let s = Stroke::new(1.5, accent_selected());
+            top.line_segment([c - egui::vec2(12.0, 0.0), c + egui::vec2(12.0, 0.0)], s);
+            top.line_segment([c - egui::vec2(0.0, 12.0), c + egui::vec2(0.0, 12.0)], s);
+            top.circle_stroke(c, 5.0, s);
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            if ui.input(|i| i.pointer.primary_clicked()) {
+                match line {
+                    Some(l) => state.point_line_picked = Some(l),
+                    None => state.point_picked = Some(w),
+                }
+                if !state.point_lines {
+                    state.point_pick = false;
+                }
+            }
+        }
+        if ui.input(|i| i.pointer.secondary_clicked() || i.key_pressed(egui::Key::Escape)) {
+            state.point_pick = false;
+        }
     }
     // the references shown in this view, under the drawing (MU19)
     if style.decorations {
@@ -1011,9 +1198,9 @@ pub fn show(
                 let mut pts: Vec<Pos2> = c.iter().map(|p| xf.to_screen(*p)).collect();
                 pts.push(pts[0]);
                 let ink = if lit {
-                    ACCENT_SELECTED
+                    accent_selected()
                 } else {
-                    ACCENT_SELECTED.gamma_multiply(0.6)
+                    accent_selected().gamma_multiply(0.6)
                 };
                 painter.extend(egui::Shape::dashed_line(
                     &pts,
@@ -1099,7 +1286,7 @@ pub fn show(
     // a selected mark is traced in the accent, as a hover traces it
     for item in plan.items.iter().filter(|it| is_mark(it)) {
         if selection.contains(item.id()) && !ghost {
-            trace(&painter, &xf, item, ACCENT_SELECTED, mm);
+            trace(&painter, &xf, item, accent_selected(), mm);
         }
     }
     if let Some(id) = hovered {
@@ -1210,6 +1397,7 @@ pub fn show(
     let guide_from = drawing_from.or(state.dim.first().map(|d| d.1.extend(0.0)));
     let guides = if guided {
         let refs = state.refs.get(&view).map_or(&[][..], |r| r.as_slice());
+        let _p = crate::app::Perf::new("plan snaps: guides");
         snaps::temp_guides(refs, guide_from, state.guide_step)
     } else {
         vec![]
@@ -1231,6 +1419,7 @@ pub fn show(
     // before the first click; Tab goes through overlapping hosts (A3-2)
     let host_hits: Vec<ElementId> = match (kind, response.hover_pos()) {
         (PaneKind::Plan { level }, Some(p)) if crate::memberstool::hosted(tool) => {
+            let _p = crate::app::Perf::new("plan snaps: hosts");
             crate::memberstool::hosts_at(doc.model(), level, tool, state, xf.to_world(p))
         }
         _ => vec![],
@@ -1247,6 +1436,7 @@ pub fn show(
         .hover_pos()
         .filter(|_| host.is_none())
         .and_then(|p| {
+            let _p = crate::app::Perf::new("plan snaps: guided");
             let snapper = &state.snaps.get(&view)?.2;
             snapper.snap_guided(
                 &snap_cfg,
@@ -1515,6 +1705,20 @@ pub fn show(
             Some(pane_to_model(space, xf.to_world(pos), pivot.z))
         };
         let project = |p: DVec3| Some(xf.to_screen(model_to_pane(space, p)));
+        // the element another view's pointer would place, here too
+        if let Some((from, g)) = &state.ghost_shared {
+            if *from != state.pane_now {
+                crate::ghost::draw(&painter, &project, g, accent_selected());
+            }
+        }
+        // what the modifier being set shows: its centre, plane or cuts
+        crate::modguides::draw(
+            &painter,
+            &state.mod_guides,
+            state.mod_guides.ink.unwrap_or(accent_selected()),
+            matches!(space, Space::Plan),
+            &project,
+        );
         // Divide's marks: ticks across in plans, lines standing in sections
         for (a, b, plan) in &state.divide_marks {
             if *plan != matches!(space, Space::Plan) {
@@ -1525,7 +1729,17 @@ pub fn show(
                 xf.to_screen(model_to_pane(space, *b)),
             );
             if pa.distance(pb) > 1.0 {
-                painter.line_segment([pa, pb], Stroke::new(2.0, ACCENT_SELECTED));
+                if state.divide_guides {
+                    crate::snaps::dashed_clipped(
+                        &painter,
+                        &[pa, pb],
+                        Stroke::new(1.5, GUIDE_COLOR),
+                        8.0,
+                        5.0,
+                    );
+                } else {
+                    painter.line_segment([pa, pb], Stroke::new(2.0, accent_selected()));
+                }
             }
         }
         let mut taken = vec![];
@@ -1539,7 +1753,7 @@ pub fn show(
                 &painter,
                 xf.to_screen(model_to_pane(space, *at)),
                 text,
-                ACCENT_SELECTED,
+                accent_selected(),
                 &mut taken,
             );
         }
@@ -1818,13 +2032,16 @@ pub fn show(
                     .any(|id| selection.contains(id));
                 if !on_selected || footing_box {
                     state.boxsel = Some((p0, response.id));
+                    boxsel::trace(p0, true);
                 }
             }
         }
         if let Some((p0, _)) = state.boxsel.filter(|b| b.1 == response.id) {
             let now = ui.input(|i| i.pointer.latest_pos()).unwrap_or(p0);
+            boxsel::trace(now, false);
             boxsel::draw(&painter, p0, now);
-            if response.drag_stopped() || !response.dragged() {
+            let ended = response.drag_stopped() || !response.dragged();
+            {
                 let parts = plan.items.iter().filter_map(|it| {
                     if creabim_geom::plan::is_underlay(it) {
                         return None;
@@ -1838,6 +2055,13 @@ pub fn show(
                 let ids = boxsel::pick(p0, now, parts)
                     .into_iter()
                     .filter(|id| box_selectable(doc, *id));
+                if !ended {
+                    // what it would take, counted as it is drawn (MU39)
+                    if !footing_box {
+                        boxsel::draw_count(&painter, now, ids.count());
+                    }
+                    return None;
+                }
                 if footing_box {
                     let pad = crate::memberstool::footing_kind(doc.model(), state)
                         == creabim_core::FootingKind::Pad;
@@ -1858,7 +2082,8 @@ pub fn show(
                     }
                     state.want_footings = hosts;
                 } else {
-                    selection.extend(ids, shift);
+                    let ctrl = ui.input(|i| i.modifiers.command);
+                    boxsel::apply(selection, ids.collect(), boxsel::combine_with(shift, ctrl));
                     state.boxed = true;
                 }
                 state.boxsel = None;
@@ -1898,7 +2123,7 @@ pub fn show(
         _ => None,
     };
     let dim_hit = dim_guided.as_ref().map(|(h, at, k, _)| (*h, *at, *k));
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     if let Some((_, at, k, used)) = &dim_guided {
         let c = xf.to_screen(*at);
         match k {
@@ -2006,10 +2231,12 @@ pub fn show(
     // the element a click would place, as a ghost (A7-4)
     if let (PaneKind::Plan { level }, Some(h), true) = (kind, hover_world, response.hovered()) {
         if crate::ghost::shows(tool) {
-            let accent = crate::theme::Palette::of(ui.ctx()).accent;
+            // the interaction colour, as the 3D view's ghost (MU39)
+            let accent = accent_selected();
             match crate::ghost::cached(doc.model(), level, tool, h, state) {
                 Some(g) => {
-                    crate::ghost::draw(&painter, &|p| Some(xf.to_screen(p.truncate())), &g, accent)
+                    crate::ghost::draw(&painter, &|p| Some(xf.to_screen(p.truncate())), &g, accent);
+                    state.ghost_now = Some((state.pane_now, g));
                 }
                 None if matches!(tool, Tool::Door | Tool::Window | Tool::Opening) => {
                     if let Some(at) = response.hover_pos() {
@@ -2094,7 +2321,7 @@ pub fn show(
             let hi = prof.iter().map(|p| p.x).fold(f64::MIN, f64::max);
             let mut path = state.parts.path.clone();
             path.push(b);
-            let ghost = Color32::from_rgb(230, 120, 30);
+            let ghost = crate::theme::interaction();
             for w in path.windows(2) {
                 let d = (w[1] - w[0]).normalize_or_zero();
                 if d == DVec2::ZERO {
@@ -2147,7 +2374,7 @@ pub fn show(
     }
     // preview of the tool in progress
     if let (Some(a), Some(b)) = (state.pending, hover_world) {
-        let accent = Stroke::new(1.5, Color32::from_rgb(230, 120, 30));
+        let accent = Stroke::new(1.5, crate::theme::interaction());
         match tool {
             Tool::Level => {
                 let end = DVec2::new(b.x, a.y);
@@ -2188,8 +2415,41 @@ pub fn show(
                     a.extend(0.0),
                     b.extend(0.0),
                 );
-                painter.line_segment([xf.to_screen(a), xf.to_screen(b)], accent);
-                if tool == Tool::Wall && matches!(kind, PaneKind::Plan { .. }) {
+                // an arc, circle or rectangle of walls being drawn: its
+                // centrelines and both faces (MU40); no straight line to
+                // the pointer, which read as a straight wall
+                let shape = (tool == Tool::Wall)
+                    .then(|| wall_shape_preview(state, a, b))
+                    .flatten();
+                if shape.is_none() {
+                    painter.line_segment([xf.to_screen(a), xf.to_screen(b)], accent);
+                } else if state.wall_shape == 2 {
+                    // a circle's radius, faint
+                    painter.extend(egui::Shape::dashed_line(
+                        &[xf.to_screen(a), xf.to_screen(b)],
+                        Stroke::new(1.0, accent.color.gamma_multiply(0.6)),
+                        6.0,
+                        4.0,
+                    ));
+                }
+                if let Some(lines) = shape {
+                    let t = state.wall_thickness / 2.0;
+                    for pts in lines {
+                        painter.add(egui::Shape::line(
+                            pts.iter().map(|p| xf.to_screen(*p)).collect(),
+                            Stroke::new(2.0, accent.color),
+                        ));
+                        for side in [-t, t] {
+                            painter.add(egui::Shape::line(
+                                offset_line(&pts, side)
+                                    .iter()
+                                    .map(|p| xf.to_screen(*p))
+                                    .collect(),
+                                Stroke::new(1.0, accent.color),
+                            ));
+                        }
+                    }
+                } else if tool == Tool::Wall && matches!(kind, PaneKind::Plan { .. }) {
                     // the wall's faces about the line it is drawn along
                     if let Some(faces) = wall_preview(doc.model(), state, a, b) {
                         let thin = Stroke::new(1.0, accent.color);
@@ -2199,10 +2459,33 @@ pub fn show(
                     }
                 }
                 let len = a.distance(b);
+                let text = match (tool, state.wall_shape) {
+                    (Tool::Wall, 2) => format!("R {}", crate::units::len(len)),
+                    (Tool::Wall, 3) => format!(
+                        "{} × {}",
+                        crate::units::len((b.x - a.x).abs()),
+                        crate::units::len((b.y - a.y).abs())
+                    ),
+                    (Tool::Wall, 1) => match state.wall_arc_end.and_then(|e| {
+                        bulge_through(a, b, e).map(|k| creabim_core::sketch::Curve::arc(a, e, k))
+                    }) {
+                        Some(c) => format!(
+                            "Arc {}",
+                            crate::units::len(
+                                c.points()
+                                    .windows(2)
+                                    .map(|w| w[0].distance(w[1]))
+                                    .sum::<f64>()
+                            )
+                        ),
+                        None => crate::units::len(len),
+                    },
+                    _ => crate::units::len(len),
+                };
                 painter.text(
                     xf.to_screen((a + b) / 2.0) + Vec2::new(0.0, -12.0),
                     egui::Align2::CENTER_BOTTOM,
-                    crate::units::len(len),
+                    text,
                     egui::FontId::proportional(13.0),
                     accent.color,
                 );
@@ -2272,7 +2555,7 @@ pub fn show(
             painter.circle_stroke(
                 xf.to_screen(p),
                 4.0,
-                Stroke::new(1.0, Color32::from_rgb(230, 120, 30)),
+                Stroke::new(1.0, crate::theme::interaction()),
             );
         }
     }
@@ -2443,14 +2726,20 @@ pub fn show(
         if response.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
         }
-        let ink = |i: usize| if i < 2 { ACCENT_SELECTED } else { GUIDE_COLOR };
+        let ink = |i: usize| {
+            if i < 2 {
+                accent_selected()
+            } else {
+                GUIDE_COLOR
+            }
+        };
         for (i, q) in pts.iter().enumerate() {
             painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, ink(i)));
         }
         if pts.len() == 2 {
             painter.line_segment(
                 [xf.to_screen(pts[0]), xf.to_screen(pts[1])],
-                Stroke::new(1.5, ACCENT_SELECTED),
+                Stroke::new(1.5, accent_selected()),
             );
         }
         if let Some(h) = hover_world {
@@ -2492,15 +2781,15 @@ pub fn show(
         }
         // where the next click goes, before the first too (MU23)
         if let (Some(h), true) = (hover_world, pts.is_empty()) {
-            painter.circle_stroke(xf.to_screen(h), 4.0, Stroke::new(1.0, ACCENT_SELECTED));
+            painter.circle_stroke(xf.to_screen(h), 4.0, Stroke::new(1.0, accent_selected()));
         }
         for q in pts.iter() {
-            painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, ACCENT_SELECTED));
+            painter.circle_stroke(xf.to_screen(*q), 5.0, Stroke::new(1.5, accent_selected()));
         }
         if let (Some(a), Some(h)) = (pts.first(), hover_world) {
             painter.line_segment(
                 [xf.to_screen(*a), xf.to_screen(h)],
-                Stroke::new(1.0, ACCENT_SELECTED),
+                Stroke::new(1.0, accent_selected()),
             );
         }
         if response.clicked() {
@@ -2759,6 +3048,9 @@ fn drag_level(
 }
 
 /// Guides are drawn in this colour, in every pane.
+/// Split's cutting line and plane (MU39).
+pub const SPLIT_RED: Color32 = Color32::from_rgb(222, 60, 60);
+
 pub const GUIDE_COLOR: Color32 = Color32::from_rgb(190, 60, 170);
 
 /// The part of the screen segment ab inside `r`.
@@ -2836,6 +3128,81 @@ pub fn new_wall(
     w
 }
 
+/// The centrelines the Wall tool's shape would make from its clicks so
+/// far (`a`, the arc's end if clicked) to the pointer `b`, for its ghost in
+/// plans and in 3D (MU40): an arc, a circle, a rectangle's four sides.
+/// None for a straight wall, which draws its own.
+pub fn wall_shape_preview(state: &PlanState, a: DVec2, b: DVec2) -> Option<Vec<Vec<DVec2>>> {
+    match (state.wall_shape, state.wall_arc_end) {
+        // the arc's end not yet clicked: already an arc (a quarter turn),
+        // so it never reads as a straight wall; the next click bends it
+        (1, None) if a.distance(b) > 1e-6 => Some(vec![creabim_core::sketch::Curve::arc(
+            a,
+            b,
+            -(std::f64::consts::PI / 8.0).tan(),
+        )
+        .points()]),
+        (1, Some(e)) => Some(vec![match bulge_through(a, b, e) {
+            Some(k) => creabim_core::sketch::Curve::arc(a, e, k).points(),
+            None => vec![a, e],
+        }]),
+        (2, _) if a.distance(b) > 1e-6 => Some(vec![(0..=72)
+            .map(|i| a + DVec2::from_angle(i as f64 / 72.0 * std::f64::consts::TAU) * a.distance(b))
+            .collect()]),
+        (3, _) => Some(vec![vec![
+            a,
+            DVec2::new(b.x, a.y),
+            b,
+            DVec2::new(a.x, b.y),
+            a,
+        ]]),
+        _ => None,
+    }
+}
+
+/// The bulge of the arc from `a` through `t` to `b` (as [`Wall::bulge`]);
+/// none when the three are in a line.
+/// `pts` moved `d` to its left, corner by corner (a ghost's faces).
+pub fn offset_line(pts: &[DVec2], d: f64) -> Vec<DVec2> {
+    let n = pts.len();
+    (0..n)
+        .map(|i| {
+            let before = (i > 0).then(|| (pts[i] - pts[i - 1]).normalize_or_zero());
+            let after = (i + 1 < n).then(|| (pts[i + 1] - pts[i]).normalize_or_zero());
+            let dir = match (before, after) {
+                (Some(a), Some(b)) => (a + b).normalize_or(b),
+                (Some(a), None) => a,
+                (None, Some(b)) => b,
+                _ => DVec2::X,
+            };
+            pts[i] + dir.perp() * d
+        })
+        .collect()
+}
+
+pub fn bulge_through(a: DVec2, t: DVec2, b: DVec2) -> Option<f64> {
+    let d = 2.0 * (a.x * (t.y - b.y) + t.x * (b.y - a.y) + b.x * (a.y - t.y));
+    if d.abs() < 1e-9 {
+        return None;
+    }
+    let sq = |p: DVec2| p.length_squared();
+    let c = DVec2::new(
+        (sq(a) * (t.y - b.y) + sq(t) * (b.y - a.y) + sq(b) * (a.y - t.y)) / d,
+        (sq(a) * (b.x - t.x) + sq(t) * (a.x - b.x) + sq(b) * (t.x - a.x)) / d,
+    );
+    let tau = std::f64::consts::TAU;
+    let ang = |p: DVec2| (p - c).y.atan2((p - c).x);
+    let norm = |x: f64| x.rem_euclid(tau);
+    let (a0, at, ae) = (ang(a), ang(t), ang(b));
+    let sweep = if norm(at - a0) < norm(ae - a0) {
+        norm(ae - a0)
+    } else {
+        -norm(a0 - ae)
+    };
+    // Curve::arc's bulge: tan(sweep / 4), anticlockwise positive
+    Some((sweep / 4.0).tan())
+}
+
 /// The faces of the wall being drawn from `a` to `b`, and where its
 /// exterior is, for the preview.
 pub fn wall_preview(
@@ -2885,6 +3252,94 @@ fn plan_click(
                 add_section_view(doc, a, p, tool == Tool::Section, selection)
             }
             Some(_) => Ok(()),
+        },
+        // a circle: its centre, then a point on it; two half walls (MU40)
+        Tool::Wall if state.wall_shape == 2 => match state.pending.take() {
+            None => {
+                state.pending = Some(p);
+                state.status = Some("Circle wall: click a point on it (its radius).".into());
+                Ok(())
+            }
+            Some(c) if c.distance(p) > 0.1 => {
+                let a = p;
+                let b = c - (p - c);
+                let mut w1 = new_wall(doc.model(), level, state, a, b);
+                let mut w2 = new_wall(doc.model(), level, state, b, a);
+                for (w, s, e) in [(&mut w1, a, b), (&mut w2, b, a)] {
+                    // on its centreline: a curve's location line is its middle
+                    w.start = s;
+                    w.end = e;
+                    w.bulge = 1.0;
+                }
+                let e1 = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w1)));
+                let e2 = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w2)));
+                selection.only(e1.id);
+                state.status = Some(format!(
+                    "Circle wall, radius {}: two half walls. Click a centre for another.",
+                    crate::units::len(c.distance(p))
+                ));
+                doc.commit(Transaction::new("Draw circle wall").insert(e1).insert(e2))
+            }
+            Some(_) => Ok(()),
+        },
+        // a rectangle of walls: two opposite corners (MU40)
+        Tool::Wall if state.wall_shape == 3 => match state.pending.take() {
+            None => {
+                state.pending = Some(p);
+                state.status = Some("Rectangle of walls: click the opposite corner.".into());
+                Ok(())
+            }
+            Some(a) if (p - a).abs().min_element() > 0.1 => {
+                let c = [a, DVec2::new(p.x, a.y), p, DVec2::new(a.x, p.y)];
+                let mut tx = Transaction::new("Draw rectangle of walls");
+                let mut first = None;
+                for i in 0..4 {
+                    let w = new_wall(doc.model(), level, state, c[i], c[(i + 1) % 4]);
+                    let e = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w)));
+                    first.get_or_insert(e.id);
+                    tx = tx.insert(e);
+                }
+                if let Some(id) = first {
+                    selection.only(id);
+                }
+                state.status =
+                    Some("Four walls, joined at the corners. Click a corner for another.".into());
+                doc.commit(tx)
+            }
+            Some(_) => Ok(()),
+        },
+        // an arc: its start, its end, then a point it passes through
+        Tool::Wall if state.wall_shape == 1 => match (state.pending, state.wall_arc_end) {
+            (None, _) => {
+                state.pending = Some(p);
+                state.wall_arc_end = None;
+                state.status = Some("Arc wall: click its end.".into());
+                Ok(())
+            }
+            (Some(a), None) if a.distance(p) > 0.05 => {
+                state.wall_arc_end = Some(p);
+                state.status = Some("Arc wall: click a point it passes through.".into());
+                Ok(())
+            }
+            (Some(a), Some(b)) => {
+                let Some(bulge) = bulge_through(a, p, b) else {
+                    state.status =
+                        Some("That point is on the straight line: pick one off it.".into());
+                    return Ok(());
+                };
+                let mut w = new_wall(doc.model(), level, state, a, b);
+                w.start = a;
+                w.end = b;
+                w.bulge = bulge;
+                let e = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w)));
+                selection.only(e.id);
+                // the next arc starts where this one ends
+                state.pending = Some(b);
+                state.wall_arc_end = None;
+                state.status = Some("Arc wall placed. Click the next one's end, or Esc.".into());
+                doc.commit(Transaction::new("Draw arc wall").insert(e))
+            }
+            _ => Ok(()),
         },
         Tool::Wall => match state.pending {
             None => {
@@ -3397,6 +3852,7 @@ fn section_tool(
                         attach_top: vec![],
                         curtain: None,
                         layer_ends: vec![],
+                        bulge: 0.0,
                     }),
                 );
                 // its type's thickness, but its drawn height
@@ -4016,6 +4472,12 @@ pub fn start_modal(
     ) {
         Ok(mut m) => {
             m.duplicated = duplicate;
+            // a mass's picked vertices in Edit mode are what moves (MU39)
+            if let ([one], false) = (targets.as_slice(), duplicate) {
+                if let Some(vs) = crate::handles::mesh_pick(*one) {
+                    m.set_verts(doc, *one, vs);
+                }
+            }
             Ok((m.with_flow(flow).with_works_on(works_on), targets))
         }
         Err(e) => {
@@ -4160,15 +4622,24 @@ fn refresh_snaps(
             .modal
             .as_ref()
             .is_some_and(|m| m.pane == Some(view) && m.freezes_snaps());
+    // built once per model change with everything in it; what is left out
+    // (the selection) is only hidden, so selecting builds nothing (MU39)
     let fresh = state
         .snaps
         .get(&view)
-        .is_some_and(|(r, ex, _)| ex == exclude && (*r == revision || dragging));
+        .is_some_and(|(r, _, _)| *r == revision || dragging);
     if !fresh {
-        let mut s = Snapper::from_drawing(&plan.items, exclude);
+        let _p = crate::app::Perf::new("plan snaps: build");
+        let mut s = Snapper::from_drawing(&plan.items, &[]);
         s.add_underlay_centres(model, view);
         add_reference_snaps(&mut s, state, model, view);
-        state.snaps.insert(view, (revision, exclude.to_vec(), s));
+        state.snaps.insert(view, (revision, vec![], s));
+    }
+    if let Some((_, ex, s)) = state.snaps.get_mut(&view) {
+        if ex != exclude {
+            *ex = exclude.to_vec();
+            s.hide(exclude);
+        }
     }
 }
 
@@ -4260,7 +4731,7 @@ fn plan_ranges(
             e.name.clone(),
         ));
     }
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     // the band's ends, in the drawing: its own, else the drawing's width
     let (ex0, ex1) = *state.range_ends.entry(section).or_insert_with(|| {
         drawing
@@ -4564,7 +5035,7 @@ fn drag_section_line(
         (Handle::End, end),
         (Handle::Line, (start + end) / 2.0),
     ];
-    let accent = Color32::from_rgb(230, 120, 30);
+    let accent = crate::theme::interaction();
     for (h, p) in handles {
         let c = xf.to_screen(p);
         if h == Handle::Line {
@@ -4733,13 +5204,16 @@ pub(crate) fn nav_input(
     let size = 28.0;
     let x = rect.right() - size - 10.0;
     let y0 = rect.top() + 10.0;
-    if rect.width() < 200.0 || rect.height() < 5.0 * size + 30.0 {
+    // a short area cuts the column off at its edge rather than taking it
+    // away (MU40, as Blender's)
+    if rect.width() < 200.0 || rect.height() < size + 20.0 {
         return (None, None);
     }
     let column = Rect::from_min_size(
         egui::pos2(x - 3.0, y0 - 3.0),
         egui::vec2(size + 6.0, 5.0 * size + 6.0),
-    );
+    )
+    .intersect(rect);
     let near = ui
         .input(|i| i.pointer.hover_pos())
         .is_some_and(|h| column.expand(40.0).contains(h));
@@ -4760,6 +5234,10 @@ pub(crate) fn nav_input(
     ];
     for (i, (icon, tip)) in buttons.iter().enumerate() {
         let r = Rect::from_min_size(egui::pos2(x, y0 + i as f32 * size), egui::vec2(size, size));
+        // one cut off by a short area is not there to click
+        if r.bottom() > rect.bottom() {
+            continue;
+        }
         let resp = ui
             .interact(
                 r,
@@ -4806,7 +5284,9 @@ pub(crate) fn nav_draw(ui: &egui::Ui, look: &NavLook) {
     painter.rect(
         look.column,
         8.0,
-        p.panel.gamma_multiply(fade),
+        // all but solid, faded or not: the drawing's lines no longer run
+        // over its buttons (MU39); only its border and icons fade
+        p.panel.gamma_multiply(0.94),
         egui::Stroke::new(1.0, p.border.gamma_multiply(fade)),
         egui::StrokeKind::Inside,
     );
@@ -4905,6 +5385,41 @@ fn section_letter(n: usize) -> String {
             break s;
         }
         n = n / 26 - 1;
+    }
+}
+
+static PLAN_GRID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static PLAN_AXES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// The settings' grid behind drawings and X/Y lines in plans, for this
+/// frame.
+pub fn set_plan_look(grid: bool, axes: bool) {
+    use std::sync::atomic::Ordering::Relaxed;
+    PLAN_GRID.store(grid, Relaxed);
+    PLAN_AXES.store(axes, Relaxed);
+}
+
+fn plan_look() -> (bool, bool) {
+    use std::sync::atomic::Ordering::Relaxed;
+    (PLAN_GRID.load(Relaxed), PLAN_AXES.load(Relaxed))
+}
+
+/// The model's X axis (red) and Y axis (green) through the origin, toned
+/// well down so they place the building without competing with it.
+fn draw_origin_axes(painter: &egui::Painter, xf: &Xf) {
+    let r = xf.rect;
+    let o = xf.to_screen(DVec2::ZERO);
+    if (r.top()..=r.bottom()).contains(&o.y) {
+        painter.line_segment(
+            [egui::pos2(r.left(), o.y), egui::pos2(r.right(), o.y)],
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(214, 72, 72, 70)),
+        );
+    }
+    if (r.left()..=r.right()).contains(&o.x) {
+        painter.line_segment(
+            [egui::pos2(o.x, r.top()), egui::pos2(o.x, r.bottom())],
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(70, 160, 80, 70)),
+        );
     }
 }
 
@@ -5051,7 +5566,7 @@ pub fn draw_item_with(
     mm: f64,
     o: &Ovr,
 ) {
-    let highlight = Color32::from_rgb(230, 120, 30);
+    let highlight = crate::theme::interaction();
     let ink = if selected {
         highlight
     } else {
@@ -5096,11 +5611,18 @@ pub fn draw_item_with(
                     } else {
                         Color32::from_gray(150)
                     };
-                    painter.add(egui::Shape::convex_polygon(
-                        pts,
-                        fill,
-                        Stroke::new(1.6 * o.cut, ink),
-                    ));
+                    // any outline, a curved wall's too (MU40): filled as a
+                    // mesh, then its edge
+                    if pts.len() > 4 {
+                        fill_polygon(painter, xf, points, fill);
+                        painter.add(egui::Shape::closed_line(pts, Stroke::new(1.6 * o.cut, ink)));
+                    } else {
+                        painter.add(egui::Shape::convex_polygon(
+                            pts,
+                            fill,
+                            Stroke::new(1.6 * o.cut, ink),
+                        ));
+                    }
                 }
                 _ => {
                     let (w, c) = if selected {
@@ -5386,10 +5908,16 @@ fn draw_item_xray(
             points,
             ..
         } if !selected && host() => {
-            let pts: Vec<Pos2> = points.iter().map(|p| xf.to_screen(*p)).collect();
-            painter.add(egui::Shape::convex_polygon(
-                pts,
+            // filled as it is: a curved wall's band is not convex
+            fill_polygon(
+                painter,
+                xf,
+                points,
                 Color32::from_gray(150).gamma_multiply(0.18),
+            );
+            let pts: Vec<Pos2> = points.iter().map(|p| xf.to_screen(*p)).collect();
+            painter.add(egui::Shape::closed_line(
+                pts,
                 Stroke::new(1.2, Color32::from_gray(90)),
             ));
         }
@@ -5411,7 +5939,7 @@ fn draw_item_xray(
             ..
         } => {
             let c = if selected {
-                Color32::from_rgb(230, 120, 30)
+                crate::theme::interaction()
             } else {
                 Color32::from_gray(25)
             };
@@ -5432,7 +5960,7 @@ pub fn draw_footings(
     working: bool,
     selection: &Selection,
 ) {
-    let accent = ACCENT_SELECTED;
+    let accent = accent_selected();
     let strips = creabim_core::footing::strip_outlines(model);
     for e in model.iter() {
         let ElementKind::Footing(f) = &e.kind else {
@@ -5458,7 +5986,9 @@ pub fn draw_footings(
 }
 
 /// The selection's colour in a pane: what selected linework is drawn in.
-pub const ACCENT_SELECTED: Color32 = Color32::from_rgb(230, 120, 30);
+pub fn accent_selected() -> Color32 {
+    crate::theme::interaction()
+}
 
 /// How much heavier a traced mark is than the mark itself (A3-5).
 pub const TRACE: f32 = 1.5;
@@ -5815,7 +6345,14 @@ fn dim_snap_guided(
                 };
                 for u in [o.offset, o.offset + o.width] {
                     for s in [-t, t] {
-                        consider(oid, w.start + d * u + n * s);
+                        consider(
+                            oid,
+                            if w.is_arc() {
+                                w.place(u, s)
+                            } else {
+                                w.start + d * u + n * s
+                            },
+                        );
                     }
                 }
             }
@@ -6688,9 +7225,9 @@ fn place_opening(
         if w.level != level || shown.is_some_and(|h| h != e.id) {
             continue;
         }
-        let d = segment_distance(p, w.start, w.end);
+        // round the arc on a curved wall
+        let (u, d) = w.along(p);
         if d <= w.thickness.max(0.3) && best.is_none_or(|b| d < b.0) {
-            let u = (p - w.start).dot(w.direction());
             best = Some((d, e.id, u, w.length()));
         }
     }
@@ -7007,6 +7544,25 @@ mod dimension_chain_tests {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_arc_wall_passes_through_the_point_clicked() {
+        let (a, b) = (DVec2::new(3.0, 0.0), DVec2::new(-3.0, 0.0));
+        for t in [
+            DVec2::new(0.0, 3.0),
+            DVec2::new(0.0, -3.0),
+            DVec2::new(2.0, 1.0),
+        ] {
+            let k = bulge_through(a, t, b).unwrap();
+            let c = creabim_core::sketch::Curve::arc(a, b, k);
+            let pts = c.points();
+            let near = pts.iter().map(|p| p.distance(t)).fold(f64::MAX, f64::min);
+            // within a step of the arc's own drawing
+            assert!(near < 0.25, "{t}: {near}");
+        }
+        assert!(bulge_through(a, DVec2::ZERO, b).is_none());
+    }
+
     /// Two areas showing the same plan, side by side, share the drag; a
     /// drag started in one goes on every frame until the button is let go
     /// (the owner's MU16 report: in plan the drag only moved at the press

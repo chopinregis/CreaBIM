@@ -9,6 +9,82 @@ use creabim_core::members::{self, Flight, RAIL_SIZE};
 use creabim_core::{Element, ElementKind, Model, Roof, Stair};
 use glam::{DVec2, DVec3};
 
+/// A beam: its section (a library one, or width × depth) swept along its
+/// top line, sloped by its rise, lying on the face it was drawn on, run
+/// past or pulled back by its extensions and its ends cut where it meets
+/// the next beam of its chain (MU40).
+pub fn beam_mesh(model: &Model, b: &creabim_core::Beam) -> TriMesh {
+    let prof: Vec<DVec2> = match &b.section {
+        Some(s) if s.points.len() >= 3 => {
+            let hi = s.points.iter().map(|p| p.y).fold(f64::MIN, f64::max);
+            s.points.iter().map(|p| DVec2::new(p.x, p.y - hi)).collect()
+        }
+        _ => {
+            let (w, d) = (b.width / 2.0, b.depth);
+            vec![
+                DVec2::new(-w, -d),
+                DVec2::new(w, -d),
+                DVec2::new(w, 0.0),
+                DVec2::new(-w, 0.0),
+            ]
+        }
+    };
+    let (a, z) = b.axis(model);
+    let mut m = match b.up {
+        Some(n) => crate::parts::sweep_mesh_on(&prof, &[a, z], false, n),
+        None => crate::parts::sweep_mesh(&prof, &[a, z], false),
+    };
+    // each end cut by its plane, through the corner it meets the next at:
+    // the end's vertices slid along the beam onto the plane
+    let dir = (z - a).normalize_or_zero();
+    if dir == DVec3::ZERO {
+        return m;
+    }
+    let top = b.top(model);
+    let corners = [
+        b.start.extend(top + b.rise[0]),
+        b.end.extend(top + b.rise[1]),
+    ];
+    let len = a.distance(z);
+    for (k, cut) in b.cuts.iter().enumerate() {
+        let Some(n) = cut.map(|n| n.normalize_or_zero()) else {
+            continue;
+        };
+        let along = n.dot(dir);
+        if along.abs() < 0.05 {
+            continue;
+        }
+        // a two-point sweep has only its two end rings: a vertex belongs
+        // to the end it is nearer (MU40: on a sloped beam the section's
+        // top and bottom sit off the end's plane square to the axis, and
+        // were left uncut, ragged)
+        let at_end = |p: DVec3| {
+            let s = (p - a).dot(dir);
+            if k == 0 {
+                s < len / 2.0
+            } else {
+                s >= len / 2.0
+            }
+        };
+        let out = if k == 0 { -dir } else { dir };
+        for (p, nm) in m.positions.iter_mut().zip(m.normals.iter_mut()) {
+            let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+            if !at_end(q) {
+                continue;
+            }
+            let t = (corners[k] - q).dot(n) / along;
+            *p = (q + dir * t).as_vec3().to_array();
+            // the end face takes the plane's normal, facing out
+            let nv = DVec3::new(nm[0] as f64, nm[1] as f64, nm[2] as f64);
+            if nv.dot(out) > 0.9 {
+                let face = if n.dot(out) >= 0.0 { n } else { -n };
+                *nm = face.as_vec3().to_array();
+            }
+        }
+    }
+    m
+}
+
 /// The mesh and default colour of a member; `None` for other elements.
 pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
     Some(match &e.kind {
@@ -18,22 +94,7 @@ pub fn member_mesh(model: &Model, e: &Element) -> Option<(TriMesh, [f32; 3])> {
         }
         // a library section swept along the beam, hung so its top is the
         // beam's top (MU37)
-        ElementKind::Beam(b) => match &b.section {
-            Some(s) if s.points.len() >= 3 => {
-                let top = b.top(model);
-                let hi = s.points.iter().map(|p| p.y).fold(f64::MIN, f64::max);
-                let prof: Vec<DVec2> = s.points.iter().map(|p| DVec2::new(p.x, p.y - hi)).collect();
-                let path = [b.start.extend(top), b.end.extend(top)];
-                (
-                    crate::parts::sweep_mesh(&prof, &path, false),
-                    [0.72, 0.64, 0.52],
-                )
-            }
-            _ => (
-                slab_mesh(&b.outline(), b.top(model), b.depth),
-                [0.72, 0.64, 0.52],
-            ),
-        },
+        ElementKind::Beam(b) => (beam_mesh(model, b), [0.72, 0.64, 0.52]),
         ElementKind::Roof(r) => {
             let holes = creabim_core::slab::holes_of(model, e);
             (
@@ -325,9 +386,12 @@ pub fn member_plan(model: &Model, e: &Element, cut: f64) -> Vec<PlanItem> {
             }
         }
         ElementKind::Beam(b) => {
-            let top = b.top(model);
+            // a sloped beam spans from its lowest to its highest point
+            let base = b.top(model);
+            let top = base + b.rise[0].max(b.rise[1]);
+            let bottom = base + b.rise[0].min(b.rise[1]) - b.depth;
             let pts = b.outline();
-            if top - b.depth < z && z < top {
+            if bottom < z && z < top {
                 items.push(PlanItem::Polygon {
                     id: e.id,
                     pen: Pen::Cut,
@@ -664,6 +728,172 @@ fn break_line(items: &mut Vec<PlanItem>, e: &Element, f: &Flight, s: &Stair, u: 
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn mitred_beams_meet_on_the_bisector_and_butt_ones_overlap_by_half() {
+        use creabim_core::members::{join_beams, BeamCorner};
+        use creabim_core::{Beam, Element, Level};
+        let lv = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let m = Model::from_elements([lv.clone()]).unwrap();
+        let mut a = Beam::new(lv.id, DVec2::ZERO, DVec2::new(4.0, 0.0));
+        let mut b = Beam::new(lv.id, DVec2::new(4.0, 0.0), DVec2::new(4.0, 3.0));
+        join_beams(&mut a, &mut b, BeamCorner::Mitred);
+        // every vertex of a's far end lies on the 45 degree plane through
+        // the corner, so the two close up with no gap and no overlap
+        let n = DVec3::new(1.0, 1.0, 0.0).normalize();
+        let corner = DVec3::new(4.0, 0.0, 0.0);
+        let mesh = beam_mesh(&m, &a);
+        let far: Vec<DVec3> = mesh
+            .positions
+            .iter()
+            .map(|p| DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64))
+            .filter(|p| p.x > 3.5)
+            .collect();
+        assert!(!far.is_empty());
+        for p in far {
+            assert!(
+                (p - corner).truncate().dot(n.truncate()).abs() < 1e-6,
+                "{p}"
+            );
+        }
+        // far from the origin, where f32 rounds the mesh, every end vertex
+        // is still cut (MU40: ragged mitres at about 17 m out)
+        let off = DVec2::new(16.919, -6.502);
+        let mut fa = Beam::new(lv.id, off, off + DVec2::new(4.0, 0.0));
+        let mut fb = Beam::new(
+            lv.id,
+            off + DVec2::new(4.0, 0.0),
+            off + DVec2::new(1.0, 3.0),
+        );
+        join_beams(&mut fa, &mut fb, BeamCorner::Mitred);
+        let corner = (off + DVec2::new(4.0, 0.0)).extend(0.0);
+        let da = DVec2::X;
+        let db = (DVec2::new(-3.0, 3.0)).normalize();
+        let nn = (da + db).normalize();
+        for p in beam_mesh(&m, &fa).positions {
+            let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+            if q.x - off.x > 3.0 {
+                assert!((q - corner).truncate().dot(nn).abs() < 1e-3, "{q}");
+            }
+        }
+        // and the second's start, cut on the same plane
+        for p in beam_mesh(&m, &fb).positions {
+            let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+            if (q - corner).truncate().length() < 0.5 {
+                assert!((q - corner).truncate().dot(nn).abs() < 1e-3, "start {q}");
+            }
+        }
+        // a library section hung off its insertion point (a channel)
+        let chan = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(0.1, 0.0),
+            DVec2::new(0.1, 0.2),
+            DVec2::new(0.09, 0.2),
+            DVec2::new(0.09, 0.01),
+            DVec2::new(0.0, 0.01),
+        ];
+        let sec = creabim_core::members::Section {
+            name: "C".into(),
+            points: chan,
+        };
+        let (mut ca, mut cb) = (fa.clone(), fb.clone());
+        ca.section = Some(sec.clone());
+        cb.section = Some(sec);
+        join_beams(&mut ca, &mut cb, BeamCorner::Mitred);
+        for (k, bm) in [(1, &ca), (0, &cb)] {
+            for p in beam_mesh(&m, bm).positions {
+                let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+                if (q - corner).truncate().length() < 0.5 {
+                    assert!(
+                        (q - corner).truncate().dot(nn).abs() < 1e-3,
+                        "channel end {k} {q}"
+                    );
+                }
+            }
+        }
+        // every preset, mitred both ways round a sharp and a gentle turn
+        for name in creabim_core::profiles::PRESETS {
+            let pts = creabim_core::profiles::preset(name).unwrap();
+            for to in [
+                DVec2::new(1.0, 3.0),
+                DVec2::new(7.0, 1.0),
+                DVec2::new(6.0, -2.5),
+            ] {
+                let sec = creabim_core::members::Section {
+                    name: name.to_string(),
+                    points: pts.clone(),
+                };
+                let mut pa = Beam::new(lv.id, off, off + DVec2::new(4.0, 0.0));
+                let mut pb = Beam::new(lv.id, off + DVec2::new(4.0, 0.0), off + to);
+                pa.section = Some(sec.clone());
+                pb.section = Some(sec);
+                join_beams(&mut pa, &mut pb, BeamCorner::Mitred);
+                let db = (to - DVec2::new(4.0, 0.0)).normalize();
+                let nn = (DVec2::X + db).normalize();
+                for (k, bm) in [(1, &pa), (0, &pb)] {
+                    let mesh = beam_mesh(&m, bm);
+                    let (ax, bx) = bm.axis(&m);
+                    let dir = (bx - ax).normalize();
+                    let len = ax.distance(bx);
+                    for p in &mesh.positions {
+                        let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+                        let s = (q - ax).dot(dir);
+                        // nothing of either beam crosses the mitre plane
+                        let side = (q - corner).truncate().dot(nn);
+                        if k == 1 {
+                            assert!(side < 1e-3, "{name} a past the cut {q} side {side}");
+                        } else {
+                            assert!(side > -1e-3, "{name} b before the cut {q} side {side}");
+                        }
+                        let _ = (s, len);
+                    }
+                }
+            }
+        }
+        // sloped beams (a roof's rafters), an I-section: every vertex
+        // of each end lies on the shared cut
+        let ipts = creabim_core::profiles::preset("I-section").unwrap();
+        let sec = creabim_core::members::Section {
+            name: "I".into(),
+            points: ipts,
+        };
+        let mut sa = Beam::new(lv.id, DVec2::ZERO, DVec2::new(4.0, 0.0));
+        let mut sb = Beam::new(lv.id, DVec2::new(4.0, 0.0), DVec2::new(4.0, 3.0));
+        sa.rise = [0.0, 1.5];
+        sb.rise = [1.5, 1.5];
+        sa.section = Some(sec.clone());
+        sb.section = Some(sec);
+        join_beams(&mut sa, &mut sb, BeamCorner::Mitred);
+        let n = sa.cuts[1].unwrap().normalize();
+        let c = sa.axis(&m).1;
+        for bm in [&sa, &sb] {
+            let (ax, bx) = bm.axis(&m);
+            for p in beam_mesh(&m, bm).positions {
+                let q = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
+                let near = q.distance(c) < ax.distance(bx) / 2.0;
+                if near {
+                    assert!((q - c).dot(n).abs() < 1e-3, "sloped end {q}");
+                }
+            }
+        }
+        // butt: the first runs through to the second's far face
+        let (mut a, mut b) = (a.clone(), b.clone());
+        join_beams(&mut a, &mut b, BeamCorner::Butt);
+        assert!((a.axis(&m).1.x - 4.1).abs() < 1e-9);
+        assert!((b.axis(&m).0.y - 0.1).abs() < 1e-9);
+        // a sloped beam: its top rises from start to end
+        let mut r = Beam::new(lv.id, DVec2::ZERO, DVec2::new(4.0, 0.0));
+        r.rise = [0.0, 1.0];
+        let (s, e) = r.axis(&m);
+        assert!((e.z - s.z - 1.0).abs() < 1e-9);
+    }
+
     use super::*;
     use creabim_core::{
         Beam, Column, ElementId, Landing, Level, Profile, Railing, RoofShape, Transaction,

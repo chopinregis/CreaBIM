@@ -69,6 +69,10 @@ pub struct ProfilesUi {
     shape: usize,
     /// Corners of a shape being drawn.
     drawing: Vec<DVec2>,
+    /// The next side drawn is an arc (A; L back to lines), and its end
+    /// once clicked: the next click is a point it passes through (MU39).
+    arc: bool,
+    arc_end: Option<DVec2>,
     /// The first click of a guide.
     guide_from: Option<DVec2>,
     /// Guides by profile: lines through two points.
@@ -116,6 +120,40 @@ pub struct ProfilesUi {
 
 /// What the profiles' trace references show, read once (a file's pixels
 /// or lines).
+/// An arc from `a` through `t` to `e` as points (not `a`, ending on `e`),
+/// `n` sides at most: the profile keeps arcs as points, so every sweep,
+/// extrusion and export takes them as it takes any shape (MU39). Three
+/// points in a line give the straight side.
+pub(crate) fn arc_points(a: DVec2, t: DVec2, e: DVec2, n: usize) -> Vec<DVec2> {
+    let d = 2.0 * (a.x * (t.y - e.y) + t.x * (e.y - a.y) + e.x * (a.y - t.y));
+    if d.abs() < 1e-12 {
+        return vec![e];
+    }
+    let sq = |p: DVec2| p.length_squared();
+    let c = DVec2::new(
+        (sq(a) * (t.y - e.y) + sq(t) * (e.y - a.y) + sq(e) * (a.y - t.y)) / d,
+        (sq(a) * (e.x - t.x) + sq(t) * (a.x - e.x) + sq(e) * (t.x - a.x)) / d,
+    );
+    let ang = |p: DVec2| (p - c).y.atan2((p - c).x);
+    let (a0, at, ae) = (ang(a), ang(t), ang(e));
+    let tau = std::f64::consts::TAU;
+    let norm = |x: f64| x.rem_euclid(tau);
+    // the way round from a to e that passes t
+    let ccw = norm(at - a0) < norm(ae - a0);
+    let sweep = if ccw { norm(ae - a0) } else { -norm(a0 - ae) };
+    let r = (a - c).length();
+    let k = ((sweep.abs() / (tau / 48.0)).ceil() as usize).clamp(2, n.max(2));
+    (1..=k)
+        .map(|i| {
+            if i == k {
+                e
+            } else {
+                c + DVec2::from_angle(a0 + sweep * i as f64 / k as f64) * r
+            }
+        })
+        .collect()
+}
+
 fn trace_cache() -> std::sync::MutexGuard<'static, crate::trace::RefCache> {
     static C: std::sync::OnceLock<std::sync::Mutex<crate::trace::RefCache>> =
         std::sync::OnceLock::new();
@@ -316,6 +354,16 @@ impl CreaBimApp {
             "profiles.apply" => self.apply_profile(),
             "prof.trace" => self.profile_trace(arg),
             "prof.dims" => self.profiles.hide_dims = !self.profiles.hide_dims,
+            "prof.arc" => {
+                self.profiles.tool = ProfTool::Draw;
+                self.profiles.arc = !self.profiles.arc;
+                self.profiles.arc_end = None;
+                self.status = if self.profiles.arc {
+                    "Arc: click where the arc ends, then a point it passes through. L goes back to straight sides.".into()
+                } else {
+                    "Straight sides.".into()
+                };
+            }
             "prof.tool" => {
                 self.profiles.tool = match arg {
                     "draw" => ProfTool::Draw,
@@ -372,6 +420,38 @@ impl CreaBimApp {
                     m.points.reverse();
                 }
             }),
+            "beam.corner" => {
+                if let Some(c) = creabim_core::members::BeamCorner::ALL
+                    .into_iter()
+                    .find(|c| c.label() == arg)
+                {
+                    self.plan.members.beam_corner = c;
+                    self.status =
+                        format!("Beam corners: {}. Chain beams to see them meet.", c.label());
+                }
+            }
+            "railing.lib" => {
+                let lib = (!arg.is_empty()).then(|| arg.to_string());
+                self.plan.members.railing_section = lib.clone();
+                self.status = match lib {
+                    Some(n) => format!("New railings' top rail is {n}."),
+                    None => "New railings take their own square rail again.".into(),
+                };
+            }
+            "column.lib" | "beam.lib" => {
+                let lib = (!arg.is_empty()).then(|| arg.to_string());
+                let what = if head == "column.lib" {
+                    self.plan.members.column_section = lib.clone();
+                    "column"
+                } else {
+                    self.plan.members.beam_section = lib.clone();
+                    "beam"
+                };
+                self.status = match lib {
+                    Some(n) => format!("New {what}s are {n}: click to place them. Square, Round or Its own goes back."),
+                    None => format!("New {what}s take their own shape again."),
+                };
+            }
             "sweep.lib" | "extrusion.lib" => {
                 let lib = (!arg.is_empty()).then(|| arg.to_string());
                 let (tool, what) = if head == "sweep.lib" {
@@ -483,8 +563,11 @@ impl CreaBimApp {
         let now = self.profiles.current.clone();
         let mut items = vec![Item::Header("This project".into())];
         if own.is_empty() {
+            // none yet: making one, with an icon as the rows below (MU39)
             items.push(
-                Item::new("profiles.new", "None yet: + in the header makes one").enabled(false),
+                Item::new("profiles.new", "New profile")
+                    .icon("plus")
+                    .hint("None yet: start one here, a square to shape"),
             );
         }
         for p in &own {
@@ -703,7 +786,9 @@ impl CreaBimApp {
             let r = ui
                 .add_enabled(
                     mine,
-                    egui::TextEdit::singleline(&mut self.profiles.name).desired_width(84.0),
+                    egui::TextEdit::singleline(&mut self.profiles.name)
+                        .vertical_align(egui::Align::Center)
+                        .desired_width(84.0),
                 )
                 .on_hover_text(if mine {
                     "The profile's name: type a new one, then Enter"
@@ -721,6 +806,212 @@ impl CreaBimApp {
                 }
             }
         });
+    }
+
+    /// The Profile tab of Properties while a Profile view is in front
+    /// (MU40): the profile's name and size, its faces (a void filled back
+    /// in one click), flips, and the picked corner's place to type.
+    pub(super) fn profile_props(&mut self, ui: &mut egui::Ui) {
+        let Some(cur) = self.profiles.current.clone() else {
+            crate::props::section(ui, "Profile");
+            crate::props::note(
+                ui,
+                "Pick a profile in the view's header, or make a New one.",
+            );
+            return;
+        };
+        let model = self.doc.model();
+        let mine = profiles::project_profiles(model)
+            .into_iter()
+            .find(|p| p.name == cur);
+        let users = profiles::users(model, &cur).len();
+        if self.prop_header(ui, "prof_about", "Profile", true, Some("profiles")) {
+            crate::props::row(ui, "Name", |ui| self.profile_name_field_bare(ui));
+            let pts: Vec<DVec2> = match &mine {
+                Some(p) => p.shapes().iter().flat_map(|s| s.points.clone()).collect(),
+                None => profiles::preset(&cur).unwrap_or_default(),
+            };
+            if let Some(first) = pts.first() {
+                let (lo, hi) = pts
+                    .iter()
+                    .fold((*first, *first), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+                let d = hi - lo;
+                crate::props::row(ui, "Size", |ui| {
+                    ui.label(format!("{:.0} × {:.0} mm", d.x * 1000.0, d.y * 1000.0))
+                });
+            }
+            crate::props::row(ui, "Used by", |ui| {
+                ui.label(match users {
+                    0 => "Nothing yet".to_string(),
+                    1 => "1 element".to_string(),
+                    n => format!("{n} elements"),
+                })
+            });
+            if mine.is_none() {
+                crate::props::note(
+                    ui,
+                    "A preset: Duplicate it in the header to make one of your own to change.",
+                );
+            }
+        }
+        let Some(p) = mine else {
+            return;
+        };
+        // its faces: what is filled, what is void (MU40: a void read as a
+        // face turned the wrong way)
+        let faces = p.faces();
+        let voids: Vec<DVec2> = faces
+            .iter()
+            .filter(|f| !f.filled)
+            .map(|f| f.sample)
+            .collect();
+        let filled = faces.len() - voids.len();
+        if self.prop_header(ui, "prof_faces", "Faces", true, None) {
+            crate::props::row(ui, "Faces", |ui| {
+                ui.label(format!(
+                    "{filled} filled, {} void{}",
+                    voids.len(),
+                    if voids.len() == 1 { "" } else { "s" }
+                ))
+            });
+            let (fill, pick) = crate::props::actions2(
+                ui,
+                "",
+                (
+                    "Fill every void",
+                    "Fill every hole of the profile: a hollow one turned solid",
+                    !voids.is_empty(),
+                ),
+                (
+                    "Pick a face…",
+                    "Click a face in the view to turn it over: a void filled, a fill made void",
+                    true,
+                ),
+            );
+            crate::props::note(
+                ui,
+                "A void is white in the view and a hole in what it makes. Offset all, or a shape inside another, makes one.",
+            );
+            if fill {
+                let n = voids.len();
+                self.edit_current("Fill the voids", |x, _| {
+                    for s in &voids {
+                        x.toggle_face(*s);
+                    }
+                });
+                self.status = format!(
+                    "{} filled. Ctrl+Z empties {} again.",
+                    if n == 1 { "The void" } else { "Every void" },
+                    if n == 1 { "it" } else { "them" }
+                );
+            }
+            if pick {
+                self.profiles.tool = ProfTool::Void;
+                self.status =
+                    "Click a face to turn it over: a void filled, a fill made void.".into();
+            }
+        }
+        if self.prop_header(ui, "prof_flip", "Flip", true, None) {
+            let (across, up) = crate::props::actions2(
+                ui,
+                "",
+                (
+                    "Left to right",
+                    "Mirror it across its insertion point's vertical",
+                    true,
+                ),
+                (
+                    "Upside down",
+                    "Mirror it across its insertion point's level",
+                    true,
+                ),
+            );
+            let m = if across {
+                Some(DVec2::new(-1.0, 1.0))
+            } else if up {
+                Some(DVec2::new(1.0, -1.0))
+            } else {
+                None
+            };
+            if let Some(k) = m {
+                self.edit_current("Flip profile", |x, _| {
+                    x.points.iter_mut().for_each(|q| *q *= k);
+                    for s in &mut x.more {
+                        s.points.iter_mut().for_each(|q| *q *= k);
+                    }
+                    x.flips.iter_mut().for_each(|q| *q *= k);
+                });
+                self.status = if users > 0 {
+                    format!("{cur} flipped. Apply in the header gives what is made with it the new shape.")
+                } else {
+                    format!("{cur} flipped.")
+                };
+            }
+        }
+        // the corner picked: its place, to type (mm from the insertion point)
+        if let Some(PSel::Corner(si, ci)) = self.profiles.sel {
+            let at = p.shapes().get(si).and_then(|s| s.points.get(ci)).copied();
+            if let Some(at) = at {
+                if self.prop_header(ui, "prof_picked", "Picked corner", true, None) {
+                    let (mut x, mut y) = (at.x * 1000.0, at.y * 1000.0);
+                    let cx = crate::props::row(ui, "X", |ui| {
+                        crate::props::fill(
+                            ui,
+                            egui::DragValue::new(&mut x).suffix(" mm").speed(1.0),
+                        )
+                    });
+                    let cy = crate::props::row(ui, "Y", |ui| {
+                        crate::props::fill(
+                            ui,
+                            egui::DragValue::new(&mut y).suffix(" mm").speed(1.0),
+                        )
+                    });
+                    if cx.changed() || cy.changed() {
+                        let to = DVec2::new(x, y) / 1000.0;
+                        self.edit_current("Move corner", |q, _| {
+                            if let Some(c) = point_mut(q, si).and_then(|v| v.get_mut(ci)) {
+                                *c = to;
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// The Name field without its label, for a Properties row.
+    fn profile_name_field_bare(&mut self, ui: &mut egui::Ui) -> egui::Response {
+        let cur = self.profiles.current.clone().unwrap_or_default();
+        let mine = profiles::project_profiles(self.doc.model())
+            .iter()
+            .any(|p| p.name == cur);
+        if self.profiles.name_for != cur {
+            self.profiles.name = cur.clone();
+            self.profiles.name_for = cur.clone();
+        }
+        let r = crate::props::fill(
+            ui,
+            egui::TextEdit::singleline(&mut self.profiles.name)
+                .vertical_align(egui::Align::Center)
+                .interactive(mine),
+        );
+        if r.lost_focus() {
+            let new = self.profiles.name.trim().to_string();
+            if !new.is_empty() && new != cur {
+                self.rename_profile(&cur, &new);
+            } else {
+                self.profiles.name = cur.clone();
+            }
+        }
+        r
+    }
+
+    /// Is a Profile view the area in front (focused)?
+    pub(super) fn profiles_in_front(&self) -> bool {
+        matches!(
+            self.areas.root.areas().get(self.areas.focus),
+            Some(crate::areas::Shows::Profiles)
+        )
     }
 
     /// Rename profile `old`: in the library, on what is made with it, its
@@ -882,6 +1173,8 @@ impl CreaBimApp {
                    "hint": "Pick and drag corners, edges and guides; click an edge's length to type it; right-click for quick actions"}),
             json!({"kind": "toggle", "id": "prof.tool:draw", "icon": "pencil", "label": "Draw", "on": t == ProfTool::Draw,
                    "hint": "Draw a shape: click its corners; the first again closes it, Enter leaves it open"}),
+            json!({"kind": "toggle", "id": "prof.arc", "icon": "spline", "label": "Arc", "on": t == ProfTool::Draw && self.profiles.arc,
+                   "hint": "Arc (A): the next side is an arc: click its end, then a point it passes through. L goes back to straight sides"}),
             json!({"kind": "toggle", "id": "prof.tool:insert", "icon": "crosshair", "label": "Insertion", "on": t == ProfTool::Insertion,
                    "hint": "Place the insertion point: where the profile sits on its path"}),
             json!({"kind": "toggle", "id": "prof.tool:guide", "icon": "guides", "label": "Guide", "on": t == ProfTool::Guide,
@@ -1060,7 +1353,23 @@ impl CreaBimApp {
                 }
             }
         }
-        if response.dragged_by(egui::PointerButton::Secondary)
+        // Ctrl + middle-drag zooms about where the drag began, as in the
+        // drawings (MU40); otherwise right or middle drag pans
+        let ctrl_zoom =
+            response.dragged_by(egui::PointerButton::Middle) && ui.input(|i| i.modifiers.command);
+        if ctrl_zoom {
+            let dy = response.drag_delta().y;
+            if let Some(h) = ui.input(|i| i.pointer.press_origin()) {
+                let k = (1.0 - dy / 200.0).clamp(0.5, 2.0);
+                let off = DVec2::new(
+                    (h.x - body.center().x) as f64,
+                    -(h.y - body.center().y) as f64,
+                );
+                let w = center + off / scale as f64;
+                scale = (scale * k).clamp(1.0, 1e6);
+                center = w - off / scale as f64;
+            }
+        } else if response.dragged_by(egui::PointerButton::Secondary)
             || response.dragged_by(egui::PointerButton::Middle)
         {
             let d = response.drag_delta();
@@ -1599,7 +1908,7 @@ impl CreaBimApp {
                     .find(|t| t.0 == id)
                     .and_then(|t| t.1.outline())
                 {
-                    let orange = crate::planview::ACCENT_SELECTED;
+                    let orange = crate::planview::accent_selected();
                     let mut pts: Vec<egui::Pos2> = c.iter().map(|p| to_s(*p)).collect();
                     pts.push(pts[0]);
                     crate::snaps::dashed_clipped(
@@ -2091,11 +2400,34 @@ impl CreaBimApp {
                 }
             }
             ProfTool::Draw if editable => {
+                // A and L switch the next side between an arc and a line
+                let (key_a, key_l) = ui.input(|i| {
+                    (
+                        i.modifiers.is_none() && i.key_pressed(egui::Key::A),
+                        i.modifiers.is_none() && i.key_pressed(egui::Key::L),
+                    )
+                });
+                if key_a && !ui.ctx().egui_wants_keyboard_input() {
+                    self.profiles.arc = true;
+                    self.profiles.arc_end = None;
+                }
+                if key_l && !ui.ctx().egui_wants_keyboard_input() {
+                    self.profiles.arc = false;
+                    self.profiles.arc_end = None;
+                }
+                let (arc, arc_end) = (self.profiles.arc, self.profiles.arc_end);
                 let d = &mut self.profiles.drawing;
                 if let Some((w, _)) = here {
                     let mut pts: Vec<egui::Pos2> = d.iter().map(|p| to_s(*p)).collect();
                     if !pts.is_empty() {
-                        pts.push(to_s(w));
+                        // the arc being drawn follows the pointer through
+                        // its middle
+                        match (arc, arc_end, d.last()) {
+                            (true, Some(e), Some(p0)) => {
+                                pts.extend(arc_points(*p0, w, e, 24).into_iter().map(&to_s))
+                            }
+                            _ => pts.push(to_s(w)),
+                        }
                         painter.add(egui::Shape::line(pts, egui::Stroke::new(1.6, accent)));
                     }
                 }
@@ -2180,6 +2512,15 @@ impl CreaBimApp {
                             // does) finishes the shape (MU37)
                             if let Some(all) = finish(d, false) {
                                 write = Some((all, "Draw profile shape", false));
+                            }
+                        } else if arc && !d.is_empty() {
+                            // an arc: its end, then a point it passes through
+                            match self.profiles.arc_end.take() {
+                                None => self.profiles.arc_end = Some(w),
+                                Some(e) => {
+                                    let p0 = d[d.len() - 1];
+                                    d.extend(arc_points(p0, w, e, 24));
+                                }
                             }
                         } else {
                             d.push(w);
@@ -2533,6 +2874,7 @@ impl CreaBimApp {
                                         ui.label("Really");
                                         let r = ui.add(
                                             egui::TextEdit::singleline(&mut text)
+                                                .vertical_align(egui::Align::Center)
                                                 .desired_width(70.0),
                                         );
                                         r.request_focus();
@@ -2641,8 +2983,11 @@ impl CreaBimApp {
                         egui::Frame::popup(ui.style()).show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 ui.label("Length");
-                                let r = ui
-                                    .add(egui::TextEdit::singleline(&mut text).desired_width(70.0));
+                                let r = ui.add(
+                                    egui::TextEdit::singleline(&mut text)
+                                        .vertical_align(egui::Align::Center)
+                                        .desired_width(70.0),
+                                );
                                 r.request_focus();
                                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                     done = true;
@@ -2880,15 +3225,17 @@ impl CreaBimApp {
 
     /// A sweep's, column's or beam's Profile rows: its profile picked from
     /// the pictured list, opened in a view, updated, saved or duplicated.
-    pub(super) fn sweep_profile_rows(&mut self, ui: &mut egui::Ui, id: ElementId) {
+    /// A sweep's, column's or beam's Profile section; false for anything
+    /// else (which has no profile of its own).
+    pub(super) fn sweep_profile_rows(&mut self, ui: &mut egui::Ui, id: ElementId) -> bool {
         let model = self.doc.model();
-        let Some(e) = model.get(id) else { return };
+        let Some(e) = model.get(id) else { return false };
         let (shape, link): (Option<Vec<DVec2>>, Option<String>) = match &e.kind {
             ElementKind::Part(p) => match &p.form {
                 creabim_core::parts::Form::Sweep { profile, .. } => {
                     (Some(profile.clone()), p.profile.clone())
                 }
-                _ => return,
+                _ => return false,
             },
             ElementKind::Column(c) => (
                 c.section.as_ref().map(|s| s.points.clone()),
@@ -2898,7 +3245,7 @@ impl CreaBimApp {
                 b.section.as_ref().map(|s| s.points.clone()),
                 b.section.as_ref().map(|s| s.name.clone()),
             ),
-            _ => return,
+            _ => return false,
         };
         let member = !matches!(e.kind, ElementKind::Part(_));
         let mut all: Vec<String> = profiles::project_profiles(model)
@@ -2911,8 +3258,8 @@ impl CreaBimApp {
             .and_then(|n| profiles::find(model, n))
             .is_some_and(|p| Some(p) != shape);
         let mut pick: Option<Option<String>> = None;
-        if !self.prop_header(ui, "member.profile", "Profile", true, None) {
-            return;
+        if !self.prop_header(ui, "profile", "Profile", true, None) {
+            return true;
         }
         crate::props::row(ui, "Profile", |ui| {
             let w = ui.available_width();
@@ -3039,6 +3386,7 @@ impl CreaBimApp {
             };
             self.report(r, "Profile changed. Ctrl+Z puts it back.");
         }
+        true
     }
 }
 
@@ -3290,5 +3638,27 @@ fn point_mut(p: &mut NamedProfile, si: usize) -> Option<&mut Vec<DVec2>> {
         Some(&mut p.points)
     } else {
         p.more.get_mut(si - 1).map(|m| &mut m.points)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_arc_through_three_points_keeps_to_its_circle_and_ends_on_its_end() {
+        let (a, t, e) = (
+            DVec2::new(-1.0, 0.0),
+            DVec2::new(0.0, 1.0),
+            DVec2::new(1.0, 0.0),
+        );
+        let pts = arc_points(a, t, e, 24);
+        assert_eq!(*pts.last().unwrap(), e);
+        assert!(pts.len() >= 8);
+        assert!(pts
+            .iter()
+            .all(|p| (p.length() - 1.0).abs() < 1e-9 && p.y >= -1e-9));
+        // three in a line: the straight side
+        assert_eq!(arc_points(a, DVec2::ZERO, e, 24), vec![e]);
     }
 }

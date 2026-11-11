@@ -339,6 +339,24 @@ fn bounding_lines(model: &Model, level: ElementId) -> Vec<(DVec2, DVec2, Element
         + 0.01;
     let mut out = Vec::new();
     for (id, w) in &walls {
+        if w.is_arc() {
+            // a curved wall's faces round its arc, piece by piece, run on
+            // along its tangent at each end as a straight one's are
+            let t = w.thickness / 2.0;
+            let mut us = vec![0.0];
+            us.extend(w.bends());
+            us.push(w.length());
+            for side in [t, -t] {
+                let mut pts: Vec<DVec2> = us.iter().map(|u| w.place(*u, side)).collect();
+                let last = pts.len() - 1;
+                pts[0] -= w.tangent_at(0.0) * reach;
+                pts[last] += w.tangent_at(w.length()) * reach;
+                for k in 0..last {
+                    out.push((pts[k], pts[k + 1], *id));
+                }
+            }
+            continue;
+        }
         let d = w.direction();
         let n = d.perp() * w.thickness / 2.0;
         let (a, b) = (w.start - d * reach, w.end + d * reach);
@@ -813,6 +831,41 @@ mod tests {
         let mut doc = Document::new();
         doc.commit(tx).unwrap();
         (doc, l, ids)
+    }
+
+    #[test]
+    fn a_circle_of_two_half_walls_closes_a_round_room() {
+        let lv = Element::new(
+            "Ground",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let l = lv.id;
+        let mut tx = Transaction::new("walls").insert(lv);
+        let (a, b) = (DVec2::new(-3.0, 0.0), DVec2::new(3.0, 0.0));
+        for (s, e) in [(a, b), (b, a)] {
+            let mut w = Wall::new(l, s, e, 0.2, 3.0);
+            w.bulge = 1.0;
+            tx = tx.insert(Element::new("Wall", ElementKind::Wall(w)));
+        }
+        let mut doc = Document::new();
+        doc.commit(tx).unwrap();
+        let s = enclosed(doc.model(), l, DVec2::new(0.5, 0.5)).expect("closed");
+        // and a slab filling it goes to the centre line, radius 3
+        let fill = crate::slab::room_outline(doc.model(), l, DVec2::new(0.5, 0.5)).expect("fills");
+        let c = std::f64::consts::PI * 9.0;
+        let got = crate::polygon::signed_area2(&fill).abs() / 2.0;
+        assert!((got - c).abs() / c < 0.01, "{got} vs {c}");
+        // to the inner face, radius 2.9, as finely as the arcs bend
+        let disc = std::f64::consts::PI * 2.9 * 2.9;
+        assert!(
+            (s.area() - disc).abs() / disc < 0.01,
+            "{} vs {disc}",
+            s.area()
+        );
+        assert!(s.bounded_by.iter().all(|b| b.is_some()));
     }
 
     #[test]

@@ -523,6 +523,8 @@ impl ElementKind {
                 crate::papermark::PaperMarkKind::ScaleBar { .. } => "Scale bar",
                 crate::papermark::PaperMarkKind::Cloud { .. } => "Revision cloud",
                 crate::papermark::PaperMarkKind::RevisionTable => "Revisions table",
+                crate::papermark::PaperMarkKind::Picture { .. } => "Picture",
+                crate::papermark::PaperMarkKind::Vector { .. } => "Vector picture",
             },
             ElementKind::MarkRules(_) => "MarkRules",
             ElementKind::StylePack(_) => "StylePack",
@@ -889,7 +891,7 @@ pub struct Grid {
     pub group: Option<ElementId>,
 }
 
-/// A straight wall defined by its centreline on a level.
+/// A wall defined by its centreline on a level: straight, or an arc.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Wall {
     pub level: ElementId,
@@ -938,6 +940,12 @@ pub struct Wall {
     /// the type no longer has drops its edit.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layer_ends: Vec<LayerEnd>,
+    /// A curved wall (MU40): the arc from `start` to `end` bulging this
+    /// much, as a slab edge's (the tangent of a quarter of its angle,
+    /// positive to the right of start → end); 0 is straight. A full
+    /// circle is two half-circle walls.
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub bulge: f64,
 }
 
 /// One layer's ends moved by hand: how far layer `layer` (counted from the
@@ -1094,6 +1102,106 @@ impl Wall {
             attach_top: vec![],
             curtain: None,
             layer_ends: vec![],
+            bulge: 0.0,
+        }
+    }
+
+    /// Its centreline: a line, or an arc when it bulges.
+    pub fn curve(&self) -> crate::sketch::Curve {
+        crate::sketch::Curve::arc(self.start, self.end, self.bulge)
+    }
+
+    /// Is it curved?
+    pub fn is_arc(&self) -> bool {
+        self.bulge.abs() > 1e-9
+    }
+
+    /// The point `u` along its centreline and `w` across it (left of the
+    /// way it runs positive): on an arc, `u` is measured round it and `w`
+    /// toward or away from its centre.
+    pub fn place(&self, u: f64, w: f64) -> DVec2 {
+        match self.curve() {
+            crate::sketch::Curve::Arc {
+                center,
+                radius,
+                start,
+                sweep,
+            } => {
+                let a = start + sweep.signum() * u / radius;
+                let r = radius - sweep.signum() * w;
+                center + DVec2::from_angle(a) * r
+            }
+            crate::sketch::Curve::Line(a, b) => {
+                let d = (b - a).normalize_or_zero();
+                a + d * u + d.perp() * w
+            }
+        }
+    }
+
+    /// How far along its centreline `p` is (clamped to its ends), and how
+    /// far `p` is from that point: round the arc for a curved wall.
+    pub fn along(&self, p: DVec2) -> (f64, f64) {
+        let u = match self.curve() {
+            crate::sketch::Curve::Arc {
+                center,
+                radius,
+                start,
+                sweep,
+            } => {
+                let tau = std::f64::consts::TAU;
+                let a = (p - center).y.atan2((p - center).x);
+                let rel = ((a - start) * sweep.signum()).rem_euclid(tau);
+                if rel <= sweep.abs() {
+                    rel * radius
+                } else if rel - sweep.abs() < tau - rel {
+                    sweep.abs() * radius
+                } else {
+                    0.0
+                }
+            }
+            crate::sketch::Curve::Line(a, b) => {
+                let d = (b - a).normalize_or_zero();
+                (p - a).dot(d).clamp(0.0, a.distance(b))
+            }
+        };
+        (u, p.distance(self.place(u, 0.0)))
+    }
+
+    /// A point of one of its ends as its joins put it: `u` along it (which
+    /// a join moved off the end, either way) and `w` across, on the line
+    /// along its tangent at that end, the line its joins were worked out
+    /// on. The same as [`Wall::place`] for a straight wall.
+    pub fn place_end(&self, at_end: bool, u: f64, w: f64) -> DVec2 {
+        let e = if at_end { self.length() } else { 0.0 };
+        self.place(e, w) + self.tangent_at(e) * (u - e)
+    }
+
+    /// The way it runs at `u` along it.
+    pub fn tangent_at(&self, u: f64) -> DVec2 {
+        match self.curve() {
+            crate::sketch::Curve::Arc {
+                start,
+                sweep,
+                radius,
+                ..
+            } => {
+                let a = start + sweep.signum() * u / radius;
+                DVec2::from_angle(a).perp() * sweep.signum()
+            }
+            crate::sketch::Curve::Line(..) => self.direction(),
+        }
+    }
+
+    /// Where along it a curved wall bends: steps of at most
+    /// [`crate::sketch::ARC_STEP`], ends excluded; none for a straight one.
+    pub fn bends(&self) -> Vec<f64> {
+        match self.curve() {
+            crate::sketch::Curve::Arc { sweep, .. } => {
+                let n = ((sweep.abs() / crate::sketch::ARC_STEP - 1e-9).ceil() as usize).max(2);
+                let len = self.length();
+                (1..n).map(|i| len * i as f64 / n as f64).collect()
+            }
+            crate::sketch::Curve::Line(..) => vec![],
         }
     }
 
@@ -1160,7 +1268,10 @@ impl Wall {
     }
 
     pub fn length(&self) -> f64 {
-        self.start.distance(self.end)
+        match self.curve() {
+            crate::sketch::Curve::Arc { radius, sweep, .. } => radius * sweep.abs(),
+            crate::sketch::Curve::Line(a, b) => a.distance(b),
+        }
     }
 
     /// Unit vector along the wall, from start to end.

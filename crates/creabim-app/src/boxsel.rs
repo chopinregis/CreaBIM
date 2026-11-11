@@ -6,13 +6,234 @@ use creabim_core::ElementId;
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use std::collections::HashMap;
 
-/// Does a box from `start` to `now` take what it touches?
-pub fn crossing(start: Pos2, now: Pos2) -> bool {
-    now.x < start.x
+/// The shape a drag selects with (MU39, the tool bar's first chips).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    Box,
+    Circle,
+    Lasso,
 }
 
-/// Draw the box: solid for inside, dashed for touching.
+/// How what a drag (or click) takes joins what is selected.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Combine {
+    New,
+    Add,
+    Subtract,
+    Invert,
+    Intersect,
+}
+
+static SHAPE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static COMBINE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+thread_local! {
+    /// The lasso's points while it is drawn.
+    static PATH: std::cell::RefCell<Vec<Pos2>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub fn shape() -> Shape {
+    match SHAPE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => Shape::Circle,
+        2 => Shape::Lasso,
+        _ => Shape::Box,
+    }
+}
+
+pub fn set_shape(s: Shape) {
+    SHAPE.store(s as u8, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn combine() -> Combine {
+    match COMBINE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => Combine::Add,
+        2 => Combine::Subtract,
+        3 => Combine::Invert,
+        4 => Combine::Intersect,
+        _ => Combine::New,
+    }
+}
+
+pub fn set_combine(c: Combine) {
+    COMBINE.store(c as u8, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The combine a drag uses: the bar's, unless Shift (add) or Ctrl
+/// (subtract) is held, as in Blender.
+pub fn combine_with(shift: bool, ctrl: bool) -> Combine {
+    match (shift, ctrl) {
+        (_, true) => Combine::Subtract,
+        (true, _) => Combine::Add,
+        _ => combine(),
+    }
+}
+
+/// Start a drag's lasso path at `p`, or add the pointer to it.
+pub fn trace(p: Pos2, start: bool) {
+    PATH.with(|v| {
+        let mut v = v.borrow_mut();
+        if start {
+            v.clear();
+        }
+        if v.last().is_none_or(|l| l.distance(p) > 3.0) {
+            v.push(p);
+        }
+    });
+}
+
+fn lasso() -> Vec<Pos2> {
+    PATH.with(|v| v.borrow().clone())
+}
+
+/// Is `p` inside polygon `poly`?
+fn in_poly(poly: &[Pos2], p: Pos2) -> bool {
+    let mut inside = false;
+    let n = poly.len();
+    for i in 0..n {
+        let (a, b) = (poly[i], poly[(i + n - 1) % n]);
+        if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
+/// What a drag from `start` to `now` covers, for circle and lasso: points
+/// inside it (a circle round where the drag started).
+fn covers(start: Pos2, now: Pos2, p: Pos2) -> bool {
+    match shape() {
+        Shape::Box => Rect::from_two_pos(start, now).contains(p),
+        Shape::Circle => p.distance(start) <= start.distance(now),
+        Shape::Lasso => {
+            let l = lasso();
+            l.len() >= 3 && in_poly(&l, p)
+        }
+    }
+}
+
+/// Does a drag from `start` to `now` take what it touches (green, dashed),
+/// or only what lies wholly inside (blue)? Drawn leftward it touches, as
+/// in CAD: a box, a circle, or a lasso ending left of where it began (MU39).
+pub fn crossing(start: Pos2, now: Pos2) -> bool {
+    match shape() {
+        Shape::Lasso => {
+            let l = lasso();
+            match (l.first(), l.last()) {
+                (Some(a), Some(b)) => b.x < a.x,
+                _ => now.x < start.x,
+            }
+        }
+        _ => now.x < start.x,
+    }
+}
+
+fn look(start: Pos2, now: Pos2) -> (Color32, Stroke) {
+    if crossing(start, now) {
+        (
+            Color32::from_rgba_unmultiplied(60, 170, 90, 30),
+            Stroke::new(1.0, Color32::from_rgb(40, 140, 70)),
+        )
+    } else {
+        (
+            Color32::from_rgba_unmultiplied(40, 110, 220, 30),
+            Stroke::new(1.0, Color32::from_rgb(40, 110, 220)),
+        )
+    }
+}
+
+/// Join `ids` (what a drag or click took) to `sel` as `how` says.
+pub fn apply(sel: &mut crate::selection::Selection, ids: Vec<ElementId>, how: Combine) {
+    match how {
+        Combine::New => sel.extend(ids, false),
+        Combine::Add => sel.extend(ids, true),
+        Combine::Subtract => sel.retain(|id| !ids.contains(&id)),
+        Combine::Invert => {
+            for id in ids {
+                sel.toggle(id);
+            }
+        }
+        Combine::Intersect => sel.retain(|id| ids.contains(&id)),
+    }
+}
+
+/// The count of what a drag takes, at the pointer (MU39).
+pub fn draw_count(painter: &egui::Painter, now: Pos2, n: usize) {
+    let text = if n == 1 {
+        "1 selected".to_string()
+    } else {
+        format!("{n} selected")
+    };
+    // in the theme's panel and text, ringed in the selection colour, so it
+    // reads on any paper (MU39: grey on grey before)
+    let p = crate::theme::Palette::of(painter.ctx());
+    let ink = crate::theme::interaction();
+    let g = painter.layout_no_wrap(text, egui::FontId::proportional(12.5), p.text);
+    let r = Rect::from_min_size(
+        now + egui::vec2(16.0, 14.0),
+        g.size() + egui::vec2(24.0, 8.0),
+    );
+    painter.rect(
+        r.translate(egui::vec2(0.0, 2.0)),
+        9.0,
+        Color32::from_black_alpha(60),
+        Stroke::NONE,
+        egui::StrokeKind::Middle,
+    );
+    painter.rect(
+        r,
+        9.0,
+        p.panel,
+        Stroke::new(1.5, ink),
+        egui::StrokeKind::Middle,
+    );
+    painter.circle_filled(egui::pos2(r.left() + 9.0, r.center().y), 3.0, ink);
+    painter.galley(r.min + egui::vec2(16.0, 4.0), g, p.text);
+}
+
+/// Draw the box (solid for inside, dashed for touching), the circle or
+/// the lasso.
 pub fn draw(painter: &egui::Painter, start: Pos2, now: Pos2) {
+    let (fill, line) = look(start, now);
+    let dashed = crossing(start, now);
+    match shape() {
+        Shape::Circle => {
+            let r = start.distance(now);
+            painter.circle_filled(start, r, fill);
+            if dashed {
+                let pts: Vec<Pos2> = (0..=64)
+                    .map(|k| {
+                        let t = k as f32 / 64.0 * std::f32::consts::TAU;
+                        start + egui::vec2(t.cos(), t.sin()) * r
+                    })
+                    .collect();
+                painter.extend(egui::Shape::dashed_line(&pts, line, 6.0, 4.0));
+            } else {
+                painter.circle_stroke(start, r, line);
+            }
+            return;
+        }
+        Shape::Lasso => {
+            let mut l = lasso();
+            if l.len() >= 3 {
+                painter.add(egui::Shape::Path(egui::epaint::PathShape {
+                    points: l.clone(),
+                    closed: true,
+                    fill,
+                    stroke: egui::Stroke::NONE.into(),
+                }));
+            }
+            if let Some(f) = l.first().copied() {
+                l.push(f);
+            }
+            if dashed {
+                painter.extend(egui::Shape::dashed_line(&l, line, 6.0, 4.0));
+            } else {
+                painter.add(egui::Shape::line(l, line));
+            }
+            return;
+        }
+        Shape::Box => {}
+    }
     let r = Rect::from_two_pos(start, now);
     let (fill, stroke) = if crossing(start, now) {
         (
@@ -60,8 +281,20 @@ pub fn pick(
             seen.push(id);
             (false, true)
         });
-        s.0 |= r.intersects(p);
-        s.1 &= r.contains_rect(p);
+        if shape() == Shape::Box {
+            s.0 |= r.intersects(p);
+            s.1 &= r.contains_rect(p);
+        } else {
+            let pts = [
+                p.center(),
+                p.left_top(),
+                p.right_top(),
+                p.right_bottom(),
+                p.left_bottom(),
+            ];
+            s.0 |= pts.iter().any(|q| covers(start, now, *q));
+            s.1 &= pts[1..].iter().all(|q| covers(start, now, *q));
+        }
     }
     seen.into_iter()
         .filter(|id| {
@@ -95,6 +328,17 @@ pub fn pick_triangles(
             seen.push(id);
             (false, true)
         });
+        if shape() != Shape::Box {
+            if !s.0 {
+                let c = Pos2::new(
+                    (t[0].x + t[1].x + t[2].x) / 3.0,
+                    (t[0].y + t[1].y + t[2].y) / 3.0,
+                );
+                s.0 = t.iter().chain([&c]).any(|q| covers(start, now, *q));
+            }
+            s.1 &= t.iter().all(|q| covers(start, now, *q));
+            continue;
+        }
         if !s.0 {
             s.0 = touches(r, t);
         }

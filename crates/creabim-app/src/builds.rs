@@ -125,7 +125,14 @@ impl Builds {
         let snapshot = self.snapshot(model);
         let tx = self.tx.clone();
         self.running.insert(key, revision);
+        if self.running.len() > 1 {
+            crate::actlog::line(format!(
+                "worker: {} drawings building at once",
+                self.running.len()
+            ));
+        }
         std::thread::spawn(move || {
+            creabim_geom::prio::background();
             let t = Instant::now();
             let drawing = creabim_geom::section::view_drawing_with(&snapshot, key.0, key.1);
             let ms = t.elapsed().as_secs_f64() * 1000.0;
@@ -153,6 +160,7 @@ impl Builds {
         let tx = self.tx.clone();
         self.scene_running = Some(revision);
         std::thread::spawn(move || {
+            creabim_geom::prio::background();
             let scene = creabim_geom::shared_scene(&snapshot);
             let _ = tx.send(Done::Scene { revision, scene });
             ctx.request_repaint();
@@ -177,6 +185,14 @@ impl Builds {
                 } => {
                     self.running.remove(&key);
                     self.cost.insert(key, ms);
+                    // what the workers did, for problem reports (MU40)
+                    if ms >= crate::actlog::SLOW_MS {
+                        crate::actlog::line(format!(
+                            "worker: drawing {:?}{} built in {ms:.0} ms",
+                            key.0,
+                            if key.1 { " (x-ray)" } else { "" }
+                        ));
+                    }
                     self.pending.push(Built {
                         key,
                         revision,

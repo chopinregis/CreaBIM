@@ -169,6 +169,9 @@ pub enum HandleKind {
     },
     /// Slide a whole wall square to itself; the walls joined to it stretch.
     WallSlide,
+    /// The middle of a curved wall: drag it to bend the wall more or less,
+    /// its ends staying put (it passes through the point dragged to).
+    WallBend,
     /// Slide a door or window along its wall at the same width.
     OpeningSlide,
     /// A beam's width, both sides at once.
@@ -241,6 +244,7 @@ impl HandleKind {
             HandleKind::Rotate => "Rotate",
             HandleKind::ColumnSize { .. } => "Resize",
             HandleKind::WallSlide | HandleKind::OpeningSlide => "Slide",
+            HandleKind::WallBend => "Bend",
             HandleKind::BeamWidth | HandleKind::DetailWidth => "Change width of",
             HandleKind::DetailSpacing => "Change the unit of",
             HandleKind::PlantCanopy => "Change the canopy of",
@@ -311,6 +315,7 @@ impl HandleKind {
             HandleKind::ColumnSize { depth: false } => "Width",
             HandleKind::ColumnSize { depth: true } => "Depth",
             HandleKind::WallSlide => "Wall: slide",
+            HandleKind::WallBend => "Wall: bend",
             HandleKind::OpeningSlide => "Slide along the wall",
             HandleKind::BeamWidth | HandleKind::DetailWidth => "Width",
             HandleKind::DetailSpacing => "Unit",
@@ -363,6 +368,7 @@ impl HandleKind {
             HandleKind::ColumnSize { depth: false } => "Drag: change the width",
             HandleKind::ColumnSize { depth: true } => "Drag: change the depth",
             HandleKind::WallSlide => "Drag: slide the wall square to itself (joined walls follow)",
+            HandleKind::WallBend => "Drag: bend the wall through this point; its ends stay (its radius is in Properties)",
             HandleKind::OpeningSlide => "Drag: slide it along the wall · Tab: type how far",
             HandleKind::BeamWidth | HandleKind::DetailWidth => "Drag: change the width",
             HandleKind::DetailSpacing => "Drag: change the unit's length (the joint stays)",
@@ -448,6 +454,7 @@ pub fn pick_allows(k: &HandleKind) -> bool {
             k,
             K::Edge { .. }
                 | K::AddVertex { .. }
+                | K::WallBend
                 | K::MeshEdge(..)
                 | K::OpeningJamb { .. }
                 | K::OpeningHead
@@ -858,27 +865,43 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
     match &e.kind {
         ElementKind::Wall(w) => {
             let z0 = elevation(model, Some(w.level)) + w.base_offset;
-            let mid = (w.start + w.end) / 2.0;
-            let n = w.direction().perp();
+            // a curved wall's middle is on its arc, square to it there
+            let half = w.length() / 2.0;
+            let mid = w.place(half, 0.0);
+            let n = w.tangent_at(half).perp();
             // the ends are gripped on the wall's location line
             let (a, b) = walls::location_line(model, w);
-            vec![
-                flat(HandleKind::WallEnd { end: false }, a.extend(z0)),
-                flat(HandleKind::WallEnd { end: true }, b.extend(z0)),
-                line(HandleKind::WallTop, mid.extend(z0 + w.height), DVec3::Z),
-                line(
-                    HandleKind::WallFace,
-                    (mid + n * w.thickness / 2.0).extend(z0 + w.height / 2.0),
-                    n.extend(0.0),
-                ),
-                // no grip of its own on screen: a drag of the wall's body
-                // slides it (see interact); kept here for that drag
-                line(
-                    HandleKind::WallSlide,
-                    (mid - n * (w.thickness / 2.0 + 0.3)).extend(z0 + w.height / 2.0),
-                    n.extend(0.0),
-                ),
-            ]
+            let bend = w
+                .is_arc()
+                .then(|| flat(HandleKind::WallBend, mid.extend(z0)));
+            // on a curved wall the bend grip has the middle: the top and
+            // thickness grips stand a quarter along, so seen from above
+            // they don't sit on it and fight it for the pointer
+            let (mid, n) = if w.is_arc() {
+                let q = w.length() / 4.0;
+                (w.place(q, 0.0), w.tangent_at(q).perp())
+            } else {
+                (mid, n)
+            };
+            bend.into_iter()
+                .chain([
+                    flat(HandleKind::WallEnd { end: false }, a.extend(z0)),
+                    flat(HandleKind::WallEnd { end: true }, b.extend(z0)),
+                    line(HandleKind::WallTop, mid.extend(z0 + w.height), DVec3::Z),
+                    line(
+                        HandleKind::WallFace,
+                        (mid + n * w.thickness / 2.0).extend(z0 + w.height / 2.0),
+                        n.extend(0.0),
+                    ),
+                    // no grip of its own on screen: a drag of the wall's body
+                    // slides it (see interact); kept here for that drag
+                    line(
+                        HandleKind::WallSlide,
+                        (mid - n * (w.thickness / 2.0 + 0.3)).extend(z0 + w.height / 2.0),
+                        n.extend(0.0),
+                    ),
+                ])
+                .collect()
         }
         ElementKind::Slab(s) => {
             // its outline's grips are every outline's (see handles_in)
@@ -900,13 +923,14 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
                 return vec![];
             };
             let z0 = elevation(model, Some(w.level)) + w.base_offset;
-            let u = w.direction();
+            let mid = o.offset + o.width / 2.0;
+            // along the wall at the opening: on a curved wall its tangent
+            // there, and the grips on the arc where the opening is
+            let u = w.tangent_at(mid);
             // on the jambs, at the middle of the wall's depth, so they read
             // as part of the opening at every scale (A5-5); not on a face,
             // where at 1:10 they floated beside it
-            let face = w.start;
-            let at = |along: f64, up: f64| (face + u * along).extend(z0 + up);
-            let mid = o.offset + o.width / 2.0;
+            let at = |along: f64, up: f64| w.place(along, 0.0).extend(z0 + up);
             let mut out = vec![
                 line(
                     HandleKind::OpeningJamb { right: false },
@@ -1750,6 +1774,14 @@ pub fn apply(
                 *height = round(*height + d.z, step).max(0.1);
             }
         }
+        (ElementKind::Wall(w), HandleKind::WallBend) => {
+            // through the point dragged to, its ends where they are; a
+            // point on the straight line between them straightens it
+            let through = now.truncate();
+            w.bulge = crate::planview::bulge_through(w.start, through, w.end)
+                .filter(|k| k.abs() < 20.0)
+                .unwrap_or(0.0);
+        }
         (ElementKind::Wall(w), HandleKind::WallSlide) => {
             let n = w.direction().perp();
             let by = n * round(d.truncate().dot(n), step);
@@ -1985,6 +2017,9 @@ pub struct GripSel {
     pub id: Option<ElementId>,
     pub corners: Vec<(Ring, usize)>,
     pub holes: Vec<usize>,
+    /// A mass's picked vertices in Edit mode (an edge picks its two ends,
+    /// a face its corners), kept lit until another pick (MU39).
+    pub mesh: Vec<u32>,
     /// The last click on a grip: which, when and where, so a double-click
     /// still counts when the pointer moved a little between the clicks.
     last_tap: Option<(HandleKind, f64, Pos2)>,
@@ -2061,9 +2096,45 @@ enum MenuOn {
 const DOUBLE_TAP: f64 = 0.5;
 const DOUBLE_TAP_PX: f32 = 8.0;
 
+thread_local! {
+    /// The mass vertices picked in Edit mode, for Move, Rotate and Scale.
+    static MESH_PICK: std::cell::RefCell<Option<(ElementId, Vec<u32>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The vertices picked on mass `id` in Edit mode, if any.
+pub fn mesh_pick(id: ElementId) -> Option<Vec<u32>> {
+    MESH_PICK.with(|p| {
+        p.borrow()
+            .as_ref()
+            .filter(|(i, v)| *i == id && !v.is_empty())
+            .map(|(_, v)| v.clone())
+    })
+}
+
 impl GripSel {
     pub fn is_empty(&self) -> bool {
-        self.corners.is_empty() && self.holes.is_empty()
+        self.corners.is_empty() && self.holes.is_empty() && self.mesh.is_empty()
+    }
+
+    /// Pick a mass's vertices `vs` (a vertex, an edge's ends, a face's
+    /// corners): only them, or with `add` (Shift) in, or out if they were
+    /// all in already.
+    pub fn pick_mesh(&mut self, vs: &[u32], add: bool) {
+        if !add {
+            self.mesh = vs.to_vec();
+            self.corners.clear();
+            self.holes.clear();
+        } else if vs.iter().all(|v| self.mesh.contains(v)) {
+            self.mesh.retain(|v| !vs.contains(v));
+        } else {
+            for v in vs {
+                if !self.mesh.contains(v) {
+                    self.mesh.push(*v);
+                }
+            }
+        }
+        MESH_PICK.with(|p| *p.borrow_mut() = self.id.map(|id| (id, self.mesh.clone())));
     }
 
     /// Drop the picks, and any box or menu. The last click is kept, so a
@@ -2071,6 +2142,8 @@ impl GripSel {
     pub fn clear(&mut self) {
         self.corners.clear();
         self.holes.clear();
+        self.mesh.clear();
+        MESH_PICK.with(|p| *p.borrow_mut() = None);
         self.boxsel = None;
         self.menu = None;
     }
@@ -2158,7 +2231,9 @@ pub fn delete_picked(
     r
 }
 
-const ACCENT: Color32 = Color32::from_rgb(230, 120, 30);
+fn interaction_ink() -> Color32 {
+    crate::theme::interaction()
+}
 /// The colour of a shape that would be broken.
 const INVALID: Color32 = Color32::from_rgb(210, 40, 40);
 
@@ -2374,7 +2449,7 @@ impl GripLook {
     fn of(ctx: &egui::Context) -> Self {
         let v = ctx.global_style().visuals.clone();
         Self {
-            accent: ACCENT,
+            accent: interaction_ink(),
             ink: v.strong_text_color(),
             paper: v.panel_fill,
             pill: PillLook::of(&crate::theme::Palette::of(ctx)),
@@ -2412,6 +2487,22 @@ impl GripStyle {
 static GRIP_STYLE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 /// Draw grips this way from now on.
+static EDGE_W: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F80_0000);
+static VERT_S: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x4080_0000);
+
+/// Edit mode's wire width and vertex dot size, in points (MU39).
+pub fn set_edit_display(edge: f32, vertex: f32) {
+    EDGE_W.store(edge.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    VERT_S.store(vertex.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
+fn edit_display() -> (f32, f32) {
+    (
+        f32::from_bits(EDGE_W.load(std::sync::atomic::Ordering::Relaxed)),
+        f32::from_bits(VERT_S.load(std::sync::atomic::Ordering::Relaxed)),
+    )
+}
+
 pub fn set_grip_style(s: GripStyle) {
     GRIP_STYLE.store(s as u8, std::sync::atomic::Ordering::Relaxed);
 }
@@ -2857,10 +2948,10 @@ fn edge_palette(
         if n >= 2 {
             let (a, b) = (r.corners[p.i % n], r.corners[(p.i + 1) % n]);
             if let (Some(a), Some(b)) = ((input.project)(a), (input.project)(b)) {
-                response
-                    .ctx
-                    .layer_painter(response.layer_id)
-                    .line_segment([a, b], Stroke::new(3.0, ACCENT.gamma_multiply(0.6)));
+                response.ctx.layer_painter(response.layer_id).line_segment(
+                    [a, b],
+                    Stroke::new(3.0, interaction_ink().gamma_multiply(0.6)),
+                );
             }
         }
     }
@@ -3140,6 +3231,50 @@ fn grip_menu(
 /// lies under the pointer can be far away along the line being slid on.
 /// Where handle `h` shows on screen: at its point, or nudged out along
 /// its line.
+/// A mass's edit grips that would sit on top of each other on screen
+/// (a mass seen small, far off) are left out, so a few clear grips show
+/// instead of a cluster (MU39): its corners first, then its faces, then
+/// its edge middles; the move, lift and turn grips always stay.
+fn declutter(shown: Vec<Handle>, input: &PaneInput) -> Vec<Handle> {
+    let rank = |k: &HandleKind| match k {
+        HandleKind::MeshVertex(_) => 1,
+        HandleKind::Face(_) => 2,
+        HandleKind::MeshEdge(..) => 3,
+        _ => 0,
+    };
+    if !shown.iter().any(|h| rank(&h.kind) > 0) {
+        return shown;
+    }
+    // the grips that always stay, then the rest in their order
+    let mut order: Vec<usize> = (0..shown.len()).collect();
+    order.sort_by_key(|i| rank(&shown[*i].kind));
+    let mut placed: Vec<Pos2> = vec![];
+    let mut keep = vec![false; shown.len()];
+    for i in order {
+        let h = &shown[i];
+        let Some(c) = screen_at(h, input) else {
+            keep[i] = true;
+            continue;
+        };
+        // corners need room of their own; faces and edges a little more
+        let room = match rank(&h.kind) {
+            0 => 0.0,
+            1 => 14.0,
+            _ => 22.0,
+        };
+        if room > 0.0 && placed.iter().any(|p| p.distance(c) < room) {
+            continue;
+        }
+        placed.push(c);
+        keep[i] = true;
+    }
+    shown
+        .into_iter()
+        .zip(keep)
+        .filter_map(|(h, k)| k.then_some(h))
+        .collect()
+}
+
 fn screen_at(h: &Handle, input: &PaneInput) -> Option<Pos2> {
     let c = (input.project)(h.at)?;
     let Constraint::Line { dir, .. } = h.constraint else {
@@ -3232,14 +3367,14 @@ fn draw_view_range(painter: &Painter, input: &PaneInput, a: DVec2, b: DVec2, dep
     };
     painter.add(egui::Shape::convex_polygon(
         pts.clone(),
-        ACCENT.gamma_multiply(0.08),
+        interaction_ink().gamma_multiply(0.08),
         Stroke::NONE,
     ));
-    painter.line_segment([pts[0], pts[1]], Stroke::new(2.5, ACCENT));
+    painter.line_segment([pts[0], pts[1]], Stroke::new(2.5, interaction_ink()));
     for (p, q) in [(pts[1], pts[2]), (pts[2], pts[3]), (pts[3], pts[0])] {
         painter.add(egui::Shape::dashed_line(
             &[p, q],
-            Stroke::new(1.2, ACCENT.gamma_multiply(0.8)),
+            Stroke::new(1.2, interaction_ink().gamma_multiply(0.8)),
             6.0,
             4.0,
         ));
@@ -3304,11 +3439,33 @@ pub fn interact(
         // grips sit on the element: a wall slides by its body
         .filter(|h| h.kind != HandleKind::WallSlide)
         .collect();
+    let shown = declutter(shown, input);
     let screen = |h: &Handle| screen_at(h, input);
+    // a mass's edge is taken anywhere along it, not only at its middle,
+    // as Blender's (MU39: edges were hard to pick)
+    let mesh_ends: Option<(DVec3, creabim_core::FreeMesh)> =
+        match doc.model().get(id).map(|e| &e.kind) {
+            Some(ElementKind::FreeMesh(m)) if edit => Some((
+                m.origin + DVec3::Z * elevation(doc.model(), m.level),
+                m.clone(),
+            )),
+            _ => None,
+        };
+    let along = |h: &Handle, p: Pos2| -> Option<f32> {
+        let HandleKind::MeshEdge(a, b) = h.kind else {
+            return None;
+        };
+        let (base, m) = mesh_ends.as_ref()?;
+        let s = |i: u32| (input.project)(*base + m.to_model(m.mesh.vertices[i as usize]));
+        let (pa, pb) = (s(a)?, s(b)?);
+        let ab = pb - pa;
+        let t = ((p - pa).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.08, 0.92);
+        Some((pa + ab * t).distance(p))
+    };
     let nearest = |p: Pos2| {
         shown
             .iter()
-            .filter_map(|h| Some((h, screen(h)?.distance(p))))
+            .filter_map(|h| Some((h, along(h, p).or_else(|| Some(screen(h)?.distance(p)))?)))
             // 8 px to see, 16 px to hit
             .filter(|(_, d)| *d < 8.0)
             // a corner wins over an add-corner grip or an edge's at the
@@ -3324,7 +3481,7 @@ pub fn interact(
     };
     let element = doc.model().get(id).cloned();
     if let (true, Some(e)) = (edit, &element) {
-        draw_rings(doc.model(), e, painter, input, grips, ACCENT);
+        draw_rings(doc.model(), e, painter, input, grips, interaction_ink());
     }
     if let Some(ElementKind::View(v)) = element.as_ref().map(|e| &e.kind) {
         if let ViewKind::Section {
@@ -3348,10 +3505,130 @@ pub fn interact(
         _ => None,
     };
     let look = GripLook::of(&ctx);
+    // a mass in Edit mode, as Blender's: its wires thin and dark, its
+    // corners small dots; edges and faces light up only under the pointer
+    // (MU39)
+    let mesh_edit = edit
+        && matches!(
+            element.as_ref().map(|e| &e.kind),
+            Some(ElementKind::FreeMesh(_))
+        );
+    let (wire_w, dot) = edit_display();
+    if mesh_edit {
+        if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+            let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+            let ink = Color32::from_gray(20);
+            for (a, b) in mesh_edges(&m.mesh) {
+                let p = |i: u32| (input.project)(base + m.to_model(m.mesh.vertices[i as usize]));
+                if let (Some(pa), Some(pb)) = (p(a), p(b)) {
+                    painter.line_segment([pa, pb], Stroke::new(wire_w, ink));
+                }
+            }
+        }
+    }
+    // what is picked on the mass: its faces tinted, its edges and points
+    // in the accent, lit until another pick (MU39)
+    if mesh_edit && !grips.mesh.is_empty() {
+        if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+            let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+            let accent = crate::theme::interaction();
+            let p = |i: u32| (input.project)(base + m.to_model(m.mesh.vertices[i as usize]));
+            let on = |v: &u32| grips.mesh.contains(v);
+            for f in &m.mesh.faces {
+                if f.iter().all(on) {
+                    let pts: Option<Vec<Pos2>> = f.iter().map(|v| p(*v)).collect();
+                    if let Some(pts) = pts {
+                        painter.add(egui::Shape::Path(egui::epaint::PathShape {
+                            points: pts,
+                            closed: true,
+                            fill: accent.gamma_multiply(0.28),
+                            stroke: Stroke::NONE.into(),
+                        }));
+                    }
+                }
+            }
+            for (a, b) in mesh_edges(&m.mesh) {
+                if on(&a) && on(&b) {
+                    if let (Some(pa), Some(pb)) = (p(a), p(b)) {
+                        painter.line_segment([pa, pb], Stroke::new(edit_display().0 + 1.5, accent));
+                    }
+                }
+            }
+            for v in &grips.mesh {
+                if let Some(c) = p(*v) {
+                    painter.circle_filled(c, edit_display().1 / 2.0 + 1.0, accent);
+                }
+            }
+        }
+    }
     for h in &shown {
         let Some(c) = screen(h) else {
             continue;
         };
+        if mesh_edit {
+            let state = if hot == Some(h.kind) || held == Some(h.kind) {
+                GripState::Hover
+            } else {
+                GripState::Rest
+            };
+            let accent = crate::theme::interaction();
+            match h.kind {
+                HandleKind::MeshVertex(_) => {
+                    let lit = state == GripState::Hover;
+                    let ink = if lit { accent } else { Color32::from_gray(15) };
+                    painter.circle_filled(c, dot / 2.0 + if lit { 1.0 } else { 0.0 }, ink);
+                    if lit {
+                        ctx.set_cursor_icon(egui::CursorIcon::Move);
+                    }
+                    continue;
+                }
+                HandleKind::MeshEdge(a, b) if state == GripState::Hover => {
+                    if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+                        let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+                        let p = |i: u32| {
+                            (input.project)(base + m.to_model(m.mesh.vertices[i as usize]))
+                        };
+                        if let (Some(pa), Some(pb)) = (p(a), p(b)) {
+                            painter.line_segment([pa, pb], Stroke::new(wire_w + 1.5, accent));
+                        }
+                    }
+                    ctx.set_cursor_icon(egui::CursorIcon::Move);
+                    continue;
+                }
+                // Edges picked (2): every edge shows, to grab (MU39)
+                HandleKind::MeshEdge(a, b) if pick() == 2 => {
+                    if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+                        let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+                        let p = |i: u32| {
+                            (input.project)(base + m.to_model(m.mesh.vertices[i as usize]))
+                        };
+                        if let (Some(pa), Some(pb)) = (p(a), p(b)) {
+                            painter.line_segment(
+                                [pa, pb],
+                                Stroke::new(wire_w + 1.0, accent.gamma_multiply(0.55)),
+                            );
+                        }
+                    }
+                    continue;
+                }
+                HandleKind::MeshEdge(..) => continue,
+                // Faces picked (3): a small square at each face's middle,
+                // as Blender's face dots
+                HandleKind::Face(_) if state == GripState::Rest && pick() == 3 => {
+                    let r = egui::Rect::from_center_size(c, egui::vec2(dot + 2.0, dot + 2.0));
+                    painter.rect(
+                        r,
+                        1.0,
+                        accent.gamma_multiply(0.35),
+                        Stroke::new(1.0, accent),
+                        egui::StrokeKind::Middle,
+                    );
+                    continue;
+                }
+                HandleKind::Face(_) if state == GripState::Rest => continue,
+                _ => {}
+            }
+        }
         let state = if held == Some(h.kind) {
             GripState::Held
         } else if held.is_some() {
@@ -3550,8 +3827,8 @@ pub fn interact(
             painter.rect(
                 rect,
                 0.0,
-                ACCENT.gamma_multiply(0.08),
-                Stroke::new(1.0, ACCENT),
+                interaction_ink().gamma_multiply(0.08),
+                Stroke::new(1.0, interaction_ink()),
                 egui::StrokeKind::Middle,
             );
             if response.drag_stopped() || !response.dragged() {
@@ -3559,12 +3836,32 @@ pub fn interact(
                     grips.corners.clear();
                     grips.holes.clear();
                 }
+                let mut mesh = vec![];
                 for h in &shown {
                     if let HandleKind::Vertex { ring, i } = h.kind {
                         if screen(h).is_some_and(|c| rect.contains(c)) && !grips.picked(ring, i) {
                             grips.corners.push((ring, i));
                         }
                     }
+                }
+                // a mass's vertices in the box, whichever grips show
+                if let Some(ElementKind::FreeMesh(m)) = element.as_ref().map(|e| &e.kind) {
+                    let base = m.origin + DVec3::Z * elevation(doc.model(), m.level);
+                    for (i, v) in m.mesh.vertices.iter().enumerate() {
+                        if (input.project)(base + m.to_model(*v)).is_some_and(|c| rect.contains(c))
+                        {
+                            mesh.push(i as u32);
+                        }
+                    }
+                }
+                if !mesh.is_empty() || !grips.mesh.is_empty() {
+                    grips.pick_mesh(&mesh, shift);
+                    grips.boxsel = None;
+                    *status = Some(format!(
+                        "{} points picked: G or M moves them, R turns, S scales.",
+                        grips.mesh.len()
+                    ));
+                    return true;
                 }
                 grips.boxsel = None;
                 *status = Some(match grips.corners.len() {
@@ -3585,7 +3882,7 @@ pub fn interact(
         if let (Some(pa), Some(pb)) = ((input.project)(a.extend(z)), (input.project)(b.extend(z))) {
             painter.add(egui::Shape::dashed_line(
                 &[pa, pb],
-                Stroke::new(1.2, ACCENT),
+                Stroke::new(1.2, interaction_ink()),
                 8.0,
                 3.0,
             ));
@@ -3822,7 +4119,7 @@ pub fn interact(
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         d.edit.cancel(doc);
         *drag = None;
-        *status = Some("Drag cancelled. Esc again finishes editing.".into());
+        *status = Some("Drag cancelled. Tab finishes editing.".into());
         return true;
     }
     if response.drag_stopped() || !response.dragged() {
@@ -4020,7 +4317,7 @@ fn distance_marks(
     let held = held.is_some();
     let side = (b - a).normalized().rot90();
     let quiet = Stroke::new(1.0, Color32::from_rgb(79, 107, 76).gamma_multiply(0.75));
-    let hot = Stroke::new(2.0, crate::planview::ACCENT_SELECTED);
+    let hot = Stroke::new(2.0, crate::planview::accent_selected());
     let n = ((len / every).ceil() as i64 + 1).min(400);
     for i in 1..=n {
         let Some(c) = (input.project)(grab + dir * (every * i as f64)) else {
@@ -4070,6 +4367,32 @@ fn tap_grip(
     grips: &mut GripSel,
 ) -> Option<String> {
     let double = grips.tap(kind, time, at);
+    // a mass in Edit mode: a click picks the vertex, the edge or the face,
+    // and it stays picked to act on, as in Blender (MU39)
+    if edit {
+        if let Some(ElementKind::FreeMesh(m)) = doc.model().get(id).map(|e| &e.kind) {
+            let vs: Option<Vec<u32>> = match kind {
+                HandleKind::MeshVertex(i) => Some(vec![i as u32]),
+                HandleKind::MeshEdge(a, b) => Some(vec![a, b]),
+                HandleKind::Face(f) => m.mesh.faces.get(f).cloned(),
+                _ => None,
+            };
+            if let Some(vs) = vs {
+                grips.pick_mesh(&vs, shift);
+                let what = match (crate::handles::pick(), kind) {
+                    (_, HandleKind::MeshEdge(..)) | (2, _) => "edge",
+                    (_, HandleKind::Face(_)) | (3, _) => "face",
+                    _ => "point",
+                };
+                return Some(match grips.mesh.len() {
+                    0 => "Nothing picked.".into(),
+                    n => format!(
+                        "{n} points picked ({what}): G or M moves them, R turns, S scales; Shift+click picks more."
+                    ),
+                });
+            }
+        }
+    }
     match kind {
         HandleKind::Vertex { ring, i } if edit => {
             if double && !shift {
@@ -4181,7 +4504,12 @@ fn follow(
                 }
             }
             if let (true, Some(k), Some(p), Some(e)) = (outline, d.kind, pointer, changed.first()) {
-                note(painter, p, &live_lengths(&model, e, k, d.grab, now), ACCENT);
+                note(
+                    painter,
+                    p,
+                    &live_lengths(&model, e, k, d.grab, now),
+                    interaction_ink(),
+                );
             }
             // the live pill: only the value that's changing, by the grip
             let ctx = painter.ctx();
@@ -4313,7 +4641,7 @@ fn typed_length(
                 "{shown}| {}  Enter: apply · Esc: back to the pointer",
                 crate::units::symbol()
             ),
-            ACCENT,
+            interaction_ink(),
         );
     }
     *status = Some(format!(

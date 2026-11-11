@@ -16,6 +16,11 @@ pub(super) const STATUS_H: f32 = 26.0;
 const NAV_W: f32 = 420.0;
 const NAV_H: f32 = 34.0;
 
+thread_local! {
+    static LEFT_CACHE: std::cell::RefCell<Option<(String, Value)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 pub(super) struct Shell {
     pub web: Option<WebUi>,
     /// Why the web interface couldn't start, when it couldn't.
@@ -306,7 +311,7 @@ fn command_icon(c: Command) -> &'static str {
         Command::Rotate => "rotate-cw",
         Command::Scale => "scaling",
         Command::Mirror => "flip-horizontal-2",
-        Command::Offset => "copy-plus",
+        Command::Offset => "offset",
         Command::Duplicate => "duplicate",
         Command::Copy => "copy",
         Command::Cut => "scissors",
@@ -321,6 +326,10 @@ fn command_icon(c: Command) -> &'static str {
         Command::WorkplaneHere => "square-dashed",
     }
 }
+
+/// The modifier keys held this frame (1 Shift, 2 Ctrl, 4 Alt), for the
+/// status bar's mouse hints.
+pub(super) static MODS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 impl CreaBimApp {
     fn cmd_item(&self, c: Command) -> Item {
@@ -398,7 +407,32 @@ impl CreaBimApp {
         match key {
             "menu:CreaBIM" => self.app_menu(),
             "units.menu" => self.unit_items(),
+            "select.menu" => self.select_menu_items(),
             "sweep.library" => self.sweep_library_items(),
+            "beam.corner" => creabim_core::members::BeamCorner::ALL
+                .iter()
+                .map(|c| {
+                    Item::new(format!("beam.corner:{}", c.label()), c.label())
+                        .icon(c.icon())
+                        .hint(c.hint())
+                        .checked(*c == self.plan.members.beam_corner)
+                })
+                .collect(),
+            "railing.library" => self.library_items(
+                "railing.lib",
+                self.plan.members.railing_section.clone(),
+                Some("Its own: a square bar"),
+            ),
+            "column.library" => self.library_items(
+                "column.lib",
+                self.plan.members.column_section.clone(),
+                Some("Its own: square or round"),
+            ),
+            "beam.library" => self.library_items(
+                "beam.lib",
+                self.plan.members.beam_section.clone(),
+                Some("Its own: width × depth"),
+            ),
             "extrusion.library" => self.extrusion_library_items(),
             "menu:File" => self.file_menu(),
             "menu:Edit" => self.edit_menu(),
@@ -537,6 +571,21 @@ impl CreaBimApp {
                         );
                         items.push(Item::Separator);
                     }
+                    // cutting it up first, where they are found (MU39): Split
+                    // for anything, Divide for what has a length
+                    items.push(Item::new("split", "Split…").icon("split").hint(
+                        "Cut it along a guide, a line or two points you click; keep the side you click",
+                    ));
+                    if self.selection.active.is_some_and(|id| {
+                        creabim_core::divide::span(self.doc.model(), id).is_some()
+                    }) {
+                        items.push(
+                            Item::new("divide", "Divide…")
+                                .icon("mod-array")
+                                .hint("Into parts along it, up it or both: cuts, guides or copies"),
+                        );
+                    }
+                    items.push(Item::Separator);
                     items.extend(self.wall_menu_items());
                     items.extend(self.join_menu_items());
                     items.extend(self.level_menu_items());
@@ -553,16 +602,6 @@ impl CreaBimApp {
                         &[Command::Hide, Command::Isolate],
                     ] {
                         items.extend(group.iter().map(|c| ctx(*c)));
-                        // Divide sits with the edits, for what it can divide
-                        if group.contains(&Command::Duplicate)
-                            && self.selection.active.is_some_and(|id| {
-                                creabim_core::divide::span(self.doc.model(), id).is_some()
-                            })
-                        {
-                            items.push(Item::new("divide", "Divide…").icon("mod-array").hint(
-                                "Into parts along it, up it or both: cuts, guides or copies",
-                            ));
-                        }
                         items.push(Item::Separator);
                     }
                     if !self.shell.context_3d {
@@ -823,6 +862,27 @@ impl CreaBimApp {
                         .icon("copy-levels"),
                 );
             }
+            // cutting up, after the edits (MU39): found in the menu and by
+            // typing, not only on a right-click
+            if group.contains(&Command::Duplicate) {
+                let some = !self.selection.is_empty();
+                let span = self
+                    .selection
+                    .active
+                    .is_some_and(|id| creabim_core::divide::span(self.doc.model(), id).is_some());
+                items.push(
+                    Item::new("split", "Split…")
+                        .icon("split")
+                        .enabled(some)
+                        .hint("Cut the selection along a guide, a line or two points; keep the side you click"),
+                );
+                items.push(
+                    Item::new("divide", "Divide…")
+                        .icon("mod-array")
+                        .enabled(span)
+                        .hint("Into parts along it, up it or both: cuts, guides or copies"),
+                );
+            }
             items.push(Item::Separator);
         }
         let levels = self.level_menu_items();
@@ -963,6 +1023,31 @@ impl CreaBimApp {
         flatten(self.file_menu(), "File › ", &mut out);
         flatten(self.materials_menu(), "Materials › ", &mut out);
         flatten(self.help_menu(), "Help › ", &mut out);
+        // what the tool tabs hold that the menus don't (MU39: Profiles, on
+        // Manage, could not be found by typing)
+        for (tab, name) in crate::tooltabs::TABS.iter().enumerate() {
+            for e in crate::tooltabs::entries(tab) {
+                use crate::tooltabs::Entry;
+                match e {
+                    Entry::Act {
+                        id,
+                        label,
+                        icon,
+                        hint,
+                    } => flatten(
+                        vec![Item::new(id, label).icon(icon).hint(hint)],
+                        &format!("{name} › "),
+                        &mut out,
+                    ),
+                    Entry::Menu { key, label, .. } => flatten(
+                        self.menu_items(key),
+                        &format!("{name} › {label} › "),
+                        &mut out,
+                    ),
+                    Entry::Tool(_) | Entry::Sep => {}
+                }
+            }
+        }
         // every page of the guide, found by its title
         for (section, id, md) in crate::help::PAGES {
             let item = Item::new(format!("help:{id}"), crate::help::title(md))
@@ -1297,6 +1382,10 @@ impl CreaBimApp {
                     crate::detailtool::keep(&mut self.doc, &mut self.plan, &mut self.selection);
                     self.plan.tool = *t;
                     self.plan.cancel();
+                    // a chain begun in 3D ends with its tool (MU40)
+                    self.pending_3d = None;
+                    self.beam_face = None;
+                    self.plan.members.last_beam = None;
                     self.status = t.hint().into();
                     if *t == Tool::Guide && self.shell.settings.guides_hidden {
                         // drawing guides you can't see helps no one
@@ -1630,6 +1719,7 @@ impl CreaBimApp {
             }
             "plan3d" => self.plan_in_3d = !self.plan_in_3d,
             "divide" => self.open_divide(),
+            "split" => self.start_split(),
             "frame" => self.frame_pane(false),
             "nav.fitsel" => self.frame_selection(),
             "sched.csv" => self.schedule_export = Some("csv".into()),
@@ -1795,6 +1885,32 @@ impl CreaBimApp {
                 }
             }
             "slab.arc" => crate::slabtool::pick(ctx, None, Some(arg == "1")),
+            "sel.shape" => {
+                use crate::boxsel::Shape;
+                crate::boxsel::set_shape(match arg {
+                    "1" => Shape::Circle,
+                    "2" => Shape::Lasso,
+                    _ => Shape::Box,
+                });
+            }
+            "sel.combine" => {
+                use crate::boxsel::Combine;
+                crate::boxsel::set_combine(match arg {
+                    "1" => Combine::Add,
+                    "2" => Combine::Subtract,
+                    "3" => Combine::Invert,
+                    "4" => Combine::Intersect,
+                    _ => Combine::New,
+                });
+            }
+            "sel.pick" => {
+                let k: u8 = arg.parse().unwrap_or(0);
+                crate::handles::set_pick(if crate::handles::pick() == k { 0 } else { k });
+            }
+            "sel.invert" => self.select_invert(),
+            "sel.linked" => self.select_linked(),
+            "sel.random" => self.select_random(),
+            "sel.kind" => self.select_kind(arg),
             "sketch.shape" => {
                 if let Some(s) = index.and_then(|i| crate::sketch::Shape::ALL.get(i)) {
                     crate::sketch::pick_shape(ctx, *s);
@@ -1815,6 +1931,8 @@ impl CreaBimApp {
             _ if self.join_action(head, arg) => {}
             _ if self.crop_action(head, arg) => {}
             _ if self.profiles_action(head, arg) => {}
+            _ if self.masters_action(head, arg) => {}
+            _ if self.log_action(ctx, head) => {}
             _ if self.similar_action(head, arg) => {}
             _ if self.app_action(ctx, head, arg) => {}
             _ if self.help_action(head, arg) => {}
@@ -2314,6 +2432,11 @@ impl CreaBimApp {
                 self.plan.cancel();
                 self.status = "Text on the sheet: click where it starts, then type.".into();
             }
+            "sheet.picture" => {
+                if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
+                    self.add_sheet_picture(sheet);
+                }
+            }
             "sheet.north" | "sheet.scalebar" => {
                 if let Some(sheet) = self.active_view.filter(|id| self.is_sheet(*id)) {
                     self.add_paper_mark(sheet, what == "sheet.north");
@@ -2364,6 +2487,16 @@ impl CreaBimApp {
                     "Plan ranges: each floor plan's cut (solid) and view depth (dashed). Drag a grip at the right to change it.".into()
                 } else {
                     "Plan ranges hidden.".into()
+                };
+            }
+            "view.grid" => {
+                let s = &mut self.shell.settings;
+                s.plan_grid = !s.plan_grid;
+                s.store();
+                self.status = if self.shell.settings.plan_grid {
+                    "Grid on behind drawings.".into()
+                } else {
+                    "Grid off: plain paper behind drawings.".into()
                 };
             }
             "view.tempdims" => {
@@ -2447,7 +2580,7 @@ impl CreaBimApp {
                 crate::modal::Mode::Rotate => "rotate-cw",
                 crate::modal::Mode::Scale => "scaling",
                 crate::modal::Mode::Mirror => "flip-horizontal-2",
-                crate::modal::Mode::Offset => "copy-plus",
+                crate::modal::Mode::Offset => "offset",
                 crate::modal::Mode::Grip => "spline",
             };
             return (json!({"label": verb, "icon": icon}), options);
@@ -2459,7 +2592,7 @@ impl CreaBimApp {
                 crate::modal::Mode::Rotate => "rotate-cw",
                 crate::modal::Mode::Scale => "scaling",
                 crate::modal::Mode::Mirror => "flip-horizontal-2",
-                crate::modal::Mode::Offset => "copy-plus",
+                crate::modal::Mode::Offset => "offset",
                 crate::modal::Mode::Grip => "spline",
             };
             return (
@@ -2475,6 +2608,36 @@ impl CreaBimApp {
             }));
         }
         if tool == Tool::Wall {
+            // straight, an arc, or a circle (MU40)
+            options.push(seg([
+                (
+                    "wall.shape:0",
+                    "Straight",
+                    "Click to start, click for each corner",
+                ),
+                (
+                    "wall.shape:1",
+                    "Arc",
+                    "Its start, its end, then a point it passes through",
+                ),
+                ("wall.shape:2", "Circle", "Its centre, then a point on it"),
+                (
+                    "wall.shape:3",
+                    "Rectangle",
+                    "Two opposite corners: four walls joined at the corners",
+                ),
+            ]
+            .iter()
+            .enumerate()
+            .map(|(i, (id, label, hint))| {
+                opt(
+                    id.to_string(),
+                    label,
+                    self.plan.wall_shape as usize == i,
+                    hint,
+                )
+            })
+            .collect()));
             options.push(json!({
                 "kind": "number", "key": "wall.thickness", "label": "Thickness",
                 "value": self.plan.wall_thickness, "unit": "m", "step": 0.01, "min": 0.05, "max": 1.0,
@@ -2624,11 +2787,246 @@ impl CreaBimApp {
         while options.last().is_some_and(|o| o["kind"] == "sep") {
             options.pop();
         }
+        // Select's own tools (MU39, option B): the shape a drag takes, how
+        // it joins what is selected, in Edit mode what a click picks, and
+        // the Select menu; the hint names what is selected
+        let mut hint = tool.hint().to_string();
+        if tool == Tool::Select {
+            let iseg = |items: Vec<(String, &str, bool, &str)>| {
+                json!({"kind": "seg", "items": items
+                    .into_iter()
+                    .map(|(id, icon, on, h)| json!({"id": id, "label": "", "icon": icon, "on": on, "hint": h}))
+                    .collect::<Vec<_>>()})
+            };
+            use crate::boxsel::{Combine as C, Shape as S};
+            let shape = crate::boxsel::shape();
+            let mut sel_opts = vec![iseg(vec![
+                ("sel.shape:0".into(), "sel-box", shape == S::Box, "Box (B): drag a box; left to right takes what is inside, right to left what it touches"),
+                ("sel.shape:1".into(), "sel-circle", shape == S::Circle, "Circle: drag out a circle; it takes what it touches"),
+                ("sel.shape:2".into(), "sel-lasso", shape == S::Lasso, "Lasso: draw round what to take"),
+            ])];
+            let how = crate::boxsel::combine();
+            sel_opts.push(iseg(vec![
+                (
+                    "sel.combine:0".into(),
+                    "sel-new",
+                    how == C::New,
+                    "New: what you take replaces the selection",
+                ),
+                (
+                    "sel.combine:1".into(),
+                    "sel-add",
+                    how == C::Add,
+                    "Add (Shift): what you take joins the selection",
+                ),
+                (
+                    "sel.combine:2".into(),
+                    "sel-sub",
+                    how == C::Subtract,
+                    "Subtract (Ctrl): what you take leaves the selection",
+                ),
+                (
+                    "sel.combine:3".into(),
+                    "sel-invert",
+                    how == C::Invert,
+                    "Invert: what you take flips, in or out",
+                ),
+                (
+                    "sel.combine:4".into(),
+                    "sel-intersect",
+                    how == C::Intersect,
+                    "Intersect: keep only what is both selected and taken",
+                ),
+            ]));
+            if self.plan.edit.is_some() {
+                let k = crate::handles::pick();
+                sel_opts.push(iseg(vec![
+                    (
+                        "sel.pick:1".into(),
+                        "pick-vertex",
+                        k == 1,
+                        "Points (1): corners, ends, vertices",
+                    ),
+                    (
+                        "sel.pick:2".into(),
+                        "pick-edge",
+                        k == 2,
+                        "Edges (2): sides, edges, jambs",
+                    ),
+                    (
+                        "sel.pick:3".into(),
+                        "pick-face",
+                        k == 3,
+                        "Faces (3): faces, tops, undersides",
+                    ),
+                ]));
+            }
+            sel_opts.push(json!({
+                "kind": "menu", "key": "select.menu", "label": "", "value": "Select",
+                "hint": "All, none, invert, similar, linked, random",
+            }));
+            sel_opts.push(json!({"kind": "sep"}));
+            sel_opts.extend(options);
+            options = sel_opts;
+            hint = self.selection_hint();
+        }
         let head = json!({
-            "label": tool.label(), "icon": tool_icon(tool), "hint": tool.hint(),
-            "help": crate::help::tool_page(tool),
+            "label": tool.label(), "icon": tool_icon(tool), "hint": hint,
+            "help": crate::help::tool_page(tool), "trail": tool == Tool::Select,
         });
         (head, options)
+    }
+
+    /// What the left, middle and right buttons do over the view the
+    /// pointer was last in, for the status bar (MU39).
+    fn mouse_hints(&self) -> Value {
+        // as Blender's status bar: they change while Shift, Ctrl or Alt
+        // is held, to what the buttons then do (MU39)
+        let m = MODS.load(std::sync::atomic::Ordering::Relaxed);
+        let (shift, ctrl, alt) = (m & 1 != 0, m & 2 != 0, m & 4 != 0);
+        let in_2d = self.last_in_2d;
+        let classic = self.shell.settings.navigation == "classic";
+        let select = self.plan.tool == Tool::Select;
+        let editing = self.plan.edit.is_some();
+        let (left, middle, right): (String, &str, &str) = if self.plan.modal.is_some() {
+            (
+                if ctrl { "Place, snapping" } else { "Place" }.into(),
+                if in_2d { "Pan" } else { "Rotate view" },
+                "Cancel",
+            )
+        } else if ctrl {
+            (
+                if select {
+                    "Take away"
+                } else {
+                    self.plan.tool.label()
+                }
+                .into(),
+                "Zoom",
+                "Menu",
+            )
+        } else if shift {
+            (
+                if editing {
+                    "Pick more"
+                } else if select {
+                    "Add to selection"
+                } else {
+                    self.plan.tool.label()
+                }
+                .into(),
+                "Pan",
+                if in_2d { "Menu" } else { "Place pivot" },
+            )
+        } else if alt && !in_2d {
+            ("Rotate view".into(), "Rotate view", "Menu")
+        } else {
+            (
+                if editing {
+                    "Pick a point".into()
+                } else if select {
+                    "Select".into()
+                } else {
+                    self.plan.tool.label().to_string()
+                },
+                match (in_2d, classic) {
+                    (true, _) | (false, true) => "Pan",
+                    (false, false) => "Rotate view",
+                },
+                if select { "Menu" } else { "Back" },
+            )
+        };
+        json!([
+            {"b": "l", "label": left},
+            {"b": "m", "label": middle},
+            {"b": "r", "label": right},
+        ])
+    }
+
+    /// The tool bar's hint while Select is the tool: what is selected and
+    /// what keys do to it, or how to select (MU39).
+    fn selection_hint(&self) -> String {
+        let model = self.doc.model();
+        let ids = self.selection.all();
+        match ids.len() {
+            0 => "Click or drag to select. Shift adds, Ctrl takes away. Ctrl+A all, Alt+A or Esc none."
+                .into(),
+            1 => {
+                let id = ids[0];
+                format!(
+                    "{} · M move · R rotate · Shift+A all of its type",
+                    crate::hoverpick::describe(model, id)
+                )
+            }
+            n => {
+                let mut kinds: Vec<(String, usize)> = vec![];
+                for e in ids.iter().filter_map(|i| model.get(*i)) {
+                    let k = crate::app::kind_word(&e.kind).to_string();
+                    match kinds.iter_mut().find(|(w, _)| *w == k) {
+                        Some((_, c)) => *c += 1,
+                        None => kinds.push((k, 1)),
+                    }
+                }
+                let list: Vec<String> = kinds
+                    .iter()
+                    .map(|(k, c)| format!("{c} {}", crate::app::plural(k, *c)))
+                    .collect();
+                format!("{n} selected: {} · M move · R rotate", list.join(", "))
+            }
+        }
+    }
+
+    /// The Select menu of the tool bar (MU39).
+    fn select_menu_items(&self) -> Vec<Item> {
+        let some = !self.selection.is_empty();
+        let mut items = vec![
+            self.cmd_item(Command::SelectAll),
+            self.cmd_item(Command::SelectNone),
+            Item::new("sel.invert", "Invert")
+                .hint("Select what is not selected, and drop what is"),
+            Item::Separator,
+            Item::new("sel.shape:0", "Box select").key("B").icon("sel-box"),
+            Item::new("sel.shape:1", "Circle select").icon("sel-circle"),
+            Item::new("sel.shape:2", "Lasso select").icon("sel-lasso"),
+            Item::Separator,
+            Item::new("sel.linked", "Select linked")
+                .enabled(some)
+                .hint("Add what is joined to the selection: walls meeting it, the doors and windows in it"),
+            Item::new("sel.random", "Select random")
+                .enabled(some)
+                .hint("Keep about half of the selection, picked at random: to thin out a row"),
+        ];
+        // every kind the project holds, without a selection first (MU39)
+        let mut kinds: Vec<(&'static str, usize)> = vec![];
+        for id in self.selectable_ids() {
+            if let Some(e) = self.doc.model().get(id) {
+                let k = crate::app::kind_word(&e.kind);
+                match kinds.iter_mut().find(|(w, _)| *w == k) {
+                    Some((_, n)) => *n += 1,
+                    None => kinds.push((k, 1)),
+                }
+            }
+        }
+        kinds.sort_by_key(|k| k.0);
+        let by_kind: Vec<Item> = kinds
+            .into_iter()
+            .map(|(k, n)| {
+                let word = crate::app::plural(k, 2);
+                let mut c = word.chars();
+                let label = c
+                    .next()
+                    .map_or(String::new(), |f| f.to_uppercase().chain(c).collect());
+                Item::new(format!("sel.kind:{k}"), format!("{label} ({n})"))
+            })
+            .collect();
+        if !by_kind.is_empty() {
+            items.push(Item::sub("All by type", by_kind).icon("layers"));
+        }
+        let similar = self.similar_items();
+        if !similar.is_empty() {
+            items.push(Item::sub("Select similar", similar).icon("copy"));
+        }
+        items
     }
 
     /// The quick help the ? by the tool's name opens: what the tool is and
@@ -2682,6 +3080,17 @@ impl CreaBimApp {
             None => Value::Null,
         })
         .collect();
+        // Split beside the other edits (MU39), its own picture
+        let mut quick = quick;
+        if let Some(i) = quick
+            .iter()
+            .position(|q| q["id"] == "ctx:Duplicate" || q["label"] == "Duplicate")
+        {
+            quick.insert(
+                i + 1,
+                json!({"id": "split", "label": "Split", "key": "", "enabled": !self.selection.is_empty(), "icon": "split"}),
+            );
+        }
         let tab = self
             .shell
             .settings
@@ -2851,6 +3260,13 @@ impl CreaBimApp {
                     "hint": "The blue dimensions by what you select: on, they show and can be typed into; off, none show (MU21)",
                 }));
             }
+            // the grid behind the drawing, on or off for every drawing
+            // (MU40: some prefer plain paper)
+            options.push(json!({
+                "kind": "toggle", "id": "view.grid", "label": "Grid",
+                "icon": "grid-3x3", "on": self.shell.settings.plan_grid,
+                "hint": "The light grid behind drawings: off for plain paper. For every plan, section and detail",
+            }));
             options.push(json!({
                 "kind": "button", "id": "view.tag", "label": "Tag openings", "icon": "tag",
                 "hint": "Tag every door and window in this view that has no tag yet",
@@ -2929,6 +3345,10 @@ impl CreaBimApp {
                 "hint": "Text on the sheet: click where it goes (N)",
             }));
             options.push(json!({
+                "kind": "button", "id": "sheet.picture", "label": "Picture", "icon": "image",
+                "hint": "A picture on the sheet: a collage, site context, a mood board (PNG, JPEG; an SVG stays crisp). Drag its grips to size it",
+            }));
+            options.push(json!({
                 "kind": "button", "id": "sheet.north", "label": "North arrow", "icon": "north-arrow",
                 "hint": "A north arrow, turned to the project's north; drag it where it goes",
             }));
@@ -2969,7 +3389,34 @@ impl CreaBimApp {
         options
     }
 
+    /// The browser's state, built again only when what it shows changed:
+    /// building its rows (every element, marks and hints) took ~5 ms a
+    /// frame, every frame (MU39: the app felt a tad slower).
     fn left_state(&self) -> Value {
+        let key = format!(
+            "{}|{:?}|{:?}|{}|{}|{:?}",
+            self.doc.model().revision(),
+            self.selection,
+            self.active_view,
+            self.shell.settings.left_folded,
+            self.theme(),
+            self.profiles.current,
+        );
+        LEFT_CACHE.with(|c| {
+            if let Some((k, v)) = c.borrow().as_ref() {
+                // the tree holds still through a drag: the model changes
+                // each frame, its names and rows don't (5 ms a frame)
+                if *k == key || self.dragging() {
+                    return v.clone();
+                }
+            }
+            let v = self.left_state_now();
+            *c.borrow_mut() = Some((key, v.clone()));
+            v
+        })
+    }
+
+    fn left_state_now(&self) -> Value {
         let model = self.doc.model();
         // the search finds elements by their marks (D01, W05) too
         let marks = creabim_core::marks::marks(model);
@@ -3120,6 +3567,7 @@ impl CreaBimApp {
             .collect();
         out.extend(groups);
         out.push(self.profiles_group());
+        out.push(self.masters_group());
         let groups = out;
         json!({
             "theme": self.theme(),
@@ -3148,6 +3596,8 @@ impl CreaBimApp {
             "message": self.status,
             // what the drawing under the pointer does, after the message
             "hint": self.plan.hint.filter(|h| *h != self.status),
+            // what each mouse button does here, as Blender's status bar (MU39)
+            "mouse": self.mouse_hints(),
             "controls": [
                 {"kind": "toggle", "id": "snap.on", "label": "Snap", "on": self.plan.snap.on, "icon": "magnet",
                  "hint": "Object snaps on or off (F3). Hold Alt while picking to suspend them."},
@@ -3472,6 +3922,12 @@ impl CreaBimApp {
                     self.profiles_action("profiles.open", &name);
                     return;
                 }
+                // a master of the browser's Masters group (MU40)
+                if let Some(id) = want.strip_prefix("master:") {
+                    let id = id.to_string();
+                    self.masters_action("master.open", &id);
+                    return;
+                }
                 let Some(e) = self.doc.model().iter().find(|e| e.id.0.to_string() == want) else {
                     return;
                 };
@@ -3735,8 +4191,14 @@ impl CreaBimApp {
                 })
             });
         let states = [
-            (Pane::Top, top, self.top_state(&ctx)),
-            (Pane::Left, left, self.left_state()),
+            (Pane::Top, top, {
+                let _p = crate::app::Perf::new("top_state");
+                self.top_state(&ctx)
+            }),
+            (Pane::Left, left, {
+                let _p = crate::app::Perf::new("left_state");
+                self.left_state()
+            }),
             (Pane::Status, status, self.status_state()),
         ];
         let nav_state = self.nav_state();

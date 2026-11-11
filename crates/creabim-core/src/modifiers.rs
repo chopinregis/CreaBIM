@@ -487,8 +487,43 @@ pub struct Evaluated {
     pub source: Vec<Option<usize>>,
 }
 
-/// Run the enabled modifiers over `mesh`, top to bottom.
+/// Run the enabled modifiers over `mesh`, top to bottom: remembered for
+/// the last shapes asked for, so the 3D view, picking under the pointer
+/// and the drawings of one shape evaluate its stack once, not on every
+/// mouse move (MU39: hovering a panelled, louvred mass re-ran it each
+/// frame).
 pub fn evaluate(mesh: &EditMesh, stack: &[Modifier]) -> Evaluated {
+    if !stack.iter().any(|m| m.enabled) {
+        return evaluate_now(mesh, stack);
+    }
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for v in &mesh.vertices {
+        v.to_array().map(f64::to_bits).hash(&mut h);
+    }
+    mesh.faces.hash(&mut h);
+    format!("{stack:?}").hash(&mut h);
+    let key = h.finish();
+    type Cache = Vec<(u64, std::sync::Arc<Evaluated>)>;
+    static CACHE: std::sync::Mutex<Cache> = std::sync::Mutex::new(Vec::new());
+    if let Some(hit) = CACHE
+        .lock()
+        .ok()
+        .and_then(|c| c.iter().find(|(k, _)| *k == key).map(|(_, e)| e.clone()))
+    {
+        return (*hit).clone();
+    }
+    let e = evaluate_now(mesh, stack);
+    if let Ok(mut c) = CACHE.lock() {
+        if c.len() >= 48 {
+            c.remove(0);
+        }
+        c.push((key, std::sync::Arc::new(e.clone())));
+    }
+    e
+}
+
+fn evaluate_now(mesh: &EditMesh, stack: &[Modifier]) -> Evaluated {
     let mut out = Evaluated {
         mesh: mesh.clone(),
         source: (0..mesh.faces.len()).map(Some).collect(),
@@ -677,6 +712,27 @@ pub(crate) fn solidify(e: &Evaluated, thickness: f64) -> Evaluated {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_modifier_takes_a_reshaped_tall_mass() {
+        // a box pulled up tall, one corner dragged off square (MU39 crash)
+        let mut m = EditMesh::cuboid(DVec3::new(4.0, 3.0, 3.0));
+        let top = (0..m.faces.len())
+            .find(|f| m.face_normal(*f).z > 0.9)
+            .unwrap();
+        m.extrude_face(top, 14.0);
+        m.vertices[1] += DVec3::new(0.7, -0.4, 0.0);
+        for k in ModifierKind::presets() {
+            let e = evaluate(&m, &[Modifier::new(k.clone())]);
+            assert_eq!(e.source.len(), e.mesh.faces.len(), "{k:?}");
+            for f in &e.mesh.faces {
+                assert!(
+                    f.iter().all(|v| (*v as usize) < e.mesh.vertices.len()),
+                    "{k:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn an_array_fits_a_length_in_steps_of_its_own_size() {

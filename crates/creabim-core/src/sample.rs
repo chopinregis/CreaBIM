@@ -102,6 +102,7 @@ pub fn sample_house() -> Model {
                     attach_top: vec![],
                     curtain: None,
                     layer_ends: vec![],
+                    bulge: 0.0,
                 }),
             );
             let id = wall.id;
@@ -181,6 +182,7 @@ pub fn sample_house() -> Model {
             attach_top: vec![],
             curtain: None,
             layer_ends: vec![],
+            bulge: 0.0,
         }),
     );
     let pid = part.id;

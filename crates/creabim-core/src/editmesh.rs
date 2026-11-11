@@ -151,6 +151,60 @@ impl EditMesh {
         self.faces[face] = new;
     }
 
+    /// Inset a face by `by` (Blender's I): a smaller face of the same shape
+    /// `by` inside its edges, joined to them by a ring of faces. The face
+    /// keeps its number, now the inner one, to push in or pull out next: a
+    /// window reveal, a recessed panel, a parapet (inset the roof, push it
+    /// down). False if `by` would close it up.
+    pub fn inset_face(&mut self, face: usize, by: f64) -> bool {
+        let old = self.faces[face].clone();
+        let k = old.len();
+        if k < 3 || by <= 0.0 {
+            return false;
+        }
+        let n = self.face_normal(face);
+        let at = |i: usize| self.vertices[old[i % k] as usize];
+        let mut inner = Vec::with_capacity(k);
+        for i in 0..k {
+            let (p, v, q) = (at(i + k - 1), at(i), at(i + 1));
+            let (Some(e1), Some(e2)) = ((v - p).try_normalize(), (q - v).try_normalize()) else {
+                return false;
+            };
+            // inward is to the left of each edge, seen along the normal
+            let (in1, in2) = (n.cross(e1), n.cross(e2));
+            let Some(b) = (in1 + in2).try_normalize() else {
+                return false;
+            };
+            let cos = b.dot(in1);
+            if cos < 0.05 {
+                return false;
+            }
+            inner.push(v + b * (by / cos));
+        }
+        // too far: the inner face would turn inside out
+        // every inner edge runs the way its outer edge does
+        let kept = (0..k).all(|i| {
+            let j = (i + 1) % k;
+            (inner[j] - inner[i]).dot(at(j) - at(i)) > 1e-9
+        });
+        if !kept {
+            return false;
+        }
+        let new: Vec<u32> = inner
+            .into_iter()
+            .map(|p| {
+                self.vertices.push(p);
+                (self.vertices.len() - 1) as u32
+            })
+            .collect();
+        for i in 0..k {
+            let j = (i + 1) % k;
+            self.faces.push(vec![old[i], old[j], new[j], new[i]]);
+        }
+        self.faces[face] = new;
+        true
+    }
+
     /// Scale a face's vertices about its centre, Blender's S key on a face.
     pub fn scale_face(&mut self, face: usize, factor: f64) {
         let c = self.face_center(face);
@@ -269,6 +323,28 @@ impl EditMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inset_leaves_a_ring_and_a_smaller_face() {
+        let mut m = EditMesh::cuboid(DVec3::splat(2.0));
+        let top = (0..m.faces.len())
+            .find(|f| m.face_normal(*f).z > 0.9)
+            .unwrap();
+        let faces = m.faces.len();
+        assert!(m.inset_face(top, 0.25));
+        assert_eq!(m.faces.len(), faces + 4);
+        // the inner face is 1.5 by 1.5, still on top
+        let xs: Vec<f64> = m.faces[top]
+            .iter()
+            .map(|v| m.vertices[*v as usize].x)
+            .collect();
+        let w = xs.iter().cloned().fold(f64::MIN, f64::max)
+            - xs.iter().cloned().fold(f64::MAX, f64::min);
+        assert!((w - 1.5).abs() < 1e-9);
+        assert!(m.face_normal(top).z > 0.9);
+        // and too far closes it up: refused
+        assert!(!m.inset_face(top, 1.0));
+    }
 
     #[test]
     fn cuboid_has_outward_faces() {

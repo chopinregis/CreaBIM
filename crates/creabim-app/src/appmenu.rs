@@ -6,6 +6,63 @@ use super::*;
 use crate::ui_model::Item;
 use creabim_core::{LengthUnit, Units};
 
+impl CreaBimApp {
+    /// Closing with unsaved changes: Save, Don't save or Cancel.
+    pub(super) fn close_window(&mut self, ctx: &egui::Context) {
+        if !self.close_ask {
+            return;
+        }
+        let name = std::path::Path::new(&self.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("this project")
+            .to_string();
+        let pal = crate::theme::Palette::of(ctx);
+        let (mut save, mut discard, mut cancel) = (false, false, false);
+        egui::Modal::new(egui::Id::new("close-unsaved")).show(ctx, |ui| {
+            ui.set_width(400.0);
+            ui.heading(format!("Save the changes to {name}?"));
+            ui.add_space(6.0);
+            ui.label("They are lost if you close without saving.");
+            ui.label(
+                egui::RichText::new("Enter saves, Esc goes back to the project.")
+                    .small()
+                    .color(pal.muted),
+            );
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                save = ui.button("Save").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter));
+                discard = ui.button("Don't save").clicked();
+                cancel =
+                    ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+            });
+        });
+        if cancel {
+            self.close_ask = false;
+            self.status = "Close cancelled: the project is still open.".into();
+            return;
+        }
+        if save {
+            // where it has a file already, there; otherwise Save as asks
+            if std::path::Path::new(&self.path).exists() {
+                self.save();
+            } else {
+                self.save_as();
+            }
+            if self.unsaved() {
+                // the save was cancelled or failed: the project stays open
+                self.close_ask = false;
+                return;
+            }
+        }
+        if save || discard {
+            self.close_ask = false;
+            self.close_ok = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+}
+
 /// Where a manual update check looks: the project's releases page. Nothing
 /// is fetched in the background; the page opens in the browser when asked.
 pub(crate) const RELEASES: &str = "https://github.com/chopinregis/CreaBIM/releases";
@@ -222,6 +279,7 @@ impl CreaBimApp {
                     None => "There is no activity log on this computer.".into(),
                 };
             }
+            "app.report" => self.report_problem(),
             "app.settings" => self.settings_open = true,
             "app.exit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             "units.kind" => {
@@ -260,126 +318,322 @@ impl CreaBimApp {
         let mut paper = self.shell.settings.drawing_paper.clone();
         let mut navigation = self.shell.settings.navigation.clone();
         let mut grip_hover = None;
+        let mut edit_bar = self.shell.settings.edit_bar.clone();
+        let mut axis_lines = self.shell.settings.axis_lines;
+        let mut interaction = self.shell.settings.interaction.clone();
+        let mut edge_w = self.shell.settings.edit_edge_width;
+        let mut vert_s = self.shell.settings.edit_vertex_size;
+        let theme_accent = self.shell.theme.selection();
+        let theme_logo = self.shell.theme.logo();
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
+        // as Blender's Preferences (MU39): its categories down the left, the
+        // one picked on the right, scrolling, so it never grows past the
+        // window as settings are added
+        let tab_id = egui::Id::new("settings.tab");
+        let mut tab: usize = ctx.data(|d| d.get_temp(tab_id)).unwrap_or(0);
+        const TABS: [(&str, &str); 6] = [
+            ("Interface", "layout-panel-left"),
+            ("Viewport", "box"),
+            ("Navigation", "hand"),
+            ("Snapping", "magnet"),
+            ("Project", "folder"),
+            ("Keymap", "keyboard"),
+        ];
+        let height = (area.height() - 80.0).clamp(300.0, 560.0);
         crate::app::shell::window("Settings")
             .open(&mut open)
-            .default_pos(area.center() - Vec2::new(180.0, 140.0))
+            .default_pos(area.center() - Vec2::new(310.0, height / 2.0))
             .constrain_to(area)
             .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.set_width(360.0);
-                crate::props::section(ui, "Appearance (yours)");
-                crate::props::row(ui, "Theme", |ui| {
-                    egui::ComboBox::from_id_salt("settings.theme").icon(crate::props::combo_icon)
-                        .selected_text(theme.label())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for t in crate::theme::Theme::ALL {
-                                ui.selectable_value(&mut theme, t, t.label());
+                ui.set_width(620.0);
+                ui.set_height(height);
+                let p = crate::theme::Palette::of(ui.ctx());
+                ui.horizontal_top(|ui| {
+                    // the categories
+                    ui.vertical(|ui| {
+                        ui.set_width(140.0);
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        // the logo, rising in once as Settings opens (MU39)
+                        let t = {
+                            let now = ui.input(|i| i.time);
+                            let key = egui::Id::new("settings.logo.t0");
+                            let t0 = ui.ctx().data_mut(|d| *d.get_temp_mut_or_insert_with(key, || now));
+                            let t = (((now - t0) / 0.6) as f32).clamp(0.0, 1.0);
+                            if t < 1.0 {
+                                ui.ctx().request_repaint();
                             }
-                        });
-                });
-                ui.label("Grips");
-                for g in crate::handles::GripStyle::ALL {
-                    let note = match g {
-                        crate::handles::GripStyle::Quiet => "Default. Squares at corners, bars on edges",
-                        crate::handles::GripStyle::Edges => "Almost nothing at rest; edges drag",
-                        crate::handles::GripStyle::OneShape => "The same small circle everywhere",
-                    };
-                    let r = crate::choices::choice_row(ui, grips == g, g.label(), note, |p, r| {
-                        crate::choices::paint_grips(p, r, g)
+                            1.0 - (1.0 - t).powi(3)
+                        };
+                        let (r, _) = ui.allocate_exact_size(Vec2::new(140.0, 46.0), egui::Sense::hover());
+                        let tex = logo_texture(ui.ctx());
+                        let s = 36.0;
+                        let at = egui::Rect::from_min_size(
+                            egui::pos2(r.left() + 8.0, r.top() + 4.0 + (1.0 - t) * 10.0),
+                            Vec2::splat(s),
+                        );
+                        egui::Image::new((tex.id(), Vec2::splat(s)))
+                            .tint(theme_logo.gamma_multiply(t))
+                            .paint_at(ui, at);
+                        ui.painter().text(
+                            egui::pos2(at.right() + 8.0, r.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            "Settings",
+                            egui::FontId::proportional(14.0),
+                            p.text.gamma_multiply(t),
+                        );
+                        for (i, (name, icon)) in TABS.iter().enumerate() {
+                            let (r, resp) = ui.allocate_exact_size(
+                                Vec2::new(140.0, 28.0),
+                                egui::Sense::click(),
+                            );
+                            let on = i == tab;
+                            if on {
+                                ui.painter().rect_filled(r, 6.0, p.accent.gamma_multiply(0.22));
+                            } else if resp.hovered() {
+                                ui.painter().rect_filled(r, 6.0, p.raise);
+                            }
+                            let ink = if on { p.text } else { p.muted };
+                            crate::svgicon::paint(
+                                ui.painter(),
+                                egui::Rect::from_center_size(
+                                    egui::pos2(r.left() + 16.0, r.center().y),
+                                    Vec2::splat(15.0),
+                                ),
+                                icon,
+                                ink,
+                            );
+                            ui.painter().text(
+                                egui::pos2(r.left() + 32.0, r.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                *name,
+                                egui::FontId::proportional(13.0),
+                                ink,
+                            );
+                            if resp.clicked() {
+                                tab = i;
+                            }
+                        }
                     });
-                    if r.clicked() {
-                        grips = g;
-                    } else if r.hovered() {
-                        grip_hover = Some(g);
-                    }
-                }
-                ui.label(
-                    egui::RichText::new(
-                        "Yours alone: it never changes anyone's drawings, and goes with you, not with the project.",
-                    )
-                    .weak(),
-                );
-                crate::props::row(ui, "Drawing paper", |ui| {
-                    let label = |k: &str| match k {
-                        "light" => "Always light",
-                        "dark" => "Always dark",
-                        _ => "Follow the theme",
-                    };
-                    egui::ComboBox::from_id_salt("settings.paper").icon(crate::props::combo_icon)
-                        .selected_text(label(&paper))
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for k in ["theme", "light", "dark"] {
-                                ui.selectable_value(&mut paper, k.to_string(), label(k));
-                            }
-                        })
-                    .response
-                    .on_hover_text("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white.");
+                    let (sep, _) = ui.allocate_exact_size(Vec2::new(9.0, height), egui::Sense::hover());
+                    ui.painter().line_segment(
+                        [sep.center_top(), sep.center_bottom()],
+                        egui::Stroke::new(1.0, p.border),
+                    );
+                    // the category picked
+                    ui.vertical(|ui| {
+                        ui.set_width(460.0);
+                        egui::ScrollArea::vertical()
+                            .id_salt(("settings.page", tab))
+                            .max_height(height)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.set_width(448.0);
+                                let yours = |ui: &mut egui::Ui| {
+                                    ui.add_space(6.0);
+                                    ui.label(
+                                        egui::RichText::new("Yours alone: it never changes anyone's drawings, and goes with you, not with the project.")
+                                            .weak()
+                                            .small(),
+                                    );
+                                };
+                                match tab {
+                                    0 => {
+                                        crate::props::section(ui, "Look");
+                                        crate::props::row(ui, "Theme", |ui| {
+                                            egui::ComboBox::from_id_salt("settings.theme").icon(crate::props::combo_icon)
+                                                .selected_text(theme.label())
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for t in crate::theme::Theme::ALL {
+                                                        ui.selectable_value(&mut theme, t, t.label());
+                                                    }
+                                                });
+                                        });
+                                        crate::props::row(ui, "Drawing paper", |ui| {
+                                            let label = |k: &str| match k {
+                                                "light" => "Always light",
+                                                "dark" => "Always dark",
+                                                _ => "Follow the theme",
+                                            };
+                                            egui::ComboBox::from_id_salt("settings.paper").icon(crate::props::combo_icon)
+                                                .selected_text(label(&paper))
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for k in ["theme", "light", "dark"] {
+                                                        ui.selectable_value(&mut paper, k.to_string(), label(k));
+                                                    }
+                                                })
+                                                .response
+                                                .on_hover_text("Plans, sections and the 3D view on light or dark paper. Prints and PDFs are always on white.");
+                                        });
+                                        crate::props::section(ui, "Move, Rotate and Scale bar");
+                                        for (k, name, note) in [
+                                            ("top", "Over the view", "Default. A slim bar at the top of the view"),
+                                            ("pointer", "By the pointer", "A small palette where you started"),
+                                        ] {
+                                            let r = crate::choices::choice_row(ui, edit_bar == k, name, note, |p, r| {
+                                                crate::choices::paint_edit_bar(p, r, k == "pointer")
+                                            });
+                                            if r.clicked() {
+                                                edit_bar = k.to_string();
+                                            }
+                                        }
+                                        yours(ui);
+                                    }
+                                    1 => {
+                                        crate::props::section(ui, "Selection and grips colour");
+                                        for (k, name, note, ink) in [
+                                            ("orange", "Orange", "Default. The selection, grips and ghosts in orange", crate::theme::ORANGE),
+                                            ("theme", "Follow the theme", "In the theme's own accent colour", theme_accent),
+                                        ] {
+                                            let r = crate::choices::choice_row(ui, interaction == k, name, note, |p, r| {
+                                                crate::choices::paint_interaction(p, r, ink)
+                                            });
+                                            if r.clicked() {
+                                                interaction = k.to_string();
+                                            }
+                                        }
+                                        crate::props::section(ui, "Grips");
+                                        for g in crate::handles::GripStyle::ALL {
+                                            let note = match g {
+                                                crate::handles::GripStyle::Quiet => "Default. Squares at corners, bars on edges",
+                                                crate::handles::GripStyle::Edges => "Almost nothing at rest; edges drag",
+                                                crate::handles::GripStyle::OneShape => "The same small circle everywhere",
+                                            };
+                                            let r = crate::choices::choice_row(ui, grips == g, g.label(), note, |p, r| {
+                                                crate::choices::paint_grips(p, r, g)
+                                            });
+                                            if r.clicked() {
+                                                grips = g;
+                                            } else if r.hovered() {
+                                                grip_hover = Some(g);
+                                            }
+                                        }
+                                        crate::props::section(ui, "Edit mode");
+                                        crate::props::row(ui, "Edge width", |ui| {
+                                            ui.add(egui::Slider::new(&mut edge_w, 0.5..=3.0).step_by(0.25).suffix(" px"))
+                                        });
+                                        crate::props::row(ui, "Vertex size", |ui| {
+                                            ui.add(egui::Slider::new(&mut vert_s, 2.0..=10.0).step_by(1.0).suffix(" px"))
+                                        });
+                                        crate::props::section(ui, "3D view");
+                                        ui.checkbox(&mut axis_lines, "X and Y axes on the grid")
+                                            .on_hover_text("The model's X axis in red and Y in green through its origin. Z shows, in blue, only while a move keeps to it.");
+                                        yours(ui);
+                                    }
+                                    2 => {
+                                        crate::props::section(ui, "Mouse");
+                                        crate::props::row(ui, "Mouse", |ui| {
+                                            let label = |k: &str| match k {
+                                                "classic" => "Classic: left drag orbits",
+                                                _ => "CreaBIM: middle orbits, left boxes",
+                                            };
+                                            egui::ComboBox::from_id_salt("settings.navigation").icon(crate::props::combo_icon)
+                                                .selected_text(label(&navigation))
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for k in ["creabim", "classic"] {
+                                                        ui.selectable_value(&mut navigation, k.to_string(), label(k));
+                                                    }
+                                                });
+                                        });
+                                        ui.label(
+                                            egui::RichText::new("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D.")
+                                                .weak()
+                                                .small(),
+                                        );
+                                        yours(ui);
+                                    }
+                                    3 => {
+                                        crate::props::section(ui, "Grid snap");
+                                        crate::props::row(ui, "Spacing", |ui| {
+                                            let steps: &[u32] = if crate::units::get().is_imperial() {
+                                                &crate::snaps::STEPS_IMPERIAL
+                                            } else {
+                                                &crate::snaps::STEPS_METRIC
+                                            };
+                                            egui::ComboBox::from_id_salt("settings.spacing").icon(crate::props::combo_icon)
+                                                .selected_text(crate::units::len(spacing as f64 / 1e6))
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for um in steps {
+                                                        ui.selectable_value(&mut spacing, *um, crate::units::len(*um as f64 / 1e6));
+                                                    }
+                                                });
+                                        });
+                                        ui.checkbox(&mut marks, "Distance marks while dragging")
+                                            .on_hover_text("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it.");
+                                        ui.label(
+                                            egui::RichText::new("Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time.")
+                                                .weak()
+                                                .small(),
+                                        );
+                                        yours(ui);
+                                    }
+                                    4 => {
+                                        crate::props::section(ui, "This project");
+                                        crate::props::row(ui, "Units", |ui| {
+                                            egui::ComboBox::from_id_salt("settings.units").icon(crate::props::combo_icon)
+                                                .selected_text(unit_row(unit).0)
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for u in UNIT_ORDER {
+                                                        ui.selectable_value(&mut unit, u, unit_row(u).0);
+                                                    }
+                                                });
+                                        });
+                                        ui.label(
+                                            egui::RichText::new("Saved with the project: everyone who opens it works in these units.")
+                                                .weak()
+                                                .small(),
+                                        );
+                                    }
+                                    _ => {
+                                        crate::props::section(ui, "Shortcuts");
+                                        ui.label(
+                                            egui::RichText::new("Every key, by what it does. Ctrl+/ opens the list any time.")
+                                                .weak()
+                                                .small(),
+                                        );
+                                        ui.add_space(4.0);
+                                        keys = ui.button("Keyboard shortcuts…").clicked();
+                                    }
+                                }
+                            });
+                    });
                 });
-                crate::props::row(ui, "Mouse", |ui| {
-                    let label = |k: &str| match k {
-                        "classic" => "Classic: left drag orbits",
-                        _ => "CreaBIM: middle orbits, left boxes",
-                    };
-                    egui::ComboBox::from_id_salt("settings.navigation").icon(crate::props::combo_icon)
-                        .selected_text(label(&navigation))
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for k in ["creabim", "classic"] {
-                                ui.selectable_value(&mut navigation, k.to_string(), label(k));
-                            }
-                        })
-                        .response
-                        .on_hover_text("CreaBIM (recommended): left click selects, a left drag on empty space draws a box, a middle drag orbits (Alt + left drag without one), a right drag or Shift + middle pans, a right click opens the menu, the wheel zooms. Classic: a left drag orbits in 3D.");
-                });
-                crate::props::section(ui, "Snapping (yours)");
-                crate::props::row(ui, "Spacing", |ui| {
-                    let steps: &[u32] = if crate::units::get().is_imperial() {
-                        &crate::snaps::STEPS_IMPERIAL
-                    } else {
-                        &crate::snaps::STEPS_METRIC
-                    };
-                    egui::ComboBox::from_id_salt("settings.spacing").icon(crate::props::combo_icon)
-                        .selected_text(crate::units::len(spacing as f64 / 1e6))
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for um in steps {
-                                ui.selectable_value(
-                                    &mut spacing,
-                                    *um,
-                                    crate::units::len(*um as f64 / 1e6),
-                                );
-                            }
-                        });
-                });
-                ui.checkbox(&mut marks, "Distance marks while dragging")
-                    .on_hover_text("Faint marks every spacing from where you grabbed; a mark holds the drag only when the pointer is near it.");
-                ui.label(
-                    egui::RichText::new(
-                        "Drags and points are free. Grid snap (Alt+S, or the status bar) lands them on a grid of this spacing; it starts off each time.",
-                    )
-                    .weak(),
-                );
-                crate::props::section(ui, "This project");
-                crate::props::row(ui, "Units", |ui| {
-                    egui::ComboBox::from_id_salt("settings.units").icon(crate::props::combo_icon)
-                        .selected_text(unit_row(unit).0)
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for u in UNIT_ORDER {
-                                ui.selectable_value(&mut unit, u, unit_row(u).0);
-                            }
-                        });
-                });
-                ui.add_space(8.0);
-                keys = ui.button("Keyboard shortcuts…").clicked();
             });
+        ctx.data_mut(|d| d.insert_temp(tab_id, tab));
         self.settings_open = open;
+        if !open {
+            ctx.data_mut(|d| d.remove::<f64>(egui::Id::new("settings.logo.t0")));
+        }
         // resting on a grip look shows it at once; leaving puts yours back
         crate::handles::set_grip_style(grip_hover.filter(|_| open).unwrap_or(grips));
+        if edge_w != self.shell.settings.edit_edge_width
+            || vert_s != self.shell.settings.edit_vertex_size
+        {
+            crate::handles::set_edit_display(edge_w, vert_s);
+            self.shell.settings.edit_edge_width = edge_w;
+            self.shell.settings.edit_vertex_size = vert_s;
+            self.shell.settings.store();
+        }
+        if interaction != self.shell.settings.interaction {
+            self.shell.settings.interaction = interaction;
+            self.shell.settings.store();
+        }
+        if axis_lines != self.shell.settings.axis_lines {
+            self.shell.settings.axis_lines = axis_lines;
+            self.shell.settings.store();
+            self.geometry_key = None;
+        }
+        if edit_bar != self.shell.settings.edit_bar {
+            crate::modal::set_bar_by_pointer(edit_bar == "pointer");
+            self.shell.settings.edit_bar = edit_bar;
+            self.shell.settings.store();
+        }
         if navigation != self.shell.settings.navigation {
             self.shell.settings.navigation = navigation;
             self.shell.settings.store();
@@ -641,6 +895,28 @@ impl CreaBimApp {
         self.project_open = open && !close;
         self.project_draft = self.project_open.then_some(draft);
     }
+}
+
+/// The logo's mark as a white texture, to tint with a theme's colour.
+pub(crate) fn logo_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    static TEX: std::sync::OnceLock<egui::TextureHandle> = std::sync::OnceLock::new();
+    TEX.get_or_init(|| {
+        let img =
+            image::load_from_memory(include_bytes!("../assets/logo/png/creabim-mark-128.png"))
+                .map(|i| i.to_rgba8())
+                .unwrap_or_default();
+        let (w, h) = img.dimensions();
+        let px: Vec<egui::Color32> = img
+            .pixels()
+            .map(|p| egui::Color32::from_rgba_unmultiplied(255, 255, 255, p[3]))
+            .collect();
+        ctx.load_texture(
+            "creabim-logo",
+            egui::ColorImage::new([w as usize, h as usize], px),
+            egui::TextureOptions::LINEAR,
+        )
+    })
+    .clone()
 }
 
 #[cfg(test)]

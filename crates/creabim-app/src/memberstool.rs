@@ -9,7 +9,7 @@ use creabim_core::{
     Beam, Column, Document, Element, ElementId, ElementKind, Model, ModelError, Railing, Roof,
     Slab, Stair, Transaction,
 };
-use eframe::egui::{self, Color32, Pos2, Stroke};
+use eframe::egui::{self, Pos2, Stroke};
 use glam::{DVec2, DVec3};
 
 /// Sizes and shapes for new elements, set in the tool bar.
@@ -36,6 +36,20 @@ pub struct MemberSettings {
     pub door: [f64; 3],
     pub window: [f64; 3],
     pub hole: [f64; 3],
+    /// The library profile new columns and beams take; none, their own
+    /// square, round or width × depth (MU40).
+    pub column_section: Option<String>,
+    pub beam_section: Option<String>,
+    /// How a chain of beams meets at its corners (MU40).
+    pub beam_corner: creabim_core::members::BeamCorner,
+    /// Beams drawn in 3D lie on the face clicked (a roof slope, a wall),
+    /// square to it, rather than level (MU40).
+    pub beam_on_face: bool,
+    /// The library profile new railings' top rail takes (MU40).
+    pub railing_section: Option<String>,
+    /// The beam this chain placed last: the next joins only it, and a new
+    /// chain starts with none (MU40: a new Beam command joined the old one).
+    pub last_beam: Option<ElementId>,
 }
 
 impl Default for MemberSettings {
@@ -59,6 +73,12 @@ impl Default for MemberSettings {
             door: [0.9, 2.1, 0.0],
             window: [1.2, 1.3, 0.9],
             hole: [1.0, 1.0, 1.0],
+            column_section: None,
+            beam_section: None,
+            beam_corner: Default::default(),
+            beam_on_face: false,
+            railing_section: None,
+            last_beam: None,
         }
     }
 }
@@ -84,6 +104,7 @@ impl MemberSettings {
     }
 
     pub fn set_round(&mut self, round: bool) {
+        self.column_section = None;
         let v = self.column_size();
         self.column = if round {
             Profile::Round { diameter: v }
@@ -142,34 +163,78 @@ pub fn click(
     };
     match tool {
         Tool::Column => {
-            let c = Column::new(level, p, set.column);
+            let mut c = Column::new(level, p, set.column);
+            // a profile from the library, if one is picked (MU40)
+            let lib = set
+                .column_section
+                .as_deref()
+                .and_then(|n| Some((n, creabim_core::profiles::find(doc.model(), n)?)));
+            if let Some((n, pts)) = &lib {
+                c.section = Some(creabim_core::members::Section {
+                    name: n.to_string(),
+                    points: pts.clone(),
+                });
+            }
             state.status = Some(format!(
                 "Column {} placed. Its height runs to the next level; drag its top handle or set a height in Properties.",
-                set.column.label()
+                lib.map_or_else(|| set.column.label(), |(n, _)| n.to_string())
             ));
             let e = state.typed(doc.model(), Element::new("Column", ElementKind::Column(c)));
             add(doc, selection, e, "Place column")
         }
-        Tool::Beam => match state.pending {
-            None => {
-                state.pending = Some(p);
-                state.status = Some("Click the beam's other end.".into());
-                Ok(())
+        Tool::Beam => {
+            match state.pending {
+                None => {
+                    state.members.last_beam = None;
+                    state.pending = Some(p);
+                    state.status = Some("Click the beam's other end.".into());
+                    Ok(())
+                }
+                Some(a) if a.distance(p) > 0.05 => {
+                    let mut b = Beam::new(level, a, p);
+                    b.width = set.beam_width;
+                    b.depth = set.beam_depth;
+                    // a profile from the library, if one is picked (MU40)
+                    if let Some(n) = set.beam_section.as_deref() {
+                        if let Some(pts) = creabim_core::profiles::find(doc.model(), n) {
+                            b.section = Some(creabim_core::members::Section {
+                                name: n.to_string(),
+                                points: pts,
+                            });
+                        }
+                    }
+                    // under the slab above, not inside it
+                    b.top_offset = creabim_core::members::beam_top_offset(doc.model(), level, a, p);
+                    state.pending = Some(p);
+                    state.status = Some(
+                        "Beam added. Click on to chain another; Esc or right-click ends.".into(),
+                    );
+                    let e = state.typed(doc.model(), Element::new("Beam", ElementKind::Beam(b)));
+                    // the beam before it in the chain, ending here: the two
+                    // meet as the tool's Corners says (MU40)
+                    let prev = state
+                    .members
+                    .last_beam
+                    .and_then(|id| doc.model().get(id).cloned())
+                    .filter(|pe| matches!(&pe.kind, ElementKind::Beam(pb) if pb.end.distance(a) < 1e-6));
+                    state.members.last_beam = Some(e.id);
+                    match prev {
+                        Some(pe) => {
+                            let (mut pe2, mut ne) = (pe.clone(), e);
+                            if let (ElementKind::Beam(pb), ElementKind::Beam(nb)) =
+                                (&mut pe2.kind, &mut ne.kind)
+                            {
+                                creabim_core::members::join_beams(pb, nb, set.beam_corner);
+                            }
+                            selection.only(ne.id);
+                            doc.commit(Transaction::new("Draw beam").replace(pe, pe2).insert(ne))
+                        }
+                        None => add(doc, selection, e, "Draw beam"),
+                    }
+                }
+                Some(_) => Ok(()),
             }
-            Some(a) if a.distance(p) > 0.05 => {
-                let mut b = Beam::new(level, a, p);
-                b.width = set.beam_width;
-                b.depth = set.beam_depth;
-                // under the slab above, not inside it
-                b.top_offset = creabim_core::members::beam_top_offset(doc.model(), level, a, p);
-                state.pending = Some(p);
-                state.status =
-                    Some("Beam added. Click on to chain another; Esc or right-click ends.".into());
-                let e = state.typed(doc.model(), Element::new("Beam", ElementKind::Beam(b)));
-                add(doc, selection, e, "Draw beam")
-            }
-            Some(_) => Ok(()),
-        },
+        }
         Tool::Stair => match state.pending.take() {
             None => {
                 state.pending = Some(p);
@@ -211,6 +276,7 @@ pub fn click(
                 }
                 let mut r = Railing::new(level, pts.iter().map(|q| q.extend(0.0)).collect());
                 r.height = set.railing_height;
+                r.rail_profile = set.railing_section.clone();
                 state.status = Some("Railing added.".into());
                 return add(
                     doc,
@@ -353,11 +419,9 @@ pub fn walls_at(model: &Model, level: ElementId, p: DVec2) -> Vec<ElementId> {
         .iter()
         .filter_map(|e| match &e.kind {
             ElementKind::Wall(w) if w.level == level && w.curtain.is_none() => {
-                let d = w.direction();
-                let u = (p - w.start).dot(d);
-                let s = (p - w.start).perp_dot(d).abs();
-                (u >= -0.05 && u <= w.length() + 0.05 && s <= w.thickness / 2.0 + 0.05)
-                    .then_some((s, e.id))
+                // round the arc on a curved wall
+                let (_, s) = w.along(p);
+                (s <= w.thickness / 2.0 + 0.05).then_some((s, e.id))
             }
             _ => None,
         })
@@ -551,7 +615,7 @@ pub fn preview(
     a: DVec3,
     b: DVec3,
 ) {
-    let stroke = Stroke::new(1.0, Color32::from_rgb(230, 120, 30));
+    let stroke = Stroke::new(1.0, crate::theme::interaction());
     let z = a.z;
     let ring = |pts: &[DVec2]| {
         let scr: Option<Vec<Pos2>> = pts
@@ -719,6 +783,47 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             {
                 label = "Move beam"
             }
+            // a sloped beam: each end's top above the beam's top (MU40)
+            if num(ui, "Start rise", &mut b.rise[0], -50.0, 50.0)
+                | num(ui, "End rise", &mut b.rise[1], -50.0, 50.0)
+            {
+                label = "Beam slope"
+            }
+            // each end run past its point, or pulled back where a column
+            // or wall runs through (MU40)
+            if num(ui, "Start extension", &mut b.extend[0], -20.0, 20.0)
+                | num(ui, "End extension", &mut b.extend[1], -20.0, 20.0)
+            {
+                label = "Beam extension"
+            }
+            let cuts = b.cuts.iter().filter(|c| c.is_some()).count();
+            if cuts > 0 || b.up.is_some() {
+                crate::props::row(ui, "Ends", |ui| {
+                    ui.label(match cuts {
+                        0 => "Square".to_string(),
+                        1 => "One mitred".to_string(),
+                        _ => "Both mitred".to_string(),
+                    })
+                });
+                let (square, plumb) = crate::props::actions2(
+                    ui,
+                    "",
+                    ("Square ends", "Take the mitre cuts off its ends", cuts > 0),
+                    (
+                        "Stand plumb",
+                        "Its section upright again, not square to the face it was drawn on",
+                        b.up.is_some(),
+                    ),
+                );
+                if square {
+                    b.cuts = [None, None];
+                    label = "Square ends";
+                }
+                if plumb {
+                    b.up = None;
+                    label = "Beam plumb";
+                }
+            }
             weak(
                 ui,
                 format!(
@@ -757,6 +862,29 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             }
             if num(ui, "Base offset", &mut r.base_offset, -10.0, 100.0) {
                 label = "Roof base offset"
+            }
+            // where the eaves end: a steep pitch with a long overhang hangs
+            // them down past the walls, which then look gone (seen
+            // replaying a 55° hip with 2 m eaves over 3 m walls)
+            if r.shape != RoofShape::Flat && r.overhang > 0.0 {
+                let drop = r.overhang * r.pitch.to_radians().tan();
+                let floor = creabim_core::members::elevation(model, r.level);
+                let eave = r.base(model) - drop - floor;
+                let text = format!(
+                    "Eaves {} above the floor: the overhang drops them {} below the base.",
+                    crate::units::len(eave),
+                    crate::units::len(drop)
+                );
+                if eave < 2.1 {
+                    crate::props::note(
+                        ui,
+                        format!(
+                            "{text} They hang below head height and hide the walls under them: shorten the overhang, lower the pitch or raise the base offset."
+                        ),
+                    );
+                } else {
+                    weak(ui, text);
+                }
             }
             let n = r.boundary.len();
             if matches!(r.shape, RoofShape::Shed | RoofShape::Gable) && n > 0 {
@@ -1194,17 +1322,24 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             toggle(
                 "square",
                 "Square",
-                !m.round_columns(),
+                m.column_section.is_none() && !m.round_columns(),
                 "square-dashed",
                 "Rectangular columns",
             ),
             toggle(
                 "round",
                 "Round",
-                m.round_columns(),
+                m.column_section.is_none() && m.round_columns(),
                 "circle-dot",
                 "Round columns",
             ),
+            // or any profile of the library: an I, a T, an L, your own (MU40)
+            json!({
+                "kind": "menu", "key": "column.library", "label": "Profile",
+                "value": m.column_section.clone().unwrap_or_else(|| "Library".into()), "icon": "profile",
+                "on": m.column_section.is_some(),
+                "hint": "Columns of a profile from the library: presets and the project's own",
+            }),
             num(
                 "column",
                 if m.round_columns() {
@@ -1221,6 +1356,24 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
             ),
         ],
         Tool::Beam => vec![
+            json!({
+                "kind": "menu", "key": "beam.corner", "label": "Corners",
+                "value": m.beam_corner.label(), "icon": m.beam_corner.icon(),
+                "hint": "How the beams of a chain meet: Separate (concrete pieces), Mitred (welded steel) or Butt (one runs through, the next stops against it)",
+            }),
+            toggle(
+                "beam.onface",
+                "On face",
+                m.beam_on_face,
+                "scan",
+                "In 3D, beams lie on the face clicked (a roof slope, a wall), square to it: purlins, rafters, braces",
+            ),
+            json!({
+                "kind": "menu", "key": "beam.library", "label": "Profile",
+                "value": m.beam_section.clone().unwrap_or_else(|| "Its own".into()), "icon": "profile",
+                "on": m.beam_section.is_some(),
+                "hint": "Beams of a profile from the library (an I, a T, an L, your own), or their own width × depth",
+            }),
             num(
                 "beam_width",
                 "Width",
@@ -1324,16 +1477,24 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                 "Thickness of new footings",
             ),
         ],
-        Tool::Railing => vec![num(
-            "railing_height",
-            "Height",
-            m.railing_height,
-            "m",
-            0.05,
-            0.3,
-            3.0,
-            "Height of new railings",
-        )],
+        Tool::Railing => vec![
+            json!({
+                "kind": "menu", "key": "railing.library", "label": "Rail",
+                "value": m.railing_section.clone().unwrap_or_else(|| "Its own".into()), "icon": "profile",
+                "on": m.railing_section.is_some(),
+                "hint": "The top rail's profile from the library (a handrail, a tube, your own), or its own square bar",
+            }),
+            num(
+                "railing_height",
+                "Height",
+                m.railing_height,
+                "m",
+                0.05,
+                0.3,
+                3.0,
+                "Height of new railings",
+            ),
+        ],
         _ => vec![],
     };
     if !out.is_empty() {
@@ -1376,6 +1537,7 @@ pub fn set_option(state: &mut PlanState, key: &str, v: f64) {
 pub fn toggle_option(state: &mut PlanState, what: &str) {
     let m = &mut state.members;
     match what {
+        "beam.onface" => m.beam_on_face = !m.beam_on_face,
         "square" => m.set_round(false),
         "round" => m.set_round(true),
         "lshape" => m.stair_turn = !m.stair_turn,

@@ -56,7 +56,7 @@ fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     out.extend_from_slice(&crc.to_be_bytes());
 }
 
-fn crc32(data: &[u8]) -> u32 {
+pub fn crc32(data: &[u8]) -> u32 {
     let mut c = 0xffff_ffffu32;
     for &b in data {
         c ^= b as u32;
@@ -69,6 +69,99 @@ fn crc32(data: &[u8]) -> u32 {
         }
     }
     !c
+}
+
+/// `data` read back from [`base64`]; none if it is not base64.
+pub fn unbase64(data: &str) -> Option<Vec<u8>> {
+    let val = |c: u8| match c {
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    };
+    let bytes: Vec<u8> = data
+        .bytes()
+        .filter(|c| !c.is_ascii_whitespace() && *c != b'=')
+        .collect();
+    let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
+    for c in bytes.chunks(4) {
+        let mut n = 0u32;
+        for (i, b) in c.iter().enumerate() {
+            n |= (val(*b)? as u32) << (18 - 6 * i);
+        }
+        for i in 0..c.len().saturating_sub(1) {
+            out.push((n >> (16 - 8 * i)) as u8);
+        }
+    }
+    Some(out)
+}
+
+/// A picture kept in a title block (RGBA rows from the top, deflated, in
+/// base64), as a raster to draw: read once and kept, by its text.
+pub fn stored_image(width: u32, height: u32, data: &str) -> Option<std::sync::Arc<Raster>> {
+    use std::collections::HashMap;
+    use std::hash::{Hash, Hasher};
+    use std::sync::{Arc, Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<HashMap<u64, Arc<Raster>>>> = OnceLock::new();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (width, height, data).hash(&mut h);
+    let key = h.finish();
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some(r) = seen.lock().ok()?.get(&key) {
+        return Some(r.clone());
+    }
+    let packed = unbase64(data)?;
+    let rgba = miniz_oxide::inflate::decompress_to_vec_zlib(&packed).ok()?;
+    if rgba.len() != width as usize * height as usize * 4 {
+        return None;
+    }
+    let r = Arc::new(Raster {
+        width: width as usize,
+        height: height as usize,
+        rgba,
+        key,
+    });
+    seen.lock().ok()?.insert(key, r.clone());
+    Some(r)
+}
+
+/// `r` see-through by `opacity` (1 as it is): its alpha scaled, kept by
+/// the two.
+pub fn faded(r: &std::sync::Arc<Raster>, opacity: f64) -> std::sync::Arc<Raster> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    let o = opacity.clamp(0.0, 1.0);
+    if o >= 0.999 {
+        return r.clone();
+    }
+    type Faded = HashMap<(u64, u16), Arc<Raster>>;
+    static SEEN: OnceLock<Mutex<Faded>> = OnceLock::new();
+    let key = (r.key, (o * 1000.0).round() as u16);
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some(f) = seen.lock().ok().and_then(|s| s.get(&key).cloned()) {
+        return f;
+    }
+    let mut rgba = r.rgba.clone();
+    for a in rgba.iter_mut().skip(3).step_by(4) {
+        *a = (*a as f64 * o).round() as u8;
+    }
+    let f = Arc::new(Raster {
+        width: r.width,
+        height: r.height,
+        rgba,
+        key: r.key ^ (key.1 as u64).rotate_left(48) ^ 0x9e37_79b9,
+    });
+    if let Ok(mut s) = seen.lock() {
+        s.insert(key, f.clone());
+    }
+    f
+}
+
+/// RGBA pixels as a title block keeps them: deflated, in base64.
+pub fn store_image(rgba: &[u8]) -> String {
+    base64(&deflate(rgba))
 }
 
 pub fn base64(data: &[u8]) -> String {
@@ -92,6 +185,18 @@ pub fn base64(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stored_picture_reads_back() {
+        for s in ["", "M", "Ma", "Man", "Many hands"] {
+            assert_eq!(unbase64(&base64(s.as_bytes())).unwrap(), s.as_bytes());
+        }
+        let px: Vec<u8> = (0..2 * 3 * 4).map(|i| i as u8 * 9).collect();
+        let r = stored_image(2, 3, &store_image(&px)).unwrap();
+        assert_eq!((r.width, r.height), (2, 3));
+        assert_eq!(r.rgba, px);
+        assert!(stored_image(3, 3, &store_image(&px)).is_none());
+    }
 
     #[test]
     fn crc_and_base64_match_known_values() {

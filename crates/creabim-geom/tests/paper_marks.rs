@@ -69,3 +69,71 @@ fn a_revision_cloud_and_the_revisions_table_draw_on_the_sheet() {
         assert!(svg.contains(t), "{t}");
     }
 }
+
+#[test]
+fn a_sheet_draws_its_pictures_and_vector_pictures() {
+    use creabim_core::{titleblock::TitleItem, PaperMarkKind};
+    let mut doc = creabim_core::Document::from_model(creabim_core::sample::sample_house());
+    let sheet = creabim_geom::sheet::sheets(doc.model())
+        .first()
+        .map(|(id, _)| *id)
+        .expect("the sample has a sheet");
+    // a 2 x 1 red picture, half see-through, and a blue square from an SVG
+    let px: Vec<u8> = [255u8, 0, 0, 255].repeat(2);
+    let pic = PaperMark {
+        sheet,
+        at: DVec2::new(100.0, 100.0),
+        size: 1.0,
+        kind: PaperMarkKind::Picture {
+            w: 80.0,
+            h: 40.0,
+            width: 2,
+            height: 1,
+            rgba: creabim_geom::raster::store_image(&px),
+            opacity: 0.5,
+        },
+        color: None,
+    };
+    assert_eq!(
+        pic.bounds(),
+        (DVec2::new(60.0, 80.0), DVec2::new(140.0, 120.0))
+    );
+    let vec = PaperMark {
+        sheet,
+        at: DVec2::new(200.0, 100.0),
+        size: 1.0,
+        kind: PaperMarkKind::Vector {
+            w: 30.0,
+            h: 30.0,
+            shapes: vec![TitleItem::Shape {
+                points: vec![
+                    DVec2::ZERO,
+                    DVec2::new(1.0, 0.0),
+                    DVec2::new(1.0, 1.0),
+                    DVec2::new(0.0, 1.0),
+                ],
+                closed: true,
+                pen: None,
+                colour: [0.0, 0.0, 1.0],
+                fill: Some([0.0, 0.0, 1.0]),
+                opacity: 1.0,
+            }],
+        },
+        color: None,
+    };
+    doc.commit(
+        Transaction::new("pictures")
+            .insert(Element::new("Photo", ElementKind::PaperMark(pic)))
+            .insert(Element::new("Logo", ElementKind::PaperMark(vec))),
+    )
+    .unwrap();
+    let info = creabim_geom::sheet::SheetInfo::default();
+    let svg = creabim_geom::sheet::sheet_svg(doc.model(), sheet, &info).unwrap();
+    assert!(svg.contains("<image"), "the picture is drawn");
+    assert!(
+        svg.to_lowercase().contains("#0000ff"),
+        "the vector square is drawn in blue"
+    );
+    let pdf = creabim_geom::sheet::sheets_pdf_of(doc.model(), &info, &[sheet]);
+    assert!(pdf.starts_with(b"%PDF"));
+}

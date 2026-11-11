@@ -86,6 +86,8 @@ pub fn wall_layer_mesh_v(
     let cuts: Vec<Cut> = openings.iter().filter_map(|o| Cut::of(o, wall)).collect();
 
     let mut us = vec![0.0, len];
+    // a curved wall bends at even steps round its arc (MU40)
+    us.extend(wall.bends());
     let mut vs = vec![0.0, h];
     for c in &cuts {
         us.extend([c.u0, c.u1]);
@@ -129,9 +131,19 @@ pub fn wall_layer_mesh_v(
     // an attached top comes down no lower than the heads of openings
     let floor = vs[vs.len().saturating_sub(2)].max(0.0) + 0.01;
     let p = |u: f64, v: f64, w: f64| -> DVec3 {
-        // the end grid lines and gap sides follow the joins
-        let u = ends.place_layer(wall, u, w, core, ext);
-        let xy = wall.start + d * u + n2 * w;
+        // the end grid lines and gap sides follow the joins; a curved
+        // wall is laid round its arc, its ends square
+        let xy = if wall.is_arc() {
+            // its ends as its joins put them, along its tangent there
+            if u <= 1e-9 || u >= len - 1e-9 {
+                wall.place_end(u > 1e-9, ends.place_layer(wall, u, w, core, ext), w)
+            } else {
+                wall.place(u, w)
+            }
+        } else {
+            let u = ends.place_layer(wall, u, w, core, ext);
+            wall.start + d * u + n2 * w
+        };
         let z = match top {
             Some(t) if v >= h - 1e-9 => {
                 // an end running into a joined wall, just past the ceiling
@@ -166,6 +178,13 @@ pub fn wall_layer_mesh_v(
             }
             let (ua, ub) = (us[i as usize], us[i as usize + 1]);
             let (va, vb) = (vs[j as usize], vs[j as usize + 1]);
+            // on a curve, the faces turn with it
+            let (along, across) = if wall.is_arc() {
+                let t = wall.tangent_at((ua + ub) / 2.0);
+                (DVec3::new(t.x, t.y, 0.0), DVec3::new(-t.y, t.x, 0.0))
+            } else {
+                (along, across)
+            };
             m.add_quad(
                 [p(ua, va, hi), p(ub, va, hi), p(ub, vb, hi), p(ua, vb, hi)],
                 across,
@@ -358,5 +377,34 @@ mod tests {
         let o = opening(4.5, 1.0, 2.0, 1.0);
         let m = wall_mesh(&wall(), 0.0, &[&o], &WallEnds::default(), None);
         assert!((m.volume() - (15.0 - 0.5) * 0.2).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_curved_wall_follows_its_arc_with_its_thickness_across_it() {
+        // a half circle of radius 3 about the origin, 0.2 thick
+        let mut w = Wall::new(
+            ElementId::new(),
+            DVec2::new(3.0, 0.0),
+            DVec2::new(-3.0, 0.0),
+            0.2,
+            3.0,
+        );
+        w.bulge = -1.0;
+        assert!((w.length() - std::f64::consts::PI * 3.0).abs() < 1e-9);
+        let m = wall_mesh(&w, 0.0, &[], &WallEnds::default(), None);
+        // every corner lies 2.9 or 3.1 from the centre: on its faces
+        for p in &m.positions {
+            let r = (p[0] as f64).hypot(p[1] as f64);
+            assert!((r - 2.9).abs() < 1e-4 || (r - 3.1).abs() < 1e-4, "{r}");
+        }
+        // and it goes round through the far side
+        assert!(m.positions.iter().any(|p| (p[1] as f64).abs() > 2.8));
+        // a window in it sits on the arc too
+        let win = opening(4.0, 0.9, 1.0, 1.2);
+        let m = wall_mesh(&w, 0.0, &[&win], &WallEnds::default(), None);
+        assert!(m.positions.iter().all(|p| {
+            let r = (p[0] as f64).hypot(p[1] as f64);
+            (r - 2.9).abs() < 1e-4 || (r - 3.1).abs() < 1e-4
+        }));
     }
 }

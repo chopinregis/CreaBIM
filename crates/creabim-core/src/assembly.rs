@@ -777,6 +777,7 @@ mod tests {
             attach_top: vec![],
             curtain: None,
             layer_ends: vec![],
+            bulge: 0.0,
         };
         let b = wall_bands(a, &w);
         assert!((b[0].s0 + 0.1825).abs() < 1e-9 && (b[0].s1 + 0.0805).abs() < 1e-9);

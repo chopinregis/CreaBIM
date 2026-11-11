@@ -170,7 +170,7 @@ pub(super) fn strip(ui: &mut egui::Ui, model: &Model, a: &Assembly, width: f32, 
     let spans = a.spans(1.0);
     if let (Some(s0), Some(s1)) = (spans.get(i), spans.get(j)) {
         let (k0, k1) = (s0.0 as f32, s1.1 as f32);
-        let accent = Color32::from_rgb(230, 120, 30);
+        let accent = crate::theme::interaction();
         let stroke = egui::Stroke::new(1.5, accent);
         if vertical {
             let (x0, x1) = (
@@ -234,7 +234,7 @@ pub(super) fn layer_table(
                 if (core0..=core1).contains(&i) {
                     ui.painter().line_segment(
                         [r.left_top(), r.left_bottom()],
-                        egui::Stroke::new(2.0, Color32::from_rgb(230, 120, 30)),
+                        egui::Stroke::new(2.0, crate::theme::interaction()),
                     );
                 }
                 egui::ComboBox::from_id_salt(("fn", id, i))

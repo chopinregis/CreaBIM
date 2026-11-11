@@ -1575,6 +1575,7 @@ impl<'a> Importer<'a> {
             attach_top: vec![],
             curtain: None,
             layer_ends: vec![],
+            bulge: 0.0,
         };
         Ok((wall, voids))
     }
