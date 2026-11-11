@@ -39,7 +39,10 @@
 | | |
 |---|---|
 | **Windows** | Download the `-setup.exe` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest). It installs for you, with no administrator rights; uninstall from Settings › Apps. A portable `.zip` is there too. |
-| **Linux** | Download the `.tar.gz`, untar it and run `./creabim`. Needs WebKitGTK 4.1 and GTK 3. |
+| **Ubuntu** | Download the `.deb` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest) and install it with `sudo apt install ./CreaBIM-*-linux-x64.deb`. Launch CreaBIM from your applications menu. |
+| **Red Hat / CentOS** | On compatible x86-64 systems (glibc 2.35+, GTK 3, WebKitGTK 4.1), download the `.rpm` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest) and install it with `sudo dnf install ./CreaBIM-*-linux-x64.rpm`. Launch CreaBIM from your applications menu. |
+| **Other Linux distributions** | Download the `.tar.gz`, untar it and run `./creabim`. Needs WebKitGTK 4.1 and GTK 3. |
+| **macOS** | Download and open the universal `.dmg` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest), then drag CreaBIM to Applications. The app is not code-signed or notarized; macOS may require Control-clicking it and choosing **Open** the first time. |
 | **From source** | Install Rust (stable), then `cargo run --release -p creabim-app`. |
 
 Windows may warn that the publisher is unknown, because the app isn't code-signed yet: choose *More info*, then *Run anyway*. Each release lists SHA-256 checksums.
