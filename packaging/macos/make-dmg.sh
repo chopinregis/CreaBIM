@@ -47,7 +47,7 @@ cat > "$contents/Info.plist" <<PLIST
     <key>CFBundleExecutable</key>
     <string>CreaBIM</string>
     <key>CFBundleIdentifier</key>
-    <string>com.creabim.app</string>
+    <string>io.github.chopinregis.creabim</string>
     <key>CFBundleName</key>
     <string>CreaBIM</string>
     <key>CFBundleDisplayName</key>
