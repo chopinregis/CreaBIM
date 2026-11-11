@@ -19,3 +19,5 @@ In plan, a stair is drawn with its risers below the cut, a break line, the tread
 - Or click the points of a path and click the last point again to finish.
 
 Railings on a stair belong to it: they move with it and are deleted with it.
+
+A railing's **Top rail** in *Properties* can take a profile from the [library](profiles), such as the *Handrail* preset or one of your own.

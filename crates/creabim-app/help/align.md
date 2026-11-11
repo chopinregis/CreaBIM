@@ -1,6 +1,6 @@
 # Align, Extend and Stretch
 
-The **Align** tool lines things up against a reference, the way Revit's Align does. It is the last icon in the tool row, and in *Edit › Align to a reference…* and the right-click menu of a 2D view.
+The **Align** tool lines things up against a reference, the way Revit's Align does. It sits beside **Select** at the start of the tool row on every tab, and is in *Edit › Align to a reference…* and the right-click menu of a 2D view.
 
 It always works in two clicks: **first the reference, then what to change**. The reference stays picked, so you can line up several things against it. `Esc` lets it go.
 
@@ -26,7 +26,7 @@ Click the reference, then an edge: only that face moves to the reference, and th
 
 The edge must be parallel to the reference, within 5°. Stretch measures from the point of the edge nearest your click.
 
-![Stretching a slab's top to a line in a section](img/stretch.jpg)
+![Stretch in a section: the wing roof's top edge, lit, before (above) and after it is taken down to the first floor's line (below)](img/stretch.jpg)
 
 ## Centre lines
 

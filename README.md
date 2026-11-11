@@ -26,7 +26,7 @@
   <a href="https://github.com/chopinregis/CreaBIM/discussions">Discussions</a>
 </p>
 
-![CreaBIM with the Maple Lane House in 3D beside its ground-floor plan](docs/screenshot.png)
+![CreaBIM with the Maple Lane House from the garden, in 3D beside its ground-floor plan](docs/screenshot.png)
 
 **CreaBIM is developed and designed by Regis Benoit Brice Nde Tene.** This repository is its official source. Forks and changes are welcome under the GPL.
 
@@ -85,7 +85,7 @@ Sections and elevations are generated from the model. Cut walls, slabs and openi
 Draw a coping, a gutter or a steel section in its own view, with snaps, guides and typed lengths. Then sweep it, or use it for columns, beams and railings. Several shapes, voids you pick, and traces you draw over.
 
 </td>
-<td width="50%"><img src="docs/readme/profile-view.png" alt="The Profile view"></td>
+<td width="50%"><img src="docs/readme/profile-view.png" alt="The profile library with its twelve presets, and the I-section in the Profile view"></td>
 </tr>
 </table>
 
@@ -109,9 +109,9 @@ CreaBIM opens on the **Maple Lane House**, a contemporary two-storey family hous
 - a steel column rising through both floors, terrace posts, steel beams, and concrete strip and pad footings;
 - more than a hundred catalogue pieces of furniture and services fixtures;
 - room names and areas, tags on every door and window, chains of dimensions;
-- eleven sheets with a filled-in title block: cover, ground, first floor, foundation and roof plans, two sections, four elevations, schedules and 3D views.
+- thirteen sheets with a filled-in title block: cover, ground, first floor, foundation and roof plans, two sections, four elevations, schedules and 3D views.
 
-![The ground-floor plan sheet of the starter house](docs/screenshot-sheet.png)
+![The starter house's cover sheet: a live 3D view, the drawing list and a filled-in title block](docs/screenshot-sheet.png)
 
 *File → New starter house* brings it back; *File → New simple sample house* opens the smaller house the tests use. The [Help](crates/creabim-app/help/starter-house.md) has a tour of it.
 

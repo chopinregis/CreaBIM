@@ -29,6 +29,8 @@ If the walls round a room's point stop closing it off (you deleted one, or moved
 
 ## Room tags
 
+Room tags show in plans, and are left out of detail and callout views unless the view's *Show room tags* is on.
+
 Every new room gets a **tag** at its point in each plan of its level. It reads the room's name in capitals, then its number and its area. Drag the tag to move it; it stays with its room. Pick a room tag and tick, in *Properties › Shows*, the fields it writes:
 
 - *Name*, *Number*, *Area*, *Perimeter*, *Height*, *Level*

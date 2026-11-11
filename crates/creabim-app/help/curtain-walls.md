@@ -6,7 +6,7 @@ A **curtain wall** is a wall made of a grid of mullions holding glass or solid p
 
 Use *Create › Curtain wall*: it starts the Wall tool with a curtain wall type. Or pick any curtain wall type in the Wall tool's **Type** menu. Then draw it like any wall.
 
-![Curtain walls in 3D](img/curtain-wall.jpg)
+![The starter house's garden glazing: a curtain wall of three bays, with its settings in Properties](img/curtain-wall.jpg)
 
 ## Its grid
 

@@ -47,7 +47,7 @@ The heads are set for each view: an elevation and a section can show the same le
 
 ## Seeing it in 3D
 
-*View › Show the 2D view in 3D space* stands the section on its line in the 3D view.
+*View › Show the 2D view in 3D space* stands the section on its line in the 3D view. A section's *Section box › In 3D* cuts the 3D view as the section sees it; see [View range](view-range#section-box).
 
 ## Hidden things
 

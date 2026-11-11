@@ -11,7 +11,7 @@ In the 3D view, drag with the middle mouse button to orbit (or `Alt` + left drag
 1. Open the floor plan.
 2. Pick the **Section** tool.
 3. Click two points across the house. The section looks to the **left** of the direction you draw.
-4. Open the new section from the project browser (under *Sections*), or from the view switcher at the top right.
+4. Open the new section from the project browser (under *Sections*), or from an area's header.
 
 Cut walls and slabs are drawn heavy and hatched; what lies beyond is drawn in thinner lines. Elevations work the same way with the **Elevation** tool: draw them outside the building.
 

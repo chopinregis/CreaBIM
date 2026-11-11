@@ -6,7 +6,7 @@ A **detail** is a larger-scale drawing of one part of the building, such as the 
 
 1. Open a plan or section.
 2. Pick the **Callout** tool (in the Views group).
-3. Pick the scale of the detail in the top bar: 1:2, 1:5, 1:10 or 1:20.
+3. Pick the scale of the detail in the tool options: 1:2, 1:5, 1:10 or 1:20.
 4. Click two corners of a box around the part to detail.
 
 This makes a new view, named "Detail 1", "Detail 2" and so on, and opens it. The detail shows what its parent shows, cropped to the box and drawn at its own scale. On the parent, the box has a bubble with the detail's number. The number is the first word of the detail's name that has a digit in it: "Detail 3 Eaves" shows 3. If you rename the view, the bubble changes with it.
@@ -19,7 +19,7 @@ Details are listed in their own **Details** group of the project browser. A deta
 
 1. Open the view to draw on, usually a detail.
 2. Pick the **Detail component** tool (in the Annotation group).
-3. In the top bar, pick the kind of component and its width.
+3. In the tool options, pick the kind of component and its width.
 4. Click its points. To finish, click the last point again or press Enter.
 
 The kinds are:

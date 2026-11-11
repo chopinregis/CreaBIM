@@ -14,7 +14,7 @@ The **+** on the *Levels* group, or *Create › Level above the top one*, adds a
 
 ## Work on a level
 
-Open a level's floor plan from the project browser (under *Floor plans*) or the view switcher at the top right. New walls and floors go on the level of the plan you draw in.
+Open a level's floor plan from the project browser (under *Floor plans*) or from an area's header (its view-type menu, then the plan's name). New walls and floors go on the level of the plan you draw in.
 
 More about levels, including drawing them in a section: [Levels](levels).
 

@@ -15,6 +15,22 @@ A project without a pack draws with the *Standard* pack. Loading a pack is one u
 
 On the command line, `creabim apply-style <project> <pack> --pdf sheets.pdf` loads a pack (a file, or *Standard* or *Light linework*) into a project and exports its sheets. `creabim style-packs <folder>` writes the shipped packs as files to start your own from.
 
+## Drawing styles
+
+Each plan and section has a **Drawing style**: how what is cut is drawn. Pick it in the view's header, or under *Graphics* in its *Properties*. It is kept with the view, and so in a view template, and the screen, sheets and PDFs match.
+
+| Style | What is cut |
+| --- | --- |
+| **Technical** (the default) | Hatched by material, as the graphic styles set them |
+| **Poché** | Walls and slabs in solid ink, no hatch |
+| **Colour and hatch** | Each material in its own colour, layer by layer, with its hatch over it: brick red, insulation yellow |
+| **Material colour** | Each material in its own colour, layer by layer, no hatch |
+| **Colour wash** | A soft wash of the materials' colours, for presentation |
+| **Grey wash** | An even light grey, no hatch |
+| **Clean** | Outlines only: no hatches or fills |
+
+In the colour styles, roofs seen from above under a plan's cut are washed too, the lowest first, so a higher roof covers a lower one.
+
 ## Object styles
 
 The *Object styles* page has a row for each category: walls, slabs, roofs, columns, doors, windows, furniture and so on.

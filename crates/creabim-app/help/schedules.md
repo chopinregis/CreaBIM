@@ -21,6 +21,7 @@ Click a line's mark to select every object of that type. Tick *Group by type* to
 - Click a row's mark to select that element.
 - Totals are at the bottom.
 - Tick *Group by type* in the schedule's *Properties* for a heading row per [type](types), with its count. Click a heading to select all of its rows.
-- **Export CSV** on the title line saves the table for a spreadsheet. **Export Excel** saves every schedule in one workbook, with numbers as numbers; see [Take-off](take-off#to-excel).
+- **Export CSV** and **Export Excel** in the schedule's header: CSV saves this table for a spreadsheet; Excel saves every schedule in one workbook, with numbers as numbers. See [Take-off](take-off#to-excel).
+- The selected row is marked with a soft tone and an accent bar, on light or dark paper.
 
 Place a schedule on a sheet like any view. See [Sheets](sheets).

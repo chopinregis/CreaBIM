@@ -19,11 +19,13 @@ An **extrusion** is a plan outline pulled straight up. Use it for a chimney brea
 A **sweep** carries a section profile along a path.
 
 1. Pick the **Sweep** tool.
-2. In the tool options, pick a profile:
+2. In the tool options, pick a profile. **The tool's own** are sized right there:
    - **Coping**: over a wall's top, standing out from both faces by its *Overhang*.
    - **Plinth**: along a wall's base, standing out from its exterior face.
    - **Bar**: a plain rectangle, for a kerb or a rail.
    - **Steps**: a flight of steps (its *Going*, *Rise* and number of *Steps*).
+
+   Or pick one from the **profile library**, with a small picture of each: the presets and the project's own. See [Profiles](profiles).
 3. Set the profile's sizes in the tool options.
 4. Click a wall to run the profile along it. A coping goes along the wall's top and a plinth along its base. Or click the points of a path anywhere, then click the last point again to finish.
 
@@ -32,6 +34,10 @@ A sweep placed on a wall **follows the wall**. When the wall moves, gets longer 
 **Steps as one element**: pick *Steps* and click two points. The path runs along the nosings, and the flight climbs to the left of the direction you clicked. Use *Mirror profile* in *Properties* to make it climb the other way.
 
 *Properties* can also change the profile's overall width and height, which rescales it.
+
+A sweep made with a library profile has a **Profile** section in *Properties*: change its profile, open it with **Edit in a view**, **Update** it after the profile changed, or **Save as new**. An open profile (a wire) is thickened when swept. While you click a path, the sweep's section shows as you go.
+
+Any sketch (on any plane, open or closed), slab or extrusion can become a profile: **Make a profile** in its *Properties*.
 
 ## Voids
 

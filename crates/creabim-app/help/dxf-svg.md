@@ -6,7 +6,7 @@
 
 ## SVG
 
-*File › This view or sheet as SVG* writes the drawing open in the 2D pane:
+*File › This view or sheet as SVG* writes the drawing or sheet in the area you last worked in:
 
 - a sheet, at its paper size;
 - a plan, section or elevation, at its scale.

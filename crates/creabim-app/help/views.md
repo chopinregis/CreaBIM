@@ -12,18 +12,21 @@ In CreaBIM a **view** is a way of looking at the model, kept in the project: a f
 ## Opening a view
 
 - Click it in the project browser: they are grouped as *Floor plans*, *3D views*, *Sections*, *Elevations* and *Schedules*.
-- Or use the view switcher at the top right.
+- Or pick it in an area's header: the view-type menu, then the view's name.
+- `PageUp` and `PageDown` step to the previous or next view of the same kind.
 
-The view opens in the 2D pane. You can draw and select in it with every tool.
+The view opens in the area you last worked in. Several areas can show views side by side; see [View areas](interface#view-areas). You can draw and select in any of them with every tool.
 
 ## The view's settings
 
-The right of the tool options strip shows the open view's settings:
+The header of the area showing a view holds its settings, and *Properties* (the *View* tab, with nothing selected) has the rest:
 
 - *Cut height* (plans), *Depth* (sections and elevations) or *Altitude* (3D views);
 - *Style* (sections, elevations and 3D views): *Hidden line*, *Shaded with edges*, or *Wireframe*, which draws every edge, the hidden ones too. Sheets show the view the same way. Shafts are drawn dashed;
 - *Hidden* and *In colour*: elements hidden inside others drawn dashed, and tinted in their colour (see [Visibility](visibility#hidden-elements));
 - *X-ray*: see through walls and slabs (see [Visibility](visibility#x-ray));
+- *Drawing style* (plans and sections): how what is cut is drawn (see [Graphic styles](graphic-styles#drawing-styles));
+- *Temporary dimensions* (plans): on or off;
 - *Tag openings*: tag every door and window that has no tag;
 - *Underlay* (plans): another level shown faintly underneath;
 - *Visibility*: what this view leaves out.

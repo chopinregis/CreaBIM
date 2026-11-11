@@ -13,6 +13,17 @@ Pick the **Slab** tool, then a mode in the tool options (or its number key):
 
 `Esc` or right-click takes back the last point, and again leaves the tool. Corners line up with earlier ones: dashed lines show when the pointer is level with or plumb under a corner.
 
+### Closing the outline
+
+Every outline tool (slabs, roofs, ceilings, shafts, regions, crop outlines and outlines on a face) closes the same ways:
+
+- bring the pointer near the first corner: its mark grows into a **Close** ring and the shape fills in; click it;
+- press `C` or `Enter`, double-click, or click **Close** beside *Line* and *Arc* in the tool options.
+
+`Backspace` takes back the last point, and the status bar counts the points. A point dropped on an earlier one is never added twice.
+
+In the 3D view, slabs, roofs and shafts can be drawn on a level or a face too, as a polygon or a **Rectangle**.
+
 ![A slab with an arc](img/slab-arc.jpg)
 
 In a section, click the two ends of the slab's edge: its top snaps to the nearest level.
