@@ -48,7 +48,7 @@ Version: $version
 Section: graphics
 Priority: optional
 Architecture: amd64
-Maintainer: Regis Benoit Brice Nde Tene
+Maintainer: Regis Benoit Brice Nde Tene <chopinregis@users.noreply.github.com>
 Depends: libc6, libgtk-3-0 | libgtk-3-0t64, libwebkit2gtk-4.1-0, libxkbcommon-x11-0
 Homepage: https://github.com/chopinregis/CreaBIM
 Description: free, open-source BIM modeller

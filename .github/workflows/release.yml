@@ -177,9 +177,9 @@ jobs:
           ## Downloads
           - **Windows:** run the \`-setup.exe\` to install (no administrator rights needed; uninstall from Settings › Apps), or unzip the \`.zip\` and run \`CreaBIM.exe\`. If Windows warns about an unknown publisher, choose *More info*, then *Run anyway*.
           - **Ubuntu:** install the \`.deb\` with \`sudo apt install ./CreaBIM-*-linux-x64.deb\`; launch CreaBIM from your applications menu.
-          - **Red Hat / CentOS:** install the \`.rpm\` with \`sudo dnf install ./CreaBIM-*-linux-x64.rpm\`; launch CreaBIM from your applications menu.
+          - **Fedora and RHEL 10** (glibc 2.35 or later; not RHEL 9): install the \`.rpm\` with \`sudo dnf install ./CreaBIM-*-linux-x64.rpm\`; launch CreaBIM from your applications menu.
           - **Other Linux distributions:** untar the \`.tar.gz\` and run \`./creabim\` (needs WebKitGTK 4.1 and GTK 3).
-          - **macOS:** open the universal \`.dmg\` and drag CreaBIM to Applications. The app is not code-signed or notarized, so macOS may require you to Control-click it and choose **Open** the first time.
+          - **macOS:** open the universal \`.dmg\` and drag CreaBIM to Applications. The app isn't code-signed or notarized yet, so the first time macOS refuses to open it: open *System Settings › Privacy & Security* and choose *Open Anyway*.
           - Check a download against \`SHA256SUMS.txt\`.
 
           ## Status
