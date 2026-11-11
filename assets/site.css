@@ -373,3 +373,8 @@ td a{color:var(--sage-deep);font-weight:500;overflow-wrap:anywhere}
 .night kbd.k{font:600 12px var(--mono);color:var(--night-ink);background:#262d24;border:1px solid #3a4336;border-bottom-width:2px;border-radius:5px;padding:1px 6px}
 .habits .tm{margin:0;padding:12px 20px;font-size:12px;color:var(--night-muted);border-top:1px solid var(--night-line)}
 @media (max-width:480px){.hrow{grid-template-columns:1fr;gap:4px;padding:12px 16px}}
+/* the film: 16:9 on wide screens, 9:16 on phones */
+.filmv video{display:block;width:100%;height:auto;border-radius:10px;border:1px solid var(--line-2);background:#f4f2ea;box-shadow:var(--shadow)}
+.filmv .v916{display:none}
+@media (max-width:640px){.filmv .v169{display:none}.filmv .v916{display:block;max-height:82vh;width:auto;max-width:100%;margin-inline:auto}}
+.chap li span{font-variant-numeric:tabular-nums}

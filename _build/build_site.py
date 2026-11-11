@@ -324,6 +324,25 @@ def fmt_size(n):
 
 # ---------------------------------------------------------------- pages
 
+CHAPTERS = [("0:00", "CreaBIM"), ("0:04", "One model, every drawing"), ("0:15", "Your layout, your theme"),
+            ("0:22", "Box, circle and lasso selection"), ("0:30", "Edit mode"), ("0:38", "Profiles"),
+            ("0:47", "Sheets, title blocks and schedules"), ("1:00", "Free, open source, offline"), ("1:10", "Download")]
+
+
+def film_block(pre: str) -> str:
+    """The 1.1 film: 16:9 on wide screens, the 9:16 cut on phones; English captions."""
+    f = pre + "assets/film/"
+    track = f'<track kind="captions" srclang="en" label="English" src="{f}creabim-1.1.en.vtt">'
+    chap = "".join(f'<li><span>{t}</span>{n}</li>' for t, n in CHAPTERS)
+    return f"""<div class="film">
+        <div class="filmv">
+          <video class="v169" controls preload="none" playsinline width="1920" height="1080" poster="{f}poster-16x9.jpg" aria-label="CreaBIM 1.1, a one-minute film"><source src="{f}creabim-1.1-16x9.mp4" type="video/mp4">{track}</video>
+          <video class="v916" controls preload="none" playsinline width="1080" height="1920" poster="{f}poster-9x16.jpg" aria-label="CreaBIM 1.1, a one-minute film"><source src="{f}creabim-1.1-9x16.mp4" type="video/mp4">{track}</video>
+        </div>
+        <ol class="chap">{chap}</ol>
+      </div>"""
+
+
 def home(rel):
     v = rel["tag"].lstrip("v")
     return f"""
@@ -338,9 +357,20 @@ def home(rel):
     </div>
     <ul class="ticks"><li>No account, no licence fee</li><li>Works fully offline</li><li>IFC in and out</li><li>Blender-style keys</li></ul>
     <figure class="shot wrap" style="margin-inline:auto">
-      <img src="assets/img/app-3d-and-plan.jpg" width="1918" height="988" alt="CreaBIM 1.0.1 in the Sage theme: the Maple Lane House from the garden, with its green roof, balcony and terrace, beside its ground-floor plan" fetchpriority="high">
-      <figcaption><span class="live">Maple Lane House · the starter project</span><span>Two view areas: 3D and the plan at 1:50</span></figcaption>
+      <img src="assets/img/app-3d-and-plan.jpg" width="1918" height="1019" alt="CreaBIM 1.1 in the Sage theme: the Maple Lane House ground-floor plan beside the house in 3D from the garden, with its green roof, balcony and terrace" fetchpriority="high">
+      <figcaption><span class="live">Maple Lane House · the starter project</span><span>Two view areas: the plan at 1:50 and the 3D garden view</span></figcaption>
     </figure>
+  </section>
+
+  <section class="sec gutter" id="film">
+    <div class="wrap">
+      <div class="head">
+        <div class="kicker"><span class="n">00</span>The film</div>
+        <h2>One model. <span class="acc">Every drawing.</span></h2>
+        <p class="lede">A minute with CreaBIM 1.1: the model, your layout, selection and Edit mode, profiles, and the drawings that come from it.</p>
+      </div>
+      {film_block("")}
+    </div>
   </section>
 
   <section class="proof" aria-label="At a glance">
@@ -422,7 +452,7 @@ def home(rel):
         </div>
       </div>
       <figure class="clip">
-        <div class="view"><img src="assets/img/plan-ground-floor.jpg" width="870" height="728" alt="Part of the Maple Lane House ground-floor plan, drawn by CreaBIM" loading="lazy"></div>
+        <div class="view"><img src="assets/img/plan-ground-floor.jpg" width="760" height="635" alt="Part of the Maple Lane House ground-floor plan, drawn by CreaBIM" loading="lazy"></div>
         <figcaption>Ground-floor plan, drawn by CreaBIM from the model · hatches, dimension chains, room tags</figcaption>
       </figure>
     </div>
@@ -431,7 +461,7 @@ def home(rel):
   <section class="sec gutter" id="profiles">
     <div class="wrap two mid">
       <figure class="clip">
-        <div class="view"><img src="assets/img/profile-view.jpg" width="1154" height="810" alt="The profile library with its twelve presets, and the I-section open in the Profile view" loading="lazy"></div>
+        <div class="view"><img src="assets/img/profile-view.jpg" width="1300" height="694" alt="The profile library with its twelve presets, and the I-section open in the Profile view" loading="lazy"></div>
         <figcaption>The profile library and the Profile view · presets, and your own</figcaption>
       </figure>
       <div class="stack first-mobile">
@@ -593,8 +623,8 @@ def features():
     pics = """
   <section class="sec gutter">
     <div class="wrap grid2">
-      <figure class="clip"><div class="view"><img src="assets/img/sheet-ground-floor.jpg" width="1030" height="720" alt="The starter house's cover sheet: a live 3D view, the drawing list and a filled-in title block" loading="lazy"></div><figcaption>A cover sheet, straight from the model</figcaption></figure>
-      <figure class="clip"><div class="view"><img src="assets/img/profile-view.jpg" width="1154" height="810" alt="The profile library and the Profile view in CreaBIM" loading="lazy"></div><figcaption>The Profile view: your own sections for sweeps and beams</figcaption></figure>
+      <figure class="clip"><div class="view"><img src="assets/img/sheet-ground-floor.jpg" width="1033" height="729" alt="The starter house's cover sheet: a live 3D view, the drawing list and a filled-in title block" loading="lazy"></div><figcaption>A cover sheet, straight from the model</figcaption></figure>
+      <figure class="clip"><div class="view"><img src="assets/img/profile-view.jpg" width="1300" height="694" alt="The profile library and the Profile view in CreaBIM" loading="lazy"></div><figcaption>The Profile view: your own sections for sweeps and beams</figcaption></figure>
     </div>
   </section>"""
     return f"""
@@ -606,7 +636,7 @@ def features():
       <nav class="toc" aria-label="On this page">{toc}</nav>
     </div>
   </section>
-  <section class="gutter"><figure class="shot wrap" style="margin:0 auto"><img src="assets/img/app-3d-and-plan.jpg" width="1918" height="988" alt="CreaBIM: 3D and plan side by side" loading="lazy"><figcaption><span class="live">One model</span><span>every view updates as you edit</span></figcaption></figure></section>
+  <section class="gutter"><figure class="shot wrap" style="margin:0 auto"><img src="assets/img/app-3d-and-plan.jpg" width="1918" height="1019" alt="CreaBIM: 3D and plan side by side" loading="lazy"><figcaption><span class="live">One model</span><span>every view updates as you edit</span></figcaption></figure></section>
   {''.join(secs[:2])}
   <div class="night"><section class="sec gutter">
     <div class="wrap">
@@ -752,23 +782,11 @@ def tutorials(md, texts, pages):
   <section class="sec gutter" id="film">
     <div class="wrap">
       <div class="head">
-        <div class="kicker"><span class="n">02</span>The introduction film</div>
-        <h2>Three minutes, <span class="acc">one house.</span></h2>
-        <p class="lede">A short tour of what CreaBIM is for: the model, the interface, profiles, documentation and open files. It lands here when it is published.</p>
+        <div class="kicker"><span class="n">02</span>The film</div>
+        <h2>A minute with <span class="acc">CreaBIM 1.1.</span></h2>
+        <p class="lede">What CreaBIM is for, and what is new in 1.1: the model and its drawings, your layout and theme, selection and Edit mode, profiles, and sheets with title blocks of your own. Captions are on the CC button.</p>
       </div>
-      <div class="film">
-        <div class="poster" id="poster" data-soon="Film coming soon" role="img" aria-label="Introduction film: chapter card"></div>
-        <ol class="chap">
-          <li><span>01</span>One model, every drawing</li>
-          <li><span>02</span>An interface for design</li>
-          <li><span>03</span>Modelling</li>
-          <li><span>04</span>Profiles</li>
-          <li><span>05</span>Documentation</li>
-          <li><span>06</span>Open by design</li>
-          <li><span>07</span>Where it stands</li>
-          <li><span>08</span>Join in</li>
-        </ol>
-      </div>
+      {film_block("../")}
     </div>
   </section>
 
