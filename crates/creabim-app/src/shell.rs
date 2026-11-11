@@ -2621,6 +2621,11 @@ impl CreaBimApp {
                     "Its start, its end, then a point it passes through",
                 ),
                 ("wall.shape:2", "Circle", "Its centre, then a point on it"),
+                (
+                    "wall.shape:3",
+                    "Rectangle",
+                    "Two opposite corners: four walls joined at the corners",
+                ),
             ]
             .iter()
             .enumerate()
@@ -3399,7 +3404,9 @@ impl CreaBimApp {
         );
         LEFT_CACHE.with(|c| {
             if let Some((k, v)) = c.borrow().as_ref() {
-                if *k == key {
+                // the tree holds still through a drag: the model changes
+                // each frame, its names and rows don't (5 ms a frame)
+                if *k == key || self.dragging() {
                     return v.clone();
                 }
             }

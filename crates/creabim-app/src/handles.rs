@@ -169,6 +169,9 @@ pub enum HandleKind {
     },
     /// Slide a whole wall square to itself; the walls joined to it stretch.
     WallSlide,
+    /// The middle of a curved wall: drag it to bend the wall more or less,
+    /// its ends staying put (it passes through the point dragged to).
+    WallBend,
     /// Slide a door or window along its wall at the same width.
     OpeningSlide,
     /// A beam's width, both sides at once.
@@ -241,6 +244,7 @@ impl HandleKind {
             HandleKind::Rotate => "Rotate",
             HandleKind::ColumnSize { .. } => "Resize",
             HandleKind::WallSlide | HandleKind::OpeningSlide => "Slide",
+            HandleKind::WallBend => "Bend",
             HandleKind::BeamWidth | HandleKind::DetailWidth => "Change width of",
             HandleKind::DetailSpacing => "Change the unit of",
             HandleKind::PlantCanopy => "Change the canopy of",
@@ -311,6 +315,7 @@ impl HandleKind {
             HandleKind::ColumnSize { depth: false } => "Width",
             HandleKind::ColumnSize { depth: true } => "Depth",
             HandleKind::WallSlide => "Wall: slide",
+            HandleKind::WallBend => "Wall: bend",
             HandleKind::OpeningSlide => "Slide along the wall",
             HandleKind::BeamWidth | HandleKind::DetailWidth => "Width",
             HandleKind::DetailSpacing => "Unit",
@@ -363,6 +368,7 @@ impl HandleKind {
             HandleKind::ColumnSize { depth: false } => "Drag: change the width",
             HandleKind::ColumnSize { depth: true } => "Drag: change the depth",
             HandleKind::WallSlide => "Drag: slide the wall square to itself (joined walls follow)",
+            HandleKind::WallBend => "Drag: bend the wall through this point; its ends stay (its radius is in Properties)",
             HandleKind::OpeningSlide => "Drag: slide it along the wall · Tab: type how far",
             HandleKind::BeamWidth | HandleKind::DetailWidth => "Drag: change the width",
             HandleKind::DetailSpacing => "Drag: change the unit's length (the joint stays)",
@@ -448,6 +454,7 @@ pub fn pick_allows(k: &HandleKind) -> bool {
             k,
             K::Edge { .. }
                 | K::AddVertex { .. }
+                | K::WallBend
                 | K::MeshEdge(..)
                 | K::OpeningJamb { .. }
                 | K::OpeningHead
@@ -858,27 +865,43 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
     match &e.kind {
         ElementKind::Wall(w) => {
             let z0 = elevation(model, Some(w.level)) + w.base_offset;
-            let mid = (w.start + w.end) / 2.0;
-            let n = w.direction().perp();
+            // a curved wall's middle is on its arc, square to it there
+            let half = w.length() / 2.0;
+            let mid = w.place(half, 0.0);
+            let n = w.tangent_at(half).perp();
             // the ends are gripped on the wall's location line
             let (a, b) = walls::location_line(model, w);
-            vec![
-                flat(HandleKind::WallEnd { end: false }, a.extend(z0)),
-                flat(HandleKind::WallEnd { end: true }, b.extend(z0)),
-                line(HandleKind::WallTop, mid.extend(z0 + w.height), DVec3::Z),
-                line(
-                    HandleKind::WallFace,
-                    (mid + n * w.thickness / 2.0).extend(z0 + w.height / 2.0),
-                    n.extend(0.0),
-                ),
-                // no grip of its own on screen: a drag of the wall's body
-                // slides it (see interact); kept here for that drag
-                line(
-                    HandleKind::WallSlide,
-                    (mid - n * (w.thickness / 2.0 + 0.3)).extend(z0 + w.height / 2.0),
-                    n.extend(0.0),
-                ),
-            ]
+            let bend = w
+                .is_arc()
+                .then(|| flat(HandleKind::WallBend, mid.extend(z0)));
+            // on a curved wall the bend grip has the middle: the top and
+            // thickness grips stand a quarter along, so seen from above
+            // they don't sit on it and fight it for the pointer
+            let (mid, n) = if w.is_arc() {
+                let q = w.length() / 4.0;
+                (w.place(q, 0.0), w.tangent_at(q).perp())
+            } else {
+                (mid, n)
+            };
+            bend.into_iter()
+                .chain([
+                    flat(HandleKind::WallEnd { end: false }, a.extend(z0)),
+                    flat(HandleKind::WallEnd { end: true }, b.extend(z0)),
+                    line(HandleKind::WallTop, mid.extend(z0 + w.height), DVec3::Z),
+                    line(
+                        HandleKind::WallFace,
+                        (mid + n * w.thickness / 2.0).extend(z0 + w.height / 2.0),
+                        n.extend(0.0),
+                    ),
+                    // no grip of its own on screen: a drag of the wall's body
+                    // slides it (see interact); kept here for that drag
+                    line(
+                        HandleKind::WallSlide,
+                        (mid - n * (w.thickness / 2.0 + 0.3)).extend(z0 + w.height / 2.0),
+                        n.extend(0.0),
+                    ),
+                ])
+                .collect()
         }
         ElementKind::Slab(s) => {
             // its outline's grips are every outline's (see handles_in)
@@ -1749,6 +1772,14 @@ pub fn apply(
             } else {
                 *height = round(*height + d.z, step).max(0.1);
             }
+        }
+        (ElementKind::Wall(w), HandleKind::WallBend) => {
+            // through the point dragged to, its ends where they are; a
+            // point on the straight line between them straightens it
+            let through = now.truncate();
+            w.bulge = crate::planview::bulge_through(w.start, through, w.end)
+                .filter(|k| k.abs() < 20.0)
+                .unwrap_or(0.0);
         }
         (ElementKind::Wall(w), HandleKind::WallSlide) => {
             let n = w.direction().perp();

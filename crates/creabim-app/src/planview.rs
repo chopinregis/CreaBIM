@@ -392,7 +392,7 @@ pub struct PlanState {
     /// A sketch being drawn, in whichever pane started it.
     pub sketch: Option<SketchDraft>,
     /// A handle or selected element being dragged in a plan or section.
-    grip: Option<handles::Drag>,
+    pub(crate) grip: Option<handles::Drag>,
     /// The element open in Edit mode (see [`crate::editmode`]): all its
     /// grips show, in every view.
     pub edit: Option<ElementId>,
@@ -1397,6 +1397,7 @@ pub fn show(
     let guide_from = drawing_from.or(state.dim.first().map(|d| d.1.extend(0.0)));
     let guides = if guided {
         let refs = state.refs.get(&view).map_or(&[][..], |r| r.as_slice());
+        let _p = crate::app::Perf::new("plan snaps: guides");
         snaps::temp_guides(refs, guide_from, state.guide_step)
     } else {
         vec![]
@@ -1418,6 +1419,7 @@ pub fn show(
     // before the first click; Tab goes through overlapping hosts (A3-2)
     let host_hits: Vec<ElementId> = match (kind, response.hover_pos()) {
         (PaneKind::Plan { level }, Some(p)) if crate::memberstool::hosted(tool) => {
+            let _p = crate::app::Perf::new("plan snaps: hosts");
             crate::memberstool::hosts_at(doc.model(), level, tool, state, xf.to_world(p))
         }
         _ => vec![],
@@ -1434,6 +1436,7 @@ pub fn show(
         .hover_pos()
         .filter(|_| host.is_none())
         .and_then(|p| {
+            let _p = crate::app::Perf::new("plan snaps: guided");
             let snapper = &state.snaps.get(&view)?.2;
             snapper.snap_guided(
                 &snap_cfg,
@@ -2412,26 +2415,40 @@ pub fn show(
                     a.extend(0.0),
                     b.extend(0.0),
                 );
-                painter.line_segment([xf.to_screen(a), xf.to_screen(b)], accent);
-                // an arc or circle wall being drawn: its curve (MU40)
-                let curve = match (tool, state.wall_shape, state.wall_arc_end) {
-                    (Tool::Wall, 1, Some(e)) => bulge_through(a, b, e)
-                        .map(|k| creabim_core::sketch::Curve::arc(a, e, k).points()),
-                    (Tool::Wall, 2, _) if a.distance(b) > 1e-6 => Some(
-                        (0..=72)
-                            .map(|i| {
-                                a + DVec2::from_angle(i as f64 / 72.0 * std::f64::consts::TAU)
-                                    * a.distance(b)
-                            })
-                            .collect(),
-                    ),
-                    _ => None,
-                };
-                if let Some(pts) = curve {
-                    painter.add(egui::Shape::line(
-                        pts.iter().map(|p| xf.to_screen(*p)).collect(),
-                        Stroke::new(2.0, accent.color),
+                // an arc, circle or rectangle of walls being drawn: its
+                // centrelines and both faces (MU40); no straight line to
+                // the pointer, which read as a straight wall
+                let shape = (tool == Tool::Wall)
+                    .then(|| wall_shape_preview(state, a, b))
+                    .flatten();
+                if shape.is_none() {
+                    painter.line_segment([xf.to_screen(a), xf.to_screen(b)], accent);
+                } else if state.wall_shape == 2 {
+                    // a circle's radius, faint
+                    painter.extend(egui::Shape::dashed_line(
+                        &[xf.to_screen(a), xf.to_screen(b)],
+                        Stroke::new(1.0, accent.color.gamma_multiply(0.6)),
+                        6.0,
+                        4.0,
                     ));
+                }
+                if let Some(lines) = shape {
+                    let t = state.wall_thickness / 2.0;
+                    for pts in lines {
+                        painter.add(egui::Shape::line(
+                            pts.iter().map(|p| xf.to_screen(*p)).collect(),
+                            Stroke::new(2.0, accent.color),
+                        ));
+                        for side in [-t, t] {
+                            painter.add(egui::Shape::line(
+                                offset_line(&pts, side)
+                                    .iter()
+                                    .map(|p| xf.to_screen(*p))
+                                    .collect(),
+                                Stroke::new(1.0, accent.color),
+                            ));
+                        }
+                    }
                 } else if tool == Tool::Wall && matches!(kind, PaneKind::Plan { .. }) {
                     // the wall's faces about the line it is drawn along
                     if let Some(faces) = wall_preview(doc.model(), state, a, b) {
@@ -2442,10 +2459,33 @@ pub fn show(
                     }
                 }
                 let len = a.distance(b);
+                let text = match (tool, state.wall_shape) {
+                    (Tool::Wall, 2) => format!("R {}", crate::units::len(len)),
+                    (Tool::Wall, 3) => format!(
+                        "{} × {}",
+                        crate::units::len((b.x - a.x).abs()),
+                        crate::units::len((b.y - a.y).abs())
+                    ),
+                    (Tool::Wall, 1) => match state.wall_arc_end.and_then(|e| {
+                        bulge_through(a, b, e).map(|k| creabim_core::sketch::Curve::arc(a, e, k))
+                    }) {
+                        Some(c) => format!(
+                            "Arc {}",
+                            crate::units::len(
+                                c.points()
+                                    .windows(2)
+                                    .map(|w| w[0].distance(w[1]))
+                                    .sum::<f64>()
+                            )
+                        ),
+                        None => crate::units::len(len),
+                    },
+                    _ => crate::units::len(len),
+                };
                 painter.text(
                     xf.to_screen((a + b) / 2.0) + Vec2::new(0.0, -12.0),
                     egui::Align2::CENTER_BOTTOM,
-                    crate::units::len(len),
+                    text,
                     egui::FontId::proportional(13.0),
                     accent.color,
                 );
@@ -3088,8 +3128,58 @@ pub fn new_wall(
     w
 }
 
+/// The centrelines the Wall tool's shape would make from its clicks so
+/// far (`a`, the arc's end if clicked) to the pointer `b`, for its ghost in
+/// plans and in 3D (MU40): an arc, a circle, a rectangle's four sides.
+/// None for a straight wall, which draws its own.
+pub fn wall_shape_preview(state: &PlanState, a: DVec2, b: DVec2) -> Option<Vec<Vec<DVec2>>> {
+    match (state.wall_shape, state.wall_arc_end) {
+        // the arc's end not yet clicked: already an arc (a quarter turn),
+        // so it never reads as a straight wall; the next click bends it
+        (1, None) if a.distance(b) > 1e-6 => Some(vec![creabim_core::sketch::Curve::arc(
+            a,
+            b,
+            -(std::f64::consts::PI / 8.0).tan(),
+        )
+        .points()]),
+        (1, Some(e)) => Some(vec![match bulge_through(a, b, e) {
+            Some(k) => creabim_core::sketch::Curve::arc(a, e, k).points(),
+            None => vec![a, e],
+        }]),
+        (2, _) if a.distance(b) > 1e-6 => Some(vec![(0..=72)
+            .map(|i| a + DVec2::from_angle(i as f64 / 72.0 * std::f64::consts::TAU) * a.distance(b))
+            .collect()]),
+        (3, _) => Some(vec![vec![
+            a,
+            DVec2::new(b.x, a.y),
+            b,
+            DVec2::new(a.x, b.y),
+            a,
+        ]]),
+        _ => None,
+    }
+}
+
 /// The bulge of the arc from `a` through `t` to `b` (as [`Wall::bulge`]);
 /// none when the three are in a line.
+/// `pts` moved `d` to its left, corner by corner (a ghost's faces).
+pub fn offset_line(pts: &[DVec2], d: f64) -> Vec<DVec2> {
+    let n = pts.len();
+    (0..n)
+        .map(|i| {
+            let before = (i > 0).then(|| (pts[i] - pts[i - 1]).normalize_or_zero());
+            let after = (i + 1 < n).then(|| (pts[i + 1] - pts[i]).normalize_or_zero());
+            let dir = match (before, after) {
+                (Some(a), Some(b)) => (a + b).normalize_or(b),
+                (Some(a), None) => a,
+                (None, Some(b)) => b,
+                _ => DVec2::X,
+            };
+            pts[i] + dir.perp() * d
+        })
+        .collect()
+}
+
 pub fn bulge_through(a: DVec2, t: DVec2, b: DVec2) -> Option<f64> {
     let d = 2.0 * (a.x * (t.y - b.y) + t.x * (b.y - a.y) + b.x * (a.y - t.y));
     if d.abs() < 1e-9 {
@@ -3189,6 +3279,32 @@ fn plan_click(
                     crate::units::len(c.distance(p))
                 ));
                 doc.commit(Transaction::new("Draw circle wall").insert(e1).insert(e2))
+            }
+            Some(_) => Ok(()),
+        },
+        // a rectangle of walls: two opposite corners (MU40)
+        Tool::Wall if state.wall_shape == 3 => match state.pending.take() {
+            None => {
+                state.pending = Some(p);
+                state.status = Some("Rectangle of walls: click the opposite corner.".into());
+                Ok(())
+            }
+            Some(a) if (p - a).abs().min_element() > 0.1 => {
+                let c = [a, DVec2::new(p.x, a.y), p, DVec2::new(a.x, p.y)];
+                let mut tx = Transaction::new("Draw rectangle of walls");
+                let mut first = None;
+                for i in 0..4 {
+                    let w = new_wall(doc.model(), level, state, c[i], c[(i + 1) % 4]);
+                    let e = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w)));
+                    first.get_or_insert(e.id);
+                    tx = tx.insert(e);
+                }
+                if let Some(id) = first {
+                    selection.only(id);
+                }
+                state.status =
+                    Some("Four walls, joined at the corners. Click a corner for another.".into());
+                doc.commit(tx)
             }
             Some(_) => Ok(()),
         },
@@ -4513,6 +4629,7 @@ fn refresh_snaps(
         .get(&view)
         .is_some_and(|(r, _, _)| *r == revision || dragging);
     if !fresh {
+        let _p = crate::app::Perf::new("plan snaps: build");
         let mut s = Snapper::from_drawing(&plan.items, &[]);
         s.add_underlay_centres(model, view);
         add_reference_snaps(&mut s, state, model, view);
@@ -6222,7 +6339,14 @@ fn dim_snap_guided(
                 };
                 for u in [o.offset, o.offset + o.width] {
                     for s in [-t, t] {
-                        consider(oid, w.start + d * u + n * s);
+                        consider(
+                            oid,
+                            if w.is_arc() {
+                                w.place(u, s)
+                            } else {
+                                w.start + d * u + n * s
+                            },
+                        );
                     }
                 }
             }
@@ -7095,9 +7219,9 @@ fn place_opening(
         if w.level != level || shown.is_some_and(|h| h != e.id) {
             continue;
         }
-        let d = segment_distance(p, w.start, w.end);
+        // round the arc on a curved wall
+        let (u, d) = w.along(p);
         if d <= w.thickness.max(0.3) && best.is_none_or(|b| d < b.0) {
-            let u = (p - w.start).dot(w.direction());
             best = Some((d, e.id, u, w.length()));
         }
     }

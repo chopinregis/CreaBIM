@@ -692,10 +692,15 @@ pub fn rescaled_center(vp: &creabim_core::Viewport, mid: DVec2, old: f64, new: f
 /// denominator when one is picked or typed.
 pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f64> {
     let mut out = None;
-    ui.horizontal(|ui| {
-        ui.label("Scale");
+    // a Properties row like the rest, sized to the panel: a fixed-width
+    // pair here stretched the whole column past a narrow panel's edge
+    crate::props::row(ui, "Scale", |ui| {
         let standard = SCALES.iter().any(|s| (s - scale).abs() < 1e-6);
+        let h = ui.spacing().interact_size.y;
+        let typed = 56.0_f32.min(ui.available_width() * 0.4);
+        let gap = ui.spacing().item_spacing.x;
         egui::ComboBox::from_id_salt(("scale", salt))
+            .width((ui.available_width() - typed - gap).max(30.0))
             .icon(crate::props::combo_icon)
             .selected_text(if standard {
                 format!("1:{scale:.0}")
@@ -714,7 +719,8 @@ pub fn scale_picker(ui: &mut egui::Ui, salt: ElementId, scale: f64) -> Option<f6
             });
         let mut v = scale;
         if ui
-            .add(
+            .add_sized(
+                [typed, h],
                 egui::DragValue::new(&mut v)
                     .speed(1.0)
                     .range(1.0..=5000.0)

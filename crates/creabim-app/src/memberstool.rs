@@ -419,11 +419,9 @@ pub fn walls_at(model: &Model, level: ElementId, p: DVec2) -> Vec<ElementId> {
         .iter()
         .filter_map(|e| match &e.kind {
             ElementKind::Wall(w) if w.level == level && w.curtain.is_none() => {
-                let d = w.direction();
-                let u = (p - w.start).dot(d);
-                let s = (p - w.start).perp_dot(d).abs();
-                (u >= -0.05 && u <= w.length() + 0.05 && s <= w.thickness / 2.0 + 0.05)
-                    .then_some((s, e.id))
+                // round the arc on a curved wall
+                let (_, s) = w.along(p);
+                (s <= w.thickness / 2.0 + 0.05).then_some((s, e.id))
             }
             _ => None,
         })

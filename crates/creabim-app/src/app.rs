@@ -861,15 +861,21 @@ impl CreaBimApp {
         };
         match held {
             Some((r, d)) if *r == revision => Some(d.clone()),
-            // the view being worked in, and every plan, are built on the
-            // spot: their lines must follow a drag frame by frame, and a
-            // plan (about 15 ms) sat on the edge of "cheap", so it could go
-            // to a worker and move in steps
+            // the view being worked in, and every plan while a plan grip
+            // is dragged, are built on the spot: their lines must follow a
+            // drag frame by frame. A plan (about 15 ms) beside a 3D drag
+            // goes to a worker, which kept 3D drags at 60-80 ms a frame
             Some((_, d))
                 if self.builds.enabled()
                     && !self.builds.cheap(key)
-                    && Some(id) != self.active_view
-                    && !matches!(self.view(id).map(|v| &v.kind), Some(ViewKind::Plan { .. })) =>
+                    // a drag in 3D: every drawing, the one in front too
+                    && (self.handle_drag.is_some()
+                        || (Some(id) != self.active_view
+                            && !(self.plan.grip.is_some()
+                                && matches!(
+                                    self.view(id).map(|v| &v.kind),
+                                    Some(ViewKind::Plan { .. })
+                                )))) =>
             {
                 let d = d.clone();
                 self.builds.start(self.doc.model(), key);
@@ -880,6 +886,11 @@ impl CreaBimApp {
                 self.drawing(id)
             }
         }
+    }
+
+    /// A grip is being dragged, in 3D or in a drawing.
+    pub(crate) fn dragging(&self) -> bool {
+        self.handle_drag.is_some() || self.plan.grip.is_some()
     }
 
     /// The box round the selected elements in 3D.
@@ -4624,8 +4635,19 @@ impl CreaBimApp {
                         a,
                         at,
                     );
+                    // a shaped wall (arc, circle, rectangle) draws its own
+                    // lines below: no straight one to the pointer
+                    let shaped = tool == Tool::Wall
+                        && crate::planview::wall_shape_preview(
+                            &self.plan,
+                            a.truncate(),
+                            at.truncate(),
+                        )
+                        .is_some();
                     if let (Some(sa), Some(sb)) = (project(a), project(at)) {
-                        painter.line_segment([sa, sb], stroke);
+                        if !shaped {
+                            painter.line_segment([sa, sb], stroke);
+                        }
                         painter.text(
                             sb + Vec2::new(10.0, -12.0),
                             egui::Align2::LEFT_BOTTOM,
@@ -4635,13 +4657,35 @@ impl CreaBimApp {
                         );
                     }
                     if tool == Tool::Wall {
-                        // the wall's height, so it reads as a wall
+                        // the wall's height, so it reads as a wall; an arc,
+                        // a circle or a rectangle drawn as it will be (MU40)
                         let h = self.doc.model().level(level).map_or(3.0, |l| l.height);
                         let up = DVec3::Z * h;
-                        let quad = [a, at, at + up, a + up, a];
-                        let scr: Vec<egui::Pos2> =
-                            quad.iter().filter_map(|q| project(*q)).collect();
-                        painter.add(egui::Shape::line(scr, egui::Stroke::new(1.0, accent)));
+                        let lines = crate::planview::wall_shape_preview(
+                            &self.plan,
+                            a.truncate(),
+                            at.truncate(),
+                        )
+                        .unwrap_or_else(|| vec![vec![a.truncate(), at.truncate()]]);
+                        for pts in lines {
+                            let base: Vec<DVec3> = pts.iter().map(|p| p.extend(z)).collect();
+                            for (k, row) in [base.clone(), base.iter().map(|p| *p + up).collect()]
+                                .into_iter()
+                                .enumerate()
+                            {
+                                let scr: Vec<egui::Pos2> =
+                                    row.iter().filter_map(|q| project(*q)).collect();
+                                painter.add(egui::Shape::line(
+                                    scr,
+                                    egui::Stroke::new(if k == 0 { 2.0 } else { 1.0 }, accent),
+                                ));
+                            }
+                            for q in [base.first(), base.last()].into_iter().flatten() {
+                                if let (Some(s0), Some(s1)) = (project(*q), project(*q + up)) {
+                                    painter.line_segment([s0, s1], egui::Stroke::new(1.0, accent));
+                                }
+                            }
+                        }
                     }
                 }
             }

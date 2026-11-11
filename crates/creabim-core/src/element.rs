@@ -1138,6 +1138,35 @@ impl Wall {
         }
     }
 
+    /// How far along its centreline `p` is (clamped to its ends), and how
+    /// far `p` is from that point: round the arc for a curved wall.
+    pub fn along(&self, p: DVec2) -> (f64, f64) {
+        let u = match self.curve() {
+            crate::sketch::Curve::Arc {
+                center,
+                radius,
+                start,
+                sweep,
+            } => {
+                let tau = std::f64::consts::TAU;
+                let a = (p - center).y.atan2((p - center).x);
+                let rel = ((a - start) * sweep.signum()).rem_euclid(tau);
+                if rel <= sweep.abs() {
+                    rel * radius
+                } else if rel - sweep.abs() < tau - rel {
+                    sweep.abs() * radius
+                } else {
+                    0.0
+                }
+            }
+            crate::sketch::Curve::Line(a, b) => {
+                let d = (b - a).normalize_or_zero();
+                (p - a).dot(d).clamp(0.0, a.distance(b))
+            }
+        };
+        (u, p.distance(self.place(u, 0.0)))
+    }
+
     /// The way it runs at `u` along it.
     pub fn tangent_at(&self, u: f64) -> DVec2 {
         match self.curve() {
