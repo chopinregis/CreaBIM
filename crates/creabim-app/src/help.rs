@@ -90,6 +90,7 @@ pub const PAGES: &[(&str, &str, &str)] = &[
     page!("Views and drawings", "schedules"),
     page!("Views and drawings", "take-off"),
     page!("Views and drawings", "sheets"),
+    page!("Views and drawings", "masters"),
     page!("Annotation", "dimensions"),
     page!("Annotation", "tags"),
     page!("Annotation", "marks"),
@@ -149,6 +150,10 @@ pub const IMAGES: &[(&str, &[u8])] = &[
     img!("object-against-wall"),
     img!("details"),
     img!("profile-view"),
+    img!("masters"),
+    img!("divide-bar"),
+    img!("modifiers"),
+    img!("edit-mode-mass"),
 ];
 
 /// A page's text by id.

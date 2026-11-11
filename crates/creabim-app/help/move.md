@@ -16,7 +16,7 @@ While it follows the pointer:
 - Press `Ctrl` to leave a copy behind with every click.
 - `Esc` or right-click steps back, and again cancels.
 
-The panel at the bottom of the view does the same with the mouse: *Free*, *X*, *Y*, *Z*, a distance box, *Copy*, *Finish* and *Cancel*.
+The **Move bar** at the top of the view does the same with the mouse: axis chips for *X*, *Y* and *Z* in their colours (red, green and blue, as the axis lines in the view), a **D** badge for the distance, *Copy*, *Finish* and *Cancel*. Rotate and Scale use the same bar. Drag it by its grip if it is in the way; a double-click puts it back. To have it as a small palette by the pointer instead, see *Settings › Interface › Move, Rotate and Scale bar*.
 
 ![Moving a partition by its base point](img/move.jpg)
 

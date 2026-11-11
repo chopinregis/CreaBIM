@@ -10,6 +10,22 @@ Hold `Shift` to keep walls square. Walls snap to corners, midpoints and other wa
 
 ![The Wall tool's options](img/wall-options.jpg)
 
+## Curved walls, circles and rectangles
+
+The Wall tool's strip has four shapes:
+
+| Shape | How |
+| --- | --- |
+| **Straight** | Click to start, click for each corner |
+| **Arc** | Its start, its end, then a point it passes through |
+| **Circle** | Its centre, then a point on it: two half walls that close a round room |
+| **Rectangle** | Two opposite corners: four walls joined at the corners |
+
+While you draw, the wall's real shape shows as the ghost in plans and 3D, with its arc length, radius, or width × height by the pointer.
+
+A curved wall's layers, openings, top and footing follow the arc, and doors and windows stand on it, square to it. Its ends join the walls they meet as a straight wall along the arc would (mitre, butt or lap), and rooms, slabs and roofs that fill a room run round it. Drag the **bend grip** at its middle to change the curve, or type its **Radius** in *Properties*. A curtain wall in a curved wall is faceted along the arc, as it is built.
+
+
 ## Changing a wall
 
 Select it, then:
@@ -27,7 +43,7 @@ For example, draw the outside walls on their **exterior face**: then making them
 
 Pick it in the tool options before drawing, or in *Properties* afterwards.
 
-![An outside wall with its location line on its exterior face: a thicker build-up grows inwards](img/location-line.jpg)
+![An outside wall with its location line set to its exterior face in Properties: the dashed line runs along its outer face](img/location-line.jpg)
 
 ## Inside and outside: flip
 

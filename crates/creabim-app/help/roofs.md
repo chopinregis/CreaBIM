@@ -8,7 +8,7 @@
    - **Mono-pitch**: one slope
    - **Gable**: two slopes meeting at a ridge, with gable ends
    - **Hip**: slopes on every side
-3. Draw its outline like a slab: `1` Polygon, `2` Rectangle, `3` Fill room, `4` From sketch.
+3. Draw its outline like a slab: `1` Polygon, `2` Rectangle, `3` Fill room, `4` From sketch. With *Fill room*, the roof it would make shows under the pointer before you click, and the gaps that stop it in red. It runs round curved walls too.
 
 ![The starter house: a gable roof, and a flat roof that runs on over the terrace](img/roofs.jpg)
 
@@ -22,7 +22,7 @@ In *Properties*:
 - **Eave edge** and **Next edge**: which edge is the eave of a mono-pitch roof, or which edges are gable ends;
 - its thickness, material or [assembly](assemblies), and its holes.
 
-The summary line gives the corners, the area including the overhang and the roof's height.
+The summary line gives the corners, the area including the overhang and the roof's height. *Properties* also says where the eaves end, and warns when a steep pitch and a long overhang bring them below head height over the walls.
 
 ## Roofs in plan
 

@@ -28,7 +28,7 @@ Each placed view (a **viewport**) shows its view at the view's scale, with what 
 - **Line views up**: while you drag a view, its centre snaps in line with another view's centre, with a dashed guide.
 - **Work through it**: double-click a viewport to edit the model right there, with every tool; the rest of the sheet greys out. Drag to orbit a 3D view. `Esc` finishes.
 
-![A sheet beside the live 3D view](img/sheet.jpg)
+![The Sheets workspace: a sheet beside the plan placed on it](img/sheet.jpg)
 
 ### View titles
 
@@ -57,8 +57,9 @@ What belongs to the paper, not to a view, goes on the sheet itself:
 - **Text** (`N`): click where it starts, then type. It is a [note](notes) on the sheet.
 - **North arrow**: turned to the project's true north (*Project information*). Give it an angle of its own in *Properties*.
 - **Scale bar**: at the scale of the sheet's views. Set its scale, length, parts and thickness in *Properties*.
+- **Picture**: a photo, a render, a logo or a stamp. Pick any number of PNG, JPEG and SVG files at once and they are laid side by side. A picture's pixels are kept in the project; an SVG comes in as crisp vector shapes. Its box grips size it (the corners keep its proportions), and *Properties* has its size, opacity and, for an SVG, one colour.
 
-Both are placed clear of the title block. Drag them where they go, or type their **X** and **Y** on the sheet, to the millimetre; `Delete` removes them. Dimensions, tags and notes about the building stay in the views, so they show on every sheet a view is placed on.
+They are placed clear of the title block. Drag them where they go, or type their **X** and **Y** on the sheet, to the millimetre; `Delete` removes them. Dimensions, tags and notes about the building stay in the views, so they show on every sheet a view is placed on.
 
 ## Revisions
 
@@ -69,15 +70,13 @@ Both are placed clear of the title block. Drag them where they go, or type their
 
 **Key plan** places the lowest floor plan again as a small view of its own at 1:500, over the title block, with its dimensions, tags, notes, grids, section marks and furniture hidden. Drag it where it goes; it is a view in the browser, to change like any other.
 
-## Title blocks and templates
+## Title blocks and masters
 
-Fill in the title block in the sheet's *Properties*. Project-wide fields (project, client, address, status) come from *Manage › Project information*, and a sheet's own values win over them. To change the title block, open *File › Sheet templates…*:
+Fill in the title block in the sheet's *Properties*. Project-wide fields (project, client, address, status) come from *Manage › Project information*, and a sheet's own values win over them.
 
-- *Copy of the built-in block*, to change the usual one;
-- *Import DXF or SVG…*, to use your own drawing;
-- or import another project's templates and styles.
+The frame and title block a sheet sits on is its **master**. Pick it in the sheet's *Title block*, or click **Edit the master** to open it in a Masters view, where it is drawn with lines, shapes, text, fields, logos and pictures: what you change shows on every sheet on it. See [Masters: title blocks](masters).
 
-Any `{name}` in the template's text becomes a field. `{sheet}`, `{number}`, `{project}`, `{scale}` and `{date}` are filled in by each sheet; other fields get a value per sheet in its *Properties*. Use *Use on this sheet*, *Use on every sheet* or *New sheet from it*, or pick the template in a sheet's *Title block*.
+*File › Sheet templates…* is the list of masters: *Copy of the built-in block*, *Import DXF or SVG…* for your own drawing, or another project's masters and styles. Any `{name}` in a master's text becomes a field. `{sheet}`, `{number}`, `{project}`, `{scale}` and `{date}` are filled in by each sheet; other fields get a value per sheet in its *Properties*. Use *Use on this sheet*, *Use on every sheet* or *New sheet from it*.
 
 ## Printing and exporting
 

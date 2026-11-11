@@ -15,6 +15,6 @@ SVG opens in Inkscape, Illustrator, Affinity and web browsers, for presentation 
 
 ## DXF and SVG title blocks
 
-*File › Sheet templates… › Import DXF or SVG…* brings in your own title block or sheet frame from a CAD drawing. Any `{name}` in its text becomes a field. See [Sheets and title blocks](sheets#title-blocks-and-templates).
+*File › Sheet templates… › Import DXF or SVG…* brings in your own title block or sheet frame from a CAD drawing. Any `{name}` in its text becomes a field. See [Sheets and title blocks](sheets#title-blocks-and-masters).
 
 > **Note:** CreaBIM doesn't write DXF yet. To get drawings into a DXF-only program, export SVG or PDF, or the model as [IFC](ifc).
