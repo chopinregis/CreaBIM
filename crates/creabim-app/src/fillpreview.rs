@@ -54,7 +54,7 @@ pub fn look(model: &Model, level: ElementId, tool: Tool, p: DVec2) -> Look {
         }
         _ => {}
     }
-    let outline = if tool == Tool::Slab {
+    let outline = if matches!(tool, Tool::Slab | Tool::Roof) {
         creabim_core::room_outline(model, level, p)
     } else {
         room::enclosed(model, level, p).map(|s| s.outline)
@@ -72,8 +72,12 @@ pub fn look(model: &Model, level: ElementId, tool: Tool, p: DVec2) -> Look {
 
 /// Is the pane's tool in Fill room?
 pub fn on(state: &PlanState) -> bool {
-    matches!(state.tool, Tool::Room | Tool::Ceiling | Tool::Slab)
-        && state.slab_mode == crate::slabtool::SlabMode::FillRoom
+    // the roof too, which fills a room to the walls' centre lines as a
+    // slab does (a click showed nothing before, which read as a bug)
+    matches!(
+        state.tool,
+        Tool::Room | Tool::Ceiling | Tool::Slab | Tool::Roof
+    ) && state.slab_mode == crate::slabtool::SlabMode::FillRoom
         && state.outline.is_none()
         && crate::partstool::make_for(state).is_none()
 }
@@ -95,6 +99,7 @@ pub fn cached<'a>(
         doc.redo_steps().len(),
     );
     if cache.as_ref().map(|c| c.0) != Some(key) {
+        let _p = crate::app::Perf::new("fill preview");
         *cache = Some((key, look(doc.model(), level, tool, p)));
     }
     &cache.as_ref().expect("just set").1
@@ -128,6 +133,7 @@ pub fn draw(
             let what = match tool {
                 Tool::Ceiling => "Ceiling",
                 Tool::Slab => "Slab",
+                Tool::Roof => "Roof",
                 _ => "Room",
             };
             crate::handles::plain_pill(

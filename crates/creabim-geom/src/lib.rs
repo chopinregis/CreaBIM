@@ -22,6 +22,7 @@ pub mod paper;
 pub mod parts;
 pub mod pick;
 pub mod plan;
+pub mod prio;
 pub mod ranges;
 pub mod raster;
 pub mod rooms;

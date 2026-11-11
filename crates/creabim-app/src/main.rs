@@ -60,6 +60,8 @@ fn app_icon() -> std::sync::Arc<eframe::egui::IconData> {
 }
 
 fn main() -> eframe::Result {
+    // the window's thread answers first on a busy machine
+    creabim_geom::prio::ui();
     // a crash says why in the activity log, with where it happened (MU39:
     // one closed the app with nothing to go on)
     let before = std::panic::take_hook();

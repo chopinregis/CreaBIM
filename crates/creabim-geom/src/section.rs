@@ -1339,6 +1339,7 @@ fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(usize, &T) -> R + Sync) -> 
             .enumerate()
             .map(|(k, chunk)| {
                 scope.spawn(move || {
+                    crate::prio::background();
                     chunk
                         .iter()
                         .enumerate()

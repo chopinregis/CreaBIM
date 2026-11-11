@@ -132,6 +132,7 @@ impl Builds {
             ));
         }
         std::thread::spawn(move || {
+            creabim_geom::prio::background();
             let t = Instant::now();
             let drawing = creabim_geom::section::view_drawing_with(&snapshot, key.0, key.1);
             let ms = t.elapsed().as_secs_f64() * 1000.0;
@@ -159,6 +160,7 @@ impl Builds {
         let tx = self.tx.clone();
         self.scene_running = Some(revision);
         std::thread::spawn(move || {
+            creabim_geom::prio::background();
             let scene = creabim_geom::shared_scene(&snapshot);
             let _ = tx.send(Done::Scene { revision, scene });
             ctx.request_repaint();

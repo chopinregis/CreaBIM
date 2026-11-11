@@ -616,6 +616,53 @@ mod tests {
     }
 
     #[test]
+    fn strips_under_a_circle_of_two_half_walls_fill_as_bands() {
+        let mut m = Model::new();
+        let level = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let lid = level.id;
+        let (a, b) = (DVec2::new(20.0, -3.0), DVec2::new(20.0 + 2.0 * 2.743, -3.0));
+        let mut tx = Transaction::new("t").insert(level);
+        let mut ids = vec![];
+        for (s, e) in [(a, b), (b, a)] {
+            let mut w = Wall::new(lid, s, e, 0.2, 3.0);
+            w.bulge = 1.0;
+            let we = Element::new("W", ElementKind::Wall(w));
+            ids.push(we.id);
+            tx = tx.insert(we);
+        }
+        tx.apply(&mut m).unwrap();
+        let (tx, fids) = under(&m, &ids, &|_| {});
+        tx.apply(&mut m).unwrap();
+        let strips = strip_outlines(&m);
+        for id in &fids {
+            for band in &strips[id] {
+                let tris = crate::polygon::triangulate(band);
+                let filled: f64 = tris
+                    .iter()
+                    .map(|t| {
+                        crate::polygon::signed_area2(&[band[t[0]], band[t[1]], band[t[2]]]).abs()
+                            / 2.0
+                    })
+                    .sum();
+                // half a ring 600 wide round radius 2.743
+                let ring = std::f64::consts::PI * 2.743 * 0.6;
+                assert!((area(band) - ring).abs() < 0.05, "{} vs {ring}", area(band));
+                assert!(
+                    (filled - area(band)).abs() < 1e-6,
+                    "{filled} vs {}",
+                    area(band)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_strip_under_a_curved_wall_follows_its_arc() {
         // a half circle of radius 2.5 round (2.5, 0)
         let mut m = Model::new();
@@ -649,6 +696,19 @@ mod tests {
             );
         }
         assert!(band.len() > 10);
+        // it fills as a band, not the half disc inside it
+        let tris = crate::polygon::triangulate(band);
+        let filled: f64 = tris
+            .iter()
+            .map(|t| {
+                crate::polygon::signed_area2(&[band[t[0]], band[t[1]], band[t[2]]]).abs() / 2.0
+            })
+            .sum();
+        assert!(
+            (filled - area(band)).abs() < 1e-6,
+            "{filled} vs {}",
+            area(band)
+        );
         let f = match &m.get(ids[0]).unwrap().kind {
             ElementKind::Footing(f) => f.clone(),
             _ => unreachable!(),

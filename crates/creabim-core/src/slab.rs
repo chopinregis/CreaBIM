@@ -15,25 +15,32 @@ const TOL: f64 = 1e-6;
 /// not enclosed. Walls that stop at another wall's face (short of its centre
 /// line) still close the space; loose ends are ignored.
 pub fn room_outline(model: &Model, level: ElementId, p: DVec2) -> Option<Vec<DVec2>> {
-    let walls: Vec<(DVec2, DVec2, f64)> = model
+    let walls: Vec<&crate::Wall> = model
         .iter()
         .filter_map(|e| match &e.kind {
-            ElementKind::Wall(w) if w.level == level && w.length() > 1e-3 => {
-                Some((w.start, w.end, w.thickness))
-            }
+            ElementKind::Wall(w) if w.level == level && w.length() > 1e-3 => Some(w),
             _ => None,
         })
         .collect();
-    let reach = walls.iter().map(|w| w.2 / 2.0).fold(0.0, f64::max) + 0.01;
+    let reach = walls.iter().map(|w| w.thickness / 2.0).fold(0.0, f64::max) + 0.01;
     // centre lines, run on far enough to meet the centre line of a wall
-    // they stop against
-    let segs: Vec<(DVec2, DVec2)> = walls
-        .iter()
-        .map(|&(a, b, _)| {
-            let d = (b - a).normalize();
-            (a - d * reach, b + d * reach)
-        })
-        .collect();
+    // they stop against; a curved wall's round its arc, piece by piece
+    let mut segs: Vec<(DVec2, DVec2)> = vec![];
+    for w in walls {
+        if w.is_arc() {
+            let mut us = vec![0.0];
+            us.extend(w.bends());
+            us.push(w.length());
+            let mut pts: Vec<DVec2> = us.iter().map(|u| w.place(*u, 0.0)).collect();
+            let last = pts.len() - 1;
+            pts[0] -= w.tangent_at(0.0) * reach;
+            pts[last] += w.tangent_at(w.length()) * reach;
+            segs.extend(pts.windows(2).map(|k| (k[0], k[1])));
+        } else {
+            let d = (w.end - w.start).normalize();
+            segs.push((w.start - d * reach, w.end + d * reach));
+        }
+    }
     room_in_lines(&segs, p)
 }
 
@@ -42,14 +49,24 @@ pub fn room_outline(model: &Model, level: ElementId, p: DVec2) -> Option<Vec<DVe
 /// and the edges between them.
 fn split(segs: &[(DVec2, DVec2)]) -> (Vec<DVec2>, HashSet<(usize, usize)>) {
     let mut nodes: Vec<DVec2> = Vec::new();
+    // nodes by a 10 µm cell, its neighbours checked too: a lookup instead
+    // of a scan of every node (curved walls bring hundreds of pieces)
+    let mut cells: std::collections::HashMap<(i64, i64), Vec<usize>> = Default::default();
+    let cell = |q: DVec2| ((q.x * 1e5).floor() as i64, (q.y * 1e5).floor() as i64);
     let mut node = |q: DVec2| -> usize {
-        match nodes.iter().position(|n| n.distance(q) < 1e-6) {
-            Some(i) => i,
-            None => {
-                nodes.push(q);
-                nodes.len() - 1
+        let (cx, cy) = cell(q);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if let Some(ids) = cells.get(&(cx + dx, cy + dy)) {
+                    if let Some(&i) = ids.iter().find(|&&i| nodes[i].distance(q) < 1e-6) {
+                        return i;
+                    }
+                }
             }
         }
+        nodes.push(q);
+        cells.entry((cx, cy)).or_default().push(nodes.len() - 1);
+        nodes.len() - 1
     };
     let mut edges: HashSet<(usize, usize)> = HashSet::new();
     for (i, &(a, b)) in segs.iter().enumerate() {

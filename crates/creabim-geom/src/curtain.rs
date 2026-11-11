@@ -66,6 +66,26 @@ pub fn to_model(wall: &Wall, level_z: f64) -> impl Fn(DVec3) -> DVec3 {
     move |p: DVec3| (start + d * p.x + n * p.y).extend(z0 + p.z)
 }
 
+/// Wall coordinates to model coordinates for one box of the wall, from
+/// `u0` to `u1` along it: on a curved wall the box runs straight along the
+/// chord of its stretch of arc, as curved curtain walls are built (flat
+/// glass between mullions set round the curve). Its length along the wall
+/// maps onto the chord, so neighbours meet at the mullions.
+pub fn box_to_model(wall: &Wall, u0: f64, u1: f64, level_z: f64) -> impl Fn(DVec3) -> DVec3 {
+    let (a, c) = (wall.place(u0, 0.0), wall.place(u1, 0.0));
+    let d = (c - a)
+        .try_normalize()
+        .unwrap_or_else(|| wall.tangent_at(u0));
+    let n = DVec2::new(-d.y, d.x);
+    let k = if u1 - u0 > 1e-9 {
+        a.distance(c) / (u1 - u0)
+    } else {
+        1.0
+    };
+    let z0 = level_z + wall.base_offset;
+    move |p: DVec3| (a + d * ((p.x - u0) * k) + n * p.y).extend(z0 + p.z)
+}
+
 /// The curtain wall's parts as meshes in model coordinates, one per kind.
 pub fn curtain_meshes(
     wall: &Wall,
@@ -73,9 +93,9 @@ pub fn curtain_meshes(
     openings: &[&Opening],
     level_z: f64,
 ) -> Vec<(CurtainPart, TriMesh)> {
-    let at = to_model(wall, level_z);
     let mut out: Vec<(CurtainPart, TriMesh)> = Vec::new();
     for b in curtain_boxes(wall, grid, openings) {
+        let at = box_to_model(wall, b.lo.x, b.hi.x, level_z);
         let i = match out.iter().position(|(p, _)| *p == b.part) {
             Some(i) => i,
             None => {
@@ -97,14 +117,13 @@ pub fn curtain_plan(
     openings: &[&Opening],
     cut_v: f64,
 ) -> Vec<PlanItem> {
-    let d = wall.direction();
-    let n = DVec2::new(-d.y, d.x);
-    let at = |u: f64, s: f64| wall.start + d * u + n * s;
     let mut out = Vec::new();
     for b in curtain_boxes(wall, grid, openings) {
         if !(b.lo.z < cut_v && cut_v < b.hi.z) {
             continue;
         }
+        let m = box_to_model(wall, b.lo.x, b.hi.x, 0.0);
+        let at = |u: f64, s: f64| m(DVec3::new(u, s, 0.0)).truncate();
         let points = vec![
             at(b.lo.x, b.lo.y),
             at(b.hi.x, b.lo.y),
@@ -161,6 +180,23 @@ mod tests {
             .filter(|i| matches!(i, PlanItem::Polygon { pen: Pen::Cut, .. }))
             .count();
         assert_eq!((cut, plan.len()), (4, 7));
+    }
+
+    #[test]
+    fn a_curved_curtain_wall_sets_its_mullions_round_the_arc() {
+        // a half circle of radius 1.5 round (1.5, 0)
+        let mut w = wall();
+        w.bulge = 1.0;
+        let g = w.curtain.clone().unwrap();
+        let c = DVec2::new(1.5, 0.0);
+        for b in curtain_boxes(&w, &g, &[]) {
+            let at = box_to_model(&w, b.lo.x, b.hi.x, 0.0);
+            // each box's two ends, on its centreline, sit on the arc
+            for x in [b.lo.x, b.hi.x] {
+                let p = at(DVec3::new(x, 0.0, 0.0)).truncate();
+                assert!((p.distance(c) - 1.5).abs() < 1e-9, "{p}");
+            }
+        }
     }
 
     #[test]
