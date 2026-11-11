@@ -233,6 +233,14 @@ Files: *File → Save* and *Open* use the system file picker and keep a list of 
 
 What comes next is in [docs/ROADMAP.md](docs/ROADMAP.md); ideas are welcome in [Discussions](https://github.com/chopinregis/CreaBIM/discussions).
 
+## Contributing and support
+
+Contributions are welcome, in two kinds:
+- **Any time:** making CreaBIM work on more systems, bugs, tests, file exchange, the guide and translations.
+- **Proposal first:** new tools, workflows and interface changes. Show the idea working in your fork before the change comes in.
+
+AI-assisted work is welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how. Report a problem or share an idea through [Issues](https://github.com/chopinregis/CreaBIM/issues/new/choose). You can also [sponsor the work](https://github.com/sponsors/chopinregis); sponsoring never unlocks features.
+
 ## License
 
 CreaBIM is free software under the GNU General Public License v3.0 or later. See [LICENSE](LICENSE).
