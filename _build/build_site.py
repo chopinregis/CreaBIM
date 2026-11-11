@@ -255,7 +255,7 @@ ICONS = """<svg width="0" height="0" style="position:absolute" aria-hidden="true
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.400 9.300 8 11 4.600-1.700 8-6 8-11V5zM8.500 12l2.500 2.500 4.500-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
 </defs></svg>"""
 
-NAV = [("index.html", "Home"), ("features.html", "Features"), ("tutorials/index.html", "Tutorials"), ("guide/welcome.html", "Guide"), ("download.html", "Download")]
+NAV = [("index.html", "Home"), ("features.html", "Features"), ("tutorials/index.html", "Tutorials"), ("guide/welcome.html", "Guide"), ("download.html", "Download"), ("support.html", "Support")]
 
 
 def layout(*, depth: int, current: str, title: str, desc: str, body: str, path: str) -> str:
@@ -309,7 +309,7 @@ def layout(*, depth: int, current: str, title: str, desc: str, body: str, path: 
   <div class="wrap">
     <a class="brand" href="{b}index.html"><svg aria-hidden="true"><use href="#mark"/></svg>creabim</a>
     <span>Free and open source · GPL-3.0-or-later</span>
-    <nav aria-label="Footer"><a href="{b}features.html">Features</a><a href="{b}tutorials/index.html">Tutorials</a><a href="{b}download.html">Download</a><a href="{GH}">GitHub</a><a href="{GH}/issues">Report a bug</a><a href="{GH}/discussions">Discussions</a></nav>
+    <nav aria-label="Footer"><a href="{b}features.html">Features</a><a href="{b}tutorials/index.html">Tutorials</a><a href="{b}download.html">Download</a><a href="{b}support.html">Support</a><a href="{GH}">GitHub</a><a href="{GH}/issues">Report a bug</a><a href="{GH}/discussions">Discussions</a></nav>
   </div>
 </footer>
 <script src="{b}assets/site.js" defer></script>
@@ -954,6 +954,9 @@ def main():
           features())
     write("download.html", 0, "Download", "Download",
           f"Download CreaBIM {version} for Windows and Linux: free, open source, offline, no account.", download(rels))
+    write("support.html", 0, "Support", "Support",
+          "Help CreaBIM grow: sponsor the work on GitHub, or contribute: other systems, bugs, the guide, translations, and new tools by proposal.",
+          (Path(__file__).parent / "support_body.html").read_text(encoding="utf-8"))
     write("tutorials/index.html", 1, "Tutorials", "Tutorials",
           "Learn CreaBIM: build a first house in eight short steps, then the complete guide to every tool.", tutorials(md, texts, pages))
     for pid in order:
@@ -969,9 +972,9 @@ def main():
     p404 = SITE / "404.html"
     p404.write_text(p404.read_text(encoding="utf-8").replace('href="assets/', 'href="/CreaBIM/assets/').replace('src="assets/', 'src="/CreaBIM/assets/')
                     .replace('href="index.html', 'href="/CreaBIM/index.html').replace('href="features.html', 'href="/CreaBIM/features.html')
-                    .replace('href="download.html', 'href="/CreaBIM/download.html').replace('href="tutorials/', 'href="/CreaBIM/tutorials/').replace('href="guide/', 'href="/CreaBIM/guide/'), encoding="utf-8")
+                    .replace('href="download.html', 'href="/CreaBIM/download.html').replace('href="support.html', 'href="/CreaBIM/support.html').replace('href="tutorials/', 'href="/CreaBIM/tutorials/').replace('href="guide/', 'href="/CreaBIM/guide/'), encoding="utf-8")
 
-    urls = ["", "features.html", "download.html", "tutorials/"] + [f"guide/{p}.html" for p in order]
+    urls = ["", "features.html", "download.html", "support.html", "tutorials/"] + [f"guide/{p}.html" for p in order]
     (SITE / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
                                       + "".join(f"  <url><loc>{SITE_URL}{u}</loc></url>\n" for u in urls) + "</urlset>\n", encoding="utf-8")
     (SITE / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {SITE_URL}sitemap.xml\n", encoding="utf-8")
