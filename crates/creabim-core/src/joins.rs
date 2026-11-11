@@ -734,7 +734,99 @@ pub fn plain_joins(walls: &[(ElementId, Wall)]) -> HashMap<ElementId, WallEnds> 
     joins_among(&walls, &[])
 }
 
+/// Joins among `walls`, curved ones too: each end of a curved wall stands
+/// in as a short straight wall along its tangent there, the stand-ins join
+/// as straight walls do (mitres, butts, laps), and the curved wall takes
+/// its start from one and its end from the other, applied along those
+/// tangents (see [`Wall::place_end`]).
 fn joins_among(walls: &[Joinable], rules: &[JoinRule]) -> HashMap<ElementId, WallEnds> {
+    if !walls.iter().any(|j| j.wall.is_arc()) {
+        return joins_straight(walls, rules);
+    }
+    // (arc, start stand-in, end stand-in, stand-in length)
+    let mut arcs: Vec<(ElementId, ElementId, ElementId, f64)> = vec![];
+    let mut owned: Vec<StandIn> = vec![];
+    for j in walls.iter().filter(|j| j.wall.is_arc()) {
+        let w = j.wall;
+        let len = w.length();
+        // long enough to read a corner by, short enough not to cross
+        // walls the arc itself doesn't
+        let l = (len / 3.0).min(w.thickness * 2.0 + 0.3).max(1e-3);
+        let (t0, t1) = (w.tangent_at(0.0), w.tangent_at(len));
+        let (s, e) = (ElementId::new(), ElementId::new());
+        let mut a = w.clone();
+        a.bulge = 0.0;
+        a.end = w.start + t0 * l;
+        a.disallow_join = [w.disallow_join[0], true];
+        let mut b = w.clone();
+        b.bulge = 0.0;
+        b.start = w.end - t1 * l;
+        b.disallow_join = [true, w.disallow_join[1]];
+        owned.push((s, a, j.core));
+        owned.push((e, b, j.core));
+        arcs.push((j.id, s, e, l));
+    }
+    let mut all: Vec<Joinable> = walls
+        .iter()
+        .filter(|j| !j.wall.is_arc())
+        .map(|j| Joinable {
+            id: j.id,
+            wall: j.wall,
+            core: j.core,
+        })
+        .collect();
+    all.extend(owned.iter().map(|(id, w, core)| Joinable {
+        id: *id,
+        wall: w,
+        core: *core,
+    }));
+    // a rule set for an arc holds for its stand-ins
+    let mut rules2: Vec<JoinRule> = rules.to_vec();
+    for r in rules {
+        for (arc, s, e, _) in &arcs {
+            for proxy in [*s, *e] {
+                let mut r2 = *r;
+                if r2.a == *arc {
+                    r2.a = proxy;
+                } else if r2.b == *arc {
+                    r2.b = proxy;
+                } else {
+                    continue;
+                }
+                rules2.push(r2);
+            }
+        }
+    }
+    let mut out = joins_straight(&all, &rules2);
+    for (arc, s, e, l) in arcs {
+        let a = out.remove(&s).unwrap_or_default();
+        let b = out.remove(&e).unwrap_or_default();
+        let len = walls
+            .iter()
+            .find(|j| j.id == arc)
+            .map_or(0.0, |j| j.wall.length());
+        out.insert(
+            arc,
+            WallEnds {
+                start: a.start,
+                end: b.end,
+                core: [a.core[0], b.core[1]],
+                // the end stand-in measures from l before the arc's end
+                core_line: [
+                    a.core_line[0],
+                    b.core_line[1].map(|(u, k)| (u - l + len, k)),
+                ],
+                gaps: vec![],
+            },
+        );
+    }
+    out
+}
+
+/// A curved wall's end standing in as a straight wall: id, wall, core.
+type StandIn = (ElementId, Wall, Option<(f64, f64)>);
+
+fn joins_straight(walls: &[Joinable], rules: &[JoinRule]) -> HashMap<ElementId, WallEnds> {
     let mut out = HashMap::new();
     for (i, me) in walls.iter().enumerate() {
         let w = me.wall;
@@ -1395,6 +1487,38 @@ mod tests {
         }
         doc.commit(tx).unwrap();
         (doc.model().clone(), ids)
+    }
+
+    #[test]
+    fn a_curved_wall_mitres_with_the_straight_wall_at_its_corner() {
+        // straight (0,0)-(5,0), then a quarter arc on to (8,3)
+        let (mut m, ids) = model(&[
+            (DVec2::ZERO, DVec2::new(5.0, 0.0)),
+            (DVec2::new(5.0, 0.0), DVec2::new(8.0, 3.0)),
+        ]);
+        let mut doc = crate::Document::from_model(m.clone());
+        doc.edit(ids[1], "bend", |e| {
+            if let ElementKind::Wall(w) = &mut e.kind {
+                // tangent at its start turned off the straight wall's line
+                w.bulge = 0.25;
+            }
+        })
+        .unwrap();
+        m = doc.model().clone();
+        let joins = wall_joins(&m);
+        let (s, a) = (wall(&m, ids[0]), wall(&m, ids[1]));
+        assert!(a.is_arc());
+        let (js, ja) = (joins[&ids[0]].clone(), joins[&ids[1]].clone());
+        // each face of the two meets at one corner point
+        for side in [1.0, -1.0] {
+            let t = 0.1 * side;
+            let straight_end = s.place(js.end_u(&s, side), t);
+            let arc_start = a.place_end(false, ja.start_u(side), t);
+            assert!(
+                straight_end.distance(arc_start) < 1e-6,
+                "side {side}: {straight_end} vs {arc_start}"
+            );
+        }
     }
 
     fn wall(m: &Model, id: ElementId) -> Wall {

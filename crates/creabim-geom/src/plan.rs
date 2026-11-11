@@ -1015,7 +1015,12 @@ pub fn plan_view_with(
                 // a curved wall is laid round its arc, its ends square
                 let at = |u: f64, s: f64| {
                     if w.is_arc() {
-                        w.place(u, s)
+                        // its ends as its joins put them (see Wall::place_end)
+                        if u <= 1e-9 || u >= w.length() - 1e-9 {
+                            w.place_end(u > 1e-9, ends.place(w, u, s, false), s)
+                        } else {
+                            w.place(u, s)
+                        }
                     } else {
                         w.start + d * ends.place(w, u, s, false) + n * s
                     }

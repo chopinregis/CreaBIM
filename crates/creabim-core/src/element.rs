@@ -1167,6 +1167,15 @@ impl Wall {
         (u, p.distance(self.place(u, 0.0)))
     }
 
+    /// A point of one of its ends as its joins put it: `u` along it (which
+    /// a join moved off the end, either way) and `w` across, on the line
+    /// along its tangent at that end, the line its joins were worked out
+    /// on. The same as [`Wall::place`] for a straight wall.
+    pub fn place_end(&self, at_end: bool, u: f64, w: f64) -> DVec2 {
+        let e = if at_end { self.length() } else { 0.0 };
+        self.place(e, w) + self.tangent_at(e) * (u - e)
+    }
+
     /// The way it runs at `u` along it.
     pub fn tangent_at(&self, u: f64) -> DVec2 {
         match self.curve() {

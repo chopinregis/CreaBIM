@@ -6,6 +6,63 @@ use super::*;
 use crate::ui_model::Item;
 use creabim_core::{LengthUnit, Units};
 
+impl CreaBimApp {
+    /// Closing with unsaved changes: Save, Don't save or Cancel.
+    pub(super) fn close_window(&mut self, ctx: &egui::Context) {
+        if !self.close_ask {
+            return;
+        }
+        let name = std::path::Path::new(&self.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("this project")
+            .to_string();
+        let pal = crate::theme::Palette::of(ctx);
+        let (mut save, mut discard, mut cancel) = (false, false, false);
+        egui::Modal::new(egui::Id::new("close-unsaved")).show(ctx, |ui| {
+            ui.set_width(400.0);
+            ui.heading(format!("Save the changes to {name}?"));
+            ui.add_space(6.0);
+            ui.label("They are lost if you close without saving.");
+            ui.label(
+                egui::RichText::new("Enter saves, Esc goes back to the project.")
+                    .small()
+                    .color(pal.muted),
+            );
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                save = ui.button("Save").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter));
+                discard = ui.button("Don't save").clicked();
+                cancel =
+                    ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+            });
+        });
+        if cancel {
+            self.close_ask = false;
+            self.status = "Close cancelled: the project is still open.".into();
+            return;
+        }
+        if save {
+            // where it has a file already, there; otherwise Save as asks
+            if std::path::Path::new(&self.path).exists() {
+                self.save();
+            } else {
+                self.save_as();
+            }
+            if self.unsaved() {
+                // the save was cancelled or failed: the project stays open
+                self.close_ask = false;
+                return;
+            }
+        }
+        if save || discard {
+            self.close_ask = false;
+            self.close_ok = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+}
+
 /// Where a manual update check looks: the project's releases page. Nothing
 /// is fetched in the background; the page opens in the browser when asked.
 pub(crate) const RELEASES: &str = "https://github.com/chopinregis/CreaBIM/releases";

@@ -5908,10 +5908,16 @@ fn draw_item_xray(
             points,
             ..
         } if !selected && host() => {
-            let pts: Vec<Pos2> = points.iter().map(|p| xf.to_screen(*p)).collect();
-            painter.add(egui::Shape::convex_polygon(
-                pts,
+            // filled as it is: a curved wall's band is not convex
+            fill_polygon(
+                painter,
+                xf,
+                points,
                 Color32::from_gray(150).gamma_multiply(0.18),
+            );
+            let pts: Vec<Pos2> = points.iter().map(|p| xf.to_screen(*p)).collect();
+            painter.add(egui::Shape::closed_line(
+                pts,
                 Stroke::new(1.2, Color32::from_gray(90)),
             ));
         }

@@ -21,6 +21,9 @@ use std::collections::HashSet;
 pub struct Part {
     pub points: Vec<DVec3>,
     pub edges: Vec<(DVec3, DVec3)>,
+    /// Its triangles, as indices into `points`: filled as they are, so a
+    /// curved wall tints as a band, not the disc its hull would make.
+    pub tris: Vec<[u32; 3]>,
 }
 
 /// What a click would place.
@@ -100,6 +103,7 @@ pub fn simulate(
             .map(|v| glam::Vec3::from_array(*v).as_dvec3())
             .collect(),
         edges: crate::snaps::feature_edges(mesh),
+        tris: mesh.indices.chunks(3).map(|t| [t[0], t[1], t[2]]).collect(),
     };
     let mut parts: Vec<Part> = creabim_geom::scene::build_scene_of(doc.model(), Some(&new))
         .into_iter()
@@ -167,6 +171,7 @@ pub fn cached(
                 return g.clone();
             }
         }
+        let _p = crate::app::Perf::new("ghost");
         let g = simulate(model, level, tool, p, state);
         *c = Some((key, g.clone()));
         g
@@ -181,12 +186,33 @@ pub fn draw(
     accent: Color32,
 ) {
     let fill = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 90);
+    // a closed body covers most of the screen it takes twice (its front
+    // and its back), so each triangle at half: about the hull's tint
+    let half = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 48);
     let line = Stroke::new(1.2, accent);
     for part in &ghost.parts {
-        let pts: Vec<Pos2> = part.points.iter().filter_map(|p| project(*p)).collect();
-        let hull = hull(&pts);
-        if hull.len() >= 3 {
-            painter.add(Shape::convex_polygon(hull, fill, Stroke::NONE));
+        if part.tris.is_empty() {
+            let pts: Vec<Pos2> = part.points.iter().filter_map(|p| project(*p)).collect();
+            let hull = hull(&pts);
+            if hull.len() >= 3 {
+                painter.add(Shape::convex_polygon(hull, fill, Stroke::NONE));
+            }
+        } else {
+            let scr: Vec<Option<Pos2>> = part.points.iter().map(|p| project(*p)).collect();
+            let mut mesh = egui::Mesh::default();
+            for t in &part.tris {
+                let (Some(a), Some(b), Some(c)) =
+                    (scr[t[0] as usize], scr[t[1] as usize], scr[t[2] as usize])
+                else {
+                    continue;
+                };
+                let i = mesh.vertices.len() as u32;
+                for p in [a, b, c] {
+                    mesh.colored_vertex(p, half);
+                }
+                mesh.add_triangle(i, i + 1, i + 2);
+            }
+            painter.add(Shape::mesh(mesh));
         }
         for (a, b) in &part.edges {
             if let (Some(a), Some(b)) = (project(*a), project(*b)) {

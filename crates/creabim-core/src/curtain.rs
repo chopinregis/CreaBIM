@@ -328,9 +328,65 @@ const PARALLEL: f64 = 0.0175;
 /// running along it, its centreline within the host's thickness, and
 /// overlapping it along its length and up its height. The opening is
 /// where they overlap, in the host's own coordinates.
+/// [`void_of`] for curved walls: only a curtain wall on the same arc as
+/// its host sits in it (the other half of a circle shares the host's chord
+/// line, and cut it through); the hole runs round the arc.
+fn arc_void(model: &Model, host_id: ElementId, host: &Wall, cw: &Wall) -> Option<Opening> {
+    use crate::sketch::Curve;
+    let (
+        Curve::Arc {
+            center: c1,
+            radius: r1,
+            ..
+        },
+        Curve::Arc {
+            center: c2,
+            radius: r2,
+            ..
+        },
+    ) = (host.curve(), cw.curve())
+    else {
+        return None;
+    };
+    if c1.distance(c2) > 1e-3 || (r1 - r2).abs() > host.thickness / 2.0 + 1e-3 {
+        return None;
+    }
+    // its middle on the host's stretch of the circle, not past its ends
+    let mid = cw.place(cw.length() / 2.0, 0.0);
+    if host.along(mid).1 > host.thickness / 2.0 + 1e-3 {
+        return None;
+    }
+    let (a, b) = (host.along(cw.start).0, host.along(cw.end).0);
+    let (u0, u1) = (a.min(b), a.max(b));
+    let (h0, c0) = (
+        crate::walls::base_z(model, host),
+        crate::walls::base_z(model, cw),
+    );
+    let v0 = c0.max(h0) - h0;
+    let v1 = (c0 + cw.height).min(h0 + host.height) - h0;
+    if u1 - u0 < 0.05 || v1 - v0 < 0.05 {
+        return None;
+    }
+    Some(Opening {
+        host: host_id,
+        kind: OpeningKind::Hole,
+        offset: u0,
+        sill: v0,
+        width: u1 - u0,
+        height: v1 - v0,
+        material: None,
+        frame: Default::default(),
+        flip_hand: false,
+        flip_facing: false,
+    })
+}
+
 pub fn void_of(model: &Model, host_id: ElementId, host: &Wall, cw: &Wall) -> Option<Opening> {
     if cw.curtain.is_none() || host.curtain.is_some() || host.length() < 1e-6 {
         return None;
+    }
+    if host.is_arc() || cw.is_arc() {
+        return arc_void(model, host_id, host, cw);
     }
     let d = host.direction();
     let e = cw.direction();
@@ -426,6 +482,32 @@ pub fn wall_openings(model: &Model, id: ElementId) -> Vec<Opening> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_curtain_half_of_a_circle_cuts_nothing_from_the_solid_half() {
+        use crate::{Element, Level};
+        use glam::DVec2;
+        let lv = Element::new(
+            "L0",
+            ElementKind::Level(Level {
+                elevation: 0.0,
+                height: 3.0,
+            }),
+        );
+        let (a, b) = (DVec2::new(-3.0, 0.0), DVec2::new(3.0, 0.0));
+        let mut solid = Wall::new(lv.id, a, b, 0.3, 3.0);
+        solid.bulge = 1.0;
+        let mut glass = Wall::new(lv.id, b, a, 0.15, 3.0);
+        glass.bulge = 1.0;
+        glass.curtain = Some(CurtainGrid::default());
+        let (s, g) = (
+            Element::new("Wall", ElementKind::Wall(solid)),
+            Element::new("Glass", ElementKind::Wall(glass)),
+        );
+        let sid = s.id;
+        let m = Model::from_elements([lv, s, g]).unwrap();
+        assert!(voids_in(&m, sid).is_empty());
+    }
 
     /// A level with a 10 m wall along x and a 3 m curtain wall at `at`
     /// along it, `off` to its side.

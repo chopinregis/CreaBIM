@@ -863,6 +863,29 @@ pub fn properties(ui: &mut egui::Ui, model: &Model, kind: &mut ElementKind) -> &
             if num(ui, "Base offset", &mut r.base_offset, -10.0, 100.0) {
                 label = "Roof base offset"
             }
+            // where the eaves end: a steep pitch with a long overhang hangs
+            // them down past the walls, which then look gone (seen
+            // replaying a 55° hip with 2 m eaves over 3 m walls)
+            if r.shape != RoofShape::Flat && r.overhang > 0.0 {
+                let drop = r.overhang * r.pitch.to_radians().tan();
+                let floor = creabim_core::members::elevation(model, r.level);
+                let eave = r.base(model) - drop - floor;
+                let text = format!(
+                    "Eaves {} above the floor: the overhang drops them {} below the base.",
+                    crate::units::len(eave),
+                    crate::units::len(drop)
+                );
+                if eave < 2.1 {
+                    crate::props::note(
+                        ui,
+                        format!(
+                            "{text} They hang below head height and hide the walls under them: shorten the overhang, lower the pitch or raise the base offset."
+                        ),
+                    );
+                } else {
+                    weak(ui, text);
+                }
+            }
             let n = r.boundary.len();
             if matches!(r.shape, RoofShape::Shed | RoofShape::Gable) && n > 0 {
                 let what = if r.shape == RoofShape::Shed {

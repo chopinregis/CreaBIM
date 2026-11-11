@@ -149,6 +149,10 @@ pub struct CreaBimApp {
     /// Report a problem asked for: the themed window is open; whether to
     /// put the project in.
     report_ask: Option<bool>,
+    /// Closing with unsaved changes: Save, Don't save or Cancel is asked.
+    close_ask: bool,
+    /// The close was settled (saved, or the changes let go): let it through.
+    close_ok: bool,
     /// What the area in front showed last frame: a Masters or Profile view
     /// coming forward brings its own Properties tab (MU40).
     prop_front: Option<crate::areas::Shows>,
@@ -394,6 +398,8 @@ impl CreaBimApp {
             masters: Default::default(),
             log_ui: Default::default(),
             report_ask: None,
+            close_ask: false,
+            close_ok: false,
             prop_front: None,
             camera: OrbitCamera::default(),
             cube: Default::default(),
@@ -10970,6 +10976,12 @@ impl eframe::App for CreaBimApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let _perf = Perf::new("frame");
+        // never lose work to a close: unsaved changes ask first
+        if ui.ctx().input(|i| i.viewport().close_requested()) && !self.close_ok && self.unsaved() {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.close_ask = true;
+        }
         let ctx = ui.ctx().clone();
         crate::trace::hold(ctx.input(|i| i.pointer.any_down()));
         let m = ctx.input(|i| i.modifiers);
@@ -11053,12 +11065,18 @@ impl eframe::App for CreaBimApp {
             0.0
         });
         crate::snaps::set_current_marks(live.marks_len());
-        self.step_prompt(&ctx);
-        self.workspace_prompt(&ctx);
-        self.area_keys(&ctx);
-        self.shortcuts(&ctx);
-        self.keep_edit_mode();
-        self.refresh_spotlight();
+        {
+            let _p = Perf::new("frame: prompts and keys");
+            self.step_prompt(&ctx);
+            self.workspace_prompt(&ctx);
+            self.area_keys(&ctx);
+            self.shortcuts(&ctx);
+        }
+        {
+            let _p = Perf::new("frame: edit mode and spotlight");
+            self.keep_edit_mode();
+            self.refresh_spotlight();
+        }
         let dropped: Vec<String> = ctx.input(|i| {
             i.raw
                 .dropped_files
@@ -11075,6 +11093,7 @@ impl eframe::App for CreaBimApp {
             self.open_path(&path);
         }
         if self.live_reload {
+            let _p = Perf::new("frame: watch files");
             for f in self.watch.changed(self.doc.model()) {
                 self.reload(&f);
             }
@@ -11116,6 +11135,8 @@ impl eframe::App for CreaBimApp {
                 .default_size(220.0)
                 .show(ui, |ui| self.outliner(ui));
         }
+        // to the end of the frame from here: Properties, the areas and on
+        let _pr = Perf::new("frame: properties on");
         let right_folded = self.shell.settings.right_folded;
         let right = egui::Panel::right(if right_folded {
             "properties_rail"
@@ -11267,6 +11288,8 @@ impl eframe::App for CreaBimApp {
             self.shell.settings.store();
         }
 
+        // to the end of the frame from here: the areas, then what follows
+        let _pa = Perf::new("frame: areas on");
         egui::CentralPanel::default().show(ui, |ui| {
             let full = ui.available_rect_before_wrap();
             self.mat.area = Some(full);
@@ -11357,6 +11380,7 @@ impl eframe::App for CreaBimApp {
         self.import_report_window(&ctx);
         self.help_window(&ctx);
         self.report_window(&ctx);
+        self.close_window(&ctx);
         // a plan in its own window keeps egui's menus
         self.plan.web_menus = false;
 

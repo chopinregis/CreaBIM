@@ -134,14 +134,12 @@ pub fn wall_layer_mesh_v(
         // the end grid lines and gap sides follow the joins; a curved
         // wall is laid round its arc, its ends square
         let xy = if wall.is_arc() {
-            let u = if u <= 1e-9 {
-                -ext[0]
-            } else if u >= len - 1e-9 {
-                len + ext[1]
+            // its ends as its joins put them, along its tangent there
+            if u <= 1e-9 || u >= len - 1e-9 {
+                wall.place_end(u > 1e-9, ends.place_layer(wall, u, w, core, ext), w)
             } else {
-                u
-            };
-            wall.place(u, w)
+                wall.place(u, w)
+            }
         } else {
             let u = ends.place_layer(wall, u, w, core, ext);
             wall.start + d * u + n2 * w

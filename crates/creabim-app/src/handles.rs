@@ -923,13 +923,14 @@ pub fn handles(model: &Model, id: ElementId, face: Option<usize>) -> Vec<Handle>
                 return vec![];
             };
             let z0 = elevation(model, Some(w.level)) + w.base_offset;
-            let u = w.direction();
+            let mid = o.offset + o.width / 2.0;
+            // along the wall at the opening: on a curved wall its tangent
+            // there, and the grips on the arc where the opening is
+            let u = w.tangent_at(mid);
             // on the jambs, at the middle of the wall's depth, so they read
             // as part of the opening at every scale (A5-5); not on a face,
             // where at 1:10 they floated beside it
-            let face = w.start;
-            let at = |along: f64, up: f64| (face + u * along).extend(z0 + up);
-            let mid = o.offset + o.width / 2.0;
+            let at = |along: f64, up: f64| w.place(along, 0.0).extend(z0 + up);
             let mut out = vec![
                 line(
                     HandleKind::OpeningJamb { right: false },
