@@ -262,7 +262,7 @@ def layout(*, depth: int, current: str, title: str, desc: str, body: str, path: 
     b = "../" * depth
     links = "".join(
         f'<a href="{b}{href}"{" aria-current=page" if label == current else ""}>{label}</a>' for href, label in NAV)
-    full_title = "CreaBIM: free, open-source BIM modeller" if title is None else f"{title} · CreaBIM"
+    full_title = "CreaBIM: design-first BIM, modelled like Blender" if title is None else f"{title} · CreaBIM"
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -349,8 +349,8 @@ def home(rel):
   <section class="hero gutter">
     <div class="ident" id="ident" role="img" aria-label="The CreaBIM logo: a weaver beside the woven nest it built"></div>
     <a class="pill" href="download.html"><b>{v}</b>Free and open source<span class="pill-x"> · Windows and Linux</span></a>
-    <h1>One model.<span>Every drawing.</span></h1>
-    <p class="lede">CreaBIM is a free BIM modeller for architects. Model your building in 3D, and its plans, sections, elevations, sheets, schedules, quantities and IFC follow on their own: always in step, on your own computer, with no subscription.</p>
+    <h1>Modelled like Blender.<span>Made for architects.</span></h1>
+    <p class="lede">One model for 3D, plans, sections, sheets, schedules, quantities and IFC. Free, open source, offline.</p>
     <div class="cta">
       <a class="btn primary" href="download.html"><svg aria-hidden="true"><use href="#i-dl"/></svg>Download CreaBIM {v}</a>
       <a class="btn" href="tutorials/index.html"><svg aria-hidden="true"><use href="#i-book"/></svg>Start the tutorial</a>
@@ -373,6 +373,17 @@ def home(rel):
     </div>
   </section>
 
+  <section class="sec gutter" id="about">
+    <div class="wrap" style="max-width:860px">
+      <div class="head">
+        <div class="kicker"><span class="n">01</span>About CreaBIM</div>
+        <h2>Design-first BIM, <span class="acc">modelled like Blender.</span></h2>
+        <p class="lede">CreaBIM is modelled like Blender, made for architects. It offers direct modelling for design work, not only documentation: Edit mode for points, edges and faces, masses with modifiers, profiles, Divide, view areas and workspaces.</p>
+        <p class="lede">Its own workflow, a clean interface, and a Blender modeller's instincts in a BIM tool.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="proof" aria-label="At a glance">
     <ul class="wrap gutter">
       <li><b>640<small>elements</small></b><span>in the starter house, footings to fixtures</span></li>
@@ -385,7 +396,7 @@ def home(rel):
   <section class="sec gutter" id="seam">
     <div class="wrap">
       <div class="head">
-        <div class="kicker"><span class="n">01</span>The seam</div>
+        <div class="kicker"><span class="n">02</span>The seam</div>
         <h2>Design in one tool. Document in <span class="acc">another.</span></h2>
         <p class="lede">Most practices run two programs and a handover between them: a modeller for the design, a drafting or BIM tool for the permit set. Every revision crosses that boundary by hand, so the drawing you submit is only as current as the last time someone updated it.</p>
       </div>
@@ -417,7 +428,7 @@ def home(rel):
   <div class="night"><section class="sec gutter" id="speed">
     <div class="wrap">
       <div class="head">
-        <div class="kicker"><span class="n">02</span>Performance</div>
+        <div class="kicker"><span class="n">03</span>Performance</div>
         <h2>Small, fast, and <span class="acc">quiet.</span></h2>
         <p class="lede">CreaBIM is written in Rust and draws on your graphics card. Sections and 3D drawings are built on every core in the background, so dragging a wall never waits for the other views.</p>
       </div>
@@ -435,7 +446,7 @@ def home(rel):
     <div class="wrap two mid">
       <div class="stack">
         <div class="head" style="margin:0">
-          <div class="kicker"><span class="n">03</span>Drawing quality</div>
+          <div class="kicker"><span class="n">04</span>Drawing quality</div>
           <h2>Drawn from the model, not <span class="acc">traced over it.</span></h2>
           <p class="lede">Sections and elevations are generated from the model. Cut walls, slabs and openings are drawn heavy; what lies beyond is projected with hidden lines removed.</p>
         </div>
@@ -466,7 +477,7 @@ def home(rel):
       </figure>
       <div class="stack first-mobile">
         <div class="head" style="margin:0">
-          <div class="kicker"><span class="n">04</span>Profiles</div>
+          <div class="kicker"><span class="n">05</span>Profiles</div>
           <h2>Your own sections, <span class="acc">drawn once.</span></h2>
           <p class="lede">Draw a coping, a gutter or a steel section in its own view, with snaps, guides and typed lengths, then use it for sweeps, columns, beams and railings. Change it later, and the elements made with it take the new shape when you apply it.</p>
         </div>
@@ -482,7 +493,7 @@ def home(rel):
   <div class="night"><section class="sec gutter" id="keys">
     <div class="wrap keys">
       <div class="stack" style="gap:18px">
-        <div class="kicker"><span class="n">05</span>Workflow</div>
+        <div class="kicker"><span class="n">06</span>Workflow</div>
         <h2 style="font-size:clamp(30px,4.6vw,52px)">Modelled like Blender. <span class="acc">Made for architects.</span></h2>
         <p class="lede">The dense, keyboard-first way of working modellers love, given to buildings instead of characters: areas you split and arrange, panels of tabs, a key for every move and a value typed when it must be exact. What you move are walls, slabs and sheets.</p>
         <ul class="legend">
@@ -510,7 +521,7 @@ def home(rel):
   <section class="sec gutter" id="open">
     <div class="wrap">
       <div class="head">
-        <div class="kicker"><span class="n">06</span>Open by design</div>
+        <div class="kicker"><span class="n">07</span>Open by design</div>
         <h2>Your work stays <span class="acc">yours.</span></h2>
       </div>
       <div class="grid3">
@@ -524,7 +535,7 @@ def home(rel):
   <section class="sec gutter" id="next">
     <div class="wrap">
       <div class="head">
-        <div class="kicker"><span class="n">07</span>Go further</div>
+        <div class="kicker"><span class="n">08</span>Go further</div>
         <h2>See it, learn it, <span class="acc">try it.</span></h2>
       </div>
       <div class="grid3">
@@ -537,7 +548,7 @@ def home(rel):
 
   <section class="sec gutter" id="faq">
     <div class="wrap" style="max-width:820px">
-      <div class="head"><div class="kicker"><span class="n">08</span>Good to know</div></div>
+      <div class="head"><div class="kicker"><span class="n">09</span>Good to know</div></div>
       <details><summary>Is it really free?</summary><p>Yes. CreaBIM is open-source software under GPL-3.0: free to use, study, change and share.</p></details>
       <details><summary>Does it need the internet?</summary><p>No. It runs on your computer and never needs a connection.</p></details>
       <details><summary>Can I use it on real projects?</summary><p>Not yet for production work. It's ready to explore and to model with; check <a href="features.html#status">where it stands</a> before you rely on it.</p></details>
@@ -936,7 +947,7 @@ def main():
         p.write_text(layout(depth=depth, current=current, title=title, desc=desc, body=body, path=path), encoding="utf-8")
 
     write("index.html", 0, "Home", None,
-          "CreaBIM is a free, open-source BIM modeller: model a building in 3D, and its plans, sections, sheets, schedules, quantities and IFC follow from the same model.",
+          "Design-first BIM, modelled like Blender. CreaBIM is made for architects: one model for 3D, plans, sections, sheets, schedules, quantities and IFC. Free, open source, offline.",
           home(rels[0]))
     write("features.html", 0, "Features", "Features",
           "What CreaBIM does: walls, slabs, roofs and structure; plans, sections, sheets and schedules from one model; IFC, glTF, FreeCAD and DXF exchange.",
