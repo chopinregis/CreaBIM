@@ -7,6 +7,9 @@ quantities and IFC. Works offline, with no account.
 Run it
   Windows: double-click CreaBIM.exe. If Windows says the publisher is
            unknown, choose "More info", then "Run anyway".
+  Ubuntu:  install the .deb package; launch CreaBIM from your applications menu
+  Red Hat/CentOS: install the .rpm package; launch CreaBIM from your applications menu
+  macOS:   open CreaBIM.app from the disk image; move it to Applications
   Linux:   ./creabim  (needs WebKitGTK 4.1 and GTK 3)
 
 It opens on a starter house to explore. File > New starts your own.
