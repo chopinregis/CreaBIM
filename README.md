@@ -30,7 +30,9 @@
 
 **CreaBIM is developed and designed by Regis Benoit Brice Nde Tene.** This repository is its official source. Forks and changes are welcome under the GPL.
 
-**Status: 1.0. Ready to explore, not yet for production work.** The whole path works, from modelling to permit sheets and IFC. Some parts are young: IFC export of some elements, Blender exchange, DXF (lines only) and stairs. Everything that doesn't work yet is listed in [docs/KNOWN_GAPS.md](docs/KNOWN_GAPS.md).
+**Status: 1.1. Ready to explore, not yet for production work.** The whole path works, from modelling to permit sheets and IFC. Some parts are young: IFC export of some elements, Blender exchange, DXF (lines only) and stairs. Everything that doesn't work yet is listed in [docs/KNOWN_GAPS.md](docs/KNOWN_GAPS.md).
+
+**New in 1.1:** box, circle and lasso selection with a live count · a Blender-style Edit mode (points, edges and faces; G, R, S) · curved, circular and rectangular walls · twelve modifiers for masses · profiles with arcs for columns, beams and railings, and beams drawn on roof slopes · Masters: title blocks drawn in a view of their own, and pictures and logos on sheets · a Divide bar and a Split tool · eight themes and a selection colour of your own · a Log view and *Help › Report a problem*. The full list is in [docs/releases/1.1.0.md](docs/releases/1.1.0.md).
 
 ## Get it
 
@@ -58,7 +60,7 @@ One edit lands in every view, in the same moment and the same undo step.
 
 ## At a glance
 
-| **640** elements | **11** sheets | **3** IFC schemas | **1** model |
+| **640** elements | **13** sheets | **3** IFC schemas | **1** model |
 |:---:|:---:|:---:|:---:|
 | in the starter house, footings to fixtures | drawn from one model, as vector PDF | IFC2X3, IFC4 and IFC4X3 read | behind every view, sheet, schedule and export |
 
@@ -121,20 +123,21 @@ CreaBIM opens on the **Maple Lane House**, a contemporary two-storey family hous
 - **Views are model elements:** plans, sections and elevations live in the model, so they save, undo and update with it. Pick one from the *View* list or the *Views* group in the model list.
 - **2D view in three places:** docked beside 3D, in its own window (for a second monitor), or overlaid inside the 3D workspace. *View → Show the 2D view in 3D space* draws a plan at its cut height, or a section standing on its section line.
 - **View areas and workspaces:** split the window into areas that each show 3D, a view or a sheet, with that view's controls in the area's header. Drag an area's corner grip to split or join areas. Four workspaces (Model, Drawing, Document, Sheets) follow the drawing you are in, and you can save your own. Ctrl+Space shows one area alone, Ctrl+PgUp/PgDn steps through workspaces, and `/` isolates the selection.
-- **Sheets with live views:** place plans, sections, elevations and 3D views on A0 to A4 sheets with a title block. Views on a sheet are generated from the current model, so they never go stale. Drag a view to move it; double-click it to work on the model right there, with the same tools as the view itself (orbit a 3D view by dragging). *File → Export sheets as PDF* writes every sheet as a vector PDF page.
+- **Sheets with live views:** place plans, sections, elevations, 3D views and pictures on A0 to A4 sheets with a title block. Title blocks are *masters*, drawn in a Masters view with lines, shapes, text, fields and your logo; change one and every sheet on it follows. Views on a sheet are generated from the current model, so they never go stale. Drag a view to move it; double-click it to work on the model right there, with the same tools as the view itself (orbit a 3D view by dragging). *File → Export sheets as PDF* writes every sheet as a vector PDF page.
 - **Clean joins and materials:** wall corners are mitred and walls meeting another wall's side are trimmed to its face, in 3D, plans, sections and IFC. Walls cut through the slabs that sit in them. Each material has its own hatch pattern and colour, used for cut faces, shaded views and 3D, and exported to IFC.
 - **Dimensions and tags:** draw dimensions that snap to wall corners, openings and levels. They stay attached, so moving a door updates its dimensions. Select a wall, grid line, door or column to see temporary dimensions to its neighbours: click one and type to move it there, or lock it with the padlock to hold the spacing. Tag doors and windows with their marks (D01, W01) and walls with their material and thickness, one at a time or all at once.
 - **Schedules:** door, window, wall, slab, structure, furniture and fixture schedules are views too. Edit sizes and materials right in the table, place them on sheets and export them as CSV or to Excel.
 - **Take-off:** quantities by material and assembly layer (area, volume, length, pieces), priced by a rate on each material, in a live Take-off table and in the Excel export.
 - **Shaded and cropped views:** 3D views and elevations can be shaded in material colours, on screen, on sheets and in the PDF. Crop any view on a sheet by dragging its crop frame.
 - **Sections and elevations generated from the model:** cut walls, slabs and openings are drawn heavy; what lies beyond is projected with hidden lines removed. Level datums are labelled. Section and elevation marks appear in plans. Draw new ones with the *Section* and *Elevation* tools, in plans or inside another section, and drag a selected section line by its ends or middle. Walls, doors, windows, slabs and masses can be drawn in sections and elevations too. Progress screenshots are in [docs/evolution](docs/evolution).
-- **BIM elements:** levels, grids, walls, curtain walls, slabs, roofs, stairs, railings, shafts, columns, beams and footings. Doors, windows and openings are hosted by walls and cut real openings. Walls, slabs and roofs can be layered assemblies, and most elements can share types.
+- **BIM elements:** levels, grids, walls (straight, arc, circle or a four-wall rectangle), curtain walls, slabs, roofs, stairs, railings, shafts, columns, beams and footings. Doors, windows and openings are hosted by walls and cut real openings. Walls, slabs and roofs can be layered assemblies, and most elements can share types. Columns and beams take any profile from the library; beams can be drawn on a roof slope or a wall, chained with mitred or butt corners.
 - **Furniture and fixtures:** a catalogue of furniture and electrical, plumbing and HVAC fixtures, each with a 3D shape, a plan symbol and its IFC class, listed in their own schedules.
-- **Freeform meshes:** add a mass, click a face in 3D and extrude (E), taper, move or subdivide it (Catmull-Clark). Give any mesh an IFC class such as `IfcRoof` and it exports as that.
-- **Modifier stack:** give a mass array, mirror, solidify and subdivision modifiers. They change its shape without touching its mesh, so you can turn them off, reorder them or change their values at any time, and apply the top one to make it permanent. Faces stay clickable through the modifiers.
-- **Sketches on workplanes:** the Sketch tool draws lines on any face in 3D, on a level in a plan, or on the section plane in a section, with lines, arcs (A) and circles (C). Length, equal, parallel, perpendicular, horizontal, vertical, coincident and radius constraints drive its shape. A closed sketch extrudes (E) into a mass; an open one into a surface that Solidify thickens.
+- **Freeform meshes:** add a mass, click a face in 3D and extrude (E), inset, taper, move or subdivide it (Catmull-Clark). In Edit mode (Tab), pick points, edges and faces as in Blender and move (G), turn (R) or scale (S) them. Give any mesh an IFC class such as `IfcRoof` and it exports as that.
+- **Modifier stack:** give a mass array, radial and path array, mirror, bevel, shell, solidify, slice by levels, panelize, louvres, taper, twist and smooth modifiers. They change its shape without touching its mesh, so you can turn them off, reorder them or change their values at any time, and apply one to make it permanent. Faces stay clickable through the modifiers.
+- **Sketches on workplanes:** the Sketch tool draws lines on any face in 3D, on a level in a plan, or on the section plane in a section, with lines, arcs (A), circles (C) and rectangles (R). Length, equal, parallel, perpendicular, horizontal, vertical, coincident and radius constraints drive its shape. A closed sketch extrudes (E) into a mass; an open one into a surface that Solidify thickens.
 - **Move, rotate, scale, duplicate and stretch:** G, R and S (and Shift+D to copy) work Blender-style on the selection in 3D, plans and sections, with axis keys and typed values. R then X or Y tilts; S then an axis scales along it only. Pick the pivot (median, bounds, each element's own, the active element or a 3D cursor placed with Shift+right-click).
-- **Selecting many:** Shift+click adds or removes, Ctrl+A selects everything, and a box picks what lies inside (drag left to right) or what it touches (right to left), on empty paper in plans and sections or after pressing B in 3D. Delete, move, copy and hide act on all of it.
+- **Selecting many:** Shift+click adds or removes, Ctrl+A selects everything, and a box, circle or lasso picks what lies inside (drag left to right) or what it touches (right to left), with a live count, on empty paper in plans and sections or after pressing B in 3D. The *Select* menu adds invert, select linked, select random, all of a type and select similar. Delete, move, copy and hide act on all of it.
+- **Divide and Split:** cut a wall, beam or part into even parts, panels or courses from a bar over the views, or split anything along a line you click.
 - **Copy, paste, hide:** Ctrl+C, Ctrl+X and Ctrl+V copy elements with their openings, also between two CreaBIM windows. H hides the selection, Shift+H shows only it, Alt+H shows everything again.
 - **Open and save with the system file picker,** with a list of recent files. In plans, drag a selected element to move it, or its square grips to stretch walls, slabs and grids; joined walls follow.
 - **Undo and redo** for every edit. Dragging a value in the properties panel undoes as one step.
@@ -208,7 +211,7 @@ cargo run -p creabim-cli -- export-json house.creabim house.json  # and back to 
 | Crop a view on a sheet | Select the viewport, drag the dashed frame's edge handles, or set the crop in Properties |
 | Materials | Select a material in the model list to change its hatch and colour; pick a wall's or slab's material in Properties |
 | Freeform mass | Mass tool, click to place; click a face in 3D, then E to extrude |
-| Modifiers | Select a mass, then *Add modifier…* in Properties. Tick to turn one off; Up, Down, Remove; Apply bakes the top one into the mesh |
+| Modifiers | Select a mass, then *+ Add modifier* in its Modifiers tab. Each is a card: its icon turns it off, its `…` menu applies, duplicates or moves it, the cross removes it |
 | Sketch | Sketch tool. In 3D, click a face to sketch on it (or the ground); in a plan or section, click on the drawing. Click corners; click the first corner to close it, Enter or right-click to leave it open. Shift keeps lines square. Then E extrudes it by the distance in Properties |
 | Move, rotate, scale | Pointer over a view, selected element: G, R or S. Move the pointer or type a value; X, Y or Z keeps to an axis; Ctrl snaps; click or Enter finishes, Esc or right-click cancels. Shift+D copies first |
 | Stretch, drag (plan) | Drag a selected element to move it, or its square grips: wall ends, slab corners and edge midpoints, grid ends |
@@ -228,7 +231,7 @@ Files: *File → Save* and *Open* use the system file picker and keep a list of 
 | `creabim-app` | Desktop app: egui UI, wgpu 3D viewport rendered offscreen so any number of live views can exist. |
 | `creabim-cli` | Command-line export tools. |
 
-Next steps follow the roadmap's Phase 1 plan, towards a Windows installer.
+What comes next is in [docs/ROADMAP.md](docs/ROADMAP.md); ideas are welcome in [Discussions](https://github.com/chopinregis/CreaBIM/discussions).
 
 ## License
 
