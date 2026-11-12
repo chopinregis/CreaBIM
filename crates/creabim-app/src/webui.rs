@@ -139,6 +139,9 @@ impl WebUi {
                     size: PhysicalSize::new(10, 10).into(),
                 })
                 .with_background_color(BACKGROUND)
+                // the popup's corners can be round (Save the changes):
+                // what its page leaves clear shows the app behind
+                .with_transparent(pane == Pane::Popup)
                 .with_ipc_handler(move |r| {
                     if let Ok(body) = serde_json::from_str(r.body()) {
                         inbox.lock().unwrap().push(Msg { pane, body });

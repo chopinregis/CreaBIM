@@ -3777,9 +3777,57 @@ impl CreaBimApp {
     }
 
     fn close_popup(&mut self) {
+        // the Save the changes window goes only by its own buttons and keys
+        if self.close_ask
+            && self
+                .shell
+                .popup
+                .as_ref()
+                .is_some_and(|p| p.key == CLOSE_KEY)
+        {
+            return;
+        }
         self.shell.popup = None;
         if let Some(web) = &mut self.shell.web {
             web.hide_popup();
+        }
+    }
+
+    /// The Save the changes window, in the middle of the window, open
+    /// while the close is asked (it takes the place of any menu).
+    pub(super) fn show_close_dialog(&mut self, ctx: &egui::Context) {
+        if self
+            .shell
+            .popup
+            .as_ref()
+            .is_some_and(|p| p.key == CLOSE_KEY)
+        {
+            return;
+        }
+        let screen = ctx.viewport_rect();
+        // the page says how tall it is once drawn
+        let size = egui::vec2(480.0, 160.0);
+        self.shell.popup = Some(Popup {
+            key: CLOSE_KEY.into(),
+            at: screen.center() - size / 2.0,
+            up: None,
+            above: None,
+            size,
+        });
+        self.shell.focus_popup = true;
+    }
+
+    pub(super) fn hide_close_dialog(&mut self) {
+        if self
+            .shell
+            .popup
+            .as_ref()
+            .is_some_and(|p| p.key == CLOSE_KEY)
+        {
+            self.shell.popup = None;
+            if let Some(web) = &mut self.shell.web {
+                web.hide_popup();
+            }
         }
     }
 
@@ -3802,6 +3850,11 @@ impl CreaBimApp {
                 }
             }
             "close" => self.close_popup(),
+            // Save the changes: save, discard or cancel
+            "closeask" => {
+                let what = b["do"].as_str().unwrap_or("").to_string();
+                self.close_do(ctx, &what);
+            }
             "bar" => self.shell.bar = Some(crate::optionbar::Measure::from_json(b)),
             // a double-click in the project browser: a type opens on its
             // own, anything else in the model is framed in 3D
@@ -3876,6 +3929,10 @@ impl CreaBimApp {
                 let up = b["up"].as_f64().map(|u| origin.y + u as f32);
                 let above = b["top"].as_f64().map(|u| origin.y + u as f32);
                 let key = b["key"].as_str().unwrap_or("").to_string();
+                // no menus over the Save the changes window
+                if self.close_ask {
+                    return;
+                }
                 let n = self.menu_items(&key).len() as f32;
                 self.shell.popup = Some(Popup {
                     key,
@@ -3889,9 +3946,10 @@ impl CreaBimApp {
                 // the New project window keeps the size it opened with
                 if let Some(p) = self.shell.popup.as_mut().filter(|p| p.key != "newproject") {
                     let h = b["h"].as_f64().unwrap_or(100.0) as f32;
-                    // the palette keeps the width it was opened with
+                    // the palette and Save the changes keep the width they
+                    // were opened with
                     let w = match p.key.as_str() {
-                        "palette" => p.size.x,
+                        "palette" | CLOSE_KEY => p.size.x,
                         _ => b["w"].as_f64().unwrap_or(200.0) as f32,
                     };
                     p.size = egui::vec2(w, h);
@@ -4240,6 +4298,14 @@ impl CreaBimApp {
                     let state = json!({"theme": self.theme(), "key": p.key, "items": [], "dialog": self.new_project_state()});
                     return (rect, state, false);
                 }
+                // Save the changes: in the middle, as tall as its page asks,
+                // never more than the window (it scrolls then)
+                CLOSE_KEY => {
+                    let room = (screen.size() - egui::vec2(32.0, 32.0)).max(egui::vec2(240.0, 120.0));
+                    let rect = egui::Rect::from_center_size(screen.center(), p.size.min(room));
+                    let state = json!({"theme": self.theme(), "key": p.key, "items": [], "close": self.close_state_json()});
+                    return (rect, state, false);
+                }
                 // a few lines on the tool in use
                 "toolhelp" => {
                     // never over a view's own toolbar or over Properties:
@@ -4407,6 +4473,9 @@ fn opens_up(p: &Popup, screen: egui::Rect) -> Option<f32> {
     let above = top - screen.top() - 6.0;
     (below < p.size.y && above > below).then_some(top)
 }
+
+/// The popup key of the Save the changes window.
+const CLOSE_KEY: &str = "closeask";
 
 fn popup_size(p: &Popup, screen: egui::Rect) -> egui::Vec2 {
     let margin = 6.0;

@@ -151,6 +151,8 @@ pub struct CreaBimApp {
     report_ask: Option<bool>,
     /// Closing with unsaved changes: Save, Don't save or Cancel is asked.
     close_ask: bool,
+    /// Where the Save the changes window is: asking, saving, saved, failed.
+    close_state: appmenu::CloseState,
     /// The close was settled (saved, or the changes let go): let it through.
     close_ok: bool,
     /// What the area in front showed last frame: a Masters or Profile view
@@ -236,6 +238,9 @@ pub struct CreaBimApp {
     /// The model's revision when it was last opened or saved: anything
     /// else is unsaved (A7-8).
     saved_revision: Option<u64>,
+    /// The undo history when it was last opened or saved: how many steps
+    /// and the last one's id, to count the changes since (Save the changes).
+    saved_mark: (usize, Option<creabim_core::document::StepId>),
     /// The window title last set, so it is only sent when it changes.
     title: String,
     /// The status and tool last written to the activity log.
@@ -399,6 +404,7 @@ impl CreaBimApp {
             log_ui: Default::default(),
             report_ask: None,
             close_ask: false,
+            close_state: Default::default(),
             close_ok: false,
             prop_front: None,
             camera: OrbitCamera::default(),
@@ -442,6 +448,7 @@ impl CreaBimApp {
             extrude_distance: 1.0,
             path: "project.creabim".into(),
             saved_revision: None,
+            saved_mark: (0, None),
             title: String::new(),
             logged: (String::new(), None),
             watch: Default::default(),
@@ -572,7 +579,7 @@ impl CreaBimApp {
                 self.watch = Default::default();
                 self.recent.add(path);
                 self.path = path.to_string();
-                self.saved_revision = Some(self.doc.model().revision());
+                self.mark_saved();
                 self.status = format!("Opened {path}");
                 // copies a Duplicate left on their originals (MU24)
                 let stacked = creabim_core::checks::stacked_copies(self.doc.model()).len();
@@ -592,25 +599,53 @@ impl CreaBimApp {
         self.saved_revision != Some(self.doc.model().revision())
     }
 
+    /// The model as it is now counts as saved.
+    fn mark_saved(&mut self) {
+        self.saved_revision = Some(self.doc.model().revision());
+        let steps = self.doc.undo_steps();
+        self.saved_mark = (steps.len(), steps.last().map(|s| s.id));
+    }
+
+    /// How many undo steps were made since it was last opened or saved
+    /// (at least one while it is unsaved).
+    pub(crate) fn changes_since_saved(&self) -> usize {
+        let steps = self.doc.undo_steps();
+        let (len, last) = self.saved_mark;
+        let n = match last {
+            // the step saved last is still in the history: what follows it
+            Some(id) => match steps.iter().rposition(|s| s.id == id) {
+                Some(at) => steps.len() - at - 1,
+                None => steps.len().abs_diff(len),
+            },
+            None => steps.len().abs_diff(len),
+        };
+        if self.unsaved() {
+            n.max(1)
+        } else {
+            n
+        }
+    }
+
     fn save(&mut self) {
+        let r = self.save_file();
+        self.report(r, format!("Saved {}", self.path));
+    }
+
+    /// Write the project to its file, saying why when it can't.
+    pub(crate) fn save_file(&mut self) -> Result<(), String> {
         if self.path.to_ascii_lowercase().ends_with(".json") {
-            let r = std::fs::write(&self.path, self.doc.model().to_json());
-            if r.is_ok() {
-                self.saved_revision = Some(self.doc.model().revision());
-            }
-            self.report(r, format!("Saved {}", self.path));
-            return;
+            std::fs::write(&self.path, self.doc.model().to_json()).map_err(|e| e.to_string())?;
+            self.mark_saved();
+            return Ok(());
         }
         if !self.path.to_ascii_lowercase().ends_with(".creabim") {
             self.path = with_extension(&self.path, "creabim");
         }
-        let r = creabim_store::save(&self.path, &self.doc);
-        if r.is_ok() {
-            let path = self.path.clone();
-            self.recent.add(&path);
-            self.saved_revision = Some(self.doc.model().revision());
-        }
-        self.report(r, format!("Saved {}", self.path));
+        creabim_store::save(&self.path, &self.doc).map_err(|e| e.to_string())?;
+        let path = self.path.clone();
+        self.recent.add(&path);
+        self.mark_saved();
+        Ok(())
     }
 
     fn open_dialog(&mut self) {
