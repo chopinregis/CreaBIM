@@ -75,14 +75,14 @@ jobs:
   linux:
     name: Linux
     needs: meta
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.meta.outputs.tag }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev rpm
       - run: cargo build --release -p creabim-app -p creabim-cli
       - name: Package
         run: |
@@ -105,7 +105,6 @@ jobs:
           VERSION: ${{ needs.meta.outputs.version }}
           DATE: ${{ needs.meta.outputs.date }}
         run: |
-          sudo apt-get install -y rpm
           bash packaging/linux/make-rpm.sh "$VERSION" "$DATE" target/release \
             "CreaBIM-${VERSION}-${DATE}-linux-x64.rpm"
       - uses: actions/upload-artifact@v4
@@ -176,10 +175,10 @@ jobs:
 
           ## Downloads
           - **Windows:** run the \`-setup.exe\` to install (no administrator rights needed; uninstall from Settings › Apps), or unzip the \`.zip\` and run \`CreaBIM.exe\`. If Windows warns about an unknown publisher, choose *More info*, then *Run anyway*.
-          - **Ubuntu:** install the \`.deb\` with \`sudo apt install ./CreaBIM-*-linux-x64.deb\`; launch CreaBIM from your applications menu.
-          - **Fedora and RHEL 10** (glibc 2.35 or later; not RHEL 9): install the \`.rpm\` with \`sudo dnf install ./CreaBIM-*-linux-x64.rpm\`; launch CreaBIM from your applications menu.
-          - **Other Linux distributions:** untar the \`.tar.gz\` and run \`./creabim\` (needs WebKitGTK 4.1 and GTK 3).
-          - **macOS:** open the universal \`.dmg\` and drag CreaBIM to Applications. The app isn't code-signed or notarized yet, so the first time macOS refuses to open it: open *System Settings › Privacy & Security* and choose *Open Anyway*.
+          - **Ubuntu 24.04 and later:** install the \`.deb\` with \`sudo apt install ./CreaBIM-*-linux-x64.deb\`; launch CreaBIM from your applications menu.
+          - **RHEL 10, CentOS Stream 10, and compatible EL10:** install the \`.rpm\` with \`sudo dnf install ./CreaBIM-*-linux-x64.rpm\`; x86-64, glibc 2.39+, GTK 3 and WebKitGTK 4.1 are required.
+          - **Other Linux distributions:** the \`.tar.gz\` requires x86-64, glibc 2.39+, WebKitGTK 4.1 and GTK 3; untar it and run \`./creabim\`.
+          - **macOS:** open the universal \`.dmg\` and drag CreaBIM to Applications. Open the app once; if macOS blocks it, go to *System Settings › Privacy & Security* and choose *Open Anyway*. The app isn't code-signed or notarized yet.
           - Check a download against \`SHA256SUMS.txt\`.
 
           ## Status

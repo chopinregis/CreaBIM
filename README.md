@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/chopinregis/CreaBIM/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/chopinregis/CreaBIM?label=download&color=4F6B4C"></a>
+  <a href="https://github.com/chopinregis/CreaBIM/releases/latest"><img alt="Maintainer's latest stable release" src="https://img.shields.io/github/v/release/chopinregis/CreaBIM?label=download&color=4F6B4C"></a>
   <img alt="Windows and Linux" src="https://img.shields.io/badge/Windows%20%C2%B7%20Linux-x64-3E5A3B">
   <img alt="GPL-3.0" src="https://img.shields.io/badge/licence-GPL--3.0-8FB08A">
   <img alt="IFC4 in and out" src="https://img.shields.io/badge/IFC4-in%20and%20out-6E8C68">
@@ -36,14 +36,32 @@
 
 ## Get it
 
+All download links below go to the maintainer's public stable releases at [chopinregis/CreaBIM](https://github.com/chopinregis/CreaBIM/releases/latest), not this fork's releases or GitHub Actions artifacts.
+
 | | |
 |---|---|
 | **Windows** | Download the `-setup.exe` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest). It installs for you, with no administrator rights; uninstall from Settings › Apps. A portable `.zip` is there too. |
-| **Ubuntu** | Download the `.deb` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest) and install it with `sudo apt install ./CreaBIM-*-linux-x64.deb`. Launch CreaBIM from your applications menu. |
-| **Fedora and RHEL 10** | On x86-64 systems with glibc 2.35 or later (Fedora 36+, RHEL 10 and compatible; not RHEL 9), GTK 3 and WebKitGTK 4.1, download the `.rpm` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest) and install it with `sudo dnf install ./CreaBIM-*-linux-x64.rpm`. Launch CreaBIM from your applications menu. |
-| **Other Linux distributions** | Download the `.tar.gz`, untar it and run `./creabim`. Needs WebKitGTK 4.1 and GTK 3. |
-| **macOS** | Download and open the universal `.dmg` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest), then drag CreaBIM to Applications. The app isn't code-signed or notarized yet, so the first time macOS refuses to open it: open **System Settings › Privacy & Security** and choose **Open Anyway**. |
+| **Ubuntu 24.04 and later** | Download the `.deb` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest) and install it with `sudo apt install ./CreaBIM-*-linux-x64.deb`. Launch CreaBIM from your applications menu. |
+| **RHEL 10, CentOS Stream 10, and compatible EL10** | On x86-64 systems with glibc 2.39 or later, GTK 3 and WebKitGTK 4.1, download the `.rpm` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest) and install it with `sudo dnf install ./CreaBIM-*-linux-x64.rpm`. Launch CreaBIM from your applications menu. |
+| **Other Linux distributions** | The `.tar.gz` requires x86-64, glibc 2.39 or later, WebKitGTK 4.1 and GTK 3. Download it from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest), untar it and run `./creabim`. |
+| **macOS** | Download and open the universal `.dmg` from the [latest release](https://github.com/chopinregis/CreaBIM/releases/latest), then drag CreaBIM to Applications. To bypass Gatekeeper, open the app once; if macOS blocks it, go to **System Settings › Privacy & Security** and choose **Open Anyway**. The app isn't code-signed or notarized yet. |
 | **From source** | Install Rust (stable), then `cargo run --release -p creabim-app`. |
+
+The RPM needs WebKitGTK 4.1, which is provided by EPEL 10. On CentOS Stream 10, enable CRB and EPEL before installing it:
+
+```sh
+sudo dnf config-manager --set-enabled crb
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+```
+
+On RHEL 10, enable CodeReady Builder and EPEL:
+
+```sh
+sudo subscription-manager repos --enable codeready-builder-for-rhel-10-$(arch)-rpms
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+```
+
+Then install the downloaded package with the `dnf install ./CreaBIM-...rpm` command. Compatible EL10 distributions may have equivalent commands for enabling CRB and EPEL.
 
 Windows may warn that the publisher is unknown, because the app isn't code-signed yet: choose *More info*, then *Run anyway*. Each release lists SHA-256 checksums.
 
@@ -164,6 +182,45 @@ cargo test --workspace               # the test suite
 ```
 
 On Linux the app also needs a Vulkan or GL driver and `libxkbcommon-x11` at runtime. CI builds a Windows `.exe` on every pull request, downloadable from the run's artifacts.
+
+### Build release packages
+
+Run these commands from the repository root after installing the stable Rust toolchain. The examples use version `1.1.1` and release date `2026-11-12`; change them to match your release. Each packaging script takes `VERSION DATE TARGET_DIR OUTPUT_FILE`.
+
+#### macOS universal disk image
+
+Build on macOS with Xcode command-line tools installed. The universal `.dmg` contains binaries for both Apple Silicon and Intel Macs:
+
+```sh
+rustup target add x86_64-apple-darwin aarch64-apple-darwin
+export MACOSX_DEPLOYMENT_TARGET=11.0
+cargo build --release --target x86_64-apple-darwin -p creabim-app -p creabim-cli
+cargo build --release --target aarch64-apple-darwin -p creabim-app -p creabim-cli
+mkdir -p target/release-macos-universal
+lipo -create target/x86_64-apple-darwin/release/creabim-app \
+  target/aarch64-apple-darwin/release/creabim-app \
+  -output target/release-macos-universal/creabim-app
+lipo -create target/x86_64-apple-darwin/release/creabim \
+  target/aarch64-apple-darwin/release/creabim \
+  -output target/release-macos-universal/creabim
+bash packaging/macos/make-dmg.sh 1.1.1 2026-11-12 target/release-macos-universal \
+  dist/CreaBIM-1.1.1-2026-11-12-macos-universal.dmg
+```
+
+#### Ubuntu 24.04+ DEB and EL10 RPM packages
+
+Build on Ubuntu 24.04 x86-64, which sets the glibc 2.39 minimum for the app binaries. Install the GTK 3 and WebKitGTK 4.1 development dependencies and RPM tooling:
+
+```sh
+sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev rpm
+cargo build --release -p creabim-app -p creabim-cli
+bash packaging/linux/make-deb.sh 1.1.1 2026-11-12 target/release \
+  dist/CreaBIM-1.1.1-2026-11-12-linux-x64.deb
+bash packaging/linux/make-rpm.sh 1.1.1 2026-11-12 target/release \
+  dist/CreaBIM-1.1.1-2026-11-12-linux-x64.rpm
+```
+
+The DEB requires `libc6` 2.39 or later. The RPM requires glibc 2.39 or later, GTK 3, and WebKitGTK 4.1; these packages target Ubuntu 24.04+ and RHEL 10 / CentOS Stream 10-compatible systems, not Ubuntu 22.04 or EL9.
 
 ### Command line
 
