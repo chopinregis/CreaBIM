@@ -90,6 +90,13 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var
 .pill b{background:var(--sage);color:var(--on-sage);border-radius:999px;padding:3px 10px;font:700 12px var(--body)}
 .hero h1{font-size:clamp(44px,8vw,96px)}
 .hero h1 span{display:block;color:var(--sage)}
+/* Rotating headline: two pairs stacked in one grid cell, so the box is always the taller pair's height */
+.hero h1.rot{display:grid;justify-items:center}
+.hero h1.rot .hl{grid-area:1/1;color:inherit;animation:hl 10s ease-in-out infinite both}
+.hero h1.rot .hl+.hl{animation-delay:-5s}
+.hero h1.rot:hover .hl{animation-play-state:paused}
+@keyframes hl{0%,42%{opacity:1;transform:none}46%{opacity:0;transform:translateY(-.15em)}46.01%,96%{opacity:0;transform:translateY(.15em)}100%{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.hero h1.rot .hl{animation:none}.hero h1.rot .hl+.hl{display:none}}
 .hero .lede{text-align:center;margin-inline:auto;font-size:clamp(17px,2vw,20px)}
 .cta{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
 .ticks{display:flex;gap:10px 22px;flex-wrap:wrap;justify-content:center;color:var(--muted);font-size:14px;list-style:none;padding:0;margin:0}
