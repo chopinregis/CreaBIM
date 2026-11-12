@@ -250,6 +250,7 @@ ICONS = """<svg width="0" height="0" style="position:absolute" aria-hidden="true
 <symbol id="i-key" viewBox="0 0 24 24"><path d="M3 6h18v12H3zM7 10h2M11 10h2M15 10h2M7 14h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
 <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="m10 8 6 4-6 4z" fill="currentColor"/></symbol>
+<symbol id="i-mac" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M2 19h20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
 <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3zM12 4.3 21 3v8.5h-9zM3 12.5h7.5v7L3 18.5zM12 12.5h9V21l-9-1.3z" fill="currentColor"/></symbol>
 <symbol id="i-linux" viewBox="0 0 24 24"><path d="M12 2c-2.2 0-3.5 1.8-3.5 4.3 0 1.5.3 2.4-.6 3.9C6.6 12.3 5 14.400 5 17c0 1 .4 1.8 1 2.300-.6.4-1.300.8-1.300 1.4C4.700 21.700 6 22 7.500 22c1.300 0 2.300-.6 3-1.100.5.1 1 .1 1.500.1s1-.1 1.500-.1c.700.500 1.700 1.100 3 1.100 1.500 0 2.800-.3 2.800-1.300 0-.6-.700-1-1.300-1.400.600-.5 1-1.300 1-2.300 0-2.600-1.600-4.700-2.900-6.800-.900-1.500-.6-2.400-.6-3.900C15.500 3.800 14.200 2 12 2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="10.300" cy="7" r=".9" fill="currentColor"/><circle cx="13.700" cy="7" r=".9" fill="currentColor"/><path d="M10.500 9.300 12 10.300l1.500-1" fill="none" stroke="currentColor" stroke-width="1.500" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.400 9.300 8 11 4.600-1.700 8-6 8-11V5zM8.500 12l2.500 2.500 4.500-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
@@ -348,7 +349,7 @@ def home(rel):
     return f"""
   <section class="hero gutter">
     <div class="ident" id="ident" role="img" aria-label="The CreaBIM logo: a weaver beside the woven nest it built"></div>
-    <a class="pill" href="download.html"><b>{v}</b>Free and open source<span class="pill-x"> · Windows and Linux</span></a>
+    <a class="pill" href="download.html"><b>{v}</b>Free and open source<span class="pill-x"> · Windows, macOS and Linux</span></a>
     <h1>Modelled like Blender.<span>Made for architects.</span></h1>
     <p class="lede">One model for 3D, plans, sections, sheets, schedules, quantities and IFC. Free, open source, offline.</p>
     <div class="cta">
@@ -541,7 +542,7 @@ def home(rel):
       <div class="grid3">
         <a class="card" href="features.html"><span class="ico"><svg><use href="#i-cube"/></svg></span><h3>Features</h3><p>Modelling, drawings, sheets, schedules and exchange, with where each part stands today.</p><span class="more">See the features →</span></a>
         <a class="card" href="tutorials/index.html"><span class="ico"><svg><use href="#i-book"/></svg></span><h3>Tutorials</h3><p>Build a first house in eight short steps, from an empty project to a printed sheet and an IFC file.</p><span class="more">Start the tutorial →</span></a>
-        <a class="card" href="download.html"><span class="ico"><svg><use href="#i-dl"/></svg></span><h3>Download</h3><p>CreaBIM {v} for Windows and Linux: an installer, a portable zip, or the source.</p><span class="more">Get CreaBIM →</span></a>
+        <a class="card" href="download.html"><span class="ico"><svg><use href="#i-dl"/></svg></span><h3>Download</h3><p>CreaBIM {v} for Windows, macOS and Linux: installers, packages, a portable zip, or the source.</p><span class="more">Get CreaBIM →</span></a>
       </div>
     </div>
   </section>
@@ -553,7 +554,7 @@ def home(rel):
       <details><summary>Does it need the internet?</summary><p>No. It runs on your computer and never needs a connection.</p></details>
       <details><summary>Can I use it on real projects?</summary><p>Not yet for production work. It's ready to explore and to model with; check <a href="features.html#status">where it stands</a> before you rely on it.</p></details>
       <details><summary>Does it open Revit or ArchiCAD files?</summary><p>Through IFC: export IFC from those tools and open it in CreaBIM. Native .rvt files are a closed format.</p></details>
-      <details><summary>Is there a Mac version?</summary><p>Not yet. Windows and Linux come first.</p></details>
+      <details><summary>Is there a Mac version?</summary><p>Yes. A universal app runs on Apple Silicon and Intel Macs, macOS 11 or later.</p></details>
     </div>
   </section>
 
@@ -687,15 +688,80 @@ def features():
 """
 
 
+def dl_cards(setup, zipf, dmg, deb, rpm, tar):
+    """The download cards for the latest release: one per system, each only when its file is there."""
+    def btn(a, label, primary=True):
+        return f'<a class="btn{" primary" if primary else ""}" href="{a["url"]}"><svg aria-hidden="true"><use href="#i-dl"/></svg>{label} <small>{fmt_size(a["size"])}</small></a>'
+    top, notes = [], []
+    if setup:
+        zipline = f'<p class="alt">No installer? <a href="{zipf["url"]}">Portable zip</a> ({fmt_size(zipf["size"])}): unzip and run CreaBIM.exe.</p>' if zipf else ""
+        top.append(f"""        <div class="card">
+          <div class="os"><svg aria-hidden="true"><use href="#i-win"/></svg><h3>Windows</h3></div>
+          <p>Windows 10 or 11, 64-bit. The installer needs no admin rights: it installs for you, with Start menu and desktop shortcuts, and uninstalls from Settings › Apps.</p>
+          {btn(setup, "Installer")}
+          {zipline}
+        </div>""")
+        notes.append('<div class="note"><b>Windows says the publisher is unknown?</b><span>CreaBIM isn\'t code-signed yet. Choose <em>More info</em>, then <em>Run anyway</em>. You can check the file against its SHA-256 checksum first (below).</span></div>')
+    if dmg:
+        top.append(f"""        <div class="card">
+          <div class="os"><svg aria-hidden="true"><use href="#i-mac"/></svg><h3>macOS</h3></div>
+          <p>macOS 11 or later. One universal app for Apple Silicon and Intel Macs. Drag CreaBIM to Applications and open it once.</p>
+          {btn(dmg, "Disk image (.dmg)")}
+        </div>""")
+        notes.append('<div class="note"><b>macOS blocks it?</b><span>The app isn\'t code-signed yet. Go to <em>System Settings › Privacy &amp; Security</em> and choose <em>Open Anyway</em>.</span></div>')
+    top.append(f"""        <div class="card">
+          <div class="os"><svg aria-hidden="true"><use href="#i-code"/></svg><h3>From source</h3></div>
+          <p>Any platform Rust and wgpu run on. You need Rust stable.</p>
+          <a class="btn" href="{GH}"><svg aria-hidden="true"><use href="#i-gh"/></svg>Source on GitHub</a>
+          <p class="alt"><code>cargo run --release -p creabim-app</code></p>
+        </div>""")
+    pk = []
+    if deb:
+        pk.append(f"""            <div class="pkg">
+              <h4>Ubuntu and Debian</h4>
+              {btn(deb, ".deb")}
+              <pre class="cmd">sudo apt install ./CreaBIM-*-linux-x64.deb</pre>
+            </div>""")
+    if rpm:
+        pk.append(f"""            <div class="pkg">
+              <h4>Fedora and RHEL 10</h4>
+              {btn(rpm, ".rpm")}
+              <pre class="cmd">sudo dnf install ./CreaBIM-*-linux-x64.rpm</pre>
+              <p class="alt">Needs glibc 2.35 or later, so not RHEL 9. On RHEL 10 or CentOS Stream 10, WebKitGTK 4.1 comes from EPEL 10: enable CRB and EPEL first.</p>
+            </div>""")
+    if tar:
+        pk.append(f"""            <div class="pkg">
+              <h4>Other Linux</h4>
+              {btn(tar, ".tar.gz", primary=not pk)}
+              <pre class="cmd">tar xf CreaBIM-*-linux-x64.tar.gz
+./creabim</pre>
+              <p class="alt">Needs WebKitGTK 4.1 and GTK 3.</p>
+            </div>""")
+    linux = f"""      <div class="card linux">
+          <div class="os"><svg aria-hidden="true"><use href="#i-linux"/></svg><h3>Linux</h3><span class="mono">64-bit</span></div>
+          <div class="pkgs">
+{chr(10).join(pk)}
+          </div>
+        </div>""" if pk else ""
+    return f"""      <div class="dl">
+{chr(10).join(top)}
+      </div>
+{linux}
+      <div class="notes">{"".join(notes)}</div>"""
+
+
 def download(rels):
     r = rels[0]
     v = r["tag"].lstrip("v")
     A = {a["name"]: a for a in r["assets"]}
     pick = lambda suffix: next((a for n, a in A.items() if n.endswith(suffix)), None)
     setup, zipf, tar, sums = pick("-setup.exe"), pick("windows-x64.zip"), pick("linux-x64.tar.gz"), pick("SHA256SUMS.txt")
+    dmg, deb, rpm = pick("macos-universal.dmg"), pick("linux-x64.deb"), pick("linux-x64.rpm")
     rows = "".join(f'<tr><td><a href="{a["url"]}">{html.escape(a["name"])}</a></td><td class="num">{fmt_size(a["size"])}</td></tr>' for a in r["assets"])
+    cards = dl_cards(setup, zipf, dmg, deb, rpm, tar)
+    lin = deb or rpm or tar
+    sumlines = (f"\nmacOS (Terminal)\n  shasum -a 256 {html.escape(dmg['name'])}\n" if dmg else "") + (f"\nLinux\n  sha256sum {html.escape(lin['name'])}" if lin else "")
     older = "".join(f'<tr><td><a href="{o["url"]}">{html.escape(o["name"])}</a></td><td class="num"><a href="{o["url"]}">Files ↗</a></td></tr>' for o in rels[1:]) or '<tr><td colspan="2">None yet.</td></tr>'
-    zipline = f'<p class="alt">No installer? <a href="{zipf["url"]}">Portable zip</a> ({fmt_size(zipf["size"])}): unzip and run CreaBIM.exe.</p>' if zipf else ""
     return f"""
   <section class="phead gutter">
     <div class="wrap" style="display:grid;gap:18px">
@@ -707,27 +773,7 @@ def download(rels):
   <section class="gutter" style="padding-bottom:72px">
     <div class="wrap" style="display:grid;gap:26px">
       <div class="release"><h2>CreaBIM {v}</h2><span class="badge">Latest</span><span class="mono">{r["name"].split("·")[-1].strip()}</span><a class="mono" href="{r["url"]}">Release notes on GitHub ↗</a></div>
-      <div class="dl">
-        <div class="card">
-          <div class="os"><svg aria-hidden="true"><use href="#i-win"/></svg><h3>Windows</h3></div>
-          <p>Windows 10 or 11, 64-bit. The installer needs no admin rights: it installs for you, with Start menu and desktop shortcuts, and uninstalls from Settings › Apps.</p>
-          <a class="btn primary" href="{setup["url"]}"><svg aria-hidden="true"><use href="#i-dl"/></svg>Installer <small>{fmt_size(setup["size"])}</small></a>
-          {zipline}
-        </div>
-        <div class="card">
-          <div class="os"><svg aria-hidden="true"><use href="#i-linux"/></svg><h3>Linux</h3></div>
-          <p>64-bit. Untar and run <code>./creabim</code>. Needs WebKitGTK 4.1 and GTK 3.</p>
-          <a class="btn primary" href="{tar["url"]}"><svg aria-hidden="true"><use href="#i-dl"/></svg>tar.gz <small>{fmt_size(tar["size"])}</small></a>
-          <p class="alt">On Ubuntu: <code>sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0</code></p>
-        </div>
-        <div class="card">
-          <div class="os"><svg aria-hidden="true"><use href="#i-code"/></svg><h3>From source</h3></div>
-          <p>Any platform Rust and wgpu run on. You need Rust stable.</p>
-          <a class="btn" href="{GH}"><svg aria-hidden="true"><use href="#i-gh"/></svg>Source on GitHub</a>
-          <p class="alt"><code>cargo run --release -p creabim-app</code></p>
-        </div>
-      </div>
-      <div class="note"><b>Windows says the publisher is unknown?</b><span>CreaBIM isn't code-signed yet. Choose <em>More info</em>, then <em>Run anyway</em>. You can check the file against its SHA-256 checksum first (below).</span></div>
+{cards}
     </div>
   </section>
   <section class="sec gutter" style="padding-top:0;border:0">
@@ -742,10 +788,8 @@ def download(rels):
         <h2 style="font-size:28px">Check your download</h2>
         <p class="lede" style="font-size:16px">Each release lists the SHA-256 checksum of every file in <a href="{sums["url"] if sums else r["url"]}">SHA256SUMS.txt</a>. Compare it with the checksum of the file you downloaded:</p>
         <pre class="term">Windows (PowerShell)
-  Get-FileHash .\\{html.escape(setup["name"])}
-
-Linux
-  sha256sum {html.escape(tar["name"])}</pre>
+  Get-FileHash .\\{html.escape(setup["name"]) if setup else "CreaBIM-setup.exe"}
+{sumlines}</pre>
         <h2 style="font-size:28px;margin-top:12px">After you install</h2>
         <ul class="checks">
           <li>CreaBIM opens on the starter house. <em>File › New</em> starts your own project.</li>
@@ -953,7 +997,7 @@ def main():
           "What CreaBIM does: walls, slabs, roofs and structure; plans, sections, sheets and schedules from one model; IFC, glTF, FreeCAD and DXF exchange.",
           features())
     write("download.html", 0, "Download", "Download",
-          f"Download CreaBIM {version} for Windows and Linux: free, open source, offline, no account.", download(rels))
+          f"Download CreaBIM {version} for Windows, macOS and Linux: free, open source, offline, no account.", download(rels))
     write("support.html", 0, "Support", "Support",
           "Help CreaBIM grow: sponsor the work on GitHub, or contribute: other systems, bugs, the guide, translations, and new tools by proposal.",
           (Path(__file__).parent / "support_body.html").read_text(encoding="utf-8"))

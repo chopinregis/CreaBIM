@@ -44,6 +44,7 @@
 <symbol id="i-key" viewBox="0 0 24 24"><path d="M3 6h18v12H3zM7 10h2M11 10h2M15 10h2M7 14h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
 <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="m10 8 6 4-6 4z" fill="currentColor"/></symbol>
+<symbol id="i-mac" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M2 19h20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
 <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3zM12 4.3 21 3v8.5h-9zM3 12.5h7.5v7L3 18.5zM12 12.5h9V21l-9-1.3z" fill="currentColor"/></symbol>
 <symbol id="i-linux" viewBox="0 0 24 24"><path d="M12 2c-2.2 0-3.5 1.8-3.5 4.3 0 1.5.3 2.4-.6 3.9C6.6 12.3 5 14.400 5 17c0 1 .4 1.8 1 2.300-.6.4-1.300.8-1.300 1.4C4.700 21.700 6 22 7.500 22c1.300 0 2.300-.6 3-1.100.5.1 1 .1 1.500.1s1-.1 1.500-.1c.700.500 1.700 1.100 3 1.100 1.500 0 2.800-.3 2.800-1.300 0-.6-.700-1-1.300-1.400.600-.5 1-1.300 1-2.300 0-2.600-1.600-4.700-2.900-6.800-.900-1.500-.6-2.400-.6-3.900C15.500 3.800 14.200 2 12 2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="10.300" cy="7" r=".9" fill="currentColor"/><circle cx="13.700" cy="7" r=".9" fill="currentColor"/><path d="M10.500 9.300 12 10.300l1.500-1" fill="none" stroke="currentColor" stroke-width="1.500" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.400 9.300 8 11 4.600-1.700 8-6 8-11V5zM8.500 12l2.500 2.500 4.500-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
@@ -64,11 +65,11 @@
 
   <section class="hero gutter">
     <div class="ident" id="ident" role="img" aria-label="The CreaBIM logo: a weaver beside the woven nest it built"></div>
-    <a class="pill" href="download.html"><b>1.1.0</b>Free and open source<span class="pill-x"> · Windows and Linux</span></a>
+    <a class="pill" href="download.html"><b>1.1.1</b>Free and open source<span class="pill-x"> · Windows, macOS and Linux</span></a>
     <h1>Modelled like Blender.<span>Made for architects.</span></h1>
     <p class="lede">One model for 3D, plans, sections, sheets, schedules, quantities and IFC. Free, open source, offline.</p>
     <div class="cta">
-      <a class="btn primary" href="download.html"><svg aria-hidden="true"><use href="#i-dl"/></svg>Download CreaBIM 1.1.0</a>
+      <a class="btn primary" href="download.html"><svg aria-hidden="true"><use href="#i-dl"/></svg>Download CreaBIM 1.1.1</a>
       <a class="btn" href="tutorials/index.html"><svg aria-hidden="true"><use href="#i-book"/></svg>Start the tutorial</a>
     </div>
     <ul class="ticks"><li>No account, no licence fee</li><li>Works fully offline</li><li>IFC in and out</li><li>Blender-style keys</li></ul>
@@ -263,7 +264,7 @@
       <div class="grid3">
         <a class="card" href="features.html"><span class="ico"><svg><use href="#i-cube"/></svg></span><h3>Features</h3><p>Modelling, drawings, sheets, schedules and exchange, with where each part stands today.</p><span class="more">See the features →</span></a>
         <a class="card" href="tutorials/index.html"><span class="ico"><svg><use href="#i-book"/></svg></span><h3>Tutorials</h3><p>Build a first house in eight short steps, from an empty project to a printed sheet and an IFC file.</p><span class="more">Start the tutorial →</span></a>
-        <a class="card" href="download.html"><span class="ico"><svg><use href="#i-dl"/></svg></span><h3>Download</h3><p>CreaBIM 1.1.0 for Windows and Linux: an installer, a portable zip, or the source.</p><span class="more">Get CreaBIM →</span></a>
+        <a class="card" href="download.html"><span class="ico"><svg><use href="#i-dl"/></svg></span><h3>Download</h3><p>CreaBIM 1.1.1 for Windows, macOS and Linux: installers, packages, a portable zip, or the source.</p><span class="more">Get CreaBIM →</span></a>
       </div>
     </div>
   </section>
@@ -275,7 +276,7 @@
       <details><summary>Does it need the internet?</summary><p>No. It runs on your computer and never needs a connection.</p></details>
       <details><summary>Can I use it on real projects?</summary><p>Not yet for production work. It's ready to explore and to model with; check <a href="features.html#status">where it stands</a> before you rely on it.</p></details>
       <details><summary>Does it open Revit or ArchiCAD files?</summary><p>Through IFC: export IFC from those tools and open it in CreaBIM. Native .rvt files are a closed format.</p></details>
-      <details><summary>Is there a Mac version?</summary><p>Not yet. Windows and Linux come first.</p></details>
+      <details><summary>Is there a Mac version?</summary><p>Yes. A universal app runs on Apple Silicon and Intel Macs, macOS 11 or later.</p></details>
     </div>
   </section>
 

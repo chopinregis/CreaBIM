@@ -239,6 +239,19 @@ kbd{font:600 .82em var(--mono);background:var(--paper-2);border:1px solid var(--
 .dl .os svg{width:30px;height:30px;color:var(--sage-deep)}
 .dl .alt{font-size:14px;color:var(--muted)}
 .dl .alt a{color:var(--sage-deep);font-weight:600}
+.linux{gap:16px}
+.linux .os{display:flex;align-items:center;gap:12px}
+.linux .os svg{width:30px;height:30px;color:var(--sage-deep)}
+.linux .os .mono{color:var(--muted);font-size:13px}
+.pkgs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+@media (max-width:860px){.pkgs{grid-template-columns:1fr}}
+.pkg{display:grid;gap:10px;align-content:start;min-width:0;border-top:1px solid var(--line);padding-top:14px}
+.pkg h4{font-size:16px;margin:0}
+.pkg .btn{justify-self:start;white-space:normal}
+.pkg .alt{font-size:14px;color:var(--muted);margin:0}
+.cmd{font:13px/1.55 var(--mono);background:var(--night);color:var(--night-ink);border-radius:8px;padding:10px 12px;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.notes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media (max-width:860px){.notes{grid-template-columns:1fr}}
 .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--paper-2);-webkit-overflow-scrolling:touch}
 table{border-collapse:collapse;width:100%;font-size:14.5px}
 th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
