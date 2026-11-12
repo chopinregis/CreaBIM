@@ -11602,6 +11602,122 @@ fn stem(path: &str) -> String {
     name.split('.').next().unwrap_or("project").to_string()
 }
 
+#[cfg(test)]
+mod face_plane_tests {
+    /// An element drawn as several items (a terrain is) crashed the app
+    /// when a face of a later item was picked: the triangle was looked up
+    /// in the element's first item (issue 22).
+    #[test]
+    fn a_face_of_an_elements_second_item_gives_its_plane() {
+        let model = creabim_core::sample::sample_house();
+        let scene = creabim_geom::build_scene(&model);
+        let slab = scene
+            .iter()
+            .find(|i| model.get(i.id).is_some_and(|e| e.name == "FF Slab"))
+            .unwrap();
+        let mut small = slab.clone();
+        small.mesh.indices.truncate(3);
+        for p in &mut small.mesh.positions {
+            p[0] += 500.0;
+        }
+        let scene = vec![small, slab.clone()];
+        let o = glam::DVec3::new(5.0, 3.0, 50.0);
+        let plane = super::face_plane(&scene, o, -glam::DVec3::Z).expect("the slab's top");
+        assert!((plane.origin.z - 3.0).abs() < 1e-3, "{}", plane.origin);
+    }
+
+    /// The report itself: a terrain added to the starter house, then the
+    /// pointer anywhere over it in 3D.
+    #[test]
+    fn the_starter_house_on_a_terrain_gives_a_plane_under_any_ray() {
+        use creabim_core::{Element, ElementKind};
+        let house = creabim_core::starter::starter_house();
+        let level = house
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Level(_)))
+            .unwrap()
+            .id;
+        let mut site = creabim_core::site::Site::terrain(
+            level,
+            creabim_core::polygon::rectangle(
+                glam::DVec2::new(-20.0, -20.0),
+                glam::DVec2::new(40.0, 40.0),
+            ),
+            0.0,
+            0.5,
+        );
+        if let creabim_core::site::SiteForm::Terrain { points, .. } = &mut site.form {
+            points.push(glam::DVec3::new(-10.0, -10.0, 2.0));
+        }
+        let ground = Element::new("Ground", ElementKind::Site(site));
+        let model =
+            creabim_core::Model::from_elements(house.iter().cloned().chain([ground])).unwrap();
+        let scene = creabim_geom::build_scene(&model);
+        // (this plain terrain is one item; the elements with several are
+        // the ones a triangle could be looked up wrongly in)
+        let mut several: Vec<String> = Vec::new();
+        for e in model.iter() {
+            let n = scene.iter().filter(|i| i.id == e.id).count();
+            if n > 1 {
+                several.push(format!("{} x{n}", e.name));
+            }
+        }
+        assert!(
+            !several.is_empty(),
+            "nothing here could be looked up wrongly"
+        );
+        let mut planes = 0;
+        for x in (-19..40).step_by(4) {
+            for y in (-19..40).step_by(4) {
+                let o = glam::DVec3::new(x as f64 + 0.37, y as f64 + 0.41, 80.0);
+                for d in [
+                    -glam::DVec3::Z,
+                    glam::DVec3::new(0.3, 0.2, -1.0).normalize(),
+                ] {
+                    planes += super::face_plane(&scene, o, d).is_some() as usize;
+                }
+            }
+        }
+        assert!(planes > 200, "{planes}");
+
+        // Aim at the triangles that crashed: in an item after the first of
+        // its element (furniture is one item per part), at an index past
+        // the end of that first item's mesh. Each ray starts just off the
+        // triangle, so it is what the ray meets first.
+        let mut aimed = 0;
+        for (at, item) in scene.iter().enumerate() {
+            let Some(first) = scene.iter().position(|s| s.id == item.id) else {
+                continue;
+            };
+            if first == at {
+                continue;
+            }
+            let past = scene[first].mesh.triangle_count();
+            let count = item.mesh.triangle_count();
+            // a few per item: each ray tests the whole scene
+            let step = (count.saturating_sub(past) / 3).max(1);
+            for tri in (past..count).step_by(step) {
+                let idx = &item.mesh.indices[tri * 3..tri * 3 + 3];
+                let v =
+                    |k: usize| glam::Vec3::from(item.mesh.positions[idx[k] as usize]).as_dvec3();
+                let n = (v(1) - v(0)).cross(v(2) - v(0));
+                if n.length() < 1e-6 {
+                    continue;
+                }
+                let n = n.normalize();
+                let c = (v(0) + v(1) + v(2)) / 3.0;
+                let plane = super::face_plane(&scene, c + n * 1e-3, -n);
+                assert!(plane.is_some(), "{} item {at} triangle {tri}", item.id.0);
+                aimed += 1;
+            }
+        }
+        assert!(
+            aimed > 0,
+            "no triangle past the end of its element's first item"
+        );
+    }
+}
+
 fn with_extension(path: &str, ext: &str) -> String {
     let p = std::path::Path::new(path);
     let dir = p.parent().map(|d| d.to_path_buf()).unwrap_or_default();
@@ -11740,8 +11856,10 @@ const GUIDE_REACH_3D: f64 = 60.0;
 /// The plane of the face a ray hits, facing back along the ray.
 fn face_plane(scene: &[creabim_geom::SceneItem], o: DVec3, d: DVec3) -> Option<Workplane> {
     let h = pick::pick(scene, o.as_vec3(), d.as_vec3())?;
-    let item = scene.iter().find(|s| s.id == h.id)?;
-    let idx = &item.mesh.indices[h.triangle * 3..h.triangle * 3 + 3];
+    // the item hit, not the first of its element: a terrain is several
+    // items, and a triangle of one is past the end of another (issue 22)
+    let item = scene.get(h.item)?;
+    let idx = item.mesh.indices.get(h.triangle * 3..h.triangle * 3 + 3)?;
     let v = |k: usize| glam::Vec3::from(item.mesh.positions[idx[k] as usize]);
     let mut n = (v(1) - v(0))
         .cross(v(2) - v(0))
