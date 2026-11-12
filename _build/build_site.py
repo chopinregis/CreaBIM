@@ -350,7 +350,7 @@ def home(rel):
   <section class="hero gutter">
     <div class="ident" id="ident" role="img" aria-label="The CreaBIM logo: a weaver beside the woven nest it built"></div>
     <a class="pill" href="download.html"><b>{v}</b>Free and open source<span class="pill-x"> · Windows, macOS and Linux</span></a>
-    <h1>Modelled like Blender.<span>Made for architects.</span></h1>
+    <h1 class="rot"><span class="hl">One model.<span>Every drawing.</span></span><span class="hl">Modelled like Blender.<span>Made for architects.</span></span></h1>
     <p class="lede">One model for 3D, plans, sections, sheets, schedules, quantities and IFC. Free, open source, offline.</p>
     <div class="cta">
       <a class="btn primary" href="download.html"><svg aria-hidden="true"><use href="#i-dl"/></svg>Download CreaBIM {v}</a>
