@@ -216,6 +216,13 @@ impl WebUi {
         let _ = self.view(pane).evaluate_script(script);
     }
 
+    /// Run a script in every pane's page.
+    pub fn run_all(&self, script: &str) {
+        for (_, v) in &self.views {
+            let _ = v.evaluate_script(script);
+        }
+    }
+
     /// Re-send every state next frame (after a page reloads).
     pub fn resend(&mut self, pane: Pane) {
         self.sent[pane as usize].clear();
