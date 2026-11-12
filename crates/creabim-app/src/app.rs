@@ -5704,11 +5704,7 @@ impl CreaBimApp {
                 }
                 "clean" => info.pad.retain(|i| !(i.todo && i.done)),
                 ext => {
-                    let stem = std::path::Path::new(&self.path)
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("project")
-                        .to_string();
+                    let stem = stem(&self.path);
                     if let Some(path) = self.export_to(format!("{stem} notes.{ext}")) {
                         self.status = match std::fs::write(&path, &md) {
                             Ok(()) => format!("Saved the notes to {path}."),
@@ -11594,12 +11590,30 @@ fn face_triangles(mesh: &creabim_core::EditMesh, face: usize) -> std::ops::Range
     start..start + len
 }
 
+/// The project's name without its ending, to name what is exported from
+/// it. Only the ending goes (and `.creabim` before `.json`): a name with
+/// dots of its own, as `House-1.1.1-test.creabim`, keeps them, where
+/// cutting at the first dot suggested `House-1.ifc` (discussion 17).
 fn stem(path: &str) -> String {
     let name = std::path::Path::new(path)
-        .file_name()
+        .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    name.split('.').next().unwrap_or("project").to_string()
+    let name = match name.len().checked_sub(".creabim".len()) {
+        Some(at)
+            if at > 0
+                && name.is_char_boundary(at)
+                && name[at..].eq_ignore_ascii_case(".creabim") =>
+        {
+            name[..at].to_string()
+        }
+        _ => name,
+    };
+    if name.is_empty() {
+        "project".to_string()
+    } else {
+        name
+    }
 }
 
 #[cfg(test)]
@@ -11715,6 +11729,27 @@ mod face_plane_tests {
             aimed > 0,
             "no triangle past the end of its element's first item"
         );
+    }
+}
+
+#[cfg(test)]
+mod stem_tests {
+    use super::{stem, with_extension};
+
+    #[test]
+    fn an_export_keeps_the_dots_of_the_projects_name() {
+        assert_eq!(stem("CreaBIM-1.1.1-test.creabim"), "CreaBIM-1.1.1-test");
+        assert_eq!(stem("house.creabim"), "house");
+        assert_eq!(stem("house.creabim.json"), "house");
+        assert_eq!(stem("house v2.1.CREABIM.json"), "house v2.1");
+        assert_eq!(stem("from revit 2.4.ifc"), "from revit 2.4");
+        assert_eq!(stem("untitled"), "untitled");
+        assert_eq!(stem(""), "project");
+        let out = with_extension("C:/work/CreaBIM-1.1.1-test.creabim", "ifc");
+        assert!(out.ends_with("CreaBIM-1.1.1-test.ifc"), "{out}");
+        // a sheet's or schedule's own name still goes after the project's
+        let out = with_extension("C:/work/a.b.creabim", "A-101.svg");
+        assert!(out.ends_with("a.b.A-101.svg"), "{out}");
     }
 }
 
