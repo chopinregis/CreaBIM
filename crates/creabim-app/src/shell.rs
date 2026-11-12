@@ -4231,9 +4231,12 @@ impl CreaBimApp {
                     let state = json!({"theme": self.theme(), "key": p.key, "items": [], "controls": rows});
                     return (rect, state, empty);
                 }
-                // the New project window keeps its own size
+                // the New project window keeps its own size, but never
+                // more than the window has now: one made smaller after it
+                // opened still shows the buttons (issue 24)
                 "newproject" => {
-                    let rect = egui::Rect::from_center_size(screen.center(), p.size);
+                    let room = (screen.size() - egui::vec2(32.0, 32.0)).max(egui::vec2(240.0, 200.0));
+                    let rect = egui::Rect::from_center_size(screen.center(), p.size.min(room));
                     let state = json!({"theme": self.theme(), "key": p.key, "items": [], "dialog": self.new_project_state()});
                     return (rect, state, false);
                 }

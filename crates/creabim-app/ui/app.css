@@ -788,11 +788,15 @@ html[data-pane="popup"] body {
 
 /* ---------- command palette ---------- */
 
-.palette { display: flex; flex-direction: column; width: 100%; }
+/* No taller than its window: in a short one the list shrinks and scrolls,
+   and the search and the keys below stay in view (less the popup's
+   1px border, top and bottom). */
+.palette { display: flex; flex-direction: column; width: 100%; max-height: calc(100vh - 2px); }
+.pq, .pfoot { flex: none; }
 .pq { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-2); color: var(--muted); }
 .pq input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--text); background: none; border: 0; outline: none; user-select: text; -webkit-user-select: text; }
 .pq input::placeholder { color: var(--faint); }
-.pl { max-height: 300px; overflow-y: auto; padding: 5px; }
+.pl { max-height: 300px; min-height: 0; overflow-y: auto; padding: 5px; }
 .pl::-webkit-scrollbar { width: 8px; }
 .pl::-webkit-scrollbar-thumb { background: var(--raise-2); border-radius: 8px; }
 .pfoot { display: flex; gap: 16px; padding: 7px 14px; border-top: 1px solid var(--border-2); color: var(--faint); font-size: 11px; }
@@ -1004,7 +1008,14 @@ kbd {
 /* ---------- New project ---------- */
 
 .np { display: flex; flex-direction: column; gap: 14px; padding: 20px 24px; height: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 0; }
-.np-head { display: flex; align-items: center; gap: 12px; }
+.np-head { display: flex; align-items: center; gap: 12px; flex: none; }
+/* The choices: they scroll when the window is too short for them, so the
+   title and the buttons below stay in reach (issue 24). */
+.np-body { display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -10px; padding-right: 10px; }
+.np-body > * { flex: none; }
+.np-body::-webkit-scrollbar { width: 8px; }
+.np-body::-webkit-scrollbar-thumb { background: var(--raise-2); border-radius: 8px; border: 2px solid var(--panel); }
+.np-body::-webkit-scrollbar-track { background: transparent; }
 .np-logo, .np-logo svg.mark { width: 48px; height: 48px; }
 .np-head b { font-size: 17px; font-weight: 650; flex: 1; }
 .np-esc { color: var(--muted); font-size: 12px; }
@@ -1023,7 +1034,7 @@ kbd {
 .np-big:hover, .np-sample:hover { border-color: var(--border-2); background: var(--panel-2); }
 .np-big.on, .np-sample.on { border: 1.5px solid var(--accent); background: var(--accent-soft); }
 .np-big.on .np-pic { background: var(--panel); }
-.np-foot { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin-top: auto; }
+.np-foot { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin-top: auto; flex: none; }
 .np-btn { height: 32px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border-2); color: var(--text); background: var(--panel); font-weight: 550; }
 .np-btn:hover { background: var(--raise); }
 .np-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }

@@ -416,7 +416,13 @@
     if (input && document.activeElement !== input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
     const hot = root.querySelector(".mi.hot");
     if (hot) hot.scrollIntoView({ block: "nearest" });
-    post({ t: "size", w: window.innerWidth, h: Math.ceil(root.querySelector(".palette").scrollHeight) + 2 });
+    // the height it wants, measured without the window's cap, so a window
+    // made taller gives the list its room back
+    const pal = root.querySelector(".palette");
+    pal.style.maxHeight = "none";
+    const want = Math.ceil(pal.scrollHeight) + 2;
+    pal.style.maxHeight = "";
+    post({ t: "size", w: window.innerWidth, h: want });
   }
 
   // ---- popup menus ----
@@ -491,10 +497,21 @@
     const card = (c, big) => `<button class="${big ? "np-big" : "np-sample"} ${local.pick === c.id ? "on" : ""}" data-pick="${esc(c.id)}" title="${esc(c.line)}">` +
       (big ? `<span class="np-pic">${icon(c.icon)}</span><span class="np-text"><b>${esc(c.title)}</b><span>${esc(c.line)}</span></span>` :
         `<span class="np-icon">${icon(c.icon)}</span><span class="np-text"><b>${esc(c.title)}</b><span>${esc(c.line)}</span></span>`) + `</button>`;
+    // the choices scroll between the title and the buttons when the window
+    // is too short for them (a small window, or Windows' larger text):
+    // Create and Cancel were out of reach below the edge (issue 24)
+    const was = root.querySelector(".np-body");
+    const top = was && !fresh ? was.scrollTop : 0;
     root.innerHTML = `<div class="np"><div class="np-head"><span class="logo np-logo">${woven("new", fresh)}</span><b>${esc(d.title)}</b><span class="np-esc">Esc to close</span></div>` +
-      `<div class="np-starts">${d.starts.map((c) => card(c, true)).join("")}</div>` +
-      `<div class="np-sub">${esc(d.samples_title)}</div><div class="np-samples">${d.samples.map((c) => card(c, false)).join("")}</div>` +
+      `<div class="np-body"><div class="np-starts">${d.starts.map((c) => card(c, true)).join("")}</div>` +
+      `<div class="np-sub">${esc(d.samples_title)}</div><div class="np-samples">${d.samples.map((c) => card(c, false)).join("")}</div></div>` +
       `<div class="np-foot"><span>${esc(d.note)}</span><span class="spacer"></span><button class="np-btn" data-np="cancel">Cancel</button><button class="np-btn primary" data-np="create">Create</button></div></div>`;
+    const body = root.querySelector(".np-body");
+    if (body) {
+      body.scrollTop = top;
+      const on = body.querySelector(".on");
+      if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest" });
+    }
   }
 
   function dialogKey(e) {
