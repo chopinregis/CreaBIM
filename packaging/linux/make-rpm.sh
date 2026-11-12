@@ -64,7 +64,7 @@ Summary:        Free, open-source BIM modeller
 License:        GPL-3.0-or-later
 URL:            https://github.com/chopinregis/CreaBIM
 BuildArch:      x86_64
-Requires:       glibc >= 2.39
+Requires:       glibc >= 2.35
 Requires:       gtk3
 Requires:       webkit2gtk4.1
 Requires:       libxkbcommon-x11

@@ -75,7 +75,7 @@ jobs:
   linux:
     name: Linux
     needs: meta
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -175,9 +175,9 @@ jobs:
 
           ## Downloads
           - **Windows:** run the \`-setup.exe\` to install (no administrator rights needed; uninstall from Settings › Apps), or unzip the \`.zip\` and run \`CreaBIM.exe\`. If Windows warns about an unknown publisher, choose *More info*, then *Run anyway*.
-          - **Ubuntu 24.04 and later:** install the \`.deb\` with \`sudo apt install ./CreaBIM-*-linux-x64.deb\`; launch CreaBIM from your applications menu.
-          - **RHEL 10, CentOS Stream 10, and compatible EL10:** install the \`.rpm\` with \`sudo dnf install ./CreaBIM-*-linux-x64.rpm\`; x86-64, glibc 2.39+, GTK 3 and WebKitGTK 4.1 are required.
-          - **Other Linux distributions:** the \`.tar.gz\` requires x86-64, glibc 2.39+, WebKitGTK 4.1 and GTK 3; untar it and run \`./creabim\`.
+          - **Ubuntu 22.04 and later:** install the \`.deb\` with \`sudo apt install ./CreaBIM-*-linux-x64.deb\`; launch CreaBIM from your applications menu.
+          - **RHEL 10, CentOS Stream 10, and compatible EL10:** enable EPEL 10 (and CRB/CodeReady Builder), then install the \`.rpm\` with \`sudo dnf install ./CreaBIM-*-linux-x64.rpm\`; x86-64, glibc 2.35+, GTK 3 and WebKitGTK 4.1 are required.
+          - **Other Linux distributions:** the \`.tar.gz\` requires x86-64, glibc 2.35+, WebKitGTK 4.1 and GTK 3; untar it and run \`./creabim\`.
           - **macOS:** open the universal \`.dmg\` and drag CreaBIM to Applications. Open the app once; if macOS blocks it, go to *System Settings › Privacy & Security* and choose *Open Anyway*. The app isn't code-signed or notarized yet.
           - Check a download against \`SHA256SUMS.txt\`.
 

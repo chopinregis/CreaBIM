@@ -7,13 +7,13 @@ quantities and IFC. Works offline, with no account.
 Run it
   Windows: double-click CreaBIM.exe. If Windows says the publisher is
            unknown, choose "More info", then "Run anyway".
-  Ubuntu 24.04+: install the .deb package; launch CreaBIM from your applications menu
+  Ubuntu 22.04+: install the .deb package; launch CreaBIM from your applications menu
   RHEL 10/CentOS Stream 10: enable EPEL 10 (and CRB/CodeReady Builder), then
            install the .rpm package; launch CreaBIM from your applications menu
   macOS:   move CreaBIM.app from the disk image to Applications and open it once.
            If macOS blocks it, go to System Settings > Privacy & Security and
            choose "Open Anyway" (the app isn't code-signed yet).
-  Linux:   ./creabim  (x86-64, glibc 2.39+, WebKitGTK 4.1 and GTK 3)
+  Linux:   ./creabim  (x86-64, glibc 2.35+, WebKitGTK 4.1 and GTK 3)
 
 It opens on a starter house to explore. File > New starts your own.
 
