@@ -168,10 +168,14 @@ fn item_box(it: &TitleItem) -> (DVec2, DVec2) {
             size,
             text,
             align,
-            ..
+            angle,
         } => {
+            // its corners turned with it, about its point
             let (lo, hi) = text_box(*at, *size, text, *align);
-            vec![lo, hi]
+            let turn = DVec2::from_angle(*angle);
+            [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)]
+                .map(|c| *at + turn.rotate(c - *at))
+                .to_vec()
         }
         _ => it.points(),
     };
@@ -223,7 +227,19 @@ fn item_dist(it: &TitleItem, p: DVec2) -> f64 {
                 edges(points, *closed)
             }
         }
-        TitleItem::Text { .. } | TitleItem::Image { .. } | TitleItem::Logo { .. } => {
+        TitleItem::Text {
+            at,
+            size,
+            text,
+            align,
+            angle,
+        } => {
+            // measured along the text: the point turned back by its angle
+            let q = *at + DVec2::from_angle(-*angle).rotate(p - *at);
+            let (lo, hi) = text_box(*at, *size, text, *align);
+            q.distance(q.clamp(lo, hi))
+        }
+        TitleItem::Image { .. } | TitleItem::Logo { .. } => {
             let (lo, hi) = item_box(it);
             p.distance(p.clamp(lo, hi))
         }
@@ -2825,6 +2841,25 @@ fn sheet_picture_kind(p: &std::path::Path, w: f64) -> Result<creabim_core::Paper
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_turned_text_is_boxed_and_picked_along_its_letters() {
+        // a vertical text kept the box of a level one: picked and outlined
+        // across, beside its letters
+        let text = TitleItem::Text {
+            at: DVec2::ZERO,
+            size: 3.0,
+            text: "ABCDEFGHIJ".into(),
+            align: TextAlign::Start,
+            angle: std::f64::consts::FRAC_PI_2,
+        };
+        // it runs up from its point
+        assert_eq!(item_dist(&text, DVec2::new(0.0, 10.0)), 0.0);
+        assert!(item_dist(&text, DVec2::new(10.0, 0.0)) > 4.0);
+        let (lo, hi) = item_box(&text);
+        assert!(hi.y - lo.y > 10.0, "tall: {lo} {hi}");
+        assert!(hi.x - lo.x < 5.0, "narrow: {lo} {hi}");
+    }
 
     #[test]
     fn text_shapes_and_pictures_are_picked_near_or_in_them() {
