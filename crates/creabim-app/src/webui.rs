@@ -177,6 +177,12 @@ impl WebUi {
         std::mem::take(&mut *self.inbox.lock().unwrap())
     }
 
+    pub fn has_pending(&self) -> bool {
+        self.inbox
+            .lock()
+            .map_or(true, |messages| !messages.is_empty())
+    }
+
     /// Put a pane over `rect` (in points).
     pub fn place(&mut self, pane: Pane, rect: egui::Rect, ppp: f32) {
         let i = pane as usize;

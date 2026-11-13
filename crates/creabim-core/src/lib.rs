@@ -122,3 +122,5 @@ pub enum ModelError {
     #[error("invalid element {0}: {1}")]
     Invalid(ElementId, String),
 }
+
+pub mod agent_model;
