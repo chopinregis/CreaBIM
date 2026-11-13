@@ -98,6 +98,33 @@ fn save_then_open_keeps_undo_and_redo() {
 }
 
 #[test]
+fn mcp_level_round_trips_with_plan_and_one_undo_step() {
+    let (_dir, path) = tmp();
+    let mut doc = Document::new();
+    let (base, _, _) = creabim_core::levels::add(doc.model(), "Ground", 0.0, 3.0, true);
+    doc.commit(base).unwrap();
+    let created = creabim_core::agent_model::execute(
+        &mut doc,
+        "create_level",
+        serde_json::json!({"name": "First", "elevation": 3.0, "height": 3.0}),
+    )
+    .unwrap();
+    let id: creabim_core::ElementId = serde_json::from_value(created["id"].clone()).unwrap();
+    save(&path, &doc).unwrap();
+    let mut reopened = open(&path).unwrap();
+    assert_same(&doc, &reopened);
+    assert!(reopened.model().iter().any(|element| matches!(
+        &element.kind,
+        ElementKind::View(view) if matches!(view.kind, creabim_core::ViewKind::Plan { level, .. } if level == id)
+    )));
+    let count = reopened.model().len();
+    assert!(reopened.undo());
+    assert_eq!(reopened.model().len(), count - 2);
+    assert!(reopened.redo());
+    assert_eq!(reopened.model().len(), count);
+}
+
+#[test]
 fn saving_over_an_existing_project_replaces_it() {
     let (_dir, path) = tmp();
     save(&path, &edited_sample()).unwrap();

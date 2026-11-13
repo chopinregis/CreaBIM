@@ -4,3 +4,7 @@ target/
 .DS_Store
 !crates/*/fixtures/*.ifc
 !crates/*/fixtures/thirdparty/*.ifc
+
+# Local Python tools
+.venv/
+__pycache__/

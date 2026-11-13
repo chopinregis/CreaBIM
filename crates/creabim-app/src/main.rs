@@ -1,6 +1,7 @@
 //! CreaBIM desktop app.
 
 mod actlog;
+mod agent_bridge;
 mod align3d;
 mod aligntool;
 mod annotate;

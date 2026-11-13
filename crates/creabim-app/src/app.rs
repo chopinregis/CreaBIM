@@ -119,6 +119,8 @@ enum PlanPlacement {
 
 pub struct CreaBimApp {
     doc: Document,
+    agent_bridge: Option<crate::agent_bridge::Bridge>,
+    agent_document_id: String,
     selection: Selection,
     /// Selected face when a free mesh is selected (mesh edit mode).
     face: Option<usize>,
@@ -374,6 +376,13 @@ impl CreaBimApp {
         if let Some(path) = launch_file(std::env::args().skip(1)) {
             app.open_path(&path);
         }
+        match crate::agent_bridge::Bridge::start(cc.egui_ctx.clone()) {
+            Ok(bridge) => app.agent_bridge = bridge,
+            Err(error) => {
+                app.status = format!("MCP bridge unavailable: {error}");
+                eprintln!("MCP bridge unavailable: {error}");
+            }
+        }
         app
     }
 
@@ -382,6 +391,8 @@ impl CreaBimApp {
     fn blank(viewport: Option<Viewport3d>) -> Self {
         Self {
             doc: Document::new(),
+            agent_bridge: None,
+            agent_document_id: ElementId::new().0.to_string(),
             selection: Selection::default(),
             face: None,
             active_view: None,
@@ -488,6 +499,7 @@ impl CreaBimApp {
 
     fn load_model(&mut self, model: Model) {
         self.doc = Document::from_model(with_plan_views(model));
+        self.agent_document_id = ElementId::new().0.to_string();
         self.selection.clear();
         self.hidden.clear();
         self.hidden_rev += 1;
@@ -504,6 +516,59 @@ impl CreaBimApp {
         self.geometry_key = None;
         self.drop_stale_selection();
         self.frame_all();
+    }
+
+    fn handle_agent_command(
+        &mut self,
+        command: &str,
+        args: serde_json::Value,
+        document_id: Option<&str>,
+        expected_revision: Option<u64>,
+    ) -> Result<serde_json::Value, String> {
+        let read_only = matches!(command, "inspect_document" | "get_element");
+        if command != "inspect_document" && document_id != Some(self.agent_document_id.as_str()) {
+            return Err("The active document changed; inspect it before continuing".into());
+        }
+        if !read_only {
+            if expected_revision != Some(self.doc.model().revision()) {
+                return Err("The document revision changed; inspect it before editing".into());
+            }
+            if self.close_ask
+                || self.plan.busy()
+                || self.plan.gripping()
+                || self.plan.grips.busy()
+                || self.plan.edit.is_some()
+                || self.plan.point_pick
+                || self.handle_drag.is_some()
+                || self.pending_3d.is_some()
+                || self.beam_face.is_some()
+                || self.plane_pick.is_some()
+                || self.guide_from.is_some()
+                || self.box_armed
+                || self.split.is_some()
+                || self.crop_pick.is_some()
+            {
+                return Err("Finish the current operation in CreaBIM before editing".into());
+            }
+        }
+        let mut result = match command {
+            "undo" => {
+                let label = self.doc.undo_label().ok_or("Nothing to undo")?.to_owned();
+                self.doc.undo();
+                serde_json::json!({"undone": label})
+            }
+            _ => creabim_core::agent_model::execute(&mut self.doc, command, args)?,
+        };
+        if !read_only {
+            self.drop_stale_selection();
+            self.status = format!("MCP: {command}");
+        }
+        let object = result.as_object_mut().ok_or("Invalid command result")?;
+        object.insert("document_id".into(), self.agent_document_id.clone().into());
+        object.insert("revision".into(), self.doc.model().revision().into());
+        object.insert("project_path".into(), self.path.clone().into());
+        object.insert("unsaved".into(), self.unsaved().into());
+        Ok(result)
     }
 
     /// Open a project file, or import and link any other file.
@@ -11105,6 +11170,38 @@ impl eframe::App for CreaBimApp {
         let _pw = Perf::new("web_panels");
         let web = self.web_panels(ui, frame);
         drop(_pw);
+        // Handle the user's pending open/drop actions before agent edits.
+        while let Some(request) = self
+            .agent_bridge
+            .as_ref()
+            .and_then(|bridge| bridge.try_recv())
+        {
+            let interacting = ctx.input(|i| {
+                i.pointer.any_down() || i.pointer.any_released() || i.viewport().close_requested()
+            }) || ctx.egui_wants_keyboard_input()
+                || !self.shell.keys.is_empty()
+                || self.shell.web.as_ref().is_some_and(|web| web.has_pending());
+            let result = if interacting
+                && !matches!(request.command.as_str(), "inspect_document" | "get_element")
+            {
+                Err("Finish the current interaction in CreaBIM before editing".into())
+            } else {
+                self.handle_agent_command(
+                    &request.command,
+                    request.args,
+                    request.document_id.as_deref(),
+                    request.expected_revision,
+                )
+            };
+            let response = match result {
+                Ok(value) => {
+                    ctx.request_repaint();
+                    serde_json::json!({"ok": true, "result": value})
+                }
+                Err(error) => serde_json::json!({"ok": false, "error": error}),
+            };
+            let _ = request.respond.send(response);
+        }
         // the panes say again this frame what the one under the pointer does
         self.plan.hint = None;
         self.rect_3d = None;
@@ -12400,4 +12497,85 @@ pub(crate) fn fold_handle(
             clicked = resp.on_hover_text(tip).clicked();
         });
     clicked
+}
+
+#[cfg(test)]
+mod agent_live_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn live_edits_are_refused_while_a_user_transform_is_active() {
+        let mut app = CreaBimApp::blank(None);
+        app.load_model(creabim_core::starter::starter_house());
+        let wall_id = app
+            .doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Wall(_)))
+            .unwrap()
+            .id;
+        app.plan.modal = Some(
+            crate::modal::Modal::start(
+                &app.doc,
+                crate::modal::Mode::Move,
+                &[wall_id],
+                None,
+                crate::modal::Space::Plan,
+                None,
+                egui::Pos2::ZERO,
+                crate::modal::Pivot::Median,
+                None,
+                None,
+            )
+            .unwrap(),
+        );
+        let id = app.agent_document_id.clone();
+        let revision = app.doc.model().revision();
+        let before = app.doc.model().len();
+        assert!(app
+            .handle_agent_command(
+                "create_level",
+                json!({"name":"MCP test", "elevation":12.0, "height":3.0}),
+                Some(&id),
+                Some(revision),
+            )
+            .is_err());
+        assert_eq!(app.doc.model().len(), before);
+    }
+
+    #[test]
+    fn live_edits_require_current_document_and_revision_and_can_be_undone() {
+        let mut app = CreaBimApp::blank(None);
+        app.load_model(creabim_core::starter::starter_house());
+        let before = app.doc.model().len();
+        let info = app
+            .handle_agent_command("inspect_document", json!({}), None, None)
+            .unwrap();
+        let id = info["document_id"].as_str().unwrap().to_owned();
+        let rev = info["revision"].as_u64().unwrap();
+        let level = json!({"name":"MCP test", "elevation":12.0, "height":3.0});
+        assert!(app
+            .handle_agent_command("create_level", level.clone(), Some("wrong"), Some(rev))
+            .is_err());
+        assert!(app
+            .handle_agent_command("create_level", level.clone(), Some(&id), Some(rev + 1))
+            .is_err());
+        assert_eq!(app.doc.model().len(), before);
+        let made = app
+            .handle_agent_command("create_level", level, Some(&id), Some(rev))
+            .unwrap();
+        assert_eq!(app.doc.model().len(), before + 2);
+        let new_rev = made["revision"].as_u64().unwrap();
+        assert_ne!(new_rev, rev);
+        let undone = app
+            .handle_agent_command("undo", json!({}), Some(&id), Some(new_rev))
+            .unwrap();
+        assert_eq!(app.doc.model().len(), before);
+        assert_ne!(undone["revision"].as_u64().unwrap(), new_rev);
+        app.load_model(creabim_core::starter::starter_house());
+        assert!(app
+            .handle_agent_command("create_level", json!({}), Some(&id), Some(rev))
+            .is_err());
+    }
 }
