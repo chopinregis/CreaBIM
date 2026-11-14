@@ -139,6 +139,9 @@ impl WebUi {
                     size: PhysicalSize::new(10, 10).into(),
                 })
                 .with_background_color(BACKGROUND)
+                // the popup's corners can be round (Save the changes):
+                // what its page leaves clear shows the app behind
+                .with_transparent(pane == Pane::Popup)
                 .with_ipc_handler(move |r| {
                     if let Ok(body) = serde_json::from_str(r.body()) {
                         inbox.lock().unwrap().push(Msg { pane, body });
@@ -479,5 +482,30 @@ mod approved_icons {
             }
         }
         assert!(drift.is_empty(), "icons drifted:\n{}", drift.join("\n"));
+    }
+
+    /// The New project window's choices scroll between its title and its
+    /// buttons, so a window too short for them keeps Create in reach
+    /// (issue 24).
+    #[test]
+    fn the_new_project_windows_choices_scroll() {
+        let rule = super::CSS
+            .lines()
+            .find(|l| l.starts_with(".np-body {"))
+            .expect("a rule for the choices");
+        assert!(rule.contains("overflow-y: auto") && rule.contains("min-height: 0"));
+        // the page puts the choices, and only them, in that part
+        let body = super::JS
+            .find("class=\"np-body\"")
+            .expect("the choices' part");
+        let starts = super::JS.find("class=\"np-starts\"").unwrap();
+        let samples = super::JS.find("class=\"np-samples\"").unwrap();
+        let foot = super::JS.find("class=\"np-foot\"").unwrap();
+        assert!(body < starts && starts < samples && samples < foot);
+        let between = &super::JS[samples..foot];
+        assert!(
+            between.contains("</div></div>"),
+            "the part closes before the buttons"
+        );
     }
 }
