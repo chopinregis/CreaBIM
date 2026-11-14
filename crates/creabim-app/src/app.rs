@@ -1483,6 +1483,19 @@ impl CreaBimApp {
         if self.masters_command(c) {
             return;
         }
+        if c == Command::Duplicate {
+            let ids = self.selection.all();
+            if let Some(r) = crate::modal::duplicate_views(&mut self.doc, &ids) {
+                match r {
+                    Ok(copies) => {
+                        self.status = crate::modal::views_duplicated(&self.doc, &copies);
+                        self.selection.extend(copies, false);
+                    }
+                    Err(e) => self.status = e,
+                }
+                return;
+            }
+        }
         if let Some(m) = c.modal() {
             self.arm(c, m);
             return;
