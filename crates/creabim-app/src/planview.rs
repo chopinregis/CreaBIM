@@ -3128,6 +3128,21 @@ pub fn new_wall(
     w
 }
 
+/// Place a straight wall after the caller resolves its two location-line points.
+pub(crate) fn create_straight_wall(
+    doc: &mut Document,
+    level: ElementId,
+    state: &PlanState,
+    start: DVec2,
+    end: DVec2,
+) -> Result<ElementId, creabim_core::ModelError> {
+    let wall = new_wall(doc.model(), level, state, start, end);
+    let element = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(wall)));
+    let id = element.id;
+    doc.commit(Transaction::new("Draw wall").insert(element))?;
+    Ok(id)
+}
+
 /// The centrelines the Wall tool's shape would make from its clicks so
 /// far (`a`, the arc's end if clicked) to the pointer `b`, for its ghost in
 /// plans and in 3D (MU40): an arc, a circle, a rectangle's four sides.
@@ -3347,11 +3362,9 @@ fn plan_click(
                 Ok(())
             }
             Some(a) if a.distance(p) > 0.05 => {
-                let w = new_wall(doc.model(), level, state, a, p);
-                let e = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w)));
-                selection.only(e.id);
+                selection.only(create_straight_wall(doc, level, state, a, p)?);
                 state.pending = Some(p);
-                doc.commit(Transaction::new("Draw wall").insert(e))
+                Ok(())
             }
             Some(_) => Ok(()),
         },
