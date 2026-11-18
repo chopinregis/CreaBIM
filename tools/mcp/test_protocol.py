@@ -26,7 +26,9 @@ class ProtocolTest(unittest.IsolatedAsyncioTestCase):
             warning_spec.write_text(json.dumps(spec_data))
             params = StdioServerParameters(
                 command=sys.executable, args=[str(SERVER)],
-                env={**os.environ, 'CREABIM_CLI': str(CLI)},
+                env={**{k: v for k, v in os.environ.items()
+                        if k not in ('CREABIM_MCP_PORT', 'CREABIM_MCP_TOKEN')},
+                     'CREABIM_CLI': str(CLI)},
             )
             async with stdio_client(params) as (reader, writer):
                 async with ClientSession(reader, writer) as client:

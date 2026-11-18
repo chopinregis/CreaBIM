@@ -6,6 +6,9 @@ license.workspace = true
 repository.workspace = true
 rust-version = "1.95"
 
+[features]
+live-mcp = []
+
 [dependencies]
 creabim-core.workspace = true
 creabim-geom.workspace = true
