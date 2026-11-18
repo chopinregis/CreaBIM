@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import tempfile
 from typing import Any
@@ -94,6 +95,119 @@ def build_project(spec_path: str, output_path: str) -> dict[str, Any]:
         # Linking on the same filesystem makes no-overwrite atomic.
         os.link(candidate, output)
     return {'path': str(output), 'report': report, 'warnings': warnings}
+
+
+if os.environ.get('CREABIM_MCP_PORT') and os.environ.get('CREABIM_MCP_TOKEN'):
+    def live_call(command: str, args: dict[str, Any], document_id: str | None = None,
+                  expected_revision: int | None = None) -> dict[str, Any]:
+        token = os.environ['CREABIM_MCP_TOKEN']
+        try:
+            port = int(os.environ['CREABIM_MCP_PORT'])
+            if not 1 <= port <= 65535 or len(token) < 32:
+                raise ValueError
+        except ValueError:
+            raise RuntimeError('Live bridge requires a valid port and a token of at least 32 characters') from None
+        request = {'token': token, 'command': command, 'args': args}
+        if document_id is not None:
+            request['document_id'] = document_id
+        if expected_revision is not None:
+            request['expected_revision'] = expected_revision
+        payload = (json.dumps(request, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+        if len(payload) > 1024 * 1024:
+            raise ValueError('Live bridge request exceeds 1 MiB')
+        try:
+            with socket.create_connection(('127.0.0.1', port), timeout=30) as conn:
+                conn.sendall(payload)
+                with conn.makefile('rb') as stream:
+                    raw = stream.readline(1024 * 1024 + 1)
+        except OSError:
+            raise RuntimeError('Live bridge connection failed or timed out; inspect the document before retrying') from None
+        if not raw.endswith(b'\n') or len(raw) > 1024 * 1024:
+            raise RuntimeError('Incomplete or oversized live bridge response; inspect the document before retrying')
+        try:
+            response = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise RuntimeError('Invalid live bridge response; inspect the document before retrying') from None
+        if not isinstance(response, dict) or type(response.get('ok')) is not bool:
+            raise RuntimeError('Invalid live bridge response; inspect the document before retrying')
+        if not response['ok']:
+            raise RuntimeError(str(response.get('error', 'Live bridge rejected the command')).replace(token, '[redacted]'))
+        if not isinstance(response.get('result'), dict):
+            raise RuntimeError('Invalid live bridge result; inspect the document before retrying')
+        return response['result']
+
+    @mcp.tool(annotations=READ_ONLY, structured_output=True)
+    def live_inspect() -> dict[str, Any]:
+        """Inspect the open document, revision, project path, levels and wall and door types."""
+        return live_call('inspect_document', {})
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_wall(document_id: str, expected_revision: int, level_id: str,
+                         start: list[float], end: list[float], wall_type_id: str | None = None,
+                         thickness: float | None = None, location: str | None = None) -> dict[str, Any]:
+        """Create a wall in the open document. Coordinates and thickness are in metres.
+
+        Inspect first for the document ID, revision, level IDs and wall type IDs. A wall
+        type uses its defaults and cannot be combined with thickness or location.
+        An untyped wall defaults to 0.20 m thickness and Centre location.
+        """
+        if wall_type_id is not None and (thickness is not None or location is not None):
+            raise ValueError('A wall type cannot be combined with thickness or location overrides')
+        args = {'level_id': level_id, 'start': start, 'end': end}
+        args.update({k: v for k, v in {'wall_type_id': wall_type_id, 'thickness': thickness,
+                                       'location': location}.items() if v is not None})
+        return live_call('create_wall', args, document_id, expected_revision)
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_door(document_id: str, expected_revision: int, wall_id: str,
+                         center: float, opening_type_id: str) -> dict[str, Any]:
+        """Place a typed door. Measure the centre from the wall start in metres."""
+        args = {'wall_id': wall_id, 'center': center, 'opening_type_id': opening_type_id}
+        return live_call('create_door', args, document_id, expected_revision)
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_update_door(document_id: str, expected_revision: int, element_id: str,
+                         material_id: str | None = None,
+                         clear_material: bool = False, frame_width: float | None = None,
+                         frame_depth: float | None = None, flip_hand: bool | None = None,
+                         flip_facing: bool | None = None) -> dict[str, Any]:
+        """Edit a door's material, frame, hinge and swing in place.
+
+        Frame dimensions are in metres.
+        Set flip_hand to hinge at the end jamb and flip_facing to swing to the exterior.
+        Both are states. Use clear_material to remove the assigned material.
+        """
+        args = {'element_id': element_id}
+        args.update({k: v for k, v in {'material_id': material_id, 'frame_width': frame_width,
+                                       'frame_depth': frame_depth, 'flip_hand': flip_hand,
+                                       'flip_facing': flip_facing}.items() if v is not None})
+        if clear_material:
+            args['clear_material'] = True
+        return live_call('update_door', args, document_id, expected_revision)
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_window(document_id: str, expected_revision: int, wall_id: str,
+                           center: float, opening_type_id: str) -> dict[str, Any]:
+        """Place a typed window. Measure the centre along the wall in metres."""
+        args = {'wall_id': wall_id, 'center': center, 'opening_type_id': opening_type_id}
+        return live_call('create_window', args, document_id, expected_revision)
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_update_window(document_id: str, expected_revision: int, element_id: str,
+                           material_id: str | None = None, clear_material: bool = False,
+                           frame_width: float | None = None, frame_depth: float | None = None,
+                           panes_across: int | None = None, panes_up: int | None = None,
+                           flip_facing: bool | None = None) -> dict[str, Any]:
+        """Edit a window's material, frame, pane grid and inside/outside orientation.
+
+        Frame dimensions are in metres. Use 1 to 12 panes per direction.
+        Set flip_facing to true for inside or false for outside.
+        """
+        args = {'element_id': element_id, 'material_id': material_id,
+                'clear_material': clear_material or None, 'frame_width': frame_width, 'frame_depth': frame_depth,
+                'panes_across': panes_across, 'panes_up': panes_up, 'flip_facing': flip_facing}
+        return live_call('update_window', {k: v for k, v in args.items() if v is not None},
+                         document_id, expected_revision)
 
 
 if __name__ == '__main__':

@@ -3128,6 +3128,21 @@ pub fn new_wall(
     w
 }
 
+/// Place a straight wall after the caller resolves its two location-line points.
+pub(crate) fn create_straight_wall(
+    doc: &mut Document,
+    level: ElementId,
+    state: &PlanState,
+    start: DVec2,
+    end: DVec2,
+) -> Result<ElementId, creabim_core::ModelError> {
+    let wall = new_wall(doc.model(), level, state, start, end);
+    let element = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(wall)));
+    let id = element.id;
+    doc.commit(Transaction::new("Draw wall").insert(element))?;
+    Ok(id)
+}
+
 /// The centrelines the Wall tool's shape would make from its clicks so
 /// far (`a`, the arc's end if clicked) to the pointer `b`, for its ghost in
 /// plans and in 3D (MU40): an arc, a circle, a rectangle's four sides.
@@ -3347,11 +3362,9 @@ fn plan_click(
                 Ok(())
             }
             Some(a) if a.distance(p) > 0.05 => {
-                let w = new_wall(doc.model(), level, state, a, p);
-                let e = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(w)));
-                selection.only(e.id);
+                selection.only(create_straight_wall(doc, level, state, a, p)?);
                 state.pending = Some(p);
-                doc.commit(Transaction::new("Draw wall").insert(e))
+                Ok(())
             }
             Some(_) => Ok(()),
         },
@@ -7228,7 +7241,7 @@ fn place_opening(
     state: &PlanState,
     selection: &mut Selection,
 ) -> Result<(), creabim_core::ModelError> {
-    let mut best: Option<(f64, ElementId, f64, f64)> = None;
+    let mut best: Option<(f64, ElementId, f64)> = None;
     // the wall the pointer showed wins (Tab may have moved past the first)
     let shown = state
         .host_pick
@@ -7243,12 +7256,31 @@ fn place_opening(
         // round the arc on a curved wall
         let (u, d) = w.along(p);
         if d <= w.thickness.max(0.3) && best.is_none_or(|b| d < b.0) {
-            best = Some((d, e.id, u, w.length()));
+            best = Some((d, e.id, u));
         }
     }
-    let Some((_, host, u, len)) = best else {
+    let Some((_, host, u)) = best else {
         return Ok(());
     };
+    let Some(e) = opening_on_wall(doc.model(), host, u, tool, state) else {
+        return Ok(());
+    };
+    selection.only(e.id);
+    insert_plan_opening(doc, e).map(|_| ())
+}
+
+/// Build the Plan and 3D tools' opening at a known point along its host.
+pub(crate) fn opening_on_wall(
+    model: &creabim_core::Model,
+    host: ElementId,
+    center: f64,
+    tool: Tool,
+    state: &PlanState,
+) -> Option<Element> {
+    let ElementKind::Wall(wall) = &model.get(host)?.kind else {
+        return None;
+    };
+    let len = wall.length();
     // the sizes in the bar (a type, when picked, sets its own)
     let m = &state.members;
     let (kind, [width, height, sill], name) = match tool {
@@ -7257,7 +7289,7 @@ fn place_opening(
         _ => (OpeningKind::Window, m.window, "Window"),
     };
     let mut e = state.typed(
-        doc.model(),
+        model,
         Element::new(
             name,
             ElementKind::Opening(Opening {
@@ -7277,14 +7309,22 @@ fn place_opening(
     // centred on the click, as wide as its type makes it
     if let ElementKind::Opening(o) = &mut e.kind {
         if o.width > len {
-            return Ok(());
+            return None;
         }
-        o.offset = (u - o.width / 2.0).clamp(0.0, len - o.width);
+        o.offset = (center - o.width / 2.0).clamp(0.0, len - o.width);
         // clear of a corner (MU23)
-        creabim_core::walls::clamp_opening(doc.model(), o);
+        creabim_core::walls::clamp_opening(model, o);
     }
-    selection.only(e.id);
-    doc.commit(Transaction::new(format!("Place {}", name.to_lowercase())).insert(e))
+    Some(e)
+}
+
+pub(crate) fn insert_plan_opening(
+    doc: &mut Document,
+    opening: Element,
+) -> Result<ElementId, creabim_core::ModelError> {
+    let id = opening.id;
+    doc.commit(Transaction::new(format!("Place {}", opening.name.to_lowercase())).insert(opening))?;
+    Ok(id)
 }
 
 /// The pane behaviour for a view.

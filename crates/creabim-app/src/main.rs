@@ -27,6 +27,8 @@ mod handles;
 mod help;
 mod hoverpick;
 mod icons;
+#[cfg(feature = "live-mcp")]
+mod live_mcp;
 mod memberstool;
 mod modal;
 mod modguides;
