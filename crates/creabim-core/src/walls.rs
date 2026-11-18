@@ -557,7 +557,7 @@ pub fn clamp_opening(model: &Model, o: &mut Opening) {
     };
     let (lo, hi) = clear_span(model, o.host);
     if hi - lo >= o.width - 1e-9 {
-        o.offset = o.offset.clamp(lo, hi - o.width);
+        o.offset = o.offset.clamp(lo, (hi - o.width).max(lo));
     } else {
         o.offset = o.offset.clamp(0.0, (w.length() - o.width).max(0.0));
     }
@@ -1013,6 +1013,9 @@ mod widen_tests {
         o.width = 1.2;
         clamp_opening(&m, &mut o);
         assert!((o.offset + o.width - 5.9).abs() < 1e-9, "{}", o.offset);
+        o.width = hi - lo + 0.5e-9;
+        clamp_opening(&m, &mut o);
+        assert_eq!(o.offset, lo);
     }
 
     #[test]

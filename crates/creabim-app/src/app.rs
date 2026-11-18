@@ -51,6 +51,9 @@ mod joinsui;
 mod levelcopy;
 #[path = "levelsui.rs"]
 mod levelsui;
+#[cfg(feature = "live-mcp")]
+#[path = "live_wall.rs"]
+mod live_wall;
 #[path = "marksui.rs"]
 mod marksui;
 #[path = "mastersui.rs"]
@@ -119,6 +122,10 @@ enum PlanPlacement {
 
 pub struct CreaBimApp {
     doc: Document,
+    #[cfg(feature = "live-mcp")]
+    live_bridge: Option<crate::live_mcp::Bridge>,
+    #[cfg(feature = "live-mcp")]
+    live_document_id: String,
     selection: Selection,
     /// Selected face when a free mesh is selected (mesh edit mode).
     face: Option<usize>,
@@ -388,6 +395,14 @@ impl CreaBimApp {
         if let Some(path) = launch_file(std::env::args().skip(1)) {
             app.open_path(&path);
         }
+        #[cfg(feature = "live-mcp")]
+        match crate::live_mcp::Bridge::start(cc.egui_ctx.clone()) {
+            Ok(bridge) => app.live_bridge = bridge,
+            Err(error) => {
+                app.status = format!("MCP bridge unavailable: {error}");
+                eprintln!("{}", app.status);
+            }
+        }
         app
     }
 
@@ -396,6 +411,10 @@ impl CreaBimApp {
     fn blank(viewport: Option<Viewport3d>) -> Self {
         Self {
             doc: Document::new(),
+            #[cfg(feature = "live-mcp")]
+            live_bridge: None,
+            #[cfg(feature = "live-mcp")]
+            live_document_id: ElementId::new().0.to_string(),
             selection: Selection::default(),
             face: None,
             active_view: None,
@@ -506,6 +525,10 @@ impl CreaBimApp {
 
     fn load_model(&mut self, model: Model) {
         self.doc = Document::from_model(with_plan_views(model));
+        #[cfg(feature = "live-mcp")]
+        {
+            self.live_document_id = ElementId::new().0.to_string();
+        }
         self.selection.clear();
         self.hidden.clear();
         self.hidden_rev += 1;
@@ -11197,6 +11220,8 @@ impl eframe::App for CreaBimApp {
         let _pw = Perf::new("web_panels");
         let web = self.web_panels(ui, frame);
         drop(_pw);
+        #[cfg(feature = "live-mcp")]
+        self.poll_live_mcp(&ctx);
         // the panes say again this frame what the one under the pointer does
         self.plan.hint = None;
         self.rect_3d = None;
