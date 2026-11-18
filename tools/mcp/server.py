@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import tempfile
 from typing import Any
@@ -94,6 +95,85 @@ def build_project(spec_path: str, output_path: str) -> dict[str, Any]:
         # Linking on the same filesystem makes no-overwrite atomic.
         os.link(candidate, output)
     return {'path': str(output), 'report': report, 'warnings': warnings}
+
+
+if os.environ.get('CREABIM_MCP_PORT') and os.environ.get('CREABIM_MCP_TOKEN'):
+    def live_call(command: str, args: dict[str, Any], document_id: str | None = None,
+                  expected_revision: int | None = None) -> dict[str, Any]:
+        token = os.environ['CREABIM_MCP_TOKEN']
+        try:
+            port = int(os.environ['CREABIM_MCP_PORT'])
+            if not 1 <= port <= 65535 or len(token) < 32:
+                raise ValueError
+        except ValueError:
+            raise RuntimeError('Live bridge requires a valid port and a token of at least 32 characters') from None
+        request = {'token': token, 'command': command, 'args': args}
+        if document_id is not None:
+            request['document_id'] = document_id
+        if expected_revision is not None:
+            request['expected_revision'] = expected_revision
+        payload = (json.dumps(request, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+        if len(payload) > 1024 * 1024:
+            raise ValueError('Live bridge request exceeds 1 MiB')
+        try:
+            with socket.create_connection(('127.0.0.1', port), timeout=30) as conn:
+                conn.sendall(payload)
+                with conn.makefile('rb') as stream:
+                    raw = stream.readline(1024 * 1024 + 1)
+        except OSError:
+            raise RuntimeError('Live bridge connection failed or timed out; inspect the document before retrying') from None
+        if not raw.endswith(b'\n') or len(raw) > 1024 * 1024:
+            raise RuntimeError('Incomplete or oversized live bridge response; inspect the document before retrying')
+        try:
+            response = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise RuntimeError('Invalid live bridge response; inspect the document before retrying') from None
+        if not isinstance(response, dict) or type(response.get('ok')) is not bool:
+            raise RuntimeError('Invalid live bridge response; inspect the document before retrying')
+        if not response['ok']:
+            raise RuntimeError(str(response.get('error', 'Live bridge rejected the command')).replace(token, '[redacted]'))
+        if not isinstance(response.get('result'), dict):
+            raise RuntimeError('Invalid live bridge result; inspect the document before retrying')
+        return response['result']
+
+    @mcp.tool(annotations=READ_ONLY, structured_output=True)
+    def live_inspect() -> dict[str, Any]:
+        """Inspect the open document, revision, project path, levels and wall types."""
+        return live_call('inspect_document', {})
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_wall(document_id: str, expected_revision: int, level_id: str,
+                         start: list[float], end: list[float], wall_type_id: str | None = None,
+                         thickness: float | None = None, location: str | None = None) -> dict[str, Any]:
+        """Create a wall in the open document. Coordinates and thickness are in metres.
+
+        Inspect first for the document ID, revision, level IDs and wall type IDs. A wall
+        type uses its defaults and cannot be combined with thickness or location.
+        An untyped wall defaults to 0.20 m thickness and Centre location.
+        """
+        if wall_type_id is not None and (thickness is not None or location is not None):
+            raise ValueError('A wall type cannot be combined with thickness or location overrides')
+        args = {'level_id': level_id, 'start': start, 'end': end}
+        args.update({k: v for k, v in {'wall_type_id': wall_type_id, 'thickness': thickness,
+                                       'location': location}.items() if v is not None})
+        return live_call('create_wall', args, document_id, expected_revision)
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_slab(document_id: str, expected_revision: int, level_id: str,
+                         boundary: list[list[float]]) -> dict[str, Any]:
+        """Draw a straight-edged slab with the native default thickness. Corners are in metres."""
+        args = {'level_id': level_id, 'boundary': boundary}
+        return live_call('create_slab', args, document_id, expected_revision)
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_update_slab(document_id: str, expected_revision: int, element_id: str,
+                         thickness: float | None = None,
+                         top_offset: float | None = None) -> dict[str, Any]:
+        """Update a slab in place. The top stays put unless top_offset is supplied. Units are metres."""
+        args = {'element_id': element_id}
+        args.update({k: v for k, v in {'thickness': thickness,
+                                       'top_offset': top_offset}.items() if v is not None})
+        return live_call('update_slab', args, document_id, expected_revision)
 
 
 if __name__ == '__main__':

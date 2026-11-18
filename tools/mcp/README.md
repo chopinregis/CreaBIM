@@ -1,6 +1,6 @@
 # CreaBIM MCP server
 
-A local MCP server for saved CreaBIM projects and model specifications. It runs over stdio, using the official Python MCP SDK and the existing CreaBIM CLI. No network service or account is needed after setup.
+A local MCP server for saved CreaBIM projects and model specifications. It runs over stdio, using the official Python MCP SDK and the existing CreaBIM CLI. An optional experimental bridge can inspect the open document and create a wall. No account is needed after setup.
 
 ## Setup
 
@@ -39,7 +39,28 @@ The host launches the server; it does not print a URL. For a first check, ask th
 - `check_spec(spec_path)`: validate a specification and return any CLI warnings.
 - `build_project(spec_path, output_path)`: build a new `.creabim` file and return any warnings. It refuses existing files and SQLite sidecars; it does not overwrite them.
 
-The server reads format-version 1 `.creabim` databases from disk in SQLite read-only mode. It does not support legacy `.creabim.json` for inspection or control the open CreaBIM window, and it cannot see changes that have not been saved. It depends on CreaBIM's current SQLite schema. Use a new output path that no other process is creating or opening at the same time; sidecar checks and creation are not one atomic operation. Creating a project requires hard-link support in the destination filesystem; some removable or network volumes do not support it. The host controls access to local paths: only connect trusted clients and review paths before invoking tools.
+The saved-project tools read format-version 1 `.creabim` databases from disk in SQLite read-only mode. They do not support legacy `.creabim.json` or see unsaved changes. They depend on CreaBIM's current SQLite schema. Use a new output path that no other process is creating or opening at the same time; sidecar checks and creation are not one atomic operation. Creating a project requires hard-link support in the destination filesystem; some removable or network volumes do not support it. The host controls access to local paths: only connect trusted clients and review paths before invoking tools.
+
+## Experimental live modeling
+
+This is a separate, opt-in connection to the running application. Standard builds and the six saved-project tools need no flags or network listener. On macOS or Linux, from the repository root, choose an available local port and launch an app built with `live-mcp`:
+
+```sh
+export CREABIM_MCP_PORT=62454
+export CREABIM_MCP_TOKEN="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+cargo run --locked -p creabim-app --features live-mcp &
+```
+
+Start your MCP host from the same shell so its server inherits both environment variables, and use the configuration above. Keep the token private; do not add it to committed configuration. Both variables must be set when the MCP server starts to expose the live tools. The bridge accepts connections only on `127.0.0.1`; use it only with trusted local clients. Close the app and host to end the session.
+
+- `live_inspect()`: get the open document ID, revision, project path, levels and wall types. Use these IDs and the current revision for the next edit.
+- `live_create_wall(document_id, expected_revision, level_id, start, end, wall_type_id, thickness, location)`: create a straight wall in the open document. Positions and thickness are in metres. Choose a wall type to use its defaults, or omit it and optionally specify thickness and location; a type cannot be combined with those overrides. Untyped walls default to 0.20 m thickness and Centre location, with the height of the level.
+- `live_create_slab(document_id, expected_revision, level_id, boundary)`: draw a straight-edged slab with the Slab tool's default 0.25 m thickness. Give 3–1000 distinct XY corners in metres and leave out the repeated closing corner.
+- `live_update_slab(document_id, expected_revision, element_id, thickness, top_offset)`: set thickness (0.02–3 m), top offset (±100 m), or both. A layered slab takes its thickness from its assembly. Use the ID returned at creation or find an existing slab with `list_elements` on a saved project.
+
+For an untyped wall, use `Centre`, `ExteriorFace`, `InteriorFace`, `CoreCentre`, `CoreExterior` or `CoreInterior` as the location. The two input points lie along that line.
+
+Walls and slabs use the application's native editing and undo history. Save in CreaBIM before opening or creating another project. If the document changes, inspect again before editing. A stale revision is rejected. If a connection fails after sending a command, check the model in the app before retrying because the edit may already have completed.
 
 ## Test
 
