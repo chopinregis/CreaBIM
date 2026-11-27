@@ -4173,11 +4173,21 @@ pub(crate) fn create_straight_wall(
     start: DVec2,
     end: DVec2,
 ) -> Result<ElementId, creabim_core::ModelError> {
-    let wall = new_wall(doc.model(), level, state, start, end);
-    let element = state.typed(doc.model(), Element::new("Wall", ElementKind::Wall(wall)));
+    let element = straight_wall_element(doc.model(), level, state, start, end);
     let id = element.id;
     doc.commit(Transaction::new("Draw wall").insert(element))?;
     Ok(id)
+}
+
+pub(crate) fn straight_wall_element(
+    model: &creabim_core::Model,
+    level: ElementId,
+    state: &PlanState,
+    start: DVec2,
+    end: DVec2,
+) -> Element {
+    let wall = new_wall(model, level, state, start, end);
+    state.typed(model, Element::new("Wall", ElementKind::Wall(wall)))
 }
 
 /// The centrelines the Wall tool's shape would make from its clicks so
@@ -9756,7 +9766,7 @@ fn place_opening(
     state: &PlanState,
     selection: &mut Selection,
 ) -> Result<(), creabim_core::ModelError> {
-    let mut best: Option<(f64, ElementId, f64, f64)> = None;
+    let mut best: Option<(f64, ElementId, f64)> = None;
     // the wall the pointer showed wins (Tab may have moved past the first)
     let shown = state
         .host_pick
@@ -9771,12 +9781,31 @@ fn place_opening(
         // round the arc on a curved wall
         let (u, d) = w.along(p);
         if d <= w.thickness.max(0.3) && best.is_none_or(|b| d < b.0) {
-            best = Some((d, e.id, u, w.length()));
+            best = Some((d, e.id, u));
         }
     }
-    let Some((_, host, u, len)) = best else {
+    let Some((_, host, center)) = best else {
         return Ok(());
     };
+    let Some(e) = opening_on_wall(doc.model(), host, center, tool, state) else {
+        return Ok(());
+    };
+    selection.only(e.id);
+    doc.commit(Transaction::new(format!("Place {}", tool.label().to_lowercase())).insert(e))
+}
+
+/// The same opening the plan tool places, with an explicit host and centre.
+pub(crate) fn opening_on_wall(
+    model: &creabim_core::Model,
+    host: ElementId,
+    center: f64,
+    tool: Tool,
+    state: &PlanState,
+) -> Option<Element> {
+    let ElementKind::Wall(wall) = &model.get(host)?.kind else {
+        return None;
+    };
+    let len = wall.length();
     // the sizes in the bar (a type, when picked, sets its own)
     let m = &state.members;
     let (kind, [width, height, sill], name) = match tool {
@@ -9785,7 +9814,7 @@ fn place_opening(
         _ => (OpeningKind::Window, m.window, "Window"),
     };
     let mut e = state.typed(
-        doc.model(),
+        model,
         Element::new(
             name,
             ElementKind::Opening(Opening {
@@ -9796,7 +9825,7 @@ fn place_opening(
                 width,
                 height,
                 material: None,
-                frame: next_frame(doc.model(), kind, state),
+                frame: next_frame(model, kind, state),
                 flip_hand: false,
                 flip_facing: false,
                 roof_at: None,
@@ -9808,14 +9837,13 @@ fn place_opening(
     // centred on the click, as wide as its type makes it
     if let ElementKind::Opening(o) = &mut e.kind {
         if o.width > len {
-            return Ok(());
+            return None;
         }
-        o.offset = (u - o.width / 2.0).clamp(0.0, len - o.width);
+        o.offset = (center - o.width / 2.0).clamp(0.0, len - o.width);
         // clear of a corner (MU23)
-        creabim_core::walls::clamp_opening(doc.model(), o);
+        creabim_core::walls::clamp_opening(model, o);
     }
-    selection.only(e.id);
-    doc.commit(Transaction::new(format!("Place {}", name.to_lowercase())).insert(e))
+    Some(e)
 }
 
 /// The pane behaviour for a view.

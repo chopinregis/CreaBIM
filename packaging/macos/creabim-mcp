@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+
+bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+resources="$bin/../Resources"
+. "$resources/mcp-beta-env.sh"
+creabim_mcp_environment
+
+if [ "$#" -gt 0 ]; then
+    port=${2:-62457}
+    if [ "$1" != --enable-live ] || [ "$#" -gt 2 ] || ! creabim_mcp_port "$port"; then
+        echo 'Usage: creabim-mcp --enable-live [PORT]' >&2
+        exit 2
+    fi
+    umask 077
+    mkdir -p "$beta_support"
+    if [ -e "$beta_config" ] || [ -L "$beta_config" ]; then
+        echo 'The Beta bridge is already configured.' >&2
+        exit 1
+    fi
+    temp=$(/usr/bin/mktemp "$beta_support/.bridge.XXXXXXXX")
+    trap '/bin/rm -f "$temp"' EXIT
+    token=$(/usr/bin/openssl rand -hex 32)
+    printf '%s %s\n' "$port" "$token" > "$temp"
+    /bin/ln "$temp" "$beta_config"
+    printf 'Live MCP enabled on 127.0.0.1:%s. Open or restart CreaBIM MCP Beta.\n' "$port"
+    exit
+fi
+
+python=$(creabim_mcp_python)
+export CREABIM_CLI="$bin/creabim-cli"
+exec "$python" -I -S -B -c '
+from pathlib import Path
+from runpy import run_path
+import sys
+
+resources = Path(sys.argv[1]).resolve()
+sys.path[:0] = [str(resources / "python"), str(resources)]
+run_path(str(resources / "server.py"), run_name="__main__")
+' "$resources/mcp"

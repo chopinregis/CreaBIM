@@ -65,6 +65,9 @@ const MAX_BYTES: u64 = 4 * 1024 * 1024;
 /// Where the log is kept.
 pub fn path() -> Option<std::path::PathBuf> {
     let var = |k: &str| std::env::var_os(k).map(std::path::PathBuf::from);
+    if let Some(dir) = var("CREABIM_LOG_DIR") {
+        return Some(dir.join("activity.log"));
+    }
     let base = if cfg!(windows) {
         var("LOCALAPPDATA")
     } else if cfg!(target_os = "macos") {

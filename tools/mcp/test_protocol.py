@@ -10,7 +10,9 @@ from mcp.client.stdio import stdio_client
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVER = Path(__file__).with_name('server.py')
-CLI = ROOT / 'target' / 'debug' / ('creabim.exe' if os.name == 'nt' else 'creabim')
+CLI = os.environ.get('CREABIM_CLI') or ROOT / 'target' / 'debug' / (
+    'creabim.exe' if os.name == 'nt' else 'creabim'
+)
 SPEC = ROOT / 'examples' / 'small-house.json'
 
 
@@ -27,7 +29,7 @@ class ProtocolTest(unittest.IsolatedAsyncioTestCase):
             params = StdioServerParameters(
                 command=sys.executable, args=[str(SERVER)],
                 env={**{k: v for k, v in os.environ.items()
-                        if k not in ('CREABIM_MCP_PORT', 'CREABIM_MCP_TOKEN')},
+                        if k not in ('CREABIM_MCP_PORT', 'CREABIM_MCP_TOKEN', 'CREABIM_MCP_TOKEN_FILE')},
                      'CREABIM_CLI': str(CLI)},
             )
             async with stdio_client(params) as (reader, writer):

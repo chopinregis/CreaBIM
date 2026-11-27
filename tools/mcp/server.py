@@ -1,10 +1,9 @@
-"""Local MCP access to saved CreaBIM projects and the CreaBIM CLI."""
+"""Local MCP access to saved projects, model specifications and the live app."""
 
 import json
 import os
 from pathlib import Path
 import shutil
-import socket
 import subprocess
 import tempfile
 from typing import Any
@@ -12,11 +11,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+import live
 import project
 
 mcp = FastMCP('CreaBIM')
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 CREATE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
+DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False)
 
 
 def run_cli(*args: str) -> tuple[str, str]:
@@ -97,66 +98,217 @@ def build_project(spec_path: str, output_path: str) -> dict[str, Any]:
     return {'path': str(output), 'report': report, 'warnings': warnings}
 
 
-if os.environ.get('CREABIM_MCP_PORT') and os.environ.get('CREABIM_MCP_TOKEN'):
-    def live_call(command: str, args: dict[str, Any], document_id: str | None = None,
-                  expected_revision: int | None = None) -> dict[str, Any]:
-        token = os.environ['CREABIM_MCP_TOKEN']
-        try:
-            port = int(os.environ['CREABIM_MCP_PORT'])
-            if not 1 <= port <= 65535 or len(token) < 32:
-                raise ValueError
-        except ValueError:
-            raise RuntimeError('Live bridge requires a valid port and a token of at least 32 characters') from None
-        request = {'token': token, 'command': command, 'args': args}
-        if document_id is not None:
-            request['document_id'] = document_id
-        if expected_revision is not None:
-            request['expected_revision'] = expected_revision
-        payload = (json.dumps(request, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
-        if len(payload) > 1024 * 1024:
-            raise ValueError('Live bridge request exceeds 1 MiB')
-        try:
-            with socket.create_connection(('127.0.0.1', port), timeout=30) as conn:
-                conn.sendall(payload)
-                with conn.makefile('rb') as stream:
-                    raw = stream.readline(1024 * 1024 + 1)
-        except OSError:
-            raise RuntimeError('Live bridge connection failed or timed out; inspect the document before retrying') from None
-        if not raw.endswith(b'\n') or len(raw) > 1024 * 1024:
-            raise RuntimeError('Incomplete or oversized live bridge response; inspect the document before retrying')
-        try:
-            response = json.loads(raw)
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            raise RuntimeError('Invalid live bridge response; inspect the document before retrying') from None
-        if not isinstance(response, dict) or type(response.get('ok')) is not bool:
-            raise RuntimeError('Invalid live bridge response; inspect the document before retrying')
-        if not response['ok']:
-            raise RuntimeError(str(response.get('error', 'Live bridge rejected the command')).replace(token, '[redacted]'))
-        if not isinstance(response.get('result'), dict):
-            raise RuntimeError('Invalid live bridge result; inspect the document before retrying')
-        return response['result']
+def _supplied(**fields: Any) -> dict[str, Any]:
+    return {key: value for key, value in fields.items() if value is not None}
+
+
+def _opening(wall_id: str, center: float | None, opening_type_id: str | None,
+             name: str | None, offset: float | None, width: float | None,
+             height: float | None, sill: float | None) -> dict[str, Any]:
+    typed = _supplied(center=center, opening_type_id=opening_type_id)
+    sized = _supplied(name=name, offset=offset, width=width, height=height, sill=sill)
+    if (len(typed) == 2 and not sized) or (len(sized) == 5 and not typed):
+        return {'wall_id': wall_id, **typed, **sized}
+    raise ValueError('Provide center and opening_type_id, or name, offset, width, height and sill')
+
+
+if os.environ.get('CREABIM_MCP_PORT') and (
+        os.environ.get('CREABIM_MCP_TOKEN') or os.environ.get('CREABIM_MCP_TOKEN_FILE')):
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
-    def live_inspect() -> dict[str, Any]:
-        """Inspect the open document, revision, project path, levels and wall types."""
-        return live_call('inspect_document', {})
+    def live_inspect(offset: int | None = None, limit: int | None = None,
+                     kind: str | None = None) -> dict[str, Any]:
+        """Inspect the active document, levels, types and a page of elements.
+
+        Retain document_id and revision for edits. The first page starts at offset 0
+        and defaults to 50 elements; kind optionally filters that page.
+        """
+        return live.call('inspect_document', _supplied(offset=offset, limit=limit, kind=kind))
+
+
+    @mcp.tool(annotations=READ_ONLY, structured_output=True)
+    def live_get_element(document_id: str, element_id: str) -> dict[str, Any]:
+        """Read one element UUID from the inspected active document."""
+        return live.call('get_element', {'element_id': element_id}, document_id)
+
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_level(document_id: str, expected_revision: int, name: str, elevation: float, height: float) -> dict[str, Any]:
+        """Create a level in the inspected document; elevation and height are in metres."""
+        return live.call('create_level', {'name': name, 'elevation': elevation, 'height': height}, document_id, expected_revision)
+
 
     @mcp.tool(annotations=CREATE, structured_output=True)
     def live_create_wall(document_id: str, expected_revision: int, level_id: str,
                          start: list[float], end: list[float], wall_type_id: str | None = None,
-                         thickness: float | None = None, location: str | None = None) -> dict[str, Any]:
-        """Create a wall in the open document. Coordinates and thickness are in metres.
+                         thickness: float | None = None, location: str | None = None,
+                         name: str | None = None, height: float | None = None) -> dict[str, Any]:
+        """Create a straight wall in the active pane's phase. Coordinates and sizes are in metres.
 
-        Inspect first for the document ID, revision, level IDs and wall type IDs. A wall
-        type uses its defaults and cannot be combined with thickness or location.
-        An untyped wall defaults to 0.20 m thickness and Centre location.
+        Inspect first for level and wall type UUIDs. A typed wall uses its type's thickness
+        and location. Untyped walls default to 0.20 m thickness and Centre location.
         """
         if wall_type_id is not None and (thickness is not None or location is not None):
             raise ValueError('A wall type cannot be combined with thickness or location overrides')
-        args = {'level_id': level_id, 'start': start, 'end': end}
-        args.update({k: v for k, v in {'wall_type_id': wall_type_id, 'thickness': thickness,
-                                       'location': location}.items() if v is not None})
-        return live_call('create_wall', args, document_id, expected_revision)
+        args = _supplied(level_id=level_id, start=start, end=end, wall_type_id=wall_type_id,
+                         thickness=thickness, location=location, name=name, height=height)
+        return live.call('create_wall', args, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_door(document_id: str, expected_revision: int, wall_id: str,
+                         center: float | None = None, opening_type_id: str | None = None,
+                         name: str | None = None, offset: float | None = None,
+                         width: float | None = None, height: float | None = None,
+                         sill: float | None = None) -> dict[str, Any]:
+        """Place a door on a wall UUID. Use a type and center, or explicit dimensions.
+
+        Measure center from the wall start. For explicit dimensions, pass name, offset
+        (from the wall start to the opening's near edge), width, height and sill. Units: metres.
+        """
+        args = _opening(wall_id, center, opening_type_id, name, offset, width, height, sill)
+        return live.call('create_door', args, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=DESTRUCTIVE, structured_output=True)
+    def live_update_door(document_id: str, expected_revision: int, element_id: str,
+                         material_id: str | None = None,
+                         clear_material: bool = False, frame_width: float | None = None,
+                         frame_depth: float | None = None, flip_hand: bool | None = None,
+                         flip_facing: bool | None = None) -> dict[str, Any]:
+        """Edit a door's material, frame, hinge and swing in place.
+
+        Frame dimensions are in metres.
+        Set flip_hand to hinge at the end jamb and flip_facing to swing to the exterior.
+        Both are states. Use clear_material to remove the assigned material.
+        """
+        args = _supplied(element_id=element_id, material_id=material_id,
+                         clear_material=clear_material or None, frame_width=frame_width,
+                         frame_depth=frame_depth, flip_hand=flip_hand, flip_facing=flip_facing)
+        return live.call('update_door', args, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_window(document_id: str, expected_revision: int, wall_id: str,
+                           center: float | None = None, opening_type_id: str | None = None,
+                           name: str | None = None, offset: float | None = None,
+                           width: float | None = None, height: float | None = None,
+                           sill: float | None = None) -> dict[str, Any]:
+        """Place a window on a wall UUID. Use a type and center, or explicit dimensions.
+
+        Measure center from the wall start. For explicit dimensions, pass name, offset
+        (from the wall start to the opening's near edge), width, height and sill. Units: metres.
+        """
+        args = _opening(wall_id, center, opening_type_id, name, offset, width, height, sill)
+        return live.call('create_window', args, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=DESTRUCTIVE, structured_output=True)
+    def live_update_window(document_id: str, expected_revision: int, element_id: str,
+                           material_id: str | None = None, clear_material: bool = False,
+                           frame_width: float | None = None, frame_depth: float | None = None,
+                           panes_across: int | None = None, panes_up: int | None = None,
+                           flip_facing: bool | None = None) -> dict[str, Any]:
+        """Edit a window's material, frame, pane grid and inside/outside orientation.
+
+        Frame dimensions are in metres. Use 1 to 12 panes per direction.
+        Set flip_facing to true for inside or false for outside.
+        """
+        args = _supplied(element_id=element_id, material_id=material_id,
+                         clear_material=clear_material or None, frame_width=frame_width,
+                         frame_depth=frame_depth, panes_across=panes_across, panes_up=panes_up,
+                         flip_facing=flip_facing)
+        return live.call('update_window', args, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_slab(document_id: str, expected_revision: int, level_id: str,
+                         boundary: list[list[float]], name: str | None = None,
+                         thickness: float | None = None) -> dict[str, Any]:
+        """Create a straight-edged slab on a level UUID. XY points and thickness are in metres."""
+        args = _supplied(level_id=level_id, boundary=boundary, name=name, thickness=thickness)
+        return live.call('create_slab', args, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=DESTRUCTIVE, structured_output=True)
+    def live_update_slab(document_id: str, expected_revision: int, element_id: str,
+                         thickness: float | None = None,
+                         top_offset: float | None = None) -> dict[str, Any]:
+        """Update a slab in place. The top stays put unless top_offset is supplied. Units are metres."""
+        args = _supplied(element_id=element_id, thickness=thickness, top_offset=top_offset)
+        return live.call('update_slab', args, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_stair(document_id: str, expected_revision: int, level_id: str,
+                          start: list[float], toward: list[float]) -> dict[str, Any]:
+        """Create a straight stair with the native defaults. XY points are in metres.
+
+        The second point sets the direction of travel. The stair rises to the
+        next level, or by the current level's height if it is the top level.
+        """
+        return live.call('create_stair', {'level_id': level_id, 'start': start, 'toward': toward},
+                         document_id, expected_revision)
+
+
+    @mcp.tool(annotations=DESTRUCTIVE, structured_output=True)
+    def live_update_stair(document_id: str, expected_revision: int, element_id: str,
+                          width: float) -> dict[str, Any]:
+        """Set the width of a straight stair in metres."""
+        return live.call('update_stair', {'element_id': element_id, 'width': width},
+                         document_id, expected_revision)
+
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_railing(document_id: str, expected_revision: int, level_id: str,
+                            path: list[list[float]]) -> dict[str, Any]:
+        """Create a free-standing railing along an XY path on a level. Units are metres."""
+        return live.call('create_railing', {'level_id': level_id, 'path': path},
+                         document_id, expected_revision)
+
+
+    @mcp.tool(annotations=DESTRUCTIVE, structured_output=True)
+    def live_update_railing(document_id: str, expected_revision: int, element_id: str,
+                            height: float) -> dict[str, Any]:
+        """Edit a railing's height in metres. Its path or stair host stays put."""
+        return live.call('update_railing', {'element_id': element_id, 'height': height},
+                         document_id, expected_revision)
+
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_column(document_id: str, expected_revision: int, level_id: str, name: str,
+                           position: list[float], width: float, depth: float,
+                           height: float) -> dict[str, Any]:
+        """Create a rectangular column on a level UUID; XY position and dimensions are in metres."""
+        return live.call('create_column', {'level_id': level_id, 'name': name, 'position': position,
+                                          'width': width, 'depth': depth, 'height': height}, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=CREATE, structured_output=True)
+    def live_create_beam(document_id: str, expected_revision: int, level_id: str, name: str,
+                         start: list[float], end: list[float], width: float,
+                         depth: float, top_offset: float = 0) -> dict[str, Any]:
+        """Create a rectangular beam on a level UUID; coordinates and dimensions are in metres. top_offset is below the level top."""
+        return live.call('create_beam', {'level_id': level_id, 'name': name, 'start': start, 'end': end,
+                                        'width': width, 'depth': depth, 'top_offset': top_offset}, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=DESTRUCTIVE, structured_output=True)
+    def live_move_element(document_id: str, expected_revision: int, element_id: str, delta: list[float]) -> dict[str, Any]:
+        """Move a wall, slab, column or beam UUID by an XYZ displacement in metres; openings follow their host wall."""
+        return live.call('move_element', {'element_id': element_id, 'delta': delta}, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=DESTRUCTIVE, structured_output=True)
+    def live_delete_element(document_id: str, expected_revision: int, element_id: str) -> dict[str, Any]:
+        """Delete a wall, opening, column or beam UUID; refuses deletion when dependent elements exist."""
+        return live.call('delete_element', {'element_id': element_id}, document_id, expected_revision)
+
+
+    @mcp.tool(annotations=DESTRUCTIVE, structured_output=True)
+    def live_undo(document_id: str, expected_revision: int) -> dict[str, Any]:
+        """Undo the most recent edit of the inspected document, whether made by a user or agent."""
+        return live.call('undo', {}, document_id, expected_revision)
 
 
 if __name__ == '__main__':

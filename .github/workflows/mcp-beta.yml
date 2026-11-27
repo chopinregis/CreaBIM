@@ -1,0 +1,82 @@
+name: macOS MCP Beta
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/mcp-beta.yml
+      - Cargo.toml
+      - Cargo.lock
+      - crates/creabim-app/**
+      - packaging/macos/**
+      - tools/mcp/**
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build Beta binaries
+        run: cargo build --locked --profile fast -p creabim-app -p creabim-cli --features creabim-app/live-mcp
+      - name: Test live bridge
+        run: cargo test --locked --profile fast -p creabim-app --features live-mcp --bin creabim-app live_
+      - name: Create disk image
+        run: |
+          version=$(cargo metadata --locked --no-deps --format-version 1 |
+            jq -r '.packages[] | select(.name == "creabim-app") | .version')
+          dmg="CreaBIM-MCP-Beta-${version}-macos-$(uname -m).dmg"
+          bash packaging/macos/make-dmg.sh "$version" "$(date -u +%F)" target/fast "$dmg" --mcp-beta
+          echo "BETA_DMG=$dmg" >> "$GITHUB_ENV"
+      - name: Verify packaged MCP server
+        run: |
+          hdiutil verify "$BETA_DMG"
+          mount_point=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" "$BETA_DMG"
+          trap 'hdiutil detach "$mount_point" && rmdir "$mount_point"' EXIT
+          app="$mount_point/CreaBIM MCP Beta.app"
+          codesign --verify --deep --strict "$app"
+          export MCP_SERVER="$app/Contents/MacOS/creabim-mcp"
+          export CREABIM_BETA_SUPPORT="$RUNNER_TEMP/creabim-beta-support"
+          export CREABIM_MCP_PYTHON="$(command -v python3.12)"
+          PYTHONPATH="$app/Contents/Resources/mcp/python" "$CREABIM_MCP_PYTHON" -B -S -s - <<'PY'
+          import asyncio
+          import os
+          import subprocess
+
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+          async def verify():
+              parameters = StdioServerParameters(command=os.environ['MCP_SERVER'], env={
+                  key: os.environ[key] for key in ('CREABIM_BETA_SUPPORT', 'CREABIM_MCP_PYTHON')
+              })
+              async with stdio_client(parameters) as (reader, writer):
+                  async with ClientSession(reader, writer) as session:
+                      await session.initialize()
+                      names = {tool.name for tool in (await session.list_tools()).tools}
+                      result = await session.call_tool('get_schema')
+                      assert not result.isError and '$defs' in result.structuredContent
+                      return names
+
+          offline = {'inspect_project', 'list_elements', 'get_element', 'get_schema', 'check_spec', 'build_project'}
+          assert asyncio.run(verify()) == offline
+          subprocess.run([os.environ['MCP_SERVER'], '--enable-live'], check=True)
+          names = asyncio.run(verify())
+          assert len(names) == 25, names
+          assert offline | {'live_create_door', 'live_create_level', 'live_undo'} <= names
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-mcp-beta
+          path: ${{ env.BETA_DMG }}
+          if-no-files-found: error

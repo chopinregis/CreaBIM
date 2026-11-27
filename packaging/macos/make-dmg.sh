@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 022
 
-if [[ $# -ne 4 ]]; then
-    echo "Usage: $0 VERSION DATE TARGET_DIR OUTPUT.dmg" >&2
+if [[ $# -ne 4 && ! ( $# -eq 5 && $5 == --mcp-beta ) ]]; then
+    echo "Usage: $0 VERSION DATE TARGET_DIR OUTPUT.dmg [--mcp-beta]" >&2
     exit 2
 fi
 
@@ -11,6 +11,7 @@ version=$1
 date=$2
 target_dir=$3
 output=$4
+mode=${5:-}
 
 if [[ ! $version =~ ^[0-9][A-Za-z0-9.+~-]*$ ]]; then
     echo "Invalid macOS package version: $version" >&2
@@ -27,15 +28,58 @@ cd "$root"
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 
-app="$stage/CreaBIM.app"
+name=CreaBIM
+identifier=io.github.chopinregis.creabim
+executable=CreaBIM
+app_binary=$executable
+if [[ $mode == --mcp-beta ]]; then
+    name='CreaBIM MCP Beta'
+    identifier=io.github.chopinregis.creabim.beta.mcp
+    executable=CreaBIM-Beta
+    app_binary=creabim-app
+fi
+
+app="$stage/$name.app"
 contents="$app/Contents"
 install -d "$contents/MacOS" "$contents/Resources"
-install -m 0755 "$target_dir/creabim-app" "$contents/MacOS/CreaBIM"
+install -m 0755 "$target_dir/creabim-app" "$contents/MacOS/$app_binary"
 install -m 0755 "$target_dir/creabim" "$contents/MacOS/creabim-cli"
 install -m 0644 crates/creabim-app/assets/logo/creabim.icns \
     "$contents/Resources/creabim.icns"
 install -m 0644 LICENSE "$stage/LICENSE"
-install -m 0644 docs/RELEASE_README.txt "$stage/READ ME FIRST.txt"
+if [[ $mode == --mcp-beta ]]; then
+    mcp="$contents/Resources/mcp"
+    install -d "$mcp"
+    install -m 0644 tools/mcp/{server,project,live}.py "$mcp/"
+    install -m 0644 packaging/macos/mcp-beta-env.sh "$contents/Resources/"
+    install -m 0755 packaging/macos/creabim-mcp "$contents/MacOS/"
+    install -m 0644 packaging/macos/MCP_BETA_README.txt "$stage/READ ME FIRST.txt"
+
+    # The bundled wheels must match the host architecture used to build the app.
+    source packaging/macos/mcp-beta-env.sh
+    python=$(creabim_mcp_python)
+    arch=$("$python" -I -S -c 'import platform; print(platform.machine())')
+    for binary in "$contents/MacOS/$app_binary" "$contents/MacOS/creabim-cli"; do
+        if [[ $(lipo -archs "$binary") != "$arch" ]]; then
+            echo "The Beta needs a $arch build of both CreaBIM binaries." >&2
+            exit 1
+        fi
+    done
+    "$python" -m pip install --disable-pip-version-check --only-binary=:all: \
+        --no-compile --target "$mcp/python" -r tools/mcp/requirements.txt
+
+    cat > "$contents/MacOS/$executable" <<'SH'
+#!/bin/sh
+set -eu
+bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+. "$bin/../Resources/mcp-beta-env.sh"
+creabim_mcp_environment
+exec "$bin/creabim-app" "$@"
+SH
+    chmod 0755 "$contents/MacOS/$executable"
+else
+    install -m 0644 docs/RELEASE_README.txt "$stage/READ ME FIRST.txt"
+fi
 ln -s /Applications "$stage/Applications"
 
 bundle_version=${version%%[-+~]*}
@@ -45,13 +89,13 @@ cat > "$contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>CreaBIM</string>
+    <string>$executable</string>
     <key>CFBundleIdentifier</key>
-    <string>io.github.chopinregis.creabim</string>
+    <string>$identifier</string>
     <key>CFBundleName</key>
-    <string>CreaBIM</string>
+    <string>$name</string>
     <key>CFBundleDisplayName</key>
-    <string>CreaBIM</string>
+    <string>$name</string>
     <key>CFBundleIconFile</key>
     <string>creabim</string>
     <key>CFBundlePackageType</key>
@@ -68,6 +112,14 @@ cat > "$contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+if [[ $mode == --mcp-beta ]]; then
+    plutil -lint "$contents/Info.plist"
+    codesign --force --sign - "$contents/MacOS/$app_binary" \
+        "$contents/MacOS/creabim-cli" "$contents/MacOS/creabim-mcp"
+    codesign --force --sign - "$app"
+    codesign --verify --deep --strict "$app"
+fi
+
 mkdir -p "$(dirname "$output")"
 # hdiutil's own guess at the image size, from -srcfolder alone, came out too
 # small on GitHub's macos-26 runner ("create failed - No space left on
@@ -76,6 +128,6 @@ mkdir -p "$(dirname "$output")"
 stage_mb=$(du -sm "$stage" | cut -f1)
 size_mb=$((stage_mb + stage_mb / 4 + 64))
 echo "Disk image: ${stage_mb} MB of files, image size ${size_mb} MB"
-hdiutil create -volname "CreaBIM $version" -srcfolder "$stage" \
+hdiutil create -volname "$name $version" -srcfolder "$stage" \
     -size "${size_mb}m" -ov -format UDZO "$output"
-echo "Created $output for CreaBIM $version (release date $date)"
+echo "Created $output for $name $version (release date $date)"
