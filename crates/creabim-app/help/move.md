@@ -18,7 +18,7 @@ While it follows the pointer:
 
 The **Move bar** at the top of the view does the same with the mouse: axis chips for *X*, *Y* and *Z* in their colours (red, green and blue, as the axis lines in the view), a **D** badge for the distance, *Copy*, *Finish* and *Cancel*. Rotate and Scale use the same bar. Drag it by its grip if it is in the way; a double-click puts it back. To have it as a small palette by the pointer instead, see *Settings › Interface › Move, Rotate and Scale bar*.
 
-![Moving a partition by its base point](img/move.jpg)
+![The study's partition moved by its base point: it follows the pointer, 3'-4 1/4" so far, snapped Perpendicular, and the Move bar over the view with Free, X, Y, Z, the distance, Copy, Finish and Cancel](img/move.jpg)
 
 A move is one undo step. Doors and windows go with their wall, and walls joined to a moved wall stretch to stay joined.
 

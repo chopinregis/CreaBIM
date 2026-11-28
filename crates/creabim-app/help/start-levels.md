@@ -8,7 +8,7 @@ A **level** is a floor of the building: the ground floor, the first floor, the r
 2. Click **+ New**. A new level appears one storey above the highest, with its own floor plan. (*Create › Views and levels › Level above the top one* does the same from anywhere.)
 3. Click a level's name to rename it, and type its elevation to change its height.
 
-![The Levels window](img/levels.jpg)
+![The Levels window on the starter house: the levels down the left, the picked level's settings, Add a level, and + New at the foot](img/levels.jpg)
 
 The **+** on the *Levels* group, or *Create › Views and levels › Level above the top one*, adds a level in one click.
 

@@ -1359,6 +1359,7 @@ pub fn show(
             draw_item_xray(&painter, &xf, item, selected, mm, doc.model());
         } else {
             let mut o = overrides.get(&item.id()).copied().unwrap_or_default();
+            o.ground = cut_ground(looks.as_deref(), item);
             let view_off = o.hatch_off;
             // a cut piece, by the scale table: its lines as the sheet draws
             // them (true size, opened up, none for thin layers and at Fill)
@@ -5794,7 +5795,13 @@ pub fn start_modal(
             let mut flow = flow;
             if on_picked {
                 if let Some(start) = from_handle.filter(|h| h.mode == mode) {
-                    m = m.taken_by_handle(start.axis, start.plane, start.by_drag, start.press);
+                    m = m.taken_by_handle(
+                        start.axis,
+                        start.plane,
+                        start.by_drag,
+                        start.press,
+                        start.origin,
+                    );
                     // it follows the pointer from the handle at once: no
                     // base point to click first
                     flow = Flow::Keys;
@@ -7213,6 +7220,9 @@ pub struct Ovr {
     pub fade: f32,
     pub colour: Option<Color32>,
     pub hatch_off: bool,
+    /// The colour behind its cut hatch, as its sheets paint it; none
+    /// keeps the hatch's own grey.
+    pub ground: Option<Color32>,
     /// Projection and cut pens, as factors of the view's own.
     pub proj: f32,
     pub cut: f32,
@@ -7225,6 +7235,7 @@ impl Default for Ovr {
             fade: 0.0,
             colour: None,
             hatch_off: false,
+            ground: None,
             proj: 1.0,
             cut: 1.0,
             dashed: false,
@@ -7294,7 +7305,9 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
             (c[2] * 255.0) as u8,
         )
     };
-    if v.look.overrides.is_empty() && phase.is_empty() {
+    // the project's object styles (Graphic styles), as its sheets draw them
+    let pack = creabim_core::styles::active_pack(model);
+    if v.look.overrides.is_empty() && phase.is_empty() && pack.objects.is_empty() {
         return out;
     }
     let pens = creabim_core::styles::view_pens(model, v);
@@ -7314,11 +7327,41 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
             })
             .collect();
         let reads = phase.get(&e.id).copied();
-        if list.is_empty() && reads.is_none() {
+        // its category's style, then the one for its material, in the order
+        // its sheets take them (looks::Looks::for_view)
+        let material = creabim_core::material_of(model, e).map(|(m, _)| m.name.as_str());
+        let styled: Vec<&creabim_core::styles::ObjectStyle> = pack
+            .object_style(cat, None)
+            .into_iter()
+            .chain(
+                material
+                    .and_then(|m| pack.object_style(cat, Some(m)))
+                    .filter(|s| s.material.is_some()),
+            )
+            .collect();
+        if list.is_empty() && reads.is_none() && styled.is_empty() {
             continue;
         }
         list.sort_by_key(|o| matches!(o.target, Target::Element(_)));
         let mut r = Ovr::default();
+        for s in styled {
+            if let Some(x) = s.projection_weight {
+                r.proj = (pens.mm(x) / w.projection.max(1e-6)) as f32;
+            }
+            if let Some(x) = s.cut_weight {
+                r.cut = (pens.mm(x) / w.cut.max(1e-6)) as f32;
+            }
+            if let Some(c) = s.colour {
+                r.colour = Some(rgb(c.0));
+            }
+            if let Some(pat) = &s.pattern {
+                r.dashed = !matches!(pat, creabim_core::styles::LinePattern::Solid);
+            }
+            if let Some(t) = s.transparency {
+                r.fade = 1.0 - (1.0 - r.fade) * (1.0 - t.clamp(0.0, 1.0));
+            }
+        }
+        // the view's own overrides over them
         for o in list {
             if let Some(x) = o.weight {
                 r.proj = (pens.mm(x) / w.projection.max(1e-6)) as f32;
@@ -7373,6 +7416,124 @@ pub fn view_overrides(model: &creabim_core::Model, view: ElementId) -> HashMap<E
     out
 }
 
+/// The colour behind cut piece `item`'s hatch, as its sheets paint it
+/// (OSArch, 2026-11-27: the working plan kept a fixed grey whatever
+/// Walls › Cut faces › Fill said); none for a plain project.
+fn cut_ground(looks: Option<&creabim_geom::looks::Looks>, item: &PlanItem) -> Option<Color32> {
+    let (Some(l), PlanItem::Fill { id, hatch, rgb, .. }) = (looks, item) else {
+        return None;
+    };
+    let [r, g, b] = l
+        .cut_background(*id, *hatch, *rgb)
+        .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
+    Some(Color32::from_rgb(r, g, b))
+}
+
+#[cfg(test)]
+mod object_styles_in_the_working_plan {
+    use super::*;
+    use creabim_core::styles::{self, LinePattern, ObjectStyle, Rgb};
+    use creabim_core::visibility::Category;
+
+    #[test]
+    fn a_walls_object_style_draws_in_the_working_plan_as_on_its_sheets() {
+        // OSArch "CreaBIM floor plan line styles" (2026-11-27): Graphic
+        // styles > Object styles > Walls set red; the window's sample and
+        // the sheets drew red, the plan being worked in stayed black
+        let mut doc = creabim_core::Document::from_model(creabim_core::sample::sample_house());
+        let (tx, _, plan) = creabim_core::levels::add(doc.model(), "Test", 50.0, 3.0, true);
+        let plan = plan.expect("a plan for the new level");
+        doc.commit(tx).unwrap();
+        let mut pack = styles::active_pack(doc.model()).into_owned();
+        pack.objects
+            .retain(|s| !(s.category == Category::Walls && s.material.is_none()));
+        let mut walls = ObjectStyle::new(Category::Walls);
+        walls.colour = Some(Rgb([0.75, 0.02, 0.0]));
+        walls.pattern = Some(LinePattern::Dashed);
+        pack.objects.push(walls);
+        doc.commit(styles::apply_pack(doc.model(), &pack)).unwrap();
+        let wall = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Wall(_)))
+            .map(|e| e.id)
+            .unwrap();
+        let o = view_overrides(doc.model(), plan).get(&wall).copied();
+        assert_eq!(
+            o.and_then(|o| o.colour),
+            Some(Color32::from_rgb(191, 5, 0)),
+            "the wall's lines take the Walls style's colour"
+        );
+        assert!(o.is_some_and(|o| o.dashed), "and its line pattern");
+        // as its sheets draw it
+        let ElementKind::View(v) = &doc.model().get(plan).unwrap().kind else {
+            panic!("a view")
+        };
+        let looks = creabim_geom::looks::Looks::for_view(doc.model(), plan, v);
+        let (_, sheet_rgb, _) = looks.stroke(wall, creabim_geom::plan::Pen::Cut);
+        let red = [0.75, 0.02, 0.0];
+        assert!(
+            sheet_rgb.is_some_and(|c| c.iter().zip(red).all(|(a, b)| (a - b).abs() < 1e-4)),
+            "the sheet path draws it red too: {sheet_rgb:?}"
+        );
+    }
+
+    #[test]
+    fn a_walls_cut_fill_is_painted_behind_its_hatch_in_the_working_plan() {
+        // OSArch, the same thread (2026-11-27, later): Walls › Cut faces ›
+        // Fill set white showed on sheets; the plan being worked in kept
+        // its light grey behind the hatch
+        let mut doc = creabim_core::Document::from_model(creabim_core::sample::sample_house());
+        let (tx, _, plan) = creabim_core::levels::add(doc.model(), "Test", 50.0, 3.0, true);
+        let plan = plan.expect("a plan for the new level");
+        doc.commit(tx).unwrap();
+        let wall = doc
+            .model()
+            .iter()
+            .find(|e| matches!(e.kind, ElementKind::Wall(_)))
+            .map(|e| e.id)
+            .unwrap();
+        let cut = |id| PlanItem::Fill {
+            id,
+            points: vec![],
+            hatch: creabim_geom::plan::Hatch::Brick,
+            rgb: None,
+            material: None,
+        };
+        // untouched: the built-in hatch's light grey, as before
+        let before = cut_ground(view_looks(doc.model(), plan).as_deref(), &cut(wall));
+        assert!(
+            before.is_none_or(|c| c == Color32::from_gray(224)),
+            "a plain project keeps its grey: {before:?}"
+        );
+        let mut pack = styles::active_pack(doc.model()).into_owned();
+        pack.objects
+            .retain(|s| !(s.category == Category::Walls && s.material.is_none()));
+        let mut walls = ObjectStyle::new(Category::Walls);
+        walls.cut_fill = Some(Rgb([1.0, 1.0, 1.0]));
+        pack.objects.push(walls);
+        doc.commit(styles::apply_pack(doc.model(), &pack)).unwrap();
+        let looks = view_looks(doc.model(), plan);
+        let ground = cut_ground(looks.as_deref(), &cut(wall));
+        assert_eq!(
+            ground,
+            Some(Color32::WHITE),
+            "the working plan paints the Walls style's Fill behind the hatch"
+        );
+        // as its sheets do
+        let ElementKind::View(v) = &doc.model().get(plan).unwrap().kind else {
+            panic!("a view")
+        };
+        let sheet = creabim_geom::looks::Looks::for_view(doc.model(), plan, v);
+        let (sheet_fill, _) = sheet.cut_pattern_of(wall, creabim_geom::plan::Hatch::Brick, None);
+        assert_eq!(
+            sheet_fill,
+            Some([1.0; 3]),
+            "the sheet path paints it white too"
+        );
+    }
+}
+
 type SharedLooks = Arc<creabim_geom::looks::Looks>;
 
 /// The view's looks (styles, patterns), kept while the model doesn't
@@ -7399,7 +7560,8 @@ fn view_looks(
                 let _p = crate::app::Perf::new("view looks: build");
                 let l = creabim_geom::looks::Looks::for_view(model, view, v);
                 // the scale table patterns every cut piece, own patterns or not
-                (l.has_own_patterns() || l.rule.is_some()).then(|| Arc::new(l))
+                // and a style's cut fill paints behind its hatch
+                (l.has_own_patterns() || l.rule.is_some() || l.has_cut_fills()).then(|| Arc::new(l))
             }
             _ => None,
         };
@@ -7674,12 +7836,15 @@ pub fn draw_item_with(
             ..
         } => {
             let gray = (paper::hatch_fill(*pattern) * 255.0) as u8;
-            let own = match rgb {
+            let own = match (o.ground, rgb) {
+                // as its sheets paint it: Cut faces › Fill, else its
+                // pattern's Background
+                (Some(c), _) => c,
                 // Colour and hatch: the material's colour under it (MU32)
-                Some([r, g, b]) => {
+                (None, Some([r, g, b])) => {
                     Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
                 }
-                None => Color32::from_gray(gray),
+                (None, None) => Color32::from_gray(gray),
             };
             // selected: its own fill washed toward the selection's colour,
             // so its hatch, grips and dimensions still read (MU75: a solid
@@ -10884,6 +11049,201 @@ mod tests {
             end1, end0,
             "its leader's end did not move: {:?}",
             state.status
+        );
+    }
+
+    /// The plan pane run as the app runs it, for the snap tests below: two
+    /// slabs side by side on the ground floor, `moved` in Edit mode (with
+    /// `pick` done), pressed at `press` (model metres on the plan), dragged
+    /// along X in 1 px steps to `to` and let go. Returns `moved`'s outline.
+    fn drag_onto_a_neighbour(
+        pick: &dyn Fn(&mut PlanState, &creabim_core::Document, ElementId),
+        press: DVec2,
+        to: DVec2,
+    ) -> Vec<DVec3> {
+        use eframe::egui::{Pos2, Rect};
+        crate::units::set(creabim_core::Units::metric());
+        let mut doc = creabim_core::Document::from_model(creabim_core::starter::starter_house());
+        let (view, level) = doc
+            .model()
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::View(v) if e.name == "Ground Floor plan" => match v.kind {
+                    ViewKind::Plan { level, .. } => Some((e.id, level)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        let slab = |pts: [(f64, f64); 4]| {
+            creabim_core::Element::new(
+                "Slab",
+                ElementKind::Slab(creabim_core::Slab::new(
+                    level,
+                    pts.iter().map(|&(x, y)| DVec2::new(x, y)).collect(),
+                    0.2,
+                )),
+            )
+        };
+        let moved = slab([(30.0, 0.0), (34.0, 0.0), (34.0, 2.0), (30.0, 2.0)]);
+        // the neighbour: its west edge at x = 35.5, its corner at (35.5, 0)
+        let target = slab([(35.5, 0.0), (37.5, 0.0), (37.5, 2.0), (35.5, 2.0)]);
+        let id = moved.id;
+        doc.commit(
+            creabim_core::Transaction::new("probe")
+                .insert(moved)
+                .insert(target),
+        )
+        .unwrap();
+        let ctx = egui::Context::default();
+        let mut state = PlanState::default();
+        let centre = DVec2::new(34.0, 1.0);
+        state.cameras.insert(view, (centre, 100.0));
+        let mut sel = crate::selection::Selection::default();
+        sel.only(id);
+        state.edit = Some(id);
+        state.grips.reset(Some(id));
+        pick(&mut state, &doc, id);
+        state.grips.publish(state.edit);
+        let area = Rect::from_min_size(Pos2::ZERO, egui::vec2(1000.0, 800.0));
+        let xf = Xf {
+            rect: area,
+            center: centre,
+            scale: 100.0,
+        };
+        let kind = PaneKind::Plan { level };
+        let mut t = 0.0;
+        let mut frame = |events: Vec<egui::Event>,
+                         doc: &mut creabim_core::Document,
+                         state: &mut PlanState,
+                         sel: &mut crate::selection::Selection| {
+            t += 1.0 / 60.0;
+            let raw = egui::RawInput {
+                screen_rect: Some(area),
+                events,
+                time: Some(t),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(raw, |ui| {
+                let d = creabim_geom::section::view_drawing_with(doc.model(), view, false).unwrap();
+                let style = PaneStyle {
+                    background: None,
+                    decorations: false,
+                    camera: None,
+                    scale: 50.0,
+                };
+                show(ui, area, doc, view, kind, &d, state, sel, style);
+            });
+            out.textures_delta.clear();
+            state.take_handle();
+            state.grips.publish(state.edit);
+        };
+        let button = |pos: Pos2, pressed: bool| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        let press = xf.to_screen(press);
+        for _ in 0..2 {
+            frame(
+                vec![egui::Event::PointerMoved(press)],
+                &mut doc,
+                &mut state,
+                &mut sel,
+            );
+        }
+        frame(vec![button(press, true)], &mut doc, &mut state, &mut sel);
+        let on = xf.to_screen(to);
+        let steps = (on.x - press.x).round() as i32;
+        for k in 1..=steps {
+            let p = press + egui::vec2(k as f32, 0.0);
+            frame(
+                vec![egui::Event::PointerMoved(p)],
+                &mut doc,
+                &mut state,
+                &mut sel,
+            );
+        }
+        frame(
+            vec![egui::Event::PointerMoved(on)],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        frame(vec![button(on, false)], &mut doc, &mut state, &mut sel);
+        frame(
+            vec![egui::Event::PointerMoved(on)],
+            &mut doc,
+            &mut state,
+            &mut sel,
+        );
+        eprintln!("after the drag: {:?}", state.status);
+        crate::editmode::ring_of(
+            doc.model(),
+            doc.model().get(id).unwrap(),
+            handles::Ring::Outline,
+        )
+        .unwrap()
+        .corners
+    }
+
+    /// Owner markup 2026-11-27 (ceilings, then slabs too): a grip taken by
+    /// its arrow and dragged until a snap caught put the pointer on the
+    /// target, and moved the edge by as much, so the edge stopped short by
+    /// however far from it the press was. A snap now takes the grip itself:
+    /// a slab's corner, taken 70 px out on its X arrow (0.7 m), lands on the
+    /// corner of the slab beside it.
+    #[test]
+    fn a_snap_puts_the_grip_itself_on_the_target_not_the_point_pressed() {
+        let pick = |s: &mut PlanState, d: &creabim_core::Document, id: ElementId| {
+            let i = crate::editmode::ring_of(
+                d.model(),
+                d.model().get(id).unwrap(),
+                handles::Ring::Outline,
+            )
+            .unwrap()
+            .corners
+            .iter()
+            .position(|c| c.truncate().distance(DVec2::new(34.0, 0.0)) < 1e-6)
+            .unwrap();
+            s.grips.pick(handles::Ring::Outline, i, false);
+        };
+        let corners = drag_onto_a_neighbour(&pick, DVec2::new(34.7, 0.0), DVec2::new(35.5, 0.0));
+        let c = corners
+            .iter()
+            .find(|c| (c.y).abs() < 1e-6 && c.x > 33.0)
+            .copied()
+            .unwrap();
+        assert!(
+            (c.x - 35.5).abs() < 1e-3,
+            "the corner is to land on the neighbour's corner (35.5, 0): it is at ({:.4}, {:.4})",
+            c.x,
+            c.y
+        );
+    }
+
+    /// The same for an edge's push bar, which Edit mode draws 16 px inside
+    /// the edge (off the add-corner grip there): taken on the bar and
+    /// dragged onto the neighbour's west edge, the edge lands on it, not
+    /// 16 px (0.16 m here) past it. The owner's 3D offset and section
+    /// height grabs went this way.
+    #[test]
+    fn a_snap_puts_an_edge_taken_by_its_bar_on_the_target() {
+        // where the bar is drawn: EDGE_NUDGE px inside, at 100 px a metre
+        let bar = crate::editmode::EDGE_NUDGE as f64 / 100.0;
+        let corners = drag_onto_a_neighbour(
+            &|_, _, _| {},
+            DVec2::new(34.0 - bar, 1.0),
+            DVec2::new(35.5, 1.0),
+        );
+        let east = corners
+            .iter()
+            .map(|c| c.x)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            (east - 35.5).abs() < 1e-3,
+            "the east edge is to land on the neighbour's west edge (x 35.5): it is at {east:.4}"
         );
     }
 

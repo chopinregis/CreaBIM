@@ -32,11 +32,11 @@ Everything snaps to what is drawn, to the margins, to a millimetre grid and to t
 With the Masters view in front, *Properties* shows the master:
 
 - **Paper**, and **Measured from**: the corner the title block is measured from;
-- the **border** and its **margins** (left, bottom, right, top);
+- the **border** and its **margins** (left, bottom, right, top), with **Usual margins** for 20 mm at the binding side and 10 mm the others;
 - the paper's **Colour** and **Texture**: white, the project palette's paper, or a colour of its own, with no texture, Grain, Laid lines, a 5 mm Grid, Cold-press, Kraft, Linen or Recycled, and how strongly it shows (Strength). Every sheet on the master takes it, on screen, in PDF and in SVG. On the palette's paper the frame, titles and notes take the palette's ink;
-- **its own fields**, named here and filled in per sheet;
-- **Guides**: how many, show or hide them, draw one, clear them all. Guides are kept with the master and never printed;
-- **Pictures and logos**, with each one's size, opacity and, for a logo, one colour;
+- **its own fields**, named here and filled in per sheet (**New field**: client, drawn by, revision…);
+- **Guides**: how many, show or hide them, **Draw a guide** (two clicks), **Clear all**. Guides are kept with the master and never printed;
+- **Pictures and logos** (**Add a logo or picture…**: an SVG comes in as a crisp vector logo, a PNG or JPEG as a picture), with each one's size, opacity and, for a logo, one colour;
 - the **picked** line, shape, text, field or picture, with its pen, fill colour, opacity and words.
 
 **New sheet on it** makes a sheet using this master; **Use on every sheet** gives it to every sheet of the project in one undo step. Deleting a master sends its sheets back to the built-in block.

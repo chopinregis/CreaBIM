@@ -1526,9 +1526,9 @@
     // a pixel to spare each way: the panel's last device pixel was lost
     // at some display scales, and with it the menu's right and bottom
     // edge (MU102)
-    // the panel holds the menu's shadow margin too (see .mwrap)
-    const pad = root.querySelector(".tp") ? 0 : 16;
-    const want = { w: w + 3 + bar + pad, h: h + 3 + pad };
+    // (no shadow margin round it: the panel is solid and the menu fills
+    // it, #112 #121)
+    const want = { w: w + 3 + bar, h: h + 3 };
     if (want.w === local.sentW && want.h === local.sentH) return;
     local.sentW = want.w;
     local.sentH = want.h;

@@ -2,6 +2,8 @@
 
 A **note** is free text on a drawing or a sheet, with or without a leader arrow pointing at something. The project also keeps its **notes** in one place, the **Notes area**: general, structural, electrical and plumbing notes, your own sections, and your drafts and to-dos. Any of them can be placed on sheets.
 
+![General notes on sheet A-102, the block picked: its Shows row reads the section from the Notes area](img/notes-on-sheet.jpg)
+
 ## Writing a note
 
 1. Pick the **Note** tool (`N`, with nothing selected).
@@ -12,12 +14,15 @@ If the leader's point snapped onto an element, it follows that element when it m
 
 ## Notes that read an object
 
-A note can show an object's data instead of words you type, and keep it up to date. In *Properties*, set **Shows** to *An object's data*:
+![A note reading the wall its arrow points at: 1 Shows, 2 Object, 3 Add, 4 Follow the arrow, 5 Capitals](img/notes-reading.jpg)
 
-- **Object**: choose it from the list, searched by name, mark, IFC class or GlobalId, or click the pipette and pick it in a view (`Esc` stops picking).
-- **Add**: puts one of its fields in the text: `{Name}`, `{Mark}`, `{IFC class}`, `{Type}`, `{Material}`, `{Level}`, `{Size}` or `{Layers}`. Type words round them as you like, such as `Wall {Mark}: {Layers}`. A field the object hasn't got reads "—".
-- **Follow the arrow**: on, the note reads whatever its arrow is attached to, so drag the arrow onto another element and the note reads that one instead. Off, it reads the object chosen above.
-- **Capitals** sets the words in capitals, as drawing notes often are.
+A note can show an object's data instead of words you type, and keep it up to date. In *Properties*:
+
+1. **Shows**: *An object's data*.
+2. **Object**: choose it from the list, searched by name, mark, IFC class or GlobalId, or click the pipette and pick it in a view (`Esc` stops picking).
+3. **Add**: puts one of its fields in the text: `{Name}`, `{Mark}`, `{IFC class}`, `{Type}`, `{Material}`, `{Level}`, `{Size}` or `{Layers}`. Type words round them as you like, such as `Wall {Mark}: {Layers}`. `{Size}` is a wall's or slab's thickness, a beam's width × depth, and a door's or window's width × height. A field the object hasn't got reads "—".
+4. **Follow the arrow**: on, the note reads whatever its arrow is attached to, so drag the arrow onto another element and the note reads that one instead. Off, it reads the object chosen above.
+5. **Capitals** sets the words in capitals, as drawing notes often are.
 
 Change the object (rename it, give it another material, change its layers) and the note follows. If the object is deleted, its fields read "—" and *Properties* says the object is gone.
 
@@ -42,6 +47,8 @@ Notes are a visibility category: a view can hide them (see [Visibility](visibili
 
 ## The Notes area
 
+![The Notes area with General notes being written: 1 the section, 2 add, rename and delete it, 3 Markdown or preview, 4 Field, 5 Place on a sheet, 6 Placed on](img/notes-area.jpg)
+
 The project's notes are a list of **sections**. The dropdown in the Notes area's header switches between them:
 
 - **General notes**, **Structural notes**, **Electrical notes**, **Plumbing notes**, and any of your own: the **+** beside the dropdown adds one and lets you name it, the pencil renames the one shown (or double-click its name), the bin deletes it. A section's heading is its name, in capitals.
@@ -58,9 +65,13 @@ A section is written in Markdown, and an empty one shows a short guide:
 - `## ` starts a heading: capitals, underlined on paper.
 - `- ` starts a list, `1. ` a numbered line, `- [ ] ` a box to tick.
 - `**bold**` and `*italic*` print bold and italic.
-- **{ } Field** puts in a field that fills itself on the sheet: `{project}`, `{project_number}`, `{client}`, `{address}`, `{status}`, `{issue_date}`, `{elevation}` (project zero above datum), `{sheets}` (every sheet's number) and `{date}` (today's date).
+- **{ } Field** (below) puts in a field that fills itself on the sheet: `{project}`, `{project_number}`, `{client}`, `{address}`, `{status}`, `{issue_date}`, `{elevation}` (project zero above datum), `{sheets}` (every sheet's number) and `{date}` (today's date).
+
+![The same section as typed, and in the M↓ preview as the sheet prints it](img/notes-preview.jpg)
 
 The **M↓** button switches between the Markdown you type and a **preview** of the section as the sheet prints it, fields filled; click the preview to type again. Paste (`Ctrl+V`) from Word or a web page keeps headings, bold, italic and lists, written as Markdown. The copy button copies the whole section.
+
+![The Field menu: project, project number, client, address, status, issue date, elevation, sheets and date](img/notes-field.jpg)
 
 ### Notes on sheets
 
@@ -72,9 +83,11 @@ Select the block on the sheet: a dashed box shows the block, and *Properties* sh
 
 A block can have a **Height**: tick *Stop at* in its *Properties*, or drag the grip at the foot of its dashed box. While it shows **Whole**, all of its text is drawn, past the height if need be, and a red mark at its foot says how many lines run past.
 
-**Continue…** carries the text on in a new block, a column to the left of the last one, and turns the note **Continued**: the first block stops at its height and the rest flows on. Drag the new block anywhere, or pick another sheet for it in its *Sheet* row; its **Title** is none, *(continued)*, the section's name, or the name with *(continued)*. Edit the section and the lines flow from block to block; if they still don't all fit, the last block shows the red mark. **Whole** folds it back into the first block, the others kept and empty, and **Continued** puts them back.
+**Continue…** carries the text on in a new block, a column beside the last one (**Next part**: *Left* or *Right*), and turns the note **Continued**: the first block stops at its height and the rest flows on. Drag the new block anywhere, or pick another sheet for it in its *Sheet* row; its **Title** is none, *(continued)*, the section's name, or the name with *(continued)*. Edit the section and the lines flow from block to block; if they still don't all fit, the last block shows the red mark. **Whole** folds it back into the first block, the others kept and empty, and **Continued** puts them back.
 
 ### Drafts and to-dos
+
+![The To-dos, two open, with the line to add the next](img/notes-todos.jpg)
 
 - Type in the line at the bottom and press `Enter` to add an item.
 - Each item is one row: a tick (to-do) or a dot (draft), its first line, then its link, edit and delete at the right. Click a row's text to edit it in place; click away to close it.

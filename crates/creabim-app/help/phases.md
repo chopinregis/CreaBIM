@@ -98,4 +98,4 @@ Duplicate the floor plan for each phase and stand each copy at one: *Existing*, 
 
 ## Options
 
-**Options** in the Phases tab hold design questions with two or more answers (*Option A*, *Option B*). A view shows one option and works in it, from its tag's menu. See the tag's **Working in** list and **Ghost the other options**.
+**Options** in the Phases tab hold design questions with two or more answers (*Option A*, *Option B*). **Hold shared parts** keeps what all options share from being moved or changed by accident while you work in one. A view shows one option and works in it, from its tag's menu. See the tag's **Working in** list and **Ghost the other options**.

@@ -2,14 +2,18 @@
 
 The **Site** tools model the ground around the building: the terrain, paved and gravelled areas, and trees and shrubs. Cars and people come from the catalogue.
 
+![Ridgeline House on its sloping lot in 3D: the ground, the house pad, the drive, the road and the trees](img/site-3d.jpg)
+
 They are one [tool family](interface#tool-families) on the *Model* tab: the **Site** button brings back the last one used, and its arrow opens the Site panel, also under *Create › Site*:
 
-- **Ground**: Ground (a new terrain), Contour line, Spot level, Property line
+- **Ground**: Ground (a new terrain), Contour line, Spot level, Property line, Investigation point
 - **Earthworks**: Pad, Pit, Trench
 - **Ways**: Road, Path
-- **Hard landscape**: Paving, Driveway, Gravel, Decking, Asphalt
+- **Hard landscape**: Paving, Driveway, Gravel, Decking, Asphalt, Car park
 - **Services**: Drain, Tank
 - **Planting**: Tree, Conifer, Palm, Shrub
+
+![Create › Site: the tools in their groups, Ground, Earthworks, Ways, Hard landscape, Services and Planting](img/site-where.jpg)
 
 The panel says *what* to make; the tool options strip says *how* (Draw by) and the values (depth, height, width).
 
@@ -88,6 +92,19 @@ Lines and spot levels go on the selected terrain, or the one under the pointer.
 
 A survey brought in from a file is different: its thousands of points and lines stay the terrain's own data, counted in the terrain's Properties, and *Clear* removes them all. A project from before this keeps the spot heights and contours drawn in it: they become things of their own when it is opened.
 
+### The terrain's Properties
+
+![The Ground tab of a terrain, numbered 1 to 6](img/site-ground.jpg)
+
+Select the terrain (click the ground) and open its **Ground** tab:
+
+1. **Survey**: *Import…* brings in a survey, *Clear survey* takes it away; *From a file* counts its points.
+2. **Surface**: *Smooth* › *Curved* and *Edge* › *Follows data* (see *How the ground is read* below).
+3. **Works**: every pad, pit and trench on the terrain, with what each digs (−) and makes up (+).
+4. **Buildings** › *Dig under*, then the volumes for the whole terrain: dug out, made up, over what area, what to take away, and how many slabs stand on it.
+5. The work picked in the list: a link to select it, and its own volumes.
+6. **Soil layers** (below).
+
 ### Pads, digging and volumes
 
 A terrain keeps two grounds: the ground **as surveyed** (its spot heights and lines) and the ground **as designed** (the surveyed ground with the site changes worked in). Drawings and 3D show the designed ground; nothing is ever lost from the survey, and removing a change puts the ground back.
@@ -98,7 +115,10 @@ A terrain keeps two grounds: the ground **as surveyed** (its spot heights and li
 - **Drag** it, or use Move, Rotate and Copy, and the ground follows. While you drag, only its outline moves; the ground is worked out when you let go, so a large survey stays quick.
 - **Double-click** it to reshape it: drag a corner or an edge, add or remove corners. A trench is reshaped by its line, and its outline follows the line and its width. `Tab` finishes.
 - **Delete** removes it and the ground goes back.
-- **Properties** has its level or depth, its banks, and what it digs out and makes up on its own. The terrain's Properties list every work lying on it.
+- **Properties** has its level or depth, its banks, and what it digs out and makes up on its own.
+
+![The court pad picked on the site plan, beside its Earthwork tab: Banks, Platform, what it digs and makes up, and its Edges](img/site-earthwork.jpg)
+ The terrain's Properties list every work lying on it.
 
 A work drawn off any terrain shapes nothing, and its Properties say so. A project from before this keeps its pads and pits: they become things of their own when it is opened.
 
@@ -116,16 +136,34 @@ A work drawn off any terrain shapes nothing, and its Properties say so. A projec
 
 In plans a pad is drawn with its edge, the line where each bank meets the ground, and the bank hatched from its top with long and short strokes. A section through the works shows the ground as it was as a dashed line over the cut.
 
+### The soils report: boreholes, trial pits and probes
+
+![The log of borehole BH1: its layers with their soil symbols and descriptions, the water struck, and the SPT results plotted down its depth](img/site-bh1-log.jpg)
+
+What a soils report found goes in the model where it was found. Pick **Investigation point** in the Site panel's Ground tools and click each borehole, trial pit or probe on the plan. In its *Properties*:
+
+- **Kind**: *Borehole*, *Trial pit* or *Probe*.
+- **Ground**: the ground level it reads from the surveyed ground under it, or tick *Report's* to type the level the report gives. With no terrain under it, its ground level is its level's.
+- **Depth**, **Method**, **Date** and **Report**: how deep it went, how it was made, when, and the report's reference.
+- **Layers**: each layer **Down to** its foot, its **Soil** (*Topsoil*, *Made ground*, *Clay*, *Silt*, *Sand*, *Gravel*, *Peat* or *Rock*), its **Name** across the site (GT1, Stratum B) and its description **As logged**. **Paste from the report** takes the report's rows as they are, one layer a line (its depths, then its description; a code like GT2 first becomes its name), and **Read rows** replaces the layers with them.
+- **Water**: where it was **Met at**, and where it **Rose to** after waiting.
+- **Tests**: an *SPT N*, *Shear vane*, *Penetrometer* or *Dynamic probe* result at a depth, with the result **As written** when the number alone doesn't say it all.
+- **Notes**: anything else the report says.
+
+**Borehole log** opens its log as a view: its layers drawn with their soil symbols and descriptions, its water and its tests, ready to place on a sheet. It follows the borehole as its log changes. A plan's *Investigation* view shows every point on the ground as surveyed.
+
 ### Soil layers
 
 Under *Soil layers* in a terrain's Properties, add what the ground is made of from the top down: a name and a thickness each (topsoil, clay, rock). The layers follow the ground as surveyed. A section through the terrain draws the foot of each layer and its name, and the volumes say how much of what is dug comes from each layer, and how much from below the last.
 
 ### How the ground is read
 
-- **Smooth: Through points** (on by default once a terrain has data): the ground curves through every surveyed height, so contours flow and 3D shows no facets. Off, the ground is the survey's flat triangles between the points, exactly as surveyed. Plans, sections, 3D and volumes always read the same one.
-- **Edge follows the data**: on for a survey, the outline's corners take their height from the surveyed heights nearest them. Off, they stay at the terrain's *Top*, so one spot height in the middle of a flat terrain makes a mound.
+- **Smooth** › *Curved* (on by default once a terrain has data): the ground curves through every surveyed height, so contours flow and 3D shows no facets. Off, the ground is the survey's flat triangles between the points, exactly as surveyed. Plans, sections, 3D and volumes always read the same one.
+- **Edge** › *Follows data*: on for a survey, the outline's corners take their height from the surveyed heights nearest them. Off, they stay at the terrain's *Top*, so one spot height in the middle of a flat terrain makes a mound.
 
 ### Contours in plans
+
+![The site plan of Ridgeline House: the contours, the property line, the house on its pad, the drive, the road and the trees](img/site-plan.jpg)
 
 In a plan's **View** tab, under *Site*, set **Interval** to draw contour lines in that view, for example every 250 mm. Every fifth is drawn heavier (**Heavier** changes that), and **Heights: On heavier** writes each one's height on it, the line broken round the number. Each view has its own; a view where you have set none draws as the survey came in, and as an older file had it. The numbers are sized on paper, so they read the same at 1:100 and 1:500. **Spots: Survey's** writes each of a survey's spot heights beside its cross; a spot level you drew always shows its level, in views that show levels. Break lines show dashed.
 
@@ -149,12 +187,15 @@ Pick **Road** in the Site panel and set the *Width* (kerb to kerb). Click along 
 
 Select the road to set the rest in Properties:
 
+![Ridgeline Road picked on the site plan, beside its Road tab: Section (width, fall across, crown, kerbs, footpaths, depth, gullies) and Line (its levels at each point)](img/site-road.jpg)
+
 - **Width**, **Fall across** (2.5% is usual) and **Crowned**. A crowned road falls both ways from its middle. Turn Crowned off and it falls one way, to its right looking along it.
 - **Kerbs**: how far they stand up. 0 is a shared surface with no kerb.
 - **Footpaths**: a path this wide on each side, at the height of the kerb's top.
 - **Depth**: how deep its make-up goes under the surface.
 - **Levels**: the level of the road's middle at each point. *Even fall* puts the points between the start and the end on one even grade. Under the levels you see its length and its steepest grade, with a note when it is steeper than 1:12 (too steep for a wheelchair) or 1:8 (too steep for most drives).
-- **Worked into the terrain**: the terrain under the road is dug and made up to its levels, with banks (*Banks*, dug and made up) out to the ground as it was. The terrain's volumes count it, and its contours stop at the road.
+- **Hold upright** › *Left* or *Right*: that side is cut and made up upright, a retained face, instead of banked.
+- **Into the ground** › *Works: Into terrain*: the terrain under the road is dug and made up to its levels, with banks (*Cut bank* and *Fill bank*) out to the ground as it was. The terrain's volumes count it, and its contours stop at the road.
 - **Parking**: bays marked down one side or both, each with its width, length and angle (90° square on, 45° or 60° echelon, 0° parallel). They are marked on the carriageway in from its edge, so a car park is a wide road with bays down its sides. The count of bays is shown.
 
 In plan the road shows its kerbs, its footpaths, a dashed centreline, an arrow down each stretch with its grade, and the level at each point. 3D and sections show it as a solid with its kerbs and footpaths. In IFC it is an IfcPavement.
@@ -199,6 +240,8 @@ The 3D view sets its ground from its eye menu: *Ground: After the works*, *Groun
 
 The Site panel's **Drain** lays a drain run: pick what it carries (*Foul*, *Surface water*, *Combined* or *Drainage field*) in the tool bar, click its head, each chamber down the run, and the last one again to finish. It falls from its head to its end, so draw it in the direction the water runs.
 
+![The foul drain picked on the site plan, beside its Drain tab: Pipe (carries, diameter, fall, depth, trench, bed), what digging it in takes, and its Chambers F1 to F3](img/site-drain.jpg)
+
 A new drain is a 100 mm pipe at 1 in 80, its invert 600 mm under the ground at its head, with an inspection chamber at its head, each bend and its end. In Properties set:
 
 - **Diameter**: its bore, in millimetres.
@@ -209,7 +252,11 @@ A new drain is a 100 mm pipe at 1 in 80, its invert 600 mm under the ground at i
 
 The ground over each chamber is read from the terrain under it, with its works. Properties lists each chamber's cover level, invert and depth. It warns where the pipe would come out of the ground, or where it has less than 600 mm over it. In plan, each chamber is drawn with its name (F1, F2… or S1… for surface water), its cover level (CL) and its invert (IL). An invert is red where the pipe would come out of the ground. Each length shows its pipe size and gradient, with an arrow the way it flows. Surface water runs are dashed.
 
-**Tank** buries a tank where you click: a *Septic tank*, *Treatment plant*, *Rainwater tank*, *Attenuation tank* or *Soakaway* (pick it in the tool bar). Set its size, depth, turn, the cover over its top, its walls and the working space dug round it in Properties. They give its capacity and its levels. In plan it is dashed, as it is under the ground, with its name, capacity and base level. A soakaway is crossed.
+**Tank** buries a tank where you click: a *Septic tank*, *Treatment plant*, *Rainwater tank*, *Attenuation tank* or *Soakaway* (pick it in the tool bar). Set its size, depth, turn, the cover over its top, its walls and the working space dug round it in Properties. They give its capacity and its levels.
+
+![The rainwater cistern picked on the site plan, beside its Tank tab: its kind, cover, walls and working space, and what it holds](img/site-tank.jpg)
+
+In plan it is dashed, as it is under the ground, with its name, capacity and base level. A soakaway is crossed.
 
 Drains and tanks show in sections and in 3D. Turn on X-ray (Alt+Z) to see them through the ground.
 
@@ -229,7 +276,7 @@ The *Drains and tanks* switch in a plan view's *Site* settings shows or hides th
 
 The Site panel's **Path** lays a path on the ground: pick its surface (*Gravel*, *Paving*, *Asphalt* or *Bark*) and its Width in the tool bar, click along its middle, and the last point again to finish. Unlike a road, a path is not worked into the terrain: it follows the ground as the works leave it, and is dug only as deep as its make-up.
 
-In Properties set its surface, width, edging (0 for none) and depth. They give its length, its area, its edging and the volume dug for its make-up. In plan it is tinted by its surface between its edging: paving is jointed every 600 mm with its courses, gravel is stippled and bark flecked, and its name is written beside it. In 3D it lies on the ground with its edging standing just proud. The *Roads* switch in a view's *Site* settings shows or hides paths too.
+In Properties set its surface, width, edging (0 for none) and depth, and **Above level**: how high it runs over its level. They give its length, its area, its edging and the volume dug for its make-up. In plan it is tinted by its surface between its edging: paving is jointed every 600 mm with its courses, gravel is stippled and bark flecked, and its name is written beside it. In 3D it lies on the ground with its edging standing just proud. The *Roads* switch in a view's *Site* settings shows or hides paths too.
 
 ## Site levels
 
@@ -252,6 +299,8 @@ In Properties:
 - **Checks**: the building measured against each rule as you work, green when it keeps to it and red when not, with how many elements reach past the setbacks.
 - **Statistics**: the lot, the buildable area, the footprint (everything of the building seen from above, roof overhangs included), the floor area (its slabs, less their holes), the coverage, the floor area ratio, the height and the open space left.
 - **From bearings**: type the legs of the deed, one a line, a bearing then a distance (`N 12°30'15" E 24.35`, `S 77 29 45 E 31.20`, or degrees from north like `192.5 18`). The misclosure back to the first corner shows as you type; *Make from these* redraws the boundary from its first corner.
+
+![Lot 7 picked on the site plan, its buildable area tinted, beside its Property tab: Edges, Rules: setbacks and Limits](img/site-property.jpg)
 
 The building is its walls, slabs, columns, beams, roofs, stairs and railings whose middle is on the lot. The boundary's corners can be moved in edit mode (Tab) like a slab's.
 
@@ -284,14 +333,16 @@ A **car park** is hard landscape that lays its own aisles, rows and bays inside 
 
 Its **Parking** tab, beside *Element*, sets how it is laid out:
 
+![The shop's car park on its plan, beside its Parking tab: Car park, Ground, Bays, Aisles, Edges and Special bays](img/site-car-park.jpg)
+
 - **Car park: Lay bays in it**: on, it lays and counts its bays; off, it is plain paving. **Ground: Worked to it**: the ground under it is dug or made up to its underside, with banks where it meets the ground round it, so it lies in its own bed on any slope. Off, it sits on the ground as it is.
 - **Bays**: a bay's *Width* and *Length*, and the *Aisle* width. Rows run along the car park's longest edge, or across it with **Rows: Across its longest edge**. **Numbers: In plan** writes each bay's number in it, as the schedule lists them.
-- **Aisles**: it lays its own; **Draw my own** draws them by hand. Each aisle has its *Width*, **Flow** (*One-way*, with an arrow in plan, or two-way), a kerb radius, a turning head, and its rows on either side: bays *Square on to the aisle*, in *Echelon* at 60° or 45° (easier to drive into, fewer bays) or *Parallel* along the kerb. *Lay its own* takes the hand-drawn aisles away again.
+- **Aisles**: it lays its own; **Draw my own** draws them by hand. Each aisle has its *Width*, **Flow** (*One-way*, with an arrow in plan, or two-way), a kerb radius, a turning head, and its rows on either side: bays *Square on to the aisle*, in *Echelon* at 60° or 45° (easier to drive into, fewer bays) or *Parallel* along the kerb. *Lay its own* takes the hand-drawn aisles away again. **Add an aisle** puts a new straight aisle across the middle (double-click the car park and drag its points to where it goes); **Remove aisle** takes one and its rows away; **Full rows** runs rows you shortened by hand their full length again.
 - **Edges**: a strip along any edge, as a *Walkway* or *Planting*, with its width, and the bays' clearance to trees.
 - **Special bays**: how many are *Accessible* (in twos, sharing an access zone, nearest the door), *Parent and child* (next nearest), and with an EV charger (at the far end of the row farthest from the door).
 - **Required**: how many bays the permit asks for, as a count or per floor area (one bay for every so many m²), and one accessible bay for every so many bays. It shows how many it lays against that.
 
-**One bay at a time.** In Edit mode, drag the end of a row to shorten it. Right-click a bay to **Make it** another kind (*Standard*, *Accessible*, *EV charging*, *Parent and child*, *Motorbike*, *Delivery*), leave it out, or put an island there. A bay keeps what you made it however the car park is laid out again.
+**One bay at a time.** In Edit mode, drag the end of a row to shorten it. Right-click a bay to **Make it** another kind (*Standard*, *Accessible*, *EV charging*, *Parent and child*, *Motorbike*, *Delivery*), leave it out, or put an island there. A bay keeps what you made it however the car park is laid out again. Its **Bay no.** row says which bay it is, as numbered in plan.
 
 Schedules have a **Parking** category, for a list of the bays.
 

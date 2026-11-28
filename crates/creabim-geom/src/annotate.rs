@@ -261,6 +261,8 @@ pub fn size_text(model: &Model, id: ElementId) -> Option<String> {
         ElementKind::Slab(s) => tag(s.thickness),
         ElementKind::Column(c) => c.profile.label_in(&units),
         ElementKind::Beam(b) => format!("{} × {}", tag(b.width), tag(b.depth)),
+        // a door or window: width × height, as its tags write it
+        ElementKind::Opening(o) => format!("{} × {}", tag(o.width), tag(o.height)),
         ElementKind::Roof(r) => format!("{} {:.0}°", tag(r.thickness), r.pitch),
         ElementKind::Footing(f) => match f.kind {
             creabim_core::FootingKind::Strip => format!("{} × {}", tag(f.width), tag(f.thickness)),
@@ -2022,6 +2024,26 @@ mod tests {
     use super::*;
     use crate::section::view_drawing;
     use creabim_core::sample::sample_house;
+
+    /// A note's {Size} reads a door's or window's width × height
+    /// (GitHub discussion #57: it read "—" on openings).
+    #[test]
+    fn a_notes_size_reads_an_openings_width_and_height() {
+        let m = sample_house();
+        let (id, o) = m
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Opening(o) => Some((e.id, o.clone())),
+                _ => None,
+            })
+            .expect("the sample house has an opening");
+        let tag = |v: f64| creabim_core::write_number(&m, creabim_core::NumberKind::Tags, None, v);
+        assert_eq!(
+            note_field(&m, id, "size"),
+            Some(format!("{} × {}", tag(o.width), tag(o.height))),
+            "an opening's Size is its width × height"
+        );
+    }
 
     /// A room tag put by hand well away from its spot has one leader back,
     /// in its room or out of it, as every tag the label pass nudges has;

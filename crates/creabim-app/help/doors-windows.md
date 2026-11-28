@@ -2,14 +2,17 @@
 
 Doors and windows are hosted by a wall: they cut their opening in it and move with it.
 
+![The Create menu with Door… and Window… ringed](img/doors-where.jpg)
 
 ## Choosing what kind
+
+![The door picker and the window picker, each opened from the kind button in the tool's bar, ringed](img/doors-picker.jpg)
 
 Every way a door or window opens is in one **picker**, as pictures: doors drawn in plan, windows in elevation, by family (hinged, sliding, pivot and two-way, folding, lift and roll, revolving; for windows: fixed, hinged, sliding and hung, pivot, folding and louvred). Your own door and window **types** come first.
 
 - **Before placing**: with the Door or Window tool on, the first button in the bar shows the kind you'll place. Click it and pick. *Create* › **Door…** and **Window…** open the picker straight away.
-- **After placing**: select a door or window. Properties starts with its kind, as a picture; **Change…** opens the picker for everything selected.
-- **Types**: a kind with its sizes, frame, leaf and trim, named and reused. Make one with *Make a type…*; the browser's **Opening types** group lists them with how many are placed.
+- **After placing**: select a door or window. **Opens**, the first row of *Geometry* in *Properties*, names its kind; click it to open the picker for everything selected.
+- **Types**: a kind with its sizes, frame, leaf and trim, named and reused. Make one with **Make a type of it** under *Type*; the browser's **Opening types** group lists them with how many are placed.
 
 ## Placing them
 
@@ -24,7 +27,26 @@ Select one, then:
 - set its *Width*, *Height* and *Sill* (the height of its bottom edge above the wall's base) in *Properties*;
 - drag it along its wall to move it (it stays in the wall);
 - drag its jamb handles to widen it, or its head and sill handles to change its height, in a plan or in 3D;
-- pick a material, and its frame: *Frame width* and *Frame depth*, and for windows *Panes across* and *Panes up*.
+- pick a material, and its **Frame**: *Width*, *Depth*, and for windows *Panes* across × up.
+
+## A door's Properties
+
+![A double door's Element tab, top to bottom, numbered 1 to 12](img/doors-props.jpg)
+
+1. **Type**: the door's type, or *Make a type of it*.
+2. **Preview**: the door on its own, in plan (*P*), elevation (*E*), section (*S*) or *3D*.
+3. **Material**.
+4. **Opens**: its kind; click to open the picker.
+5. **Width**, **Height**, **Sill** and **Along wall**.
+6. **Active leaf**: on a pair, the share of the clear width the leaf with the handle takes; 50 % makes equal leaves.
+7. **Sidelights**, **Transom** and **Head** (below).
+8. **Hung**: which jamb and which side, such as *right, in*.
+9. **Flip** › *Hand* or *Swing* (below).
+10. **Frame**: *Width* and *Depth*.
+11. **Construction**: *Leaf*, *Lining*, *Architrave* and *Threshold* (below).
+12. **Declared ratings** (below).
+
+![The front walls of the three door samples in plan: hinged, sliding, and pivot and folding doors with their swings](img/doors-plans.jpg)
 
 ## Single and double doors
 
@@ -124,6 +146,8 @@ Each drawing shows it:
 
 ## Windows
 
+![Every window in elevation, with its opening triangles](img/windows-elevations.jpg)
+
 *Opens* in a window's *Properties* sets how it opens:
 
 - **Fixed:** glass that does not open.
@@ -162,6 +186,20 @@ Each drawing shows it:
 The newer windows draw their own way. A tilt and turn sash has a casement's triangle and a hopper's together. Hung sashes have an arrow up on the lower sash, and down on the upper one when it slides. A pivot sash has two triangles meeting at its axis, one solid and one dashed, because its two halves turn opposite ways; in plan a vertical pivot shows the sash turned square, dashed, with its swing. A bifold window's sashes are drawn alternately solid and dashed, and in plan they zigzag out from their stack. The *Opens* button shows a short name when the full one would not fit, such as *Tilt-turn*, *Both hung* (double hung) or *Level pivot* (horizontal pivot).
 
 To point the triangles at the handle side instead, as some offices draw them, set *Triangle apex* to *Handle* under *Manage › Project information › Doors and windows*. It changes every elevation and section in the project, doors too.
+
+### A window's Properties
+
+![A casement's Element tab, numbered 1 to 9](img/windows-props.jpg)
+
+1. **Opens**: its kind; click to open the picker.
+2. **Width**, **Height**, **Sill** and **Along wall**.
+3. **Opens to**: which way the sash opens; click to change it.
+4. **Sidelights**, **Transom** and **Head** (below). *Outside* says which face is the exterior.
+5. **Flip** › *Hand* or *In / out*.
+6. **Frame**: *Width*, *Depth* and *Panes* across × up.
+7. **Construction**: *Make*, *Lining* and *Architrave*.
+8. **Declared ratings** (below).
+9. **Arrangement**: a ribbon of windows side by side (below).
 
 ## Sidelights and transoms
 
@@ -225,9 +263,7 @@ A door has a **hand** (which jamb the hinges are on) and a **swing** (which side
 
 - `Space`, or *Flip › Swing* in *Properties*, flips the swing.
 - `Shift+Space`, or *Flip › Hand*, flips the hand. *Hung* reads the result, such as *left, in*.
-- A window flips inside and outside with `Space`, or *Flip inside / outside* in *Properties*.
-
-![A selected door, with Hung and its Hand and Swing flips in Properties](img/door-flip.jpg)
+- A window flips inside and outside with `Space`, or *Flip › In / out* in *Properties*.
 
 ## Tags and schedules
 

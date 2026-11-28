@@ -42,6 +42,15 @@ pub enum Constraint {
 }
 
 impl Constraint {
+    /// `p` brought onto the constraint: the nearest point on its line, or
+    /// straight onto its plane.
+    pub fn project(&self, p: DVec3) -> DVec3 {
+        match *self {
+            Constraint::Plane { point, normal } => p - normal * (p - point).dot(normal),
+            Constraint::Line { point, dir } => point + dir * (p - point).dot(dir),
+        }
+    }
+
     /// The point on the constraint the ray points at.
     pub fn hit(&self, r: Ray) -> Option<DVec3> {
         match *self {
@@ -2885,6 +2894,11 @@ pub struct Drag {
     edit: LiveEdit,
     joined: Vec<(usize, bool)>,
     grab: DVec3,
+    /// The grip's own point, on its path: what a snap puts on the target.
+    /// The press is often off it (on an arrow, or beside an edge), and
+    /// moving by the snap from the press left the edge short of the target
+    /// by that much (owner markup 2026-11-27: ceilings, slabs).
+    anchor: DVec3,
     /// Where the press was on screen: nothing moves until the pointer
     /// leaves it.
     press: Pos2,
@@ -3026,6 +3040,11 @@ pub struct HandleStart {
     /// is known for one only some pixels on, and the picked points
     /// trailed the pointer by that much, MU130).
     pub press: Option<Pos2>,
+    /// The handle's own point (its middle, on what is picked): a snap puts
+    /// this on the target, not the point pressed on an arrow (owner markup
+    /// 2026-11-27: a slab's or a ceiling's edge stopped short of the line
+    /// it snapped to by the arrow's distance from it).
+    pub origin: Option<DVec3>,
 }
 
 impl HandleStart {
@@ -3049,6 +3068,7 @@ impl HandleStart {
             plane,
             by_drag,
             press: HANDLE_PRESS.with(|p| p.take()),
+            origin: HANDLE_ORIGIN.with(|p| p.take()),
         }
     }
 }
@@ -3056,6 +3076,8 @@ impl HandleStart {
 thread_local! {
     /// Where the handle was last pressed, for [`HandleStart::press`].
     static HANDLE_PRESS: std::cell::Cell<Option<Pos2>> = const { std::cell::Cell::new(None) };
+    /// The pressed handle's own point, for [`HandleStart::origin`].
+    static HANDLE_ORIGIN: std::cell::Cell<Option<DVec3>> = const { std::cell::Cell::new(None) };
 }
 
 thread_local! {
@@ -5643,6 +5665,7 @@ pub fn interact(
             };
             if let Some(part) = at.and_then(|p| handle_hit(parts, p)) {
                 HANDLE_PRESS.with(|p| p.set(at));
+                HANDLE_ORIGIN.with(|p| p.set(handle_at.map(|(c, _)| c)));
                 let shift = ctx.input(|i| i.modifiers.shift);
                 grips.request = Some(GripRequest::Handle(part, by_drag, shift));
                 return true;
@@ -5782,7 +5805,9 @@ pub fn interact(
                 normal_of(Ring::Outline)?,
             )
         });
-        let start = match near.or(edge).or(hole).or(whole) {
+        let picked = near.or(edge).or(hole).or(whole);
+        let grip_at = picked.map(|h| h.at);
+        let start = match picked {
             Some(h) => {
                 let grab = (input.ray)(press)
                     .and_then(|r| h.constraint.hit(r))
@@ -5864,12 +5889,19 @@ pub fn interact(
                 crate::actlog::mm(crate::snaps::current_step()),
                 kind,
             ));
+            // a whole element taken by its body moves from where it was
+            // taken; a grip from its own point
+            let anchor = match (kind, grip_at) {
+                (Some(_), Some(at)) => constraint.project(at),
+                _ => grab,
+            };
             *drag = Some(Drag {
                 kind,
                 constraint,
                 edit: LiveEdit::new(label, originals).free(free),
                 joined,
                 grab,
+                anchor,
                 press,
                 last: grab,
                 typed: None,
@@ -6010,9 +6042,12 @@ pub fn interact(
         _ => None,
     };
     let snapped = (input.snap)(pos, fixed);
+    // whether a snap (or a face) caught it, rather than the pointer alone
+    let mut caught = false;
     let now = match (d.constraint, snapped) {
         (Constraint::Plane { point, normal }, Some((p, snap))) => {
             if snap.kind != SnapKind::Grid {
+                caught = true;
                 if let Some(at) = (input.project)(p) {
                     crate::snaps::draw(painter, snap, at, fixed.and_then(|f| (input.project)(f)));
                 }
@@ -6041,6 +6076,7 @@ pub fn interact(
             ) && near_on_screen(input, point + dir * (p - point).dot(dir), free) =>
         {
             let on = crossing(input, fixed, point, dir, p, snap.kind);
+            caught = true;
             if let Some(at) = (input.project)(on) {
                 crate::snaps::draw(painter, snap, at, None);
             }
@@ -6049,6 +6085,7 @@ pub fn interact(
         // nothing caught it: a face it slides into (3D), when near
         (Constraint::Line { point, dir }, _) => match on_face(input, pos, point, dir, free) {
             Some(on) => {
+                caught = true;
                 if let Some(at) = (input.project)(on) {
                     let snap = crate::snaps::Snap {
                         p: on,
@@ -6062,6 +6099,13 @@ pub fn interact(
             None => free,
         },
         _ => free,
+    };
+    // a snap (or a face) caught it: the grip itself goes there, so the move
+    // is measured from the grip's own point, not from where it was pressed
+    let now = if caught {
+        now + (d.grab - d.anchor)
+    } else {
+        now
     };
     // distance marks from where it was grabbed, when no real snap caught it
     let now = if snapped

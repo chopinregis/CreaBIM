@@ -5821,10 +5821,12 @@ impl CreaBimApp {
         } else {
             "right"
         };
+        let card = crate::theme::Palette::of(&ctx).panel2;
         let Some(web) = &mut self.shell.web else {
             return false;
         };
         web.dir = dir;
+        web.set_card_ground(card);
         if web.tick() {
             ctx.request_repaint();
         }

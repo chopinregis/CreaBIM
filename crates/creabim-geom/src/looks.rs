@@ -543,6 +543,28 @@ impl Looks {
         (fill, pattern)
     }
 
+    /// The colour behind cut piece `id`'s hatch, before any fade, as the
+    /// sheets paint it: its material's colour where the drawing style
+    /// gives one, else its style's Cut faces › Fill, else its pattern's
+    /// Background, else white.
+    pub fn cut_background(&self, id: ElementId, hatch: Hatch, rgb: Option<[f32; 3]>) -> [f32; 3] {
+        let fade = self.look(id).map_or(0.0, |l| l.fade);
+        let (fill, _) = self.cut_pattern_of(id, hatch, rgb);
+        let unfade = |c: [f32; 3]| {
+            if fade < 1.0 {
+                c.map(|v| 1.0 - (1.0 - v) / (1.0 - fade))
+            } else {
+                c
+            }
+        };
+        rgb.or(fill.map(unfade)).unwrap_or([1.0; 3])
+    }
+
+    /// True when a style sets a fill behind cut hatches.
+    pub fn has_cut_fills(&self) -> bool {
+        self.by_id.values().any(|l| l.cut_fill.is_some())
+    }
+
     /// Draw a cut fill: its background, then its pattern's lines.
     #[allow(clippy::too_many_arguments)]
     pub fn fill(

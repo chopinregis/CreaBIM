@@ -107,7 +107,7 @@ mod ratingsui;
 #[path = "renders.rs"]
 mod renders;
 #[path = "reportui.rs"]
-mod reportui;
+pub(crate) mod reportui;
 #[path = "selectsimilar.rs"]
 mod selectsimilar;
 #[path = "selecttab.rs"]
@@ -548,14 +548,56 @@ mod start_cloak {
     pub fn set(_frame: &impl raw_window_handle::HasWindowHandle, _on: bool) {}
 }
 
+/// The interface scale the app starts at (Settings › Interface scale), set
+/// before its first frame. It is set as the zoom itself:
+/// `set_zoom_factor` treats it as a change, and to avoid a jump egui
+/// rescales the screen it had last frame. Before the first frame that is
+/// its 10 000-point placeholder, so the first frame was laid out on a
+/// screen 12 500 points square at 80 %. The 3D view then asked the GPU for
+/// a target 12 319 pixels tall, past its 8 192 limit, and the app crashed
+/// at start-up at every scale but 100 %.
+pub(crate) fn start_zoom(ctx: &egui::Context, scale: u16) {
+    ctx.options_mut(|o| o.zoom_factor = f32::from(scale) / 100.0);
+}
+
+#[cfg(test)]
+mod start_zoom_tests {
+    /// Every interface scale starts on the window's own size, not on
+    /// egui's placeholder screen.
+    #[test]
+    fn every_interface_scale_starts_on_the_windows_own_size() {
+        for scale in [80u16, 90, 110, 125, 150] {
+            let ctx = eframe::egui::Context::default();
+            super::start_zoom(&ctx, scale);
+            let z = f32::from(scale) / 100.0;
+            // the owner's window, 1938 × 1038 pixels on a screen at 125 %
+            let screen = eframe::egui::Rect::from_min_size(
+                eframe::egui::Pos2::ZERO,
+                eframe::egui::vec2(1938.0 / (1.25 * z), 1038.0 / (1.25 * z)),
+            );
+            let raw = eframe::egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(raw, |_| {});
+            out.textures_delta.clear();
+            let got = ctx.content_rect();
+            assert!(
+                (got.size() - screen.size()).length() < 1.0,
+                "at {scale} %, the first frame is laid out on {got:?}, the window is {screen:?}"
+            );
+            assert!((ctx.zoom_factor() - z).abs() < 1e-6);
+        }
+    }
+}
+
 impl CreaBimApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let settings = crate::files::Settings::load();
         // The web panels and native UI share one scale preference.
         cc.egui_ctx
             .options_mut(|options| options.zoom_with_keyboard = false);
-        cc.egui_ctx
-            .set_zoom_factor(f32::from(settings.interface_scale) / 100.0);
+        start_zoom(&cc.egui_ctx, settings.interface_scale);
         let theme = crate::theme::Theme::from_id(&settings.theme).unwrap_or_default();
         crate::handles::set_grip_style(settings.grips);
         crate::modal::set_bar_by_pointer(settings.edit_bar == "pointer");
@@ -4349,7 +4391,13 @@ impl CreaBimApp {
         self.rebuild_geometry(rs);
         self.rebuild_selection(rs);
         let ppp = ui.ctx().pixels_per_point();
-        let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
+        // within what the graphics card can make
+        let size = crate::render3d::target_size(
+            rect.width(),
+            rect.height(),
+            ppp,
+            rs.device.limits().max_texture_dimension_2d,
+        );
         if let Some(vp) = &mut self.viewport {
             let _pr = Perf::new("3d render");
             let tex = vp.render(
@@ -15840,19 +15888,8 @@ impl eframe::App for CreaBimApp {
                 }
             }
         }
-        // the web bars cover the top and bottom of the window: egui's own
-        // drop-downs and windows keep out from under them, opening upwards
-        // when there is no room below
-        let bands = if self.shell.web.is_some() {
-            egui::epaint::MarginF32 {
-                top: shell::TOP_H,
-                bottom: shell::STATUS_H,
-                ..Default::default()
-            }
-        } else {
-            egui::epaint::MarginF32::default()
-        };
-        raw_input.safe_area_insets = Some(egui::SafeAreaInsets(bands));
+        raw_input.safe_area_insets =
+            Some(egui::SafeAreaInsets(band_insets(self.shell.web.is_some())));
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -17823,6 +17860,21 @@ pub(crate) const MAP_LINE_FILES: [&str; 6] = ["geojson", "json", "shp", "osm", "
 
 /// What the status bar says when the starter house opens.
 pub(crate) const STARTER_LOADED: &str = "Loaded the starter house. Orbit with the middle button (or Alt + left drag), pan with right drag, zoom with the wheel; a left drag selects with a box. The Sheets group has its drawings.";
+
+/// What the web bars cover of the window, given to egui as its safe area:
+/// egui's own drop-downs, windows and the splash keep out from under them,
+/// drop-downs opening upwards when there is no room below.
+pub(crate) fn band_insets(web: bool) -> egui::epaint::MarginF32 {
+    if web {
+        egui::epaint::MarginF32 {
+            top: shell::TOP_H,
+            bottom: shell::STATUS_H,
+            ..Default::default()
+        }
+    } else {
+        egui::epaint::MarginF32::default()
+    }
+}
 
 /// The app round the sample house, for tests.
 #[cfg(test)]

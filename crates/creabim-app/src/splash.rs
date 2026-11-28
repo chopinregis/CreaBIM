@@ -38,6 +38,17 @@ fn card_w(ctx: &egui::Context) -> f32 {
 }
 /// The picture's height at most; less on a short screen.
 const PICTURE_H: f32 = 355.0;
+/// The picture's least height in a short window, with its lockup and
+/// tagline drawn smaller to stay clear of each other (MU154).
+const PICTURE_MIN: f32 = 96.0;
+/// The height the lockup and tagline keep their full size down to.
+const PICTURE_FULL: f32 = 200.0;
+/// The room kept between the card and the bars above and below it.
+const MARGIN: f32 = 12.0;
+/// The card's border, which adds to its height top and bottom.
+const BORDER: f32 = 1.0;
+/// What the body under the picture measured the frame before.
+const BODY_KEY: &str = "splash.body";
 /// The body under the picture is the same height on both pages, the setup
 /// and the start (MU106: Save and continue changed the card's height, a
 /// jump to the eye). The pages' own content is at least this tall; the
@@ -53,6 +64,10 @@ fn label_of(list: &[(&'static str, &'static str)], id: &str) -> &'static str {
         .find(|(k, _)| *k == id)
         .map_or(list[0].1, |(_, l)| *l)
 }
+
+/// How far down the release's picture the bird on the roof and the roof's
+/// crest end, as a share of its height: a short strip of it keeps them.
+const BIRD_LINE: f32 = 0.42;
 
 /// The release's picture.
 fn picture(ctx: &egui::Context) -> egui::TextureHandle {
@@ -193,23 +208,35 @@ impl CreaBimApp {
                 resp.clicked()
             });
         let first = !self.shell.settings.setup_done;
-        let body_h = 270.0;
-        let pic_h = PICTURE_H.min(screen.height() - body_h - 40.0).max(200.0);
+        // the card fits between the bars (`screen` is the window less the
+        // top bar and the status bar). The body is as tall as it measured
+        // the frame before; the picture takes what is left, down to its
+        // least height, and past that the body scrolls. MU154: at 150 % the
+        // card was laid out 470 points tall in 420. egui cut it at the
+        // status bar, and the bar, cut round the card, left black where it
+        // had been
+        let room = (screen.height() - 2.0 * (MARGIN + BORDER)).max(0.0);
+        let body_h: f32 = ctx
+            .data(|d| d.get_temp(egui::Id::new(BODY_KEY)))
+            .unwrap_or(270.0);
+        let pic_h = (room - body_h).clamp(PICTURE_MIN, PICTURE_H);
+        let body_room = (room - pic_h).max(60.0);
+        let card_h = pic_h + body_h.min(body_room) + 2.0 * BORDER;
         let mut close = dim.inner;
         let mut act: Option<&'static str> = None;
         let mut open_file: Option<String> = None;
         let w = WIDTH.min(screen.width() - 24.0).max(320.0);
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("splash.w"), w));
-        let at = screen.center() - egui::vec2(w / 2.0, (pic_h + body_h) / 2.0);
+        let at = screen.center() - egui::vec2(w / 2.0, card_h / 2.0);
         let area = egui::Area::new(egui::Id::new("splash"))
             .fade_in(false)
             .order(egui::Order::Middle)
-            .fixed_pos(at.max(screen.min + egui::vec2(8.0, 8.0)))
+            .fixed_pos(at.max(screen.min + egui::vec2(MARGIN, MARGIN)))
             .constrain(false)
             .show(ctx, |ui| {
                 egui::Frame::new()
                     .fill(p.panel)
-                    .stroke(egui::Stroke::new(1.0, p.border))
+                    .stroke(egui::Stroke::new(BORDER, p.border))
                     .corner_radius(10)
                     .shadow(egui::epaint::Shadow {
                         offset: [0, 16],
@@ -219,52 +246,31 @@ impl CreaBimApp {
                     })
                     .show(ui, |ui| {
                         ui.set_width(w);
+                        // its room said outright: an area's room is the size
+                        // it had last frame (400 points the first), and the
+                        // body's scroll area never grows past the room it's
+                        // given, so the card stayed 400 points tall
+                        ui.set_max_height(pic_h + body_room);
                         ui.spacing_mut().item_spacing.y = 0.0;
                         if self.splash_picture(ui, pic_h) {
                             close = true;
                         }
-                        egui::Frame::new()
-                            .inner_margin(egui::Margin {
-                                left: 28,
-                                right: 28,
-                                top: 18,
-                                bottom: 14,
-                            })
-                            .show(ui, |ui| {
-                                ui.spacing_mut().item_spacing.y = 6.0;
-                                // one height for both pages: the taller of
-                                // the two, so the card never jumps (MU106)
-                                let top = ui.cursor().top();
-                                if first {
-                                    act = self.splash_setup(ui, &p);
-                                } else {
-                                    let (a, f) = self.splash_start(ui, &p);
-                                    act = a;
-                                    open_file = f;
-                                }
-                                let natural = ui.min_rect().bottom() - top;
-                                if first {
-                                    // the setup's room goes above its last
-                                    // line, where the start page has its own
-                                    let pad: f32 = ui
-                                        .ctx()
-                                        .data(|d| d.get_temp(egui::Id::new(PAD_KEY)))
-                                        .unwrap_or(0.0);
-                                    let want = (CONTENT_H - (natural - pad)).max(0.0);
-                                    if (want - pad).abs() > 0.25 {
-                                        ui.ctx().data_mut(|d| {
-                                            d.insert_temp(egui::Id::new(PAD_KEY), want)
-                                        });
-                                        ui.ctx().request_discard("the splash's setup height");
-                                    }
-                                } else if natural < CONTENT_H {
-                                    ui.add_space(CONTENT_H - natural);
-                                }
-                                ui.add_space(8.0);
-                                if let Some(a) = self.splash_footer(ui, &p) {
-                                    act = Some(a);
-                                }
-                            });
+                        // a bar over the body's edge when it scrolls, so the
+                        // columns keep their width
+                        ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+                        let body = egui::ScrollArea::vertical()
+                            .id_salt("splash.body")
+                            .max_height(body_room)
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| self.splash_body(ui, &p, first));
+                        (act, open_file) = body.inner;
+                        // the body's own height, for the picture's next frame
+                        let natural = body.content_size.y;
+                        if (natural - body_h).abs() > 0.5 {
+                            ui.ctx()
+                                .data_mut(|d| d.insert_temp(egui::Id::new(BODY_KEY), natural));
+                            ui.ctx().request_discard("the splash's body height");
+                        }
                     });
             });
         ctx.move_to_top(dim.response.layer_id);
@@ -308,6 +314,58 @@ impl CreaBimApp {
         }
     }
 
+    /// Under the picture: the setup the first time, else the start page,
+    /// then the footer. What was asked for, and a recent file to open.
+    fn splash_body(
+        &mut self,
+        ui: &mut egui::Ui,
+        p: &crate::theme::Palette,
+        first: bool,
+    ) -> (Option<&'static str>, Option<String>) {
+        let mut act = None;
+        let mut open_file = None;
+        egui::Frame::new()
+            .inner_margin(egui::Margin {
+                left: 28,
+                right: 28,
+                top: 18,
+                bottom: 14,
+            })
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
+                // one height for both pages: the taller of the two, so the
+                // card never jumps (MU106)
+                let top = ui.cursor().top();
+                if first {
+                    act = self.splash_setup(ui, p);
+                } else {
+                    (act, open_file) = self.splash_start(ui, p);
+                }
+                let natural = ui.min_rect().bottom() - top;
+                if first {
+                    // the setup's room goes above its last line, where the
+                    // start page has its own
+                    let pad: f32 = ui
+                        .ctx()
+                        .data(|d| d.get_temp(egui::Id::new(PAD_KEY)))
+                        .unwrap_or(0.0);
+                    let want = (CONTENT_H - (natural - pad)).max(0.0);
+                    if (want - pad).abs() > 0.25 {
+                        ui.ctx()
+                            .data_mut(|d| d.insert_temp(egui::Id::new(PAD_KEY), want));
+                        ui.ctx().request_discard("the splash's setup height");
+                    }
+                } else if natural < CONTENT_H {
+                    ui.add_space(CONTENT_H - natural);
+                }
+                ui.add_space(8.0);
+                if let Some(a) = self.splash_footer(ui, p) {
+                    act = Some(a);
+                }
+            });
+        (act, open_file)
+    }
+
     /// The picture with the lockup, version and tagline on it, and ×.
     /// True when × was clicked.
     fn splash_picture(&mut self, ui: &mut egui::Ui, h: f32) -> bool {
@@ -315,11 +373,15 @@ impl CreaBimApp {
         let (r, _) = ui.allocate_exact_size(egui::vec2(width, h), egui::Sense::hover());
         let tex = picture(ui.ctx());
         // fill the width; when shorter, keep the top (MU73: cropped from
-        // the middle, the bird on the roof was cut away)
+        // the middle, the bird on the roof was cut away). A strip too short
+        // to reach the bird from the top slides down just enough to keep it
+        // and the roof's crest (MU154: at 150 % the top showed sky)
         let [tw, th] = tex.size();
         let want = (width / h) / (tw as f32 / th.max(1) as f32);
         let uv = if want > 1.0 {
-            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0 / want))
+            let shown = 1.0 / want;
+            let top = (BIRD_LINE - shown).clamp(0.0, 1.0 - shown);
+            egui::Rect::from_min_max(egui::pos2(0.0, top), egui::pos2(1.0, top + shown))
         } else {
             let u = (1.0 - want) / 2.0;
             egui::Rect::from_min_max(egui::pos2(u, 0.0), egui::pos2(1.0 - u, 1.0))
@@ -335,15 +397,18 @@ impl CreaBimApp {
             .paint_at(ui, r);
         let pa = ui.painter_at(r);
         let clear = egui::Color32::TRANSPARENT;
+        // in a short window the lockup, the tagline and their shades come
+        // down with the picture, so the two stay clear of each other (MU154)
+        let k = (h / PICTURE_FULL).clamp(PICTURE_MIN / PICTURE_FULL, 1.0);
         shade(
             &pa,
-            egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 120.0)),
+            egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 120.0 * k)),
             egui::Color32::from_black_alpha(120),
             clear,
         );
         shade(
             &pa,
-            egui::Rect::from_min_max(egui::pos2(r.left(), r.bottom() - 110.0), r.max),
+            egui::Rect::from_min_max(egui::pos2(r.left(), r.bottom() - 110.0 * k), r.max),
             clear,
             egui::Color32::from_black_alpha(150),
         );
@@ -352,9 +417,9 @@ impl CreaBimApp {
         // the interface font read wrong)
         let lockup = lockup(ui.ctx());
         let [lw, lh] = lockup.size();
-        let lh_px = 70.0;
+        let lh_px = 70.0 * k;
         let lr = egui::Rect::from_min_size(
-            egui::pos2(r.left() + 20.0, r.top() + 16.0),
+            egui::pos2(r.left() + 20.0, r.top() + 16.0 * k),
             egui::vec2(lh_px * lw as f32 / lh.max(1) as f32, lh_px),
         );
         egui::Image::new((lockup.id(), lr.size())).paint_at(ui, lr);
@@ -390,10 +455,10 @@ impl CreaBimApp {
         pa.galley(vr.min + egui::vec2(7.0, 3.0), g, white);
         // the tagline
         pa.text(
-            egui::pos2(r.left() + 28.0, r.bottom() - 24.0),
+            egui::pos2(r.left() + 28.0, r.bottom() - 24.0 * k),
             egui::Align2::LEFT_BOTTOM,
             "One model. Every drawing.",
-            egui::FontId::proportional(24.0),
+            egui::FontId::proportional(24.0 * k),
             white,
         );
         x.on_hover_text("Close (Esc)").clicked()
@@ -745,5 +810,98 @@ impl CreaBimApp {
             }
         });
         act
+    }
+}
+
+#[cfg(test)]
+mod fit_tests {
+    use super::*;
+
+    /// The start window between the bars at every interface scale (MU154).
+    /// On the owner's window, 1938 × 1038 pixels at 125 %, the card at
+    /// 150 % was laid out 470 points tall in 420: egui cut it at the status
+    /// bar, and the bar, cut round the card, left black where it had been.
+    /// Also on a 1280 × 720 laptop at 100 %, where at 125 % and up the body
+    /// has to scroll. The start page and the first-run setup both.
+    #[test]
+    fn the_start_window_fits_between_the_bars_at_every_scale() {
+        let windows = [
+            ("owner's", 1938.0, 1038.0, 1.25),
+            ("laptop", 1280.0, 720.0, 1.0),
+        ];
+        for (name, px_w, px_h, system) in windows {
+            for scale in [80u16, 90, 100, 110, 125, 150] {
+                for first in [false, true] {
+                    let page = if first { "setup" } else { "start" };
+                    let mut app = crate::app::test_app();
+                    app.splash_open = true;
+                    app.shell.settings.setup_done = !first;
+                    let ctx = egui::Context::default();
+                    crate::app::start_zoom(&ctx, scale);
+                    let ppp = system * f32::from(scale) / 100.0;
+                    let window = egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(px_w / ppp, px_h / ppp),
+                    );
+                    let raw = egui::RawInput {
+                        screen_rect: Some(window),
+                        safe_area_insets: Some(egui::SafeAreaInsets(crate::app::band_insets(true))),
+                        ..Default::default()
+                    };
+                    // a few frames: the body's height is measured, then used
+                    for _ in 0..4 {
+                        let mut out = ctx.run_ui(raw.clone(), |ui| app.splash_window(ui.ctx()));
+                        out.textures_delta.clear();
+                    }
+                    let at = format!("{name} window at {scale} %, {page} page");
+                    let room = ctx.content_rect();
+                    let card = ctx
+                        .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("splash.rect")))
+                        .expect("the card's rect")
+                        .shrink(6.0);
+                    assert!(
+                        room.expand(0.5).contains_rect(card),
+                        "{at}: the card {card:?} runs past the bars, which leave {room:?}"
+                    );
+                    // the status bar and the top bar are never cut round it
+                    let status = egui::Rect::from_min_max(
+                        egui::pos2(window.left(), room.bottom()),
+                        window.max,
+                    );
+                    let top = egui::Rect::from_min_max(
+                        window.min,
+                        egui::pos2(window.right(), room.top()),
+                    );
+                    assert_eq!(
+                        clear_of_card(&ctx, status),
+                        Some(status),
+                        "{at}: status bar"
+                    );
+                    assert_eq!(clear_of_card(&ctx, top), Some(top), "{at}: top bar");
+                    // where there is room for the whole body under the
+                    // least picture, the card is the picture and the whole
+                    // body; where there isn't, it takes all the room there is
+                    // and the body scrolls
+                    let body: f32 = ctx
+                        .data(|d| d.get_temp(egui::Id::new(BODY_KEY)))
+                        .expect("the body's height");
+                    let room_h = room.height() - 2.0 * (MARGIN + BORDER);
+                    let (inside, how) = if room_h >= body + PICTURE_MIN {
+                        (
+                            (room_h - body).clamp(PICTURE_MIN, PICTURE_H) + body,
+                            "its picture and whole body",
+                        )
+                    } else {
+                        (room_h.max(PICTURE_MIN + 60.0), "all the room")
+                    };
+                    let want = inside + 2.0 * BORDER;
+                    assert!(
+                        (card.height() - want).abs() < 1.0,
+                        "{at}: the card is {} tall, {how} {want} (body {body})",
+                        card.height()
+                    );
+                }
+            }
+        }
     }
 }

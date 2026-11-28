@@ -35,7 +35,7 @@ Copying a column to other levels with **Copy to levels…** keeps its span in st
 1. Pick the **Beam** tool. Set *Width* and *Depth* in the tool options, pick a **Profile** from the [library](profiles) (an I, a T, an L, your own), or a beam **Type**.
 2. Click the beam's start, then its end. Keep clicking to chain beams. `Esc` stops, and picking another tool (or Beam again) starts a new chain.
 
-By default a beam's top sits at the top of the storey (*Top offset* 0), hanging under the next level. Its handles move each end and its top.
+By default a beam's top sits at the top of the storey, hanging under the next level. **Below top** in its *Properties* drops it: how far its top is under the top of its storey. Its handles move each end and its top.
 
 ### Beams on a face
 

@@ -43,7 +43,7 @@
 - general notes written once and broken into columns on sheets;
 - project time against the fee, kept on your own computer.
 
-The full list is in [docs/releases/1.2.0.md](docs/releases/1.2.0.md); 1.1 is in [docs/releases/1.1.0.md](docs/releases/1.1.0.md).
+The full list is in [docs/releases/1.2.0.md](docs/releases/1.2.0.md), and the fixes since in [docs/releases/1.2.1.md](docs/releases/1.2.1.md); 1.1 is in [docs/releases/1.1.0.md](docs/releases/1.1.0.md).
 
 ## Get it
 

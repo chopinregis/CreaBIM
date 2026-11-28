@@ -84,6 +84,10 @@ fn app_icon() -> std::sync::Arc<eframe::egui::IconData> {
 }
 
 fn main() -> eframe::Result {
+    // the activity log first, before the window and the graphics: a start
+    // that fails there still leaves the log, and a crash goes in it (#31:
+    // 1.2.0 closed at once and left no CreaBIM folder at all)
+    actlog::start();
     // the window's thread answers first on a busy machine
     creabim_geom::prio::ui();
     // a road following the ground takes its levels from it after each change
@@ -123,11 +127,87 @@ fn main() -> eframe::Result {
         })),
         ..Default::default()
     };
-    eframe::run_native(
+    let started = eframe::run_native(
         "CreaBIM",
         options,
         Box::new(|cc| Ok(Box::new(app::CreaBimApp::new(cc)))),
-    )
+    );
+    if let Err(e) = &started {
+        start_failed(&e.to_string());
+    }
+    started
+}
+
+/// A start that failed says why: in the activity log, and in a message
+/// box, since a released app has no console to print it to (#31). The
+/// box is left out when `CREABIM_NO_DIALOG` is set, for tests.
+fn start_failed(error: &str) {
+    actlog::line(format!("START FAILED: {error}"));
+    actlog::line(format!("system: {}", app::reportui::os_version()));
+    if std::env::var_os("CREABIM_NO_DIALOG").is_none() {
+        let _ = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Error)
+            .set_title("CreaBIM couldn't start")
+            .set_description(start_failed_text(error, actlog::path().as_deref()))
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+    }
+}
+
+/// What the message box says: what failed in plain words, the error
+/// itself, and the log to attach to a report.
+fn start_failed_text(error: &str, log: Option<&std::path::Path>) -> String {
+    let lower = error.to_lowercase();
+    let graphics = ["wgpu", "adapter", "graphics", "surface", "device"]
+        .iter()
+        .any(|w| lower.contains(w));
+    let what = if graphics {
+        "Its graphics couldn't start. CreaBIM draws through your graphics card with DirectX 12, Vulkan or OpenGL, and none of them answered. Updating the graphics card's driver often fixes this."
+    } else {
+        "Its window couldn't be opened."
+    };
+    let mut text = format!("{what}\n\nThe error was: {error}");
+    if let Some(log) = log {
+        text += &format!(
+            "\n\nIt is also written in the activity log:\n{}",
+            log.display()
+        );
+    }
+    text
+        + "\n\nTo report it, attach that file to an issue at github.com/chopinregis/CreaBIM/issues."
+}
+
+#[cfg(test)]
+mod start_tests {
+    use super::start_failed_text;
+    use std::path::Path;
+
+    /// #31: no graphics adapter says so in plain words, with the error
+    /// and where the log is.
+    #[test]
+    fn a_graphics_failure_says_so_with_the_error_and_the_log() {
+        let error = "wgpu error: Failed to create wgpu adapter, no suitable adapter found.";
+        let log = Path::new(r"C:\Users\someone\AppData\Local\CreaBIM\activity.log");
+        let text = start_failed_text(error, Some(log));
+        assert!(text.starts_with("Its graphics couldn't start."), "{text}");
+        assert!(text.contains(error), "{text}");
+        assert!(
+            text.contains(r"AppData\Local\CreaBIM\activity.log"),
+            "{text}"
+        );
+        assert!(
+            text.contains("github.com/chopinregis/CreaBIM/issues"),
+            "{text}"
+        );
+    }
+
+    /// Anything else is the window, and a missing log path is left out.
+    #[test]
+    fn another_failure_is_the_window_and_needs_no_log() {
+        let text = start_failed_text("Os error: the window class could not be registered", None);
+        assert!(text.starts_with("Its window couldn't be opened."), "{text}");
+        assert!(!text.contains("activity log"), "{text}");
+    }
 }
 
 /// The web panes are GTK child windows of an X11 window, so on Wayland the

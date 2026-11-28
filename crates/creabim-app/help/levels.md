@@ -6,13 +6,14 @@ A **level** is a floor of the building at a height, such as *Ground Floor* at ±
 
 Open it with *View › Levels…* (also in *File*), the **⋯** on the browser's *Levels* group, *Levels…* in a level's *Properties*, or by picking the Level tool anywhere but a section.
 
-- Levels are listed down the left, highest first, with their elevation.
-- **+ New** adds one a storey above the highest, as tall as it. Under **Add a level**, type an elevation in **At** and click **Add**. With *Make a floor plan for each new level* ticked, each comes with its floor plan.
-- **Duplicate** copies the picked level one storey up: *The level only*, or *With everything on it*.
-- **Settings** for the picked level: its **Elevation**, its **Height**, and **To next**, the gap up to the level above, with **Fit** when the two differ. **Open its plan**, or **Make a floor plan** when it has none.
-- **Delete** asks what happens to what is on it: *Move them to another level, keeping them where they are*, or *Delete them with the level*.
+![The Levels window on the starter house, Ground Floor picked, numbered 1 to 6](img/levels.jpg)
 
-![The Levels window](img/levels.jpg)
+1. **The levels**, down the left, highest first, with their elevation. Click one to pick it.
+2. **Its name**: type to rename it.
+3. **Settings** for the picked level: its **Elevation**, its **Height**, and **To next**, the gap up to the level above, with **Fit** when the two differ.
+4. How many elements are on it, and **Open its plan** (or **Make a floor plan** when it has none).
+5. **Add a level**: type an elevation in **At** and click **Add**. With *Make a floor plan for each new level* ticked, each comes with its floor plan.
+6. **+ New** adds one a storey above the highest, as tall as it. **Duplicate** copies the picked level one storey up: *The level only*, or *With everything on it*. The bin deletes it, and asks what happens to what is on it: *Move them to another level, keeping them where they are*, or *Delete them with the level*.
 
 Plans named after a level follow when you rename it ("Level 2 plan" becomes "Roof plan").
 

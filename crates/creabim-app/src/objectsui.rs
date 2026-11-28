@@ -851,11 +851,7 @@ impl CreaBimApp {
             .collapsible(false)
             .show(ctx, |ui| {
                 let cat = &mut self.catalogue;
-                // the search at the top right, as the other library windows
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    crate::props::text_field(ui, egui::TextEdit::singleline(&mut cat.filter)
-                            .hint_text("Find an object"), 200.0);
-                });
+                search_row(ui, &mut cat.filter);
                 let filter = cat.filter.to_lowercase();
                 let matches = |c: &CatalogueObject| {
                     filter.is_empty()
@@ -1249,8 +1245,72 @@ mod typing_tests {
     }
 }
 
+/// The Catalogue's search, at the top right as in the other library
+/// windows; returns where its field is.
+fn search_row(ui: &mut egui::Ui, filter: &mut String) -> egui::Rect {
+    // one row, as the Materials and Patterns windows put theirs: a
+    // right-to-left layout straight in the window took its whole height
+    // and centred the field in it (chopinregis/CreaBIM#113)
+    let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+    ui.allocate_ui_with_layout(
+        row,
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            crate::props::text_field(
+                ui,
+                egui::TextEdit::singleline(filter).hint_text("Find an object"),
+                200.0,
+            )
+            .rect
+        },
+    )
+    .inner
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_catalogue_search_takes_one_row_not_the_window() {
+        // chopinregis/CreaBIM#113: in a tall window the search sat halfway
+        // down, a huge empty band above the catalogue
+        let ctx = egui::Context::default();
+        let mut row = egui::Rect::NOTHING;
+        let mut field = 0.0;
+        let mut top = 0.0;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 1000.0),
+            )),
+            ..Default::default()
+        };
+        // as the Catalogue opens: a resizable window of its default size
+        for _ in 0..5 {
+            let mut out = ctx.run_ui(input.clone(), |ui| {
+                let ctx = ui.ctx().clone();
+                egui::Window::new("Catalogue")
+                    .resizable(true)
+                    .collapsible(false)
+                    .default_pos(egui::pos2(100.0, 64.0))
+                    .default_size([700.0, 640.0])
+                    .show(&ctx, |ui| {
+                        let mut filter = String::new();
+                        field = ui.spacing().interact_size.y;
+                        top = ui.cursor().top();
+                        row = super::search_row(ui, &mut filter);
+                        // the catalogue below takes the rest, as in the app
+                        crate::library::fit(ui, |ui| ui.label("the catalogue"));
+                    });
+            });
+            out.textures_delta.clear();
+        }
+        assert!(
+            row.top() - top <= 1.0,
+            "the search sits {} below the top of the window, a field is {field} tall",
+            row.top() - top
+        );
+    }
+
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {

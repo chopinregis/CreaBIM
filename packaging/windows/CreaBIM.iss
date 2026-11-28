@@ -8,7 +8,7 @@
 ;
 ; Built by make-setup.ps1, which passes the version, the release date, the
 ; folder of staged files and the output folder:
-;   ISCC /DVersion=1.2.0 /DReleaseDate=2026-11-18 /DStage=... /DOut=... CreaBIM.iss
+;   ISCC /DVersion=1.2.1 /DReleaseDate=2026-11-28 /DStage=... /DOut=... CreaBIM.iss
 
 #ifndef Version
   #define Version "0.0.0"

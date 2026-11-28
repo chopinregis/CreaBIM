@@ -53,6 +53,9 @@ usage: (<model> is a .creabim project or a legacy .creabim.json file)
                                        draw a level's plan at 1:100
   creabim view <model> <view-name> <out.svg>
                                        draw any view (plan, section, elevation)
+  creabim styled <model> <view-name> <out.svg>
+                                       draw a view as the app and its sheets
+                                       draw it: its pens, styles and phase
   creabim views <model>                list the model's views
   creabim label-clashes <model>        list labels, tags and notes that still
                                        overlap in each plan
@@ -649,5 +652,18 @@ mod project_name_tests {
         assert_eq!(super::project_name("house.ifc"), "house");
         assert_eq!(super::project_name("house"), "house");
         assert_eq!(super::project_name(""), "CreaBIM project");
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    /// Every command a user can type is in the help (GitHub #129: `styled`
+    /// worked but `--help` didn't list it).
+    #[test]
+    fn the_help_lists_the_styled_command() {
+        assert!(
+            super::USAGE.contains("creabim styled <model> <view-name> <out.svg>"),
+            "creabim-cli --help lists styled"
+        );
     }
 }
