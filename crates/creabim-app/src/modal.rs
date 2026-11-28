@@ -916,6 +916,10 @@ pub struct Modal {
     /// Where the handle was pressed, until the move has taken it as its
     /// base point.
     handle_press: Option<Pos2>,
+    /// Taken by the handle: the handle's own point. A snap onto something
+    /// puts this on it, so the picked corners land on the target rather
+    /// than the point pressed on the arrow (owner markup 2026-11-27).
+    handle_origin: Option<DVec3>,
     typed: String,
     edit: LiveEdit,
     /// Started by Shift+D: cancelling also takes the copies away.
@@ -1144,6 +1148,7 @@ impl Modal {
             across: None,
             zero: DVec2::X,
             handle_press: None,
+            handle_origin: None,
             typed: String::new(),
             edit,
             duplicated: false,
@@ -1447,12 +1452,14 @@ impl Modal {
         plane: Option<Axis>,
         by_drag: bool,
         press: Option<Pos2>,
+        origin: Option<DVec3>,
     ) -> Self {
         // measured from where the part was pressed
         if let Some(p) = press {
             self.grab = p;
             self.handle_press = Some(p);
         }
+        self.handle_origin = origin;
         self.axis = axis;
         self.keep_plane = plane;
         self.release_ends = by_drag;
@@ -2126,6 +2133,21 @@ impl Modal {
                     }
                 }
             }
+        };
+        // taken by the handle and caught by a snap onto something: the
+        // handle's own point goes there, not the point pressed on its arrow
+        // (along the axis it keeps to, if it keeps to one)
+        let target = match (self.handle_origin, &snap, target) {
+            (Some(o), Some(s), Some(t)) if on_something(s.kind) => {
+                let off = base - o;
+                Some(
+                    t + match axis {
+                        Some(a) => a.unit() * off.dot(a.unit()),
+                        None => off,
+                    },
+                )
+            }
+            _ => target,
         };
         self.snap = snap;
         let typed = parse_length(&self.typed);

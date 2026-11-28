@@ -17,7 +17,7 @@ Clicking where a room already is selects that room instead of making a second on
 
 ## Room separators
 
-An open-plan space has no wall between the kitchen and the dining room. Draw a **room separator** where the line between them goes: pick the **Room separator** tool and click its two ends. Rooms on either side of it are then measured apart, and each one follows the separator when you move it. Separators show as thin lines in plans and aren't printed in sections or 3D.
+An open-plan space has no wall between the kitchen and the dining room. Draw a **room separator** where the line between them goes: pick the **Room separator** tool and click its two ends. Rooms on either side of it are then measured apart, and each one follows the separator when you move it. A separator can end on a wall's end, or run along the walls' centre line across a doorway: the room closes either way. Separators show as thin lines in plans and aren't printed in sections or 3D.
 
 ## What a room measures
 

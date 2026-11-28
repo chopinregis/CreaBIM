@@ -1,5 +1,11 @@
 # Stairs and railings
 
+A stair is drawn by its line and climbs to the floor above by itself, in equal risers, with its railings. Every shape below is one stair.
+
+![The Stair tool: Create › Stairs › Stair, and the Stair button on the Model tab, both ringed](img/stairs-where.jpg)
+
+![Eight stairs, each drawn by its line: straight, half-turn, two quarter turns, winders, curved, spiral, split and a ramp](img/stairs-shapes.jpg)
+
 ## Stairs
 
 1. Pick the **Stair** tool. In the top bar, pick what you will draw: the **Walk line** up the middle, or the stair's **Left side** or **Right side** (handy along a wall).
@@ -9,6 +15,24 @@
 It rises to the next level in equal risers no higher than *Max riser*. If the line is longer than the stair needs, the extra length deepens the landings before it, and what is left past the last riser is cut off. *Properties* shows the flights, landings, number of risers, their height and the 2R + G comfort rule. Tick *Fixed rise* to type a height instead. *Drawn by* changes which side the line was.
 
 The stair keeps its line: moving or turning the stair takes the line with it.
+
+### Its Properties
+
+![A half-turn stair's Element tab, top to bottom, numbered 1 to 13](img/stairs-element.jpg)
+
+1. **Level**, and **Part of** the *Building* or the *Site*.
+2. **Preview**: the stair on its own, in plan (*P*), elevation (*E*), section (*S*) or *3D*.
+3. **Material**, from its type or its own.
+4. **Settings**: **Width**, which end **Stays put** when the treads change (*Head* or *Foot*), **Ramp**, **Split**, **Max riser** and **Tread**.
+5. **Built as**: how it is made (below), with its **Waist**.
+6. **Turns**: *Landings* or *Winders*.
+7. **Well** › *Cut a well*, **Section** › *Walk-line section*, **Sheet** › *Stair sheet* (below).
+8. **Repeat to**: the same stair on every floor up to a level (below).
+9. **Left** and **Right**: a railing on each side.
+10. **Finishes**: tread, riser and nosing (below).
+11. **Flights and landings**: each piece, its treads or its depth.
+12. **Rules and checks** (below).
+13. **Worked out**: flights, landings, risers, riser, rise, going and 2R + G.
 
 ### Changing a stair's line
 
@@ -29,7 +53,7 @@ With the line open, press **Shift+Tab** (or choose *Pieces* under *Grips* in *Pr
 
 The last flight has no grip, because it always takes what is left. Each change is kept with its flight or landing, so it stays when you drag the line again or add a turn. A flight with more treads than its straight has room for gets as many as fit. Right-click a grip to reset that piece, or all of them. **Shift+Tab** goes back to the line.
 
-*Properties* lists the same thing under **Flights and landings**: each flight's treads (*Fit* lets it take what fits again) and how much deeper each landing is.
+*Properties* lists the same thing under **Flights and landings**: each flight's treads (*Fit to the line* lets it take as many as fit before the turn again) and how much deeper each landing is.
 
 Where a flight meets a landing, the flight's underside runs on until it meets the landing's, so the soffit has no notch. The landing is as thick as the flight's waist measured straight down.
 
@@ -58,18 +82,20 @@ Railings follow the curve with their posts evenly spaced along it. A concrete st
 
 ### How a stair is built
 
+![Seven flights side by side, each built another way, numbered 1 to 7 as in the table](img/stairs-builds.jpg)
+
 Choose **Built as** in the stair's *Properties*:
 
-| Built as | What you get |
-| --- | --- |
-| Concrete, smooth underside | A waist slab under the steps, its underside one straight slope (a helix round a curve) meeting each landing flush. The default. |
-| Concrete, stepped underside | Each step a block one riser and a waist deep, so the underside steps up with the treads. |
-| Folded plate | Treads and risers as plates of one thickness (*Plate*), as in folded steel. Landings and winders are plates too. |
-| Side stringers | 40 mm tread boards between two 50 × 280 mm boards along the sides, their tops a little over the nosings. Open risers. |
-| Cut stringers | Tread boards on two stringers cut to the steps under each side. |
-| Central spine | Tread boards on one 200 × 250 mm beam under the walk line, with a bracket under each tread. |
-| Cantilevered treads | 80 mm treads with nothing under them, as if built into the wall beside them. |
-| Spiral post | Tread boards round a Ø 200 mm post at the centre of a curved stair, up to handrail height over the floor above. Without a curve it falls back to a central spine. |
+| | Built as | What you get |
+| --- | --- | --- |
+| 1 | Cantilevered treads | 80 mm treads with nothing under them, as if built into the wall beside them. |
+| 2 | Concrete, smooth underside | A waist slab under the steps, its underside one straight slope (a helix round a curve) meeting each landing flush. The default. |
+| 3 | Concrete, stepped underside | Each step a block one riser and a waist deep, so the underside steps up with the treads. |
+| 4 | Folded plate | Treads and risers as plates of one thickness (*Plate*), as in folded steel. Landings and winders are plates too. |
+| 5 | Side stringers | 40 mm tread boards between two 50 × 280 mm boards along the sides, their tops a little over the nosings. Open risers. |
+| 6 | Cut stringers | Tread boards on two stringers cut to the steps under each side. |
+| 7 | Central spine | Tread boards on one 200 × 250 mm beam under the walk line, with a bracket under each tread. |
+| | Spiral post | Tread boards round a Ø 200 mm post at the centre of a curved stair, up to handrail height over the floor above. Without a curve it falls back to a central spine. |
 
 *Waist* (or *Plate*) is the concrete or plate thickness; open builds don't use it. Sections cut each build as it is: the solid concrete filled, open builds as their boards and members. In the JSON model a stair's `build` is one of `concrete` (left out), `stepped`, `folded_plate`, `stringers`, `cut_stringers`, `spine`, `cantilever` and `post`.
 
@@ -87,7 +113,7 @@ Each finish shows in 3D in its material's colour, and in sections as its own lay
 
 In the JSON model a stair's `finish` holds `tread`, `tread_material`, `riser`, `riser_material` and `nosing`.
 
-Stairs from older projects keep their **L-shaped** switch: set after how many risers the landing comes and which way the stair turns.
+Stairs from older projects keep their **L-shaped** switch: set after how many risers the landing comes (**Landing after**) and which way the stair turns.
 
 In plan, a stair is drawn with its risers below the cut, a break line, the treads above the cut dashed, and a walking line with an arrow and *UP*. On the level it climbs to, the whole stair is drawn where its well lets you see it, with *DN*; the plan's *View depth* sets how far down it looks (see [Views](views#plan-graphics)).
 
@@ -103,9 +129,11 @@ Each stair is checked against a rule set, live, under **Rules and checks** in it
 - *UK Part K, private stair*
 - any of the project's own
 
+![Rules and checks open on a half-turn stair: its Rule set, and a dot for each check](img/stairs-rules.jpg)
+
 Each check shows a dot: green passes, red fails, grey isn't in that rule set. The list covers the riser and going, 2R + G, pitch, risers and rise in a flight, width, landing depth, winders (their turn, their going in from the inside edge and their narrow end), a spiral's own riser and going, the nosing, whether it reaches the floor, and its railings: handrails on both sides, their height, the guard's height, its openings and the rail's grip.
 
-Open **Rule set values** to change a limit. Changing a preset's value saves a copy as one of the project's own rule sets ("…, edited"), and the stair is then checked against it.
+Open **Rule set values** to change a limit: the riser, the going and the width, the headroom, the nosing, the winders' going and narrow end, and the handrail's height (**Rail at least** and **Rail at most**, above the pitch line). Changing a preset's value saves a copy as one of the project's own rule sets ("…, edited"), and the stair is then checked against it.
 
 **Check stairs** on the *Manage* tab selects every stair that fails a check and lists what fails.
 
@@ -118,6 +146,8 @@ Open **Rule set values** to change a limit. Changing a preset's value saves a co
 **Walk-line section**, under the checks, opens the stair unrolled along its walk line: every flight, landing and winder at its true going and rise, the pitch line through the nosings, the floors cut, the dashed headroom line and, washed red, any floor that comes inside it. The least headroom is measured where the check finds it. The section follows the stair as it changes, is deleted with it, and is listed under Sections in the project.
 
 ### Drawing a stair
+
+![A half-turn stair picked in plan: 1 its line's grips, 2 the riser numbers, 3 the UP label with its own grip, 4 its tag](img/stairs-plan.jpg)
 
 A plan at 1:100 or larger numbers each riser on the tread it lifts you to, counting from the bottom; a winder's number sits in its middle. **UP** marks the foot of the walk line, **DN** the head on the floor above, and the tag under the stair gives its risers and goings. Select the stair in a plan and the UP label has a grip of its own: drag the label off whatever it covers and its arrow stays; drag it back by its place and it goes home.
 

@@ -8,6 +8,8 @@ The *Graphic styles* window has four pages: *Object styles*, *Pens*, *Palette* a
 
 Open *File › Graphic styles…*.
 
+![The Graphic styles window: the style pack, its tag style, symbol set and patterns, and its four pages, Object styles open](img/gs-window.jpg)
+
 - The *Style pack* list shows the packs in the project. The one ticked is the default: the project draws with it.
 The pack buttons sit beside the list: **+** adds a shipped pack, the folder loads one from a file, the disk saves this one.
 
@@ -37,6 +39,8 @@ In the colour styles, roofs seen from above under a plan's cut are washed too, t
 
 ## Line styles
 
+![The study's corner of the Ridgeline House plan in each line style: Ruled, Hand, Loose, Vellum Graphite, Linen Ink, Marker & Wash, Field Bold and Millwork Study](img/gs-line-styles.jpg)
+
 A **line style** decides how a drawing's lines are drawn, from clean plotted lines to hand-drawn ones. It never changes a line's weight, which comes from the pen set, or its colour: ink stays black in every style.
 
 | Style | Feel |
@@ -49,6 +53,8 @@ A **line style** decides how a drawing's lines are drawn, from clean plotted lin
 | **Marker & Wash** | Felt edges, for washed presentation drawings. |
 | **Field Bold** | Double-struck heavy lines for site details. |
 | **Millwork Study** | An energetic desk study. |
+
+![The Project tab, with Line style and Palette ringed](img/gs-where.jpg)
 
 **Where to set it.** The project's line style is in the *Project* tab. A view template or a single view can pick its own under *Template and overrides › Line style*, as with pen sets.
 
@@ -114,6 +120,22 @@ The pack's file can also set a style for one category in one material, a surface
 
 A hard landscape area keeps the paving pattern set on it. The Site style's surface fill goes under every area. Its surface pattern is drawn only on areas whose own pattern is *None*.
 
+## Palettes
+
+![The same part of the plan in each shipped palette: Ink, Sepia, Olive, Terracotta, Blueprint, Lavender and coral, and Material](img/gs-palettes.jpg)
+
+The **palette** recolours every drawing at once: the paper, the ink, the fill of what is cut, and the furniture and planting. Pick one in the *Project* tab (**Palette**), beside the line style. Seven ship with CreaBIM: **Ink** (black on white, as drawings have always printed), **Sepia**, **Olive**, **Terracotta**, **Blueprint** (light lines on deep paper), **Lavender and coral**, and **Material** (the materials' own colours, lines in ink).
+
+The *Palette* page of the Graphic styles window makes your own from a few settings:
+
+- **Mode**: *Ink*, *Mono* (one hue for paper, ink and fills), *Duo* (a hue, and an **Accent** hue for furniture and planting) or *Material*.
+- **Hue**, **Ink strength**, **Paper tint** and **Fill strength**, and **Paper** › *Dark paper, light ink*.
+- **Its colours** shows the result: paper, ink, fill, surface, context, accent and shadow.
+- **Kept readable**: lines keep at least 4.5 : 1 against the paper (*Ink on paper*), the fill of what is cut keeps a step from the paper (*Walls on paper*), and the selection keeps its orange.
+- **Seen as** previews how the palette looks to someone with a colour-vision difference.
+
+*Save as…* keeps the settings as a palette of your own; *Factory values* puts a shipped one back.
+
 ## Pens
 
 A **pen set** is a whole pen table under one name. Four ship with CreaBIM:
@@ -142,6 +164,8 @@ A hatch pattern is one or more families of parallel lines (an angle, a spacing, 
 - *true size (m)*: the pattern is drawn to the model's size, like brick coursing or tiles.
 
 Patterns are drawn and changed in the *Patterns* area (*Materials › Patterns…*, an area's view-type menu, or *Patterns ›* in Graphic styles), and more are added from *Manage › Libraries › Patterns*.
+
+In the *Patterns* area, a tile pattern sets its **Tile width** and **Tile height**, its **Joint**, and **Rows slide** (0 a grid, 50 % a half bond); a pattern drawn in strokes lists its **Picked stroke** to change. **At small scales** › *Simplify* draws a symbolic pattern below a scale instead (coursing at 1:20, the brick hatch at 1:100). A built-in pattern can't be changed: **Make an editable copy**, and saved under the same name it replaces the built-in one for every material using it.
 
 A material's cut faces take the pattern its *Hatch* names (*Brick*, *Concrete*…). A pack pattern with the same name replaces that built-in for every material using it. A material can also name any pattern of the pack.
 

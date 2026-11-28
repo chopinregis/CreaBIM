@@ -89,8 +89,13 @@ fn open() -> Option<std::fs::File> {
 }
 
 /// Start the log for this run: a header with the version and the time.
+/// Once a run: `main` starts it before the window, so a start that fails
+/// still leaves the log and says why (#31); later calls change nothing.
 pub fn start() {
     let mut log = LOG.lock().unwrap_or_else(|e| e.into_inner());
+    if log.is_some() {
+        return;
+    }
     let mut file = open();
     if let Some(f) = &mut file {
         let secs = std::time::SystemTime::now()

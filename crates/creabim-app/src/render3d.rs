@@ -365,6 +365,20 @@ pub struct Viewport3d {
     texture_id: Option<egui::TextureId>,
 }
 
+/// The 3D view's render target for a rectangle `w` × `h` points at `ppp`
+/// pixels a point: never past `max`, the largest texture the graphics card
+/// makes, its shape kept (the image is drawn stretched into the rectangle).
+/// A window wider or taller than the card allows, or a frame laid out on a
+/// screen not yet measured, asked for more, and wgpu stops the app there.
+pub fn target_size(w: f32, h: f32, ppp: f32, max: u32) -> [u32; 2] {
+    let (pw, ph) = ((w * ppp).max(1.0), (h * ppp).max(1.0));
+    let k = (max as f32 / pw.max(ph)).min(1.0);
+    [
+        ((pw * k) as u32).clamp(1, max.max(1)),
+        ((ph * k) as u32).clamp(1, max.max(1)),
+    ]
+}
+
 impl Viewport3d {
     pub fn new(device: &wgpu::Device) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -775,5 +789,24 @@ impl Viewport3d {
         }
         rs.queue.submit([encoder.finish()]);
         self.texture_id.expect("registered in ensure_targets")
+    }
+}
+
+#[cfg(test)]
+mod target_size_tests {
+    use super::target_size;
+
+    #[test]
+    fn a_target_never_passes_the_cards_limit_and_keeps_its_shape() {
+        // what the first frame asked for at 80 % before the start-up fix
+        let [w, h] = target_size(5963.0, 12319.0, 1.0, 8192);
+        assert!(w <= 8192 && h <= 8192, "{w} × {h}");
+        assert_eq!(h, 8192);
+        let shape = 5963.0 / 12319.0;
+        assert!((w as f32 / h as f32 - shape).abs() < 0.001);
+        // an ordinary view is left as it is
+        assert_eq!(target_size(800.0, 600.0, 1.25, 8192), [1000, 750]);
+        // nothing is ever zero across
+        assert_eq!(target_size(0.0, 0.0, 1.0, 8192), [1, 1]);
     }
 }

@@ -80,6 +80,10 @@ pub struct WebUi {
     here_wait: u8,
     /// The panes are shaded behind a window that waits for an answer.
     shaded: bool,
+    /// The popup and tip panels' solid ground, as last set.
+    card_ground: Option<(u8, u8, u8, u8)>,
+    /// The size each pane's page was last told it shows, in its pixels.
+    told: [Option<(u32, u32)>; PANES],
     /// Which side the buttons sit in CreaBIM's own windows, sent with
     /// every state: "right" or "left".
     pub dir: &'static str,
@@ -156,17 +160,14 @@ impl WebUi {
                     position: PhysicalPosition::new(0, 0).into(),
                     size: PhysicalSize::new(10, 10).into(),
                 })
-                // a see-through panel is clear until its page paints: the
-                // dark of a page not yet drawn showed as a block for a
-                // frame as New project opened (MU102)
-                .with_background_color(if matches!(pane, Pane::Popup | Pane::Tip) {
-                    (0, 0, 0, 0)
-                } else {
-                    BACKGROUND
-                })
-                // the popup's corners can be round (Save the changes):
-                // what its page leaves clear shows the app behind
-                .with_transparent(matches!(pane, Pane::Popup | Pane::Tip))
+                // every pane is solid. A see-through popup or tip panel
+                // (MU102) painted black where the system doesn't blend a
+                // see-through child window (chopinregis/CreaBIM#112 on
+                // Windows, #121 on Linux). The popup and tip panels take
+                // the theme's card colour once known (`set_card_ground`),
+                // so a page not yet painted shows as the card, not dark
+                .with_background_color(BACKGROUND)
+                .with_transparent(see_through(pane))
                 .with_ipc_handler(move |r| {
                     if let Ok(body) = serde_json::from_str(r.body()) {
                         inbox.lock().unwrap().push(Msg { pane, body });
@@ -198,6 +199,8 @@ impl WebUi {
             popup_here: false,
             here_wait: 0,
             shaded: false,
+            card_ground: None,
+            told: [None; PANES],
             dir: "right",
             #[cfg(target_os = "linux")]
             x11: X11Focus::new(frame),
@@ -236,12 +239,22 @@ impl WebUi {
         // which the splash's shade showed as a bright line (MU81). Placed
         // every frame, so a new interface scale (its pixels per point)
         // moves the bands at once
-        let (x0, y0) = ((rect.min.x * ppp).floor(), (rect.min.y * ppp).floor());
-        let (x1, y1) = ((rect.max.x * ppp).ceil(), (rect.max.y * ppp).ceil());
+        let (x0, y0, w, h) = device_bounds(rect, ppp);
         let _ = self.view(pane).set_bounds(Rect {
-            position: PhysicalPosition::new(x0 as i32, y0 as i32).into(),
-            size: PhysicalSize::new((x1 - x0).max(1.0) as u32, (y1 - y0).max(1.0) as u32).into(),
+            position: PhysicalPosition::new(x0, y0).into(),
+            size: PhysicalSize::new(w, h).into(),
         });
+        // a menu's or card's frame runs round its page's edge: tell the
+        // page the size it really shows, so the frame's right and bottom
+        // lines fall inside its window (MU151: at 125 % the page took a
+        // whole pixel more than its window showed, and lost those lines)
+        if matches!(pane, Pane::Popup | Pane::Tip) && self.told[i] != Some((w, h)) {
+            self.told[i] = Some((w, h));
+            let (cw, ch) = shown_size(w, h, ppp);
+            let _ = self.view(pane).evaluate_script(&format!(
+                "document.documentElement.style.setProperty('--shown-w','{cw}px');                 document.documentElement.style.setProperty('--shown-h','{ch}px')"
+            ));
+        }
     }
 
     /// Zoom every page by the interface scale (#96), so the bars grow with
@@ -330,9 +343,26 @@ impl WebUi {
         }
     }
 
+    /// Paint the popup and tip panels' ground in the theme's card colour,
+    /// so a menu or card not yet painted shows as itself rather than dark.
+    pub fn set_card_ground(&mut self, c: egui::Color32) {
+        let rgba = (c.r(), c.g(), c.b(), 255);
+        if self.card_ground == Some(rgba) {
+            return;
+        }
+        self.card_ground = Some(rgba);
+        for (pane, view) in &self.views {
+            if matches!(pane, Pane::Popup | Pane::Tip) {
+                let _ = view.set_background_color(rgba);
+            }
+        }
+    }
+
     /// Re-send every state next frame (after a page reloads).
     pub fn resend(&mut self, pane: Pane) {
         self.sent[pane as usize].clear();
+        // a reloaded page has forgotten the size it shows
+        self.told[pane as usize] = None;
     }
 
     /// Is a menu or card showing (not parked off the window)?
@@ -447,6 +477,32 @@ const PARKED: egui::Rect = egui::Rect {
 
 /// The page background, so a page never flashes white while loading.
 const BACKGROUND: (u8, u8, u8, u8) = (23, 25, 30, 255);
+
+/// A pane's window in device pixels: its corner and size, covering every
+/// pixel `rect` (in points) touches.
+fn device_bounds(rect: egui::Rect, ppp: f32) -> (i32, i32, u32, u32) {
+    let (x0, y0) = ((rect.min.x * ppp).floor(), (rect.min.y * ppp).floor());
+    let (x1, y1) = ((rect.max.x * ppp).ceil(), (rect.max.y * ppp).ceil());
+    (
+        x0 as i32,
+        y0 as i32,
+        (x1 - x0).max(1.0) as u32,
+        (y1 - y0).max(1.0) as u32,
+    )
+}
+
+/// What a page shows of itself, in its own pixels, in a window `w` × `h`
+/// device pixels: the window's size at the page's scale, not rounded up.
+fn shown_size(w: u32, h: u32, ppp: f32) -> (f32, f32) {
+    let ppp = if ppp > 0.0 { ppp } else { 1.0 };
+    (w as f32 / ppp, h as f32 / ppp)
+}
+
+/// Is `pane` a see-through window? None is: menus, cards and tips are solid
+/// panels (#112, #121), with square corners, as in 1.1.
+fn see_through(_pane: Pane) -> bool {
+    false
+}
 
 /// Giving the keyboard back to the app window. GTK's own call only reaches
 /// the page's container, so this asks the X server directly.
@@ -674,5 +730,119 @@ mod approved_icons {
             between.contains("</div></div>"),
             "the part closes before the buttons"
         );
+    }
+}
+
+#[cfg(test)]
+mod solid_panels {
+    use super::Pane;
+    use eframe::egui;
+
+    /// `css` without its comments.
+    fn uncommented(css: &str) -> String {
+        let mut out = String::new();
+        let mut rest = css;
+        while let Some(a) = rest.find("/*") {
+            out.push_str(&rest[..a]);
+            rest = rest[a..].find("*/").map_or("", |b| &rest[a + b + 2..]);
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// A selector naming the page itself (html or body), not something in it.
+    fn names_the_page(sel: &str) -> bool {
+        let mut depth = 0;
+        let mut spaced = false;
+        for ch in sel.chars() {
+            match ch {
+                '(' => depth += 1,
+                ')' => depth -= 1,
+                ' ' if depth == 0 => spaced = true,
+                _ => {}
+            }
+        }
+        !spaced || sel.ends_with(" body")
+    }
+
+    #[test]
+    fn popup_and_tip_panels_are_solid_with_no_shadow_round_them() {
+        // chopinregis/CreaBIM#112 (Windows) and #121 (Linux): see-through
+        // popup and tip panels painted black where the system doesn't
+        // blend them; the clear margin round a menu showed as a black band
+        for pane in Pane::ALL {
+            assert!(!super::see_through(pane), "{pane:?} is see-through");
+        }
+        let css = uncommented(super::CSS);
+        let mut sized = false;
+        for rule in css.split('}') {
+            let Some((sel, body)) = rule.rsplit_once('{') else {
+                continue;
+            };
+            let body: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+            for s in sel.split(',').map(str::trim) {
+                let popup = s.contains("data-pane=\"popup\"");
+                let ours = popup || s.contains("data-pane=\"tip\"");
+                if ours && names_the_page(s) {
+                    assert!(
+                        !body.contains("background:transparent"),
+                        "`{s}` leaves its panel see-through"
+                    );
+                }
+                if ours && s.ends_with(" body") && names_the_page(s) {
+                    sized |= body.contains("width:var(--shown-w")
+                        && body.contains("height:var(--shown-h");
+                }
+                if popup && s.contains(".mwrap") {
+                    assert!(
+                        !body.contains("box-shadow:0"),
+                        "`{s}` draws a shadow outside the menu, in its panel"
+                    );
+                    assert!(
+                        !body.contains("calc(100%-17px)"),
+                        "`{s}` leaves a margin round the menu in its panel"
+                    );
+                }
+            }
+        }
+        // MU151: the page is as big as its window shows, as the app tells
+        // it, so a frame round its edge keeps its right and bottom lines
+        assert!(
+            sized,
+            "the popup and tip pages take the viewport's size, not the size their window shows"
+        );
+    }
+
+    #[test]
+    fn a_frame_round_the_page_stays_inside_its_window_at_every_scale() {
+        // MU151: at 125 % the page laid itself out on a viewport rounded up
+        // to a whole pixel, past what its window showed; a menu's frame
+        // drawn round that lost its right and bottom lines
+        let mut cut_before = 0;
+        for ppp in [1.0f32, 1.25, 1.5] {
+            for w10 in 1500..2600 {
+                let x = 100.3 + (w10 % 7) as f32 * 0.37;
+                let rect = egui::Rect::from_min_size(
+                    egui::pos2(x, 40.6),
+                    egui::vec2(w10 as f32 / 10.0, 300.0),
+                );
+                let (_, _, w, h) = super::device_bounds(rect, ppp);
+                // the frame's far line, in device pixels from the window's corner
+                let (cw, ch) = super::shown_size(w, h, ppp);
+                assert!(
+                    cw * ppp <= w as f32 + 1e-3 && ch * ppp <= h as f32 + 1e-3,
+                    "{ppp} {w10}"
+                );
+                assert!(
+                    cw * ppp > w as f32 - 1.0 && ch * ppp > h as f32 - 1.0,
+                    "{ppp} {w10}"
+                );
+                // as before: the viewport rounded up to whole page pixels
+                if (w as f32 / ppp).ceil() * ppp > w as f32 + 1e-3 {
+                    cut_before += 1;
+                }
+            }
+        }
+        assert!(cut_before > 0, "the rounding the fix answers never happens");
     }
 }

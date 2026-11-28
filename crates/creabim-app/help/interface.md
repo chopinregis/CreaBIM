@@ -1,6 +1,16 @@
 # The window at a glance
 
-![The CreaBIM window](img/interface.jpg)
+![The CreaBIM window on the starter house, its parts numbered 1 to 9](img/interface.jpg)
+
+1. **The top bar**: the menus, the quick buttons, the file name and the workspace.
+2. **The tool tabs**: *Model*, *Annotate*, *View* and *Manage*.
+3. **The tool row** of the tab in front.
+4. **The tool options strip**: how the tool in use works.
+5. **A view area**: here the 3D view.
+6. **Another view area**: here the ground-floor plan.
+7. **The project browser**.
+8. **Properties**, with its tabs down its left edge.
+9. **The status bar**.
 
 ## The top bar
 

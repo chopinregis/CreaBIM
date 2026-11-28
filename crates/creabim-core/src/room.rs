@@ -470,15 +470,53 @@ fn bounding_lines(model: &Model, level: ElementId) -> Vec<(DVec2, DVec2, Element
         out.push((a + n, b + n, *id));
         out.push((a - n, b - n, *id));
     }
+    let mut seps = Vec::new();
     for e in model.iter() {
         if let ElementKind::RoomSeparator(s) = &e.kind {
             if s.level == level && s.a.distance(s.b) > 1e-6 {
                 let d = (s.b - s.a).normalize();
-                out.push((s.a - d * reach.max(0.1), s.b + d * reach.max(0.1), e.id));
+                seps.push((s.a - d * reach.max(0.1), s.b + d * reach.max(0.1), e.id));
             }
         }
     }
+    // a wall's end where a separator runs into it is closed across: one
+    // drawn on the wall's centre line, to its end or across a gap to the
+    // next wall's, runs between the two faces and meets neither, and the
+    // room went round the end into the next space (owner, 2026-11-26)
+    for (id, w) in &walls {
+        let t = w.thickness / 2.0;
+        for u in [0.0, w.length()] {
+            let cap = (w.place(u, t), w.place(u, -t));
+            if seps.iter().any(|s| segments_meet(s.0, s.1, cap.0, cap.1)) {
+                out.push((cap.0, cap.1, *id));
+            }
+        }
+    }
+    out.extend(seps);
     out
+}
+
+/// Do segments `a`–`b` and `c`–`d` cross or touch?
+fn segments_meet(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> bool {
+    const EPS: f64 = 1e-9;
+    let side = |p: DVec2, q: DVec2, r: DVec2| (q - p).perp_dot(r - p);
+    let within = |p: DVec2, q: DVec2, r: DVec2| {
+        r.x >= p.x.min(q.x) - EPS
+            && r.x <= p.x.max(q.x) + EPS
+            && r.y >= p.y.min(q.y) - EPS
+            && r.y <= p.y.max(q.y) + EPS
+    };
+    let (d1, d2) = (side(c, d, a), side(c, d, b));
+    let (d3, d4) = (side(a, b, c), side(a, b, d));
+    if ((d1 > EPS && d2 < -EPS) || (d1 < -EPS && d2 > EPS))
+        && ((d3 > EPS && d4 < -EPS) || (d3 < -EPS && d4 > EPS))
+    {
+        return true;
+    }
+    (d1.abs() <= EPS && within(c, d, a))
+        || (d2.abs() <= EPS && within(c, d, b))
+        || (d3.abs() <= EPS && within(a, b, c))
+        || (d4.abs() <= EPS && within(a, b, d))
 }
 
 /// The space the walls and room separators of `level` close off round
@@ -1114,6 +1152,60 @@ mod tests {
         doc.commit(Transaction::new("sep").insert(sep)).unwrap();
         let split = area(doc.model(), rid);
         assert!(split < whole * 0.6, "{split} of {whole}");
+    }
+
+    /// Owner 2026-11-26 (found filming tutorial 04): a separator drawn on
+    /// a wall's centre line to its end ran between the wall's two faces,
+    /// met neither, and the room spilled round the wall's end into the
+    /// next space. The same for one across a gap between two walls' ends.
+    #[test]
+    fn a_separator_ending_at_a_walls_end_on_its_centre_line_closes_the_room() {
+        let stub = |doc: &mut Document, l: ElementId, a: (f64, f64), b: (f64, f64)| {
+            let w = Element::new(
+                "Stub",
+                ElementKind::Wall(Wall::new(
+                    l,
+                    DVec2::new(a.0, a.1),
+                    DVec2::new(b.0, b.1),
+                    0.2,
+                    3.0,
+                )),
+            );
+            doc.commit(Transaction::new("stub").insert(w)).unwrap();
+        };
+        let sep = |doc: &mut Document, l: ElementId, a: (f64, f64), b: (f64, f64)| {
+            let s = Element::new(
+                "Separator",
+                ElementKind::RoomSeparator(Separator {
+                    level: l,
+                    a: DVec2::new(a.0, a.1),
+                    b: DVec2::new(b.0, b.1),
+                }),
+            );
+            doc.commit(Transaction::new("sep").insert(s)).unwrap();
+        };
+        let south = |doc: &Document, l: ElementId| {
+            enclosed(doc.model(), l, DVec2::new(1.0, 1.0))
+                .map(|s| s.area())
+                .unwrap_or(0.0)
+        };
+        // a wall in from the east, half way; the separator from the west
+        // wall along its centre line to its end
+        let (mut doc, l, _) = house();
+        stub(&mut doc, l, (6.0, 2.0), (3.0, 2.0));
+        sep(&mut doc, l, (0.0, 2.0), (3.0, 2.0));
+        // to the separator west of the stub, to its south face east of it
+        let want = 5.8 * 1.8 + 2.9 * 0.1;
+        let got = south(&doc, l);
+        assert!((got - want).abs() < 1e-6, "{got}, not {want}");
+        // a doorway between two walls' ends, closed on the centre line
+        let (mut doc, l, _) = house();
+        stub(&mut doc, l, (0.0, 2.0), (2.0, 2.0));
+        stub(&mut doc, l, (6.0, 2.0), (4.0, 2.0));
+        sep(&mut doc, l, (2.0, 2.0), (4.0, 2.0));
+        let want = 5.8 * 1.8 + 2.0 * 0.1;
+        let got = south(&doc, l);
+        assert!((got - want).abs() < 1e-6, "{got}, not {want}");
     }
 
     #[test]
