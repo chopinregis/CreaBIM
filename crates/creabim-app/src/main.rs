@@ -177,6 +177,21 @@ fn start_failed_text(error: &str, log: Option<&std::path::Path>) -> String {
         + "\n\nTo report it, attach that file to an issue at github.com/chopinregis/CreaBIM/issues."
 }
 
+/// The web panes are GTK child windows of an X11 window, so on Wayland the
+/// app runs through XWayland, and GTK has to be started first.
+#[cfg(target_os = "linux")]
+fn linux_setup() {
+    // Without this WebKit draws nothing on some GPUs and in virtual displays.
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    std::env::set_var("GDK_BACKEND", "x11");
+    if gtk::init().is_err() {
+        // The app still runs, with the classic panels.
+        std::env::set_var("CREABIM_CLASSIC_UI", "1");
+    }
+}
+
 #[cfg(test)]
 mod start_tests {
     use super::start_failed_text;
@@ -207,20 +222,5 @@ mod start_tests {
         let text = start_failed_text("Os error: the window class could not be registered", None);
         assert!(text.starts_with("Its window couldn't be opened."), "{text}");
         assert!(!text.contains("activity log"), "{text}");
-    }
-}
-
-/// The web panes are GTK child windows of an X11 window, so on Wayland the
-/// app runs through XWayland, and GTK has to be started first.
-#[cfg(target_os = "linux")]
-fn linux_setup() {
-    // Without this WebKit draws nothing on some GPUs and in virtual displays.
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    }
-    std::env::set_var("GDK_BACKEND", "x11");
-    if gtk::init().is_err() {
-        // The app still runs, with the classic panels.
-        std::env::set_var("CREABIM_CLASSIC_UI", "1");
     }
 }
