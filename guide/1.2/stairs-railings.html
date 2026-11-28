@@ -90,7 +90,7 @@
 <p>With the line open, press <strong>Shift+Tab</strong> (or choose <em>Pieces</em> under <em>Grips</em> in <em>Properties</em>) to see the stair's pieces:</p>
 <ul><li>a grip on each flight's top riser: drag it back for fewer treads, on for more. The flights after it take the rest;</li><li>a grip in each landing: drag it back down the flight that climbs to it to make it deeper. That flight stops sooner.</li></ul>
 <p>The last flight has no grip, because it always takes what is left. Each change is kept with its flight or landing, so it stays when you drag the line again or add a turn. A flight with more treads than its straight has room for gets as many as fit. Right-click a grip to reset that piece, or all of them. <strong>Shift+Tab</strong> goes back to the line.</p>
-<p><em>Properties</em> lists the same thing under <strong>Flights and landings</strong>: each flight's treads (<em>Fit</em> lets it take what fits again) and how much deeper each landing is.</p>
+<p><em>Properties</em> lists the same thing under <strong>Flights and landings</strong>: each flight's treads (<em>Fit to the line</em> lets it take as many as fit before the turn again) and how much deeper each landing is.</p>
 <p>Where a flight meets a landing, the flight's underside runs on until it meets the landing's, so the soffit has no notch. The landing is as thick as the flight's waist measured straight down.</p>
 <h3 id="winders">Winders</h3>
 <p>A turn can climb on <strong>winders</strong> (tapered treads) instead of a landing:</p>
@@ -113,7 +113,7 @@
 <p>Risers are measured finish to finish. The finished treads are a riser apart, and the structure sits the tread finish lower, so the stair's bottom bears on the floor's structure under its finish.</p>
 <p>Each finish shows in 3D in its material's colour, and in sections as its own layer, hatched in its material's hatch. The <a href="take-off.html">take-off</a> lists a stair's structure, estimated by how it is built, and each finish as a line of its own, measured by area.</p>
 <p>In the JSON model a stair's <kbd>finish</kbd> holds <kbd>tread</kbd>, <kbd>tread_material</kbd>, <kbd>riser</kbd>, <kbd>riser_material</kbd> and <kbd>nosing</kbd>.</p>
-<p>Stairs from older projects keep their <strong>L-shaped</strong> switch: set after how many risers the landing comes and which way the stair turns.</p>
+<p>Stairs from older projects keep their <strong>L-shaped</strong> switch: set after how many risers the landing comes (<strong>Landing after</strong>) and which way the stair turns.</p>
 <p>In plan, a stair is drawn with its risers below the cut, a break line, the treads above the cut dashed, and a walking line with an arrow and <em>UP</em>. On the level it climbs to, the whole stair is drawn where its well lets you see it, with <em>DN</em>; the plan's <em>View depth</em> sets how far down it looks (see <a href="views.html#plan-graphics">Views</a>).</p>
 <div class="tip"><p><strong>Note:</strong> A stair doesn't cut the slab above by itself. Draw a <a href="holes.html#shafts">shaft</a> for its stair well.</p></div>
 <h3 id="rules-and-checks">Rules and checks</h3>
@@ -121,7 +121,7 @@
 <ul><li><em>Comfortable house stair (no code)</em></li><li><em>Ontario OBC 2024, dwelling</em> (the default)</li><li><em>US IRC, dwelling</em></li><li><em>UK Part K, private stair</em></li><li>any of the project's own</li></ul>
 <figure><img src="../../assets/help/stairs-rules.jpg" alt="Rules and checks open on a half-turn stair: its Rule set, and a dot for each check" loading="lazy"><figcaption>Rules and checks open on a half-turn stair: its Rule set, and a dot for each check</figcaption></figure>
 <p>Each check shows a dot: green passes, red fails, grey isn't in that rule set. The list covers the riser and going, 2R + G, pitch, risers and rise in a flight, width, landing depth, winders (their turn, their going in from the inside edge and their narrow end), a spiral's own riser and going, the nosing, whether it reaches the floor, and its railings: handrails on both sides, their height, the guard's height, its openings and the rail's grip.</p>
-<p>Open <strong>Rule set values</strong> to change a limit. Changing a preset's value saves a copy as one of the project's own rule sets ("…, edited"), and the stair is then checked against it.</p>
+<p>Open <strong>Rule set values</strong> to change a limit: the riser, the going and the width, the headroom, the nosing, the winders' going and narrow end, and the handrail's height (<strong>Rail at least</strong> and <strong>Rail at most</strong>, above the pitch line). Changing a preset's value saves a copy as one of the project's own rule sets ("…, edited"), and the stair is then checked against it.</p>
 <p><strong>Check stairs</strong> on the <em>Manage</em> tab selects every stair that fails a check and lists what fails.</p>
 <h3 id="headroom-and-stair-wells">Headroom and stair wells</h3>
 <p><strong>Headroom</strong> in the checks is the least clear height over the stair, measured from the line through the nosings to the underside of any slab, beam or roof above, along the walk line and both sides. Where it is short, a red see-through box shows that stretch in the 3D view.</p>
