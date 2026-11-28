@@ -551,11 +551,12 @@ mod start_cloak {
 impl CreaBimApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let settings = crate::files::Settings::load();
-        // The web panels and native UI share one scale preference.
-        cc.egui_ctx
-            .options_mut(|options| options.zoom_with_keyboard = false);
-        cc.egui_ctx
-            .set_zoom_factor(f32::from(settings.interface_scale) / 100.0);
+        // Initialize the shared scale before input arrives. The runtime zoom
+        // setter reuses the previous frame's size, which is a placeholder at startup.
+        cc.egui_ctx.options_mut(|options| {
+            options.zoom_with_keyboard = false;
+            options.zoom_factor = f32::from(settings.interface_scale) / 100.0;
+        });
         let theme = crate::theme::Theme::from_id(&settings.theme).unwrap_or_default();
         crate::handles::set_grip_style(settings.grips);
         crate::modal::set_bar_by_pointer(settings.edit_bar == "pointer");
